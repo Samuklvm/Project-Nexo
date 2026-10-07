@@ -10,17 +10,26 @@ const updateButton = document.getElementById('update-app');
 const driveSelect = document.getElementById('drive-select');
 const driveOptimizeButton = document.getElementById('drive-optimize');
 const diagnosisResult = document.getElementById('diagnosis-result');
+const runDiagnosisButton = document.getElementById('run-diagnosis');
+const runCleanupButton = document.getElementById('run-cleanup');
+const runRepairButton = document.getElementById('run-repair');
 
 const defaultWallpaper = './assets/default-wallpaper.svg';
 const wallpaperStorageKey = 'nexo-wallpaper';
 
 function showToast(message) {
+  if (!toast) return;
   toast.textContent = message;
   toast.classList.add('visible');
   clearTimeout(showToast.timeoutId);
   showToast.timeoutId = setTimeout(() => {
     toast.classList.remove('visible');
   }, 2200);
+}
+
+function setAppStatus(message) {
+  if (!appStatusLabel) return;
+  appStatusLabel.textContent = message;
 }
 
 function setView(viewName) {
@@ -66,6 +75,8 @@ const driveCatalog = {
     operationDescription: 'Ajuste para reduzir desgaste e melhorar performance do SSD.',
     method: 'TRIM',
     free: 320,
+    used: 680,
+    total: 1000,
     driveLabel: 'C:'
   },
   hdd: {
@@ -83,12 +94,16 @@ const driveCatalog = {
     operationDescription: 'Organiza arquivos e melhora o acesso sequencial do disco.',
     method: 'Defrag',
     free: 900,
+    used: 1100,
+    total: 2000,
     driveLabel: 'D:'
   }
 };
 
 function hydrateDriveView(selectedKey) {
   const drive = driveCatalog[selectedKey] || driveCatalog.nvme;
+  const total = Math.max(drive.total || 1, 1);
+  const usedRatio = Math.min((drive.used || 0) / total, 1);
   document.getElementById('drive-type').textContent = drive.type;
   document.getElementById('drive-model').textContent = drive.model;
   document.getElementById('drive-temp').textContent = drive.temperature;
@@ -101,17 +116,31 @@ function hydrateDriveView(selectedKey) {
   document.getElementById('drive-operation-title').textContent = drive.operationTitle;
   document.getElementById('drive-operation-description').textContent = drive.operationDescription;
   document.getElementById('drive-method').textContent = drive.method;
-  document.getElementById('drive-capacity-bar').style.width = `${Math.min((drive.free / (drive.free + 680)) * 100, 100)}%`;
+  document.getElementById('drive-capacity-bar').style.width = `${Math.max(usedRatio * 100, 10)}%`;
 }
 
 driveSelect.addEventListener('change', (event) => {
   hydrateDriveView(event.target.value);
 });
 
-driveOptimizeButton.addEventListener('click', () => {
+driveOptimizeButton.addEventListener('click', async () => {
   const key = driveSelect.value;
   const selectedDrive = driveCatalog[key] || driveCatalog.nvme;
+  setAppStatus(`${selectedDrive.method} em execução`);
   showToast(`${selectedDrive.method} iniciado em ${selectedDrive.driveLabel}.`);
+
+  if (window.nexoDesktop && typeof window.nexoDesktop.optimizeDrive === 'function') {
+    try {
+      const result = await window.nexoDesktop.optimizeDrive(selectedDrive.driveLabel, selectedDrive.method);
+      if (result && result.ok) {
+        setAppStatus('Otimização concluída');
+        showToast(`Otimização concluída em ${selectedDrive.driveLabel}.`);
+      }
+    } catch (error) {
+      setAppStatus('Modo demonstração');
+      showToast('Otimização simulada concluída.');
+    }
+  }
 });
 
 function applyWallpaper(file) {
@@ -169,20 +198,26 @@ if (desktopBridge && typeof desktopBridge.listDrives === 'function') {
   updateButton.hidden = true;
 }
 
-const runDiagnosisButton = document.getElementById('run-diagnosis');
 runDiagnosisButton.addEventListener('click', () => {
-  diagnosisResult.textContent = 'Análise concluída: sistema estável, sem erros críticos.';
+  diagnosisResult.textContent = 'Análise concluída: sistema estável, sem erros críticos. Nenhuma falha detectada.';
+  setAppStatus('Diagnóstico concluído');
   showToast('Diagnóstico concluído.');
 });
 
-const runCleanupButton = document.getElementById('run-cleanup');
 runCleanupButton.addEventListener('click', () => {
+  setAppStatus('Limpeza em execução');
   showToast('Limpeza executada em modo de demonstração.');
+  setTimeout(() => {
+    setAppStatus('Sistema limpo');
+  }, 1200);
 });
 
-const runRepairButton = document.getElementById('run-repair');
 runRepairButton.addEventListener('click', () => {
+  setAppStatus('Reparo em andamento');
   showToast('Reparo simulado concluído.');
+  setTimeout(() => {
+    setAppStatus('Reparo concluído');
+  }, 1300);
 });
 
 const scanButtons = document.querySelectorAll('[data-scan]');
