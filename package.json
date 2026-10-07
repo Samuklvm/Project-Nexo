@@ -1,0 +1,58 @@
+{
+  "name": "nexo-device-care",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nexo device care desktop app",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "release": "electron-builder --win nsis --publish always"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Samuklvm/Treinando-linguagens-de-programacao.git"
+  },
+  "devDependencies": {
+    "electron": "37.2.0",
+    "electron-builder": "26.0.12"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  },
+  "build": {
+    "appId": "com.samuklvm.nexo",
+    "productName": "Nexo Device Care",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "app.js",
+      "main.cjs",
+      "preload.cjs",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Nexo-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Samuklvm",
+      "repo": "Treinando-linguagens-de-programacao",
+      "releaseType": "release"
+    }
+  }
+}
