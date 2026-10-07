@@ -11,7 +11,7 @@ const driveSelect = document.getElementById('drive-select');
 const driveOptimizeButton = document.getElementById('drive-optimize');
 const diagnosisResult = document.getElementById('diagnosis-result');
 
-const defaultWallpaper = 'none';
+const defaultWallpaper = './assets/default-wallpaper.svg';
 const wallpaperStorageKey = 'nexo-wallpaper';
 
 function showToast(message) {
