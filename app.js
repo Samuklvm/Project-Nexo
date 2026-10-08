@@ -38,7 +38,15 @@ let highDiskSamples = 0;
 let highDiskSince = 0;
 let cleanupOperationInProgress = false;
 let performanceHistory = null;
-let autoCleanupEnabled = localStorage.getItem(autoCleanPreferenceKey) === 'true';
+let autoCleanupEnabled = getLocalStorageValue(autoCleanPreferenceKey) === 'true';
+
+function getLocalStorageValue(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
 
 function showToast(message) {
   if (!toast) return;
@@ -136,13 +144,16 @@ function recordPerformanceSample(snapshot) {
     .slice(-maxHistorySamples);
   try {
     localStorage.setItem(performanceHistoryKey, JSON.stringify(performanceHistory));
+    refreshLearningStatus();
   } catch {
     setText('diagnosis-learning-status', 'O histórico local não pôde ser salvo; o diagnóstico atual continua disponível.');
   }
 }
 
 function getLocalBaseline(metric) {
-  const samples = getPerformanceHistory().slice(0, -1)
+  const baselineCutoff = Date.now() - 60 * 1000;
+  const samples = getPerformanceHistory()
+    .filter((sample) => sample.timestamp < baselineCutoff)
     .map((sample) => sample[metric])
     .filter(Number.isFinite);
   if (samples.length < 4) return null;
@@ -212,7 +223,7 @@ function renderDiagnosisRecommendations(recommendations, emptyMessage) {
     title.textContent = recommendation.title;
     const learned = getRecommendationConfidence(recommendation.category, recommendation.confidence);
     confidenceLabel.className = 'recommendation-confidence';
-    confidenceLabel.textContent = `Confiança ${learned.confidence}% · ${learned.feedbackCount ? `${learned.feedbackCount} avaliações locais` : 'heurística inicial'}`;
+    confidenceLabel.textContent = `Confiança heurística ${learned.confidence}% · ${learned.feedbackCount ? `${learned.feedbackCount} avaliações locais` : 'estimativa inicial'}`;
     heading.append(title, confidenceLabel);
 
     const cause = document.createElement('p');
@@ -564,7 +575,7 @@ wallpaperInput.addEventListener('change', (event) => {
   event.target.value = '';
 });
 
-const savedWallpaper = localStorage.getItem(wallpaperStorageKey);
+const savedWallpaper = getLocalStorageValue(wallpaperStorageKey);
 if (savedWallpaper) {
   document.documentElement.style.setProperty('--wallpaper-image', `url("${savedWallpaper}")`);
   resetWallpaperButton.hidden = false;
@@ -587,8 +598,12 @@ async function runDiagnosis() {
     const recommendations = [];
     const cpuLeader = processes.byCpu?.[0];
     const memoryLeader = processes.byMemory?.[0];
+    const cpuBaseline = getLocalBaseline('cpuPercent');
+    const memoryBaseline = getLocalBaseline('memoryPercent');
+    const cpuSpike = cpuBaseline && snapshot.cpuUsage >= 60 && snapshot.cpuUsage - cpuBaseline.average >= 25;
+    const memorySpike = memoryBaseline && snapshot.memoryPercent >= 70 && snapshot.memoryPercent - memoryBaseline.average >= 20;
 
-    if (snapshot.cpuUsage >= 85) {
+    if (snapshot.cpuUsage >= 85 || cpuSpike) {
       recommendations.push({
         category: 'cpu',
         title: 'Uso elevado de CPU',
@@ -598,10 +613,10 @@ async function runDiagnosis() {
         action: 'Revise o processo e encerre-o somente se reconhecer o programa e puder interromper o trabalho.',
         actionType: cpuLeader ? 'task-manager' : null,
         actionLabel: 'Ver processos',
-        confidence: cpuLeader && cpuLeader.cpuPercent >= 5 ? 70 : 45
+        confidence: cpuLeader && cpuLeader.cpuPercent >= 5 ? (cpuSpike ? 82 : 70) : cpuSpike ? 60 : 45
       });
     }
-    if (snapshot.memoryPercent >= 85) {
+    if (snapshot.memoryPercent >= 85 || memorySpike) {
       recommendations.push({
         category: 'memory',
         title: 'Pressão de memória',
@@ -611,7 +626,7 @@ async function runDiagnosis() {
         action: 'Verifique se o processo está trabalhando antes de fechá-lo; o app não encerra processos por segurança.',
         actionType: memoryLeader ? 'task-manager' : null,
         actionLabel: 'Ver processos',
-        confidence: memoryLeader ? 65 : 40
+        confidence: memoryLeader ? (memorySpike ? 78 : 65) : memorySpike ? 55 : 40
       });
     }
     if (snapshot.primaryDrive?.usedPercent >= autoCleanDiskThreshold) {
