@@ -1,6 +1,6 @@
 # Nexo Device Care
 
-Aplicativo desktop para Windows com visual gamer em tema escuro roxo/ciano, painel de saúde do PC, seleção de unidade de disco e fluxo de otimização.
+Aplicativo desktop para Windows com painel de uso de CPU, memória, unidades locais e interfaces de rede.
 
 ## Como rodar localmente
 
@@ -21,15 +21,16 @@ npm run dist
 ## Como publicar atualização
 
 1. Atualize a versão do app em `package.json`.
-2. Crie uma tag com a mesma versão:
+2. Configure um token do GitHub com permissão para publicar releases na variável de ambiente `GH_TOKEN`.
+3. Execute:
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   npm run release
    ```
-3. O GitHub Actions monta o instalador e envia para a aba Releases.
+4. O electron-builder cria a GitHub Release e envia o instalador e os arquivos de atualização. O atualizador só funciona no aplicativo empacotado.
 
 ## Importante
 
-- A interface funciona em navegador como demo.
-- O comportamento real de otimização e manutenção de disco fica restrito ao ambiente desktop com permissões locais.
-- O app é pensado para distribuição em PCs Windows e atualização remota por GitHub Releases.
+- CPU, memória, espaço em disco e interfaces de rede são leituras locais; temperatura de componentes não é medida.
+- A limpeza mostra uma prévia e remove apenas arquivos regulares no diretório temporário do usuário com mais de sete dias, limitada a dois níveis de pastas e 5.000 arquivos por execução.
+- A otimização usa a ferramenta nativa do Windows. A verificação de arquivos protegidos usa `sfc /scannow`. Ambas pedem confirmação e podem solicitar permissão de administrador pelo Windows.
+- No navegador, operações locais ficam indisponíveis; use o aplicativo desktop para executá-las.

@@ -21,7 +21,7 @@
         <div class="device-card">
           <div class="device-pill">PC</div>
           <div class="device-meta">
-            <strong>Meu computador</strong>
+            <strong id="computer-name">Meu computador</strong>
             <span>Estação de trabalho</span>
           </div>
           <span class="online-dot"></span>
@@ -95,30 +95,30 @@
               </div>
               <div class="status-badge">
                 <span class="mini-dot"></span>
-                <span>Saúde geral boa</span>
+                <span id="system-health-badge">Aguardando diagnóstico</span>
               </div>
             </div>
 
             <div class="stats-grid">
               <article class="panel-box stat-box">
-                <span class="stat-label">Desempenho</span>
-                <strong>88%</strong>
-                <small>Estável</small>
+                <span class="stat-label">Uso da CPU</span>
+                <strong id="cpu-usage-value">--%</strong>
+                <small id="cpu-usage-state">Aguardando leitura</small>
               </article>
               <article class="panel-box stat-box">
-                <span class="stat-label">Temperatura</span>
-                <strong>41°C</strong>
-                <small>Normal</small>
+                <span class="stat-label">Memória RAM</span>
+                <strong id="memory-usage-value">--%</strong>
+                <small id="memory-usage-state">Aguardando leitura</small>
               </article>
               <article class="panel-box stat-box">
                 <span class="stat-label">Uso do disco</span>
-                <strong>68%</strong>
-                <small>SSD</small>
+                <strong id="disk-usage-value">--%</strong>
+                <small id="disk-usage-state">Aguardando leitura</small>
               </article>
               <article class="panel-box stat-box accent">
-                <span class="stat-label">Atualização</span>
-                <strong>0.1.0</strong>
-                <small>Disponível</small>
+                <span class="stat-label">Versão do app</span>
+                <strong id="app-version">--</strong>
+                <small id="update-status">Verificando atualizações</small>
               </article>
             </div>
 
@@ -129,10 +129,10 @@
                   <button class="button-small" type="button" data-scan="diagnosis">Executar</button>
                 </div>
                 <ul class="check-list">
-                  <li><span>Arquivos de sistema</span><strong>OK</strong></li>
-                  <li><span>Temperatura da GPU</span><strong>OK</strong></li>
-                  <li><span>Uso de RAM</span><strong>Moderado</strong></li>
-                  <li><span>Fragmentação</span><strong>Baixa</strong></li>
+                  <li><span>Uso da CPU</span><strong id="overview-cpu">--</strong></li>
+                  <li><span>Uso da memória</span><strong id="overview-memory">--</strong></li>
+                  <li><span>Espaço em disco</span><strong id="overview-disk">--</strong></li>
+                  <li><span>Interface de rede</span><strong id="overview-network">--</strong></li>
                 </ul>
               </article>
 
@@ -143,10 +143,9 @@
                 </div>
                 <div class="progress-wrap">
                   <div class="progress-labels">
-                    <span>Cache e temporários</span>
-                    <strong>1.9 GB</strong>
+                    <span>Temporários com mais de 7 dias</span>
+                    <strong id="cleanup-preview">Calculando...</strong>
                   </div>
-                  <div class="progress-bar"><span style="width: 38%;"></span></div>
                 </div>
               </article>
             </div>
@@ -165,19 +164,19 @@
               <div class="diagnostic-grid">
                 <div class="metric">
                   <span>CPU</span>
-                  <strong>20%</strong>
+                  <strong id="diagnosis-cpu">--</strong>
                 </div>
                 <div class="metric">
                   <span>RAM</span>
-                  <strong>53%</strong>
+                  <strong id="diagnosis-memory">--</strong>
                 </div>
                 <div class="metric">
-                  <span>SSD</span>
-                  <strong>Saudável</strong>
+                  <span>Disco</span>
+                  <strong id="diagnosis-disk">--</strong>
                 </div>
                 <div class="metric">
-                  <span>Rede</span>
-                  <strong>Estável</strong>
+                  <span>Interface de rede</span>
+                  <strong id="diagnosis-network">--</strong>
                 </div>
               </div>
 
@@ -198,10 +197,8 @@
               </div>
 
               <ul class="clean-list">
-                <li><span>Arquivos temporários</span><strong>1.9 GB</strong></li>
-                <li><span>Logs e registros</span><strong>450 MB</strong></li>
-                <li><span>Cache do navegador</span><strong>650 MB</strong></li>
-                <li><span>Arquivos duplicados</span><strong>322 MB</strong></li>
+                <li><span>Temporários com mais de 7 dias</span><strong id="cleanup-file-count">Calculando...</strong></li>
+                <li><span>Espaço estimado</span><strong id="cleanup-size">Calculando...</strong></li>
               </ul>
             </article>
           </section>
@@ -211,14 +208,14 @@
               <div class="panel-head">
                 <div>
                   <span class="eyebrow">Reparos</span>
-                  <h2>Assistente de correções</h2>
+                  <h2>Verificação de arquivos do sistema</h2>
                 </div>
-                <button class="button" type="button" id="run-repair">Ajustar</button>
+                <button class="button" type="button" id="run-repair">Verificar e reparar</button>
               </div>
               <div class="repair-list">
-                <div class="repair-item"><span>Registro de inicialização</span><strong>Normal</strong></div>
-                <div class="repair-item"><span>Drivers essenciais</span><strong>Atualizados</strong></div>
-                <div class="repair-item"><span>Arquivos corrompidos</span><strong>Sem falhas</strong></div>
+                <div class="repair-item"><span>Ferramenta</span><strong>SFC do Windows</strong></div>
+                <div class="repair-item"><span>Permissão</span><strong>Administrador</strong></div>
+                <div class="repair-item"><span>Execução</span><strong id="repair-status">Sob demanda</strong></div>
               </div>
             </article>
           </section>
@@ -233,8 +230,7 @@
                 <div class="drive-select-wrap">
                   <label for="drive-select">Selecione:</label>
                   <select id="drive-select">
-                    <option value="nvme">C: NVMe SSD</option>
-                    <option value="hdd">D: Disco rígido</option>
+                    <option value="">Carregando unidades...</option>
                   </select>
                 </div>
               </div>
@@ -242,44 +238,44 @@
               <div class="drive-summary">
                 <div class="drive-icon">▣</div>
                 <div>
-                  <span class="drive-type" id="drive-type">NVMe SSD</span>
-                  <h3 id="drive-model">C: NVMe SSD</h3>
+                  <span class="drive-type" id="drive-type">Unidade local</span>
+                  <h3 id="drive-model">Carregando...</h3>
                 </div>
               </div>
 
               <div class="drive-stats">
                 <div>
                   <span>Temperatura</span>
-                  <strong id="drive-temp">42°C</strong>
+                  <strong id="drive-temp">Não medida</strong>
                 </div>
                 <div>
                   <span>Formato</span>
-                  <strong id="drive-format">NTFS</strong>
+                  <strong id="drive-format">--</strong>
                 </div>
                 <div>
                   <span>Estado</span>
-                  <strong id="drive-state">Saudável</strong>
+                  <strong id="drive-state">Aguardando leitura</strong>
                 </div>
               </div>
 
               <div class="drive-operation">
                 <div class="operation-copy">
                   <span class="tiny-label">Ação sugerida</span>
-                  <h4 id="drive-operation-title">TRIM de manutenção</h4>
-                  <p id="drive-operation-description">Ajuste para reduzir desgaste e melhorar performance de SSD.</p>
+                  <h4 id="drive-operation-title">Otimização do Windows</h4>
+                  <p id="drive-operation-description">O Windows seleciona a operação adequada para a unidade.</p>
                 </div>
-                <div class="chip" id="drive-method">TRIM</div>
+                <div class="chip" id="drive-method">Otimizar</div>
               </div>
 
               <div class="capacity-block">
                 <div class="capacity-labels">
                   <span>Espaço usado</span>
-                  <strong><span id="drive-used-capacity">680 GB</span> <small>de <span id="drive-total-capacity">1 TB</span></small></strong>
+                  <strong><span id="drive-used-capacity">--</span> <small>de <span id="drive-total-capacity">--</span></small></strong>
                 </div>
-                <div class="capacity-track"><span id="drive-capacity-bar" style="width: 68%;"></span></div>
+                <div class="capacity-track"><span id="drive-capacity-bar" style="width: 0%;"></span></div>
                 <div class="capacity-legend">
-                  <span><i class="used-key"></i><span id="drive-used-label">680 GB usados</span></span>
-                  <span><i class="free-key"></i><span id="drive-free-label">320 GB livres</span></span>
+                  <span><i class="used-key"></i><span id="drive-used-label">-- usados</span></span>
+                  <span><i class="free-key"></i><span id="drive-free-label">-- livres</span></span>
                 </div>
               </div>
 
@@ -298,9 +294,6 @@
                 </div>
               </div>
               <ul class="activity-list">
-                <li><span>Diagnóstico concluído</span><strong>há 4 minutos</strong></li>
-                <li><span>Limpeza do cache</span><strong>há 1 hora</strong></li>
-                <li><span>Atualização do sistema</span><strong>ontem</strong></li>
               </ul>
             </article>
           </section>
