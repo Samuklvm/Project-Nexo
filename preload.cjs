@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('nexoDesktop', {
   getSystemSnapshot: () => ipcRenderer.invoke('system:snapshot'),
+  getTopProcesses: () => ipcRenderer.invoke('system:top-processes'),
+  openTaskManager: () => ipcRenderer.invoke('system:task-manager'),
   listDrives: () => ipcRenderer.invoke('drives:list'),
   optimizeDrive: (driveLetter) => ipcRenderer.invoke('drives:optimize', driveLetter),
   getCleanupPreview: () => ipcRenderer.invoke('cleanup:preview'),

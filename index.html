@@ -156,9 +156,9 @@
               <div class="panel-head">
                 <div>
                   <span class="eyebrow">Diagnóstico</span>
-                  <h2>Escaneamento de saúde</h2>
+                  <h2>Causas prováveis e recomendações</h2>
                 </div>
-                <button class="button" type="button" id="run-diagnosis">Iniciar análise</button>
+                <button class="button" type="button" id="run-diagnosis">Analisar desempenho</button>
               </div>
 
               <div class="diagnostic-grid">
@@ -181,8 +181,9 @@
               </div>
 
               <div id="diagnosis-result" class="result-box" data-result>
-                Pronto para análise.
+                <p>Pronto para análise.</p>
               </div>
+              <small id="diagnosis-learning-status" class="diagnosis-learning-status">Histórico de desempenho e feedback ficam armazenados localmente neste computador.</small>
             </article>
           </section>
 
@@ -200,6 +201,13 @@
                 <li><span>Temporários com mais de 7 dias</span><strong id="cleanup-file-count">Calculando...</strong></li>
                 <li><span>Espaço estimado</span><strong id="cleanup-size">Calculando...</strong></li>
               </ul>
+              <div class="auto-clean-setting">
+                <label for="auto-clean-toggle">
+                  <input id="auto-clean-toggle" type="checkbox" />
+                  <span>Ativar otimização automática segura</span>
+                </label>
+                <small>Age após pressão persistente de disco e remove apenas temporários antigos. Não encerra apps nem altera configurações do Windows.</small>
+              </div>
             </article>
           </section>
 

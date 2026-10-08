@@ -526,6 +526,32 @@ button {
   gap: 12px;
 }
 
+.auto-clean-setting {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.auto-clean-setting label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.auto-clean-setting input {
+  margin: 3px 0 0;
+  accent-color: var(--green);
+}
+
+.auto-clean-setting small {
+  display: block;
+  margin: 6px 0 0 24px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .progress-labels {
   display: flex;
   justify-content: space-between;
@@ -573,13 +599,70 @@ button {
 .result-box {
   margin-top: 18px;
   min-height: 54px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: rgba(143, 108, 255, 0.08);
   border: 1px solid rgba(143, 108, 255, 0.24);
+  padding: 14px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.result-box > p {
+  margin: 0;
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.recommendation-item {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.recommendation-heading,
+.recommendation-feedback {
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  color: var(--ink);
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.recommendation-heading strong {
+  font-size: 0.9rem;
+}
+
+.recommendation-confidence,
+.recommendation-feedback span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.recommendation-item p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-feedback {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.recommendation-feedback .button-small {
+  padding: 6px 9px;
+}
+
+.diagnosis-learning-status {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .drive-panel {

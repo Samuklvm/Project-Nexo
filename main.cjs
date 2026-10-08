@@ -1,15 +1,16 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { promisify } = require('util');
+const { pathToFileURL } = require('url');
 
 const execFileAsync = promisify(execFile);
-const CLEANUP_MAX_DEPTH = 2;
 const CLEANUP_MAX_FILES = 5000;
 const CLEANUP_MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const trustedDocumentUrl = pathToFileURL(path.join(__dirname, 'index.html')).href;
 let mainWindow;
 let updateDownloaded = false;
 
@@ -31,27 +32,23 @@ function runPowerShell(script, timeout = 15000) {
   });
 }
 
-function getCpuTimes() {
-  return os.cpus().reduce((total, cpu) => {
-    for (const value of Object.values(cpu.times)) total += value;
-    return total;
-  }, 0);
+function getCpuSample() {
+  return os.cpus().reduce((sample, cpu) => {
+    sample.total += Object.values(cpu.times).reduce((total, value) => total + value, 0);
+    sample.idle += cpu.times.idle;
+    return sample;
+  }, { total: 0, idle: 0 });
 }
 
 async function getCpuUsage() {
-  const beforeTotal = getCpuTimes();
-  const beforeIdle = os.cpus().reduce((total, cpu) => total + cpu.times.idle, 0);
+  const before = getCpuSample();
   await new Promise((resolve) => setTimeout(resolve, 250));
-  const cpus = os.cpus();
-  const afterTotal = cpus.reduce((total, cpu) => {
-    for (const value of Object.values(cpu.times)) total += value;
-    return total;
-  }, 0);
-  const afterIdle = cpus.reduce((total, cpu) => total + cpu.times.idle, 0);
-  const totalDelta = afterTotal - beforeTotal;
+  const after = getCpuSample();
+  const totalDelta = after.total - before.total;
 
   if (totalDelta <= 0) return 0;
-  return Math.round((1 - (afterIdle - beforeIdle) / totalDelta) * 100);
+  const usage = Math.round((1 - (after.idle - before.idle) / totalDelta) * 100);
+  return Math.max(0, Math.min(100, usage));
 }
 
 function normalizeDrive(item) {
@@ -106,7 +103,9 @@ async function getSystemSnapshot() {
   const networkConnected = addresses.some((address) =>
     !address.internal && (address.family === 'IPv4' || address.family === 4)
   );
-  const systemDrive = process.platform === 'win32' ? `${path.parse(os.homedir()).root[0].toUpperCase()}` : '';
+  const systemDrive = process.platform === 'win32'
+    ? String(process.env.SystemDrive || path.parse(process.execPath).root || 'C:').slice(0, 1).toUpperCase()
+    : '';
   const primaryDrive = drives.find((drive) => drive.driveLetter === systemDrive) || drives[0] || null;
 
   return {
@@ -124,39 +123,72 @@ async function getSystemSnapshot() {
   };
 }
 
+async function getTopProcesses() {
+  if (process.platform !== 'win32') return { byCpu: [], byMemory: [] };
+
+  const script = String.raw`
+$cpuCount = [Math]::Max(1, [Environment]::ProcessorCount)
+$first = @{}
+Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+  if ($null -ne $_.CPU) { $first[[int]$_.Id] = [double]$_.CPU }
+}
+Start-Sleep -Milliseconds 1000
+$samples = Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+  $cpuSeconds = 0.0
+  if ($null -ne $_.CPU) { $cpuSeconds = [double]$_.CPU }
+  $previous = $first[[int]$_.Id]
+  $cpuPercent = 0.0
+  if ($null -ne $previous) { $cpuPercent = [Math]::Max(0, (($cpuSeconds - $previous) * 100 / $cpuCount)) }
+  [pscustomobject]@{
+    processId = [int]$_.Id
+    name = [string]$_.ProcessName
+    cpuPercent = [Math]::Round($cpuPercent, 1)
+    memoryBytes = [long]$_.WorkingSet64
+  }
+}
+$result = [pscustomobject]@{
+  byCpu = @($samples | Sort-Object cpuPercent -Descending | Select-Object -First 5)
+  byMemory = @($samples | Sort-Object memoryBytes -Descending | Select-Object -First 5)
+}
+$result | ConvertTo-Json -Depth 3 -Compress
+`;
+  const { stdout } = await runPowerShell(script, 15000);
+  const result = stdout.trim() ? JSON.parse(stdout) : {};
+  const normalize = (items) => (Array.isArray(items) ? items : items ? [items] : []).map((item) => ({
+    processId: Number(item.processId) || 0,
+    name: String(item.name || 'Processo'),
+    cpuPercent: Math.max(0, Number(item.cpuPercent) || 0),
+    memoryBytes: Math.max(0, Number(item.memoryBytes) || 0),
+    memoryPercent: os.totalmem() ? Math.round((Number(item.memoryBytes) || 0) / os.totalmem() * 100) : 0
+  }));
+
+  return {
+    byCpu: normalize(result.byCpu),
+    byMemory: normalize(result.byMemory)
+  };
+}
+
 async function collectOldTempFiles() {
-  const root = path.resolve(os.tmpdir());
+  const root = await fs.realpath(path.resolve(os.tmpdir()));
   const cutoff = Date.now() - CLEANUP_MIN_AGE_MS;
   const files = [];
+  const entries = await fs.readdir(root, { withFileTypes: true });
 
-  async function visit(directory, depth) {
-    if (depth > CLEANUP_MAX_DEPTH || files.length >= CLEANUP_MAX_FILES) return;
+  for (const entry of entries) {
+    if (files.length >= CLEANUP_MAX_FILES) break;
+    if (!entry.isFile()) continue;
 
-    let entries;
+    const entryPath = path.join(root, entry.name);
     try {
-      entries = await fs.readdir(directory, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      if (files.length >= CLEANUP_MAX_FILES) break;
-      const entryPath = path.join(directory, entry.name);
-
-      if (entry.isDirectory()) {
-        await visit(entryPath, depth + 1);
-      } else if (entry.isFile()) {
-        try {
-          const stats = await fs.stat(entryPath);
-          if (stats.mtimeMs < cutoff) files.push({ path: entryPath, size: stats.size });
-        } catch {
-          continue;
-        }
+      const stats = await fs.lstat(entryPath);
+      if (stats.isFile() && !stats.isSymbolicLink() && stats.mtimeMs < cutoff) {
+        files.push({ path: entryPath, size: stats.size });
       }
+    } catch {
+      continue;
     }
   }
 
-  await visit(root, 0);
   return { root, files };
 }
 
@@ -168,6 +200,15 @@ function isInsideDirectory(root, candidate) {
 function publishUpdateStatus(state, details = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('updates:status', { state, ...details });
+}
+
+function registerIpcHandler(channel, handler) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (event.senderFrame?.url !== trustedDocumentUrl) {
+      throw new Error('Origem não autorizada para esta operação.');
+    }
+    return handler(event, ...args);
+  });
 }
 
 autoUpdater.autoDownload = true;
@@ -198,17 +239,39 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== trustedDocumentUrl) event.preventDefault();
+  });
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.loadURL(trustedDocumentUrl);
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-ipcMain.handle('system:snapshot', getSystemSnapshot);
+registerIpcHandler('system:snapshot', getSystemSnapshot);
 
-ipcMain.handle('drives:list', listDrives);
+registerIpcHandler('system:top-processes', getTopProcesses);
 
-ipcMain.handle('drives:optimize', async (_event, driveLetter) => {
+registerIpcHandler('system:task-manager', async () => {
+  if (process.platform !== 'win32') {
+    throw new Error('O Gerenciador de Tarefas está disponível somente no Windows.');
+  }
+
+  await new Promise((resolve, reject) => {
+    const taskManager = spawn('taskmgr.exe', [], { detached: true, stdio: 'ignore' });
+    taskManager.once('spawn', () => {
+      taskManager.unref();
+      resolve();
+    });
+    taskManager.once('error', reject);
+  });
+  return { ok: true };
+});
+
+registerIpcHandler('drives:list', listDrives);
+
+registerIpcHandler('drives:optimize', async (_event, driveLetter) => {
   if (process.platform !== 'win32') {
     throw new Error('A otimização de unidades está disponível somente no Windows.');
   }
@@ -222,7 +285,7 @@ ipcMain.handle('drives:optimize', async (_event, driveLetter) => {
   return { ok: true, driveLetter: letter };
 });
 
-ipcMain.handle('cleanup:preview', async () => {
+registerIpcHandler('cleanup:preview', async () => {
   const { files } = await collectOldTempFiles();
   return {
     fileCount: files.length,
@@ -232,7 +295,7 @@ ipcMain.handle('cleanup:preview', async () => {
   };
 });
 
-ipcMain.handle('cleanup:run', async () => {
+registerIpcHandler('cleanup:run', async () => {
   const { root, files } = await collectOldTempFiles();
   let removedCount = 0;
   let bytesFreed = 0;
@@ -253,7 +316,7 @@ ipcMain.handle('cleanup:run', async () => {
   return { removedCount, bytesFreed };
 });
 
-ipcMain.handle('system:repair', async () => {
+registerIpcHandler('system:repair', async () => {
   if (process.platform !== 'win32') {
     throw new Error('A verificação de arquivos do sistema está disponível somente no Windows.');
   }
@@ -262,7 +325,7 @@ ipcMain.handle('system:repair', async () => {
   return { ok: true };
 });
 
-ipcMain.handle('updates:check', async () => {
+registerIpcHandler('updates:check', async () => {
   if (!app.isPackaged) return { state: 'development', version: app.getVersion() };
 
   try {
@@ -276,7 +339,7 @@ ipcMain.handle('updates:check', async () => {
   }
 });
 
-ipcMain.handle('updates:install', async () => {
+registerIpcHandler('updates:install', async () => {
   if (!updateDownloaded) throw new Error('Nenhuma atualização foi baixada ainda.');
   autoUpdater.quitAndInstall();
   return { ok: true };
