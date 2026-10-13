@@ -1,5 +1,7 @@
 # Nexo Device Care
+```bash
 EM FASE DE DESENVOLVIMENTO(Projeto independente)
+```
 Aplicativo desktop para Windows com painel de uso de CPU, memória, unidades locais e interfaces de rede.
 
 ## Como rodar localmente
