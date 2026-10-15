@@ -28,7 +28,7 @@ npm start
 npm run dist
 ```
 
-O instalador Windows x64 é gerado na pasta `release/`.
+O assistente do Windows permite escolher a pasta de instalação e exige a leitura e o aceite dos avisos antes de continuar. Ao concluir, o aplicativo é aberto. O instalador Windows x64 é gerado na pasta `release/`.
 
 ## Publicar uma versão
 

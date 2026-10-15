@@ -7,6 +7,12 @@ const wallpaperInput = document.getElementById('wallpaper-file');
 const chooseWallpaperButton = document.getElementById('choose-wallpaper');
 const resetWallpaperButton = document.getElementById('reset-wallpaper');
 const updateButton = document.getElementById('update-app');
+const installUpdatePageButton = document.getElementById('install-update-page');
+const updatePanel = document.getElementById('update-panel');
+const checkUpdatesButton = document.getElementById('check-updates');
+const windowMinimizeButton = document.getElementById('window-minimize');
+const windowMaximizeButton = document.getElementById('window-maximize');
+const windowCloseButton = document.getElementById('window-close');
 const driveSelect = document.getElementById('drive-select');
 const driveOptimizeButton = document.getElementById('drive-optimize');
 const diagnosisResult = document.getElementById('diagnosis-result');
@@ -16,6 +22,7 @@ const runRepairButton = document.getElementById('run-repair');
 const activityList = document.querySelector('.activity-list');
 const autoCleanToggle = document.getElementById('auto-clean-toggle');
 const desktopBridge = window.nexoDesktop;
+document.body.classList.toggle('desktop-app', Boolean(desktopBridge));
 
 const defaultWallpaper = './assets/default-wallpaper.svg';
 const wallpaperStorageKey = 'nexo-wallpaper';
@@ -89,7 +96,8 @@ function setView(viewName) {
     cleanup: 'Limpeza',
     repairs: 'Reparos',
     drives: 'Unidades',
-    activity: 'Atividade'
+    activity: 'Atividade',
+    updates: 'Atualizações'
   };
   if (breadcrumbCurrent) breadcrumbCurrent.textContent = labelMap[viewName] || 'Visão geral';
 }
@@ -319,6 +327,7 @@ function renderSystemSnapshot(snapshot) {
 
   setText('computer-name', snapshot.hostname);
   setText('app-version', snapshot.version);
+  setText('updates-current-version', snapshot.version);
   setText('cpu-usage-value', cpuText);
   setText('cpu-usage-state', 'Uso atual');
   setText('memory-usage-value', memoryText);
@@ -733,18 +742,37 @@ runRepairButton.addEventListener('click', runRepair);
 
 function renderUpdateStatus(status) {
   const messages = {
-    checking: 'Verificando atualizações',
-    downloading: status.percent === undefined ? 'Baixando atualização' : `Baixando atualização · ${status.percent}%`,
-    current: 'App atualizado',
-    downloaded: `Versão ${status.version || ''} pronta para instalar`.trim(),
-    development: 'Atualizações na versão instalada',
-    error: 'Falha ao verificar atualização'
+    checking: ['Conferindo novidades', 'Estamos verificando se há uma versão mais recente do Nexo.', 'Verificação em andamento'],
+    downloading: ['Uma nova versão está chegando', `Baixando a versão ${status.version || 'mais recente'} em segundo plano.`, 'Download em andamento'],
+    current: ['Você está em dia', 'Esta instalação já está na versão mais recente disponível.', 'Tudo atualizado'],
+    downloaded: ['Pronto para atualizar', `A versão ${status.version || 'mais recente'} foi baixada e está pronta para instalar.`, 'Atualização pronta'],
+    development: ['Atualizações disponíveis na versão instalada', 'Instale o aplicativo para receber versões publicadas pelo GitHub.', 'Modo de desenvolvimento'],
+    error: ['Não foi possível verificar', status.message || 'Confira sua conexão e tente novamente.', 'Falha na verificação']
   };
-  setText('update-status', messages[status.state] || 'Status de atualização desconhecido');
-  if (status.state === 'downloaded') {
-    updateButton.hidden = false;
-    updateButton.querySelector('span:last-child').textContent = 'Instalar atualização';
-  }
+  const [heading, detail, eyebrow] = messages[status.state] || ['Status indisponível', 'Tente verificar novamente.', 'Atualizações'];
+  const percent = Math.max(0, Math.min(100, Number(status.percent) || 0));
+  const isDownloading = status.state === 'downloading';
+  const isChecking = status.state === 'checking';
+  const isDownloaded = status.state === 'downloaded';
+  setText('update-status', status.state === 'downloading' && status.percent !== undefined
+    ? `Baixando atualização · ${percent}%`
+    : heading);
+  setText('update-state-heading', heading);
+  setText('update-state-detail', detail);
+  setText('update-state-eyebrow', eyebrow);
+  setText('update-progress-label', isChecking ? 'Buscando uma versão nova' : 'Download da atualização');
+  setText('update-progress-percent', isChecking ? '...' : `${percent}%`);
+  if (updatePanel) updatePanel.dataset.state = status.state;
+  const progressWrap = document.getElementById('update-progress-wrap');
+  const progressTrack = document.getElementById('update-progress-track');
+  const progressFill = document.getElementById('update-progress-fill');
+  if (progressWrap) progressWrap.hidden = !isDownloading && !isChecking;
+  if (progressTrack) progressTrack.setAttribute('aria-valuenow', String(isChecking ? 0 : percent));
+  if (progressFill) progressFill.style.width = isChecking ? '34%' : `${percent}%`;
+  updateButton.hidden = !isDownloaded;
+  installUpdatePageButton.hidden = !isDownloaded;
+  const updateIndicator = document.getElementById('update-nav-indicator');
+  if (updateIndicator) updateIndicator.hidden = !isDownloaded;
 }
 
 async function checkForUpdates() {
@@ -769,6 +797,35 @@ updateButton.addEventListener('click', async () => {
     showToast(error.message || 'Não foi possível instalar a atualização.');
   }
 });
+
+installUpdatePageButton.addEventListener('click', async () => {
+  if (!desktopBridge?.installUpdate) return;
+  try {
+    await desktopBridge.installUpdate();
+  } catch (error) {
+    showToast(error.message || 'Não foi possível instalar a atualização.');
+  }
+});
+
+checkUpdatesButton.addEventListener('click', async () => {
+  setButtonBusy(checkUpdatesButton, true, 'Verificando...');
+  await checkForUpdates();
+  setButtonBusy(checkUpdatesButton, false);
+});
+
+windowMinimizeButton.addEventListener('click', () => desktopBridge?.minimizeWindow?.());
+windowMaximizeButton.addEventListener('click', () => desktopBridge?.toggleMaximizeWindow?.());
+windowCloseButton.addEventListener('click', () => desktopBridge?.closeWindow?.());
+
+function renderWindowState(state) {
+  if (!windowMaximizeButton) return;
+  windowMaximizeButton.classList.toggle('is-maximized', Boolean(state.maximized));
+  windowMaximizeButton.setAttribute('aria-label', state.maximized ? 'Restaurar janela' : 'Maximizar');
+  windowMaximizeButton.title = state.maximized ? 'Restaurar' : 'Maximizar';
+}
+
+if (desktopBridge?.getWindowState) desktopBridge.getWindowState().then(renderWindowState);
+if (desktopBridge?.onWindowState) desktopBridge.onWindowState(renderWindowState);
 
 document.querySelectorAll('[data-scan="diagnosis"]').forEach((button) => {
   button.addEventListener('click', runDiagnosis);

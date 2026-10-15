@@ -1,0 +1,15 @@
+NEXO DEVICE CARE - AVISOS IMPORTANTES
+
+Leia estas informacoes antes de instalar e usar o Nexo Device Care.
+
+1. O Nexo apresenta indicadores locais e recomendacoes baseadas em heuristicas. Os resultados nao garantem aumento de desempenho e nao substituem avaliacao tecnica.
+
+2. A limpeza de temporarios permite revisar uma previa e remove apenas arquivos regulares antigos da pasta temporaria do usuario. A limpeza automatica e opcional e pode ser desativada nas configuracoes do aplicativo.
+
+3. A otimizacao de unidades e a verificacao de arquivos do Windows usam ferramentas nativas do sistema. Essas operacoes podem solicitar permissao de administrador e devem ser confirmadas pelo usuario.
+
+4. O historico de desempenho e as avaliacoes ficam armazenados localmente neste computador. O aplicativo consulta o GitHub para verificar e baixar atualizacoes.
+
+5. Ao continuar, voce confirma que leu estes avisos e que revisara as confirmacoes apresentadas pelo Windows antes de autorizar operacoes administrativas.
+
+Este aviso descreve o funcionamento atual do aplicativo. Ele nao substitui termos de licenca ou documentos legais preparados para a distribuicao do produto.

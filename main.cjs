@@ -229,6 +229,7 @@ function createWindow() {
     height: 980,
     minWidth: 1200,
     minHeight: 760,
+    frame: false,
     backgroundColor: '#090a12',
     title: 'Nexo Device Care',
     autoHideMenuBar: true,
@@ -243,11 +244,36 @@ function createWindow() {
     if (url !== trustedDocumentUrl) event.preventDefault();
   });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  const publishWindowState = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('window:state', { maximized: mainWindow.isMaximized() });
+  };
+  mainWindow.on('maximize', publishWindowState);
+  mainWindow.on('unmaximize', publishWindowState);
   mainWindow.loadURL(trustedDocumentUrl);
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
+
+registerIpcHandler('window:minimize', () => {
+  mainWindow?.minimize();
+  return { ok: true };
+});
+
+registerIpcHandler('window:toggle-maximize', () => {
+  if (!mainWindow) return { maximized: false };
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+  return { maximized: mainWindow.isMaximized() };
+});
+
+registerIpcHandler('window:close', () => {
+  mainWindow?.close();
+  return { ok: true };
+});
+
+registerIpcHandler('window:get-state', () => ({ maximized: mainWindow?.isMaximized() || false }));
 
 registerIpcHandler('system:snapshot', getSystemSnapshot);
 
