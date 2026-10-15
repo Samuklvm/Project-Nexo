@@ -22,13 +22,15 @@ npm run dist
 
 ## Como publicar atualização
 
-1. Atualize a versão do app em `package.json`.
-2. Configure um token do GitHub com permissão para publicar releases na variável de ambiente `GH_TOKEN`.
-3. Execute:
+1. Atualize `version` em `package.json` (por exemplo, de `0.1.0` para `0.1.1`) e envie o commit para o GitHub.
+2. Crie e envie uma tag com a mesma versão, prefixada por `v`:
    ```bash
-   npm run release
+   git tag v0.1.1
+   git push origin v0.1.1
    ```
-4. O electron-builder cria a GitHub Release e envia o instalador e os arquivos de atualização. O atualizador só funciona no aplicativo empacotado.
+3. A GitHub Action compila o instalador Windows x64 e publica uma release com o instalador e os arquivos necessários ao atualizador. Acompanhe o processo na aba **Actions** do GitHub.
+
+O aplicativo instalado verifica atualizações ao iniciar, baixa as versões novas automaticamente e instala a atualização ao fechar; também oferece o botão **Instalar atualização** quando o download termina. O atualizador só funciona no aplicativo empacotado. Para que instalações de terceiros baixem os arquivos sem token, o repositório e as releases precisam ser públicos.
 
 ## Importante
 

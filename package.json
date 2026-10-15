@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Samuklvm/Treinando-linguagens-de-programacao.git"
+    "url": "https://github.com/Samuklvm/Project-Nexo.git"
   },
   "devDependencies": {
     "electron": "37.2.0",
@@ -51,7 +51,7 @@
     "publish": {
       "provider": "github",
       "owner": "Samuklvm",
-      "repo": "Treinando-linguagens-de-programacao",
+      "repo": "Project-Nexo",
       "releaseType": "release"
     }
   }
