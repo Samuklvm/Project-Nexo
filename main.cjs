@@ -418,7 +418,7 @@ registerIpcHandler('updates:download', async () => {
 
 registerIpcHandler('updates:install', async () => {
   if (!updateDownloaded) throw new Error('Nenhuma atualização foi baixada ainda.');
-  autoUpdater.quitAndInstall();
+  autoUpdater.quitAndInstall(true, true);
   return { ok: true };
 });
 
