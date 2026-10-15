@@ -1,43 +1,55 @@
 # Nexo Device Care
-```bash
-EM FASE DE DESENVOLVIMENTO(Projeto independente)
+
+Aplicativo desktop para Windows que reúne indicadores do computador e ferramentas básicas de manutenção. O projeto está em desenvolvimento; as recomendações de diagnóstico são heurísticas e não prometem aumentar o desempenho em todos os PCs.
+
+## Recursos atuais
+
+- Painel com uso de CPU e memória, espaço em disco, estado da rede e versão do aplicativo.
+- Diagnóstico sob demanda com uma amostra de processos que mais consomem CPU ou memória e sugestões de próximos passos.
+- Prévia e remoção de arquivos temporários antigos do usuário.
+- Limpeza automática opcional quando o disco principal permanece com uso elevado.
+- Abertura do Gerenciador de Tarefas, otimização de unidade pela ferramenta do Windows e verificação de arquivos protegidos do sistema.
+- Histórico local de desempenho e feedback das recomendações, usados para contextualizar os diagnósticos.
+
+## Executar em desenvolvimento
+
+Requisitos: Windows e Node.js 20 ou superior.
+
+Na pasta do projeto, instale as dependências e inicie o aplicativo:
+
+```powershell
+npm install
+npm start
 ```
-Aplicativo desktop para Windows com painel de uso de CPU, memória, unidades locais e interfaces de rede.
 
-## Como rodar localmente
+## Gerar o instalador localmente
 
-1. Instale Node.js 20+.
-2. Abra a pasta do projeto.
-3. Execute:
-   ```bash
-   npm install
-   npm start
-   ```
-
-## Como gerar o instalador
-
-```bash
+```powershell
 npm run dist
 ```
 
-## Como publicar atualização
+O instalador Windows x64 é gerado na pasta `release/`.
 
-1. Atualize `version` em `package.json` (por exemplo, de `0.1.0` para `0.1.1`) e envie o commit para o GitHub.
-2. Crie e envie uma tag com a mesma versão, prefixada por `v`:
-   ```bash
+## Publicar uma versão
+
+1. Altere o campo `version` em `package.json` e envie o commit para o GitHub.
+2. Crie uma tag `v` seguida exatamente da mesma versão. Por exemplo, para a versão `0.1.1`:
+
+   ```powershell
    git tag v0.1.1
    git push origin v0.1.1
    ```
-3. A GitHub Action compila o instalador Windows x64 e publica uma release com o instalador e os arquivos necessários ao atualizador. Acompanhe o processo na aba **Actions** do GitHub.
 
-O aplicativo instalado verifica atualizações ao iniciar, baixa as versões novas automaticamente e instala a atualização ao fechar; também oferece o botão **Instalar atualização** quando o download termina. O atualizador só funciona no aplicativo empacotado. Para que instalações de terceiros baixem os arquivos sem token, o repositório e as releases precisam ser públicos.
+3. A GitHub Action compila o instalador Windows x64 e publica a release. Acompanhe a execução na aba **Actions**; após o sucesso, os arquivos ficam na página **Releases**.
 
-## Importante
+O aplicativo instalado verifica atualizações ao iniciar e baixa novas versões automaticamente. Depois do download, é possível instalá-las pelo botão do aplicativo ou ao fechar e abrir o programa. O atualizador funciona apenas na versão empacotada. Para que outras pessoas baixem atualizações sem autenticação, o repositório e as releases devem ser públicos.
 
-- CPU, memória, espaço em disco e interfaces de rede são leituras locais; temperatura de componentes não é medida.
-- O diagnóstico sob demanda identifica os processos com maior uso de CPU e memória em uma amostra de um segundo, apresenta causas prováveis e próximos passos; ele pode abrir o Gerenciador de Tarefas, mas nunca encerra processos.
-- O app guarda localmente até sete dias de amostras (uma a cada 15 minutos) para comparar o uso atual com o padrão recente; avaliações das recomendações ajustam a confiança heurística apresentada e não são enviadas para servidores. Essa análise usa heurísticas e sinais observáveis, não comprova causalidade nem substitui uma análise especializada.
-- A limpeza mostra uma prévia e remove apenas arquivos regulares diretamente no diretório temporário canônico do usuário com mais de sete dias, limitada a 5.000 arquivos por execução; subpastas e links são ignorados.
-- A limpeza automática é opcional: após ativação explícita, exige quatro leituras e pelo menos 60 segundos com o disco principal acima de 90%, e respeita um intervalo mínimo de uma hora entre tentativas.
-- A otimização usa a ferramenta nativa do Windows. A verificação de arquivos protegidos usa `sfc /scannow`. Ambas pedem confirmação e podem solicitar permissão de administrador pelo Windows.
-- No navegador, operações locais ficam indisponíveis; use o aplicativo desktop para executá-las.
+## Limites e privacidade
+
+- As leituras são feitas localmente. O app não mede temperatura dos componentes.
+- O diagnóstico usa sinais observáveis e regras heurísticas; indica possibilidades, não comprova causas. Ele não encerra processos.
+- O histórico guarda até sete dias de amostras locais, em intervalos de 15 minutos. O feedback também fica neste computador; esses dados não são enviados para servidores.
+- A limpeza exibe uma prévia e remove somente arquivos regulares diretamente na pasta temporária do usuário, com mais de sete dias. Há um limite de 5.000 arquivos por execução; subpastas e links são ignorados.
+- A limpeza automática é opcional e só é executada após ativação explícita. Ela exige quatro leituras e pelo menos 60 segundos com o disco principal acima de 90%, respeitando um intervalo mínimo de uma hora entre execuções.
+- A otimização de unidades usa a ferramenta nativa do Windows. A verificação de arquivos protegidos executa `sfc /scannow`. Essas operações pedem confirmação e podem solicitar elevação de permissão pelo Windows.
+- No navegador, as operações que dependem do computador ficam indisponíveis; use o aplicativo desktop.
