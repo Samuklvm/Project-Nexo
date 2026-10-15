@@ -33,11 +33,11 @@ O assistente do Windows permite escolher a pasta de instalação e exige a leitu
 ## Publicar uma versão
 
 1. Altere o campo `version` em `package.json` e envie o commit para o GitHub.
-2. Crie uma tag `v` seguida exatamente da mesma versão. Por exemplo, para a versão `0.1.1`:
+2. Crie uma tag `v` seguida exatamente da mesma versão. Por exemplo, para a versão `0.1.2`:
 
    ```powershell
-   git tag v0.1.1
-   git push origin v0.1.1
+   git tag v0.1.2
+   git push origin v0.1.2
    ```
 
 3. A GitHub Action compila o instalador Windows x64 e publica a release. Acompanhe a execução na aba **Actions**; após o sucesso, os arquivos ficam na página **Releases**.

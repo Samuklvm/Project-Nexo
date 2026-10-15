@@ -26,7 +26,7 @@ const autoCleanToggle = document.getElementById('auto-clean-toggle');
 const desktopBridge = window.nexoDesktop;
 document.body.classList.toggle('desktop-app', Boolean(desktopBridge));
 
-const defaultWallpaper = './assets/default-wallpaper.svg';
+const defaultWallpaper = './assets/1338277.png';
 const wallpaperStorageKey = 'nexo-wallpaper';
 const activityStorageKey = 'nexo-activity';
 const autoCleanPreferenceKey = 'nexo-auto-clean';
