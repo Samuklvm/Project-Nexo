@@ -75,7 +75,7 @@ button {
   height: 100vh;
   min-height: 760px;
   overflow: hidden;
-  background: rgba(17, 19, 23, 0.88);
+  background: transparent;
 }
 
 .window-titlebar {
@@ -197,7 +197,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: rgba(21, 23, 28, 0.97);
+  background: rgba(21, 23, 28, 0.82);
   border-right: 1px solid var(--line);
 }
 
@@ -414,7 +414,7 @@ button {
   overflow: auto;
   flex: 1;
   padding: 24px 30px 34px;
-  background: rgba(27, 29, 35, 0.96);
+  background: rgba(27, 29, 35, 0.78);
 }
 
 .topbar {

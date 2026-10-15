@@ -13,6 +13,8 @@ const CLEANUP_MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const trustedDocumentUrl = pathToFileURL(path.join(__dirname, 'index.html')).href;
 let mainWindow;
 let updateDownloaded = false;
+let updateAvailableVersion = null;
+let updateDownloadInProgress = false;
 
 function runPowerShell(script, timeout = 15000) {
   if (process.platform !== 'win32') {
@@ -211,17 +213,32 @@ function registerIpcHandler(channel, handler) {
   });
 }
 
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
 autoUpdater.on('checking-for-update', () => publishUpdateStatus('checking'));
-autoUpdater.on('update-available', (info) => publishUpdateStatus('downloading', { version: info.version }));
-autoUpdater.on('update-not-available', () => publishUpdateStatus('current'));
-autoUpdater.on('download-progress', (progress) => publishUpdateStatus('downloading', { percent: Math.round(progress.percent) }));
+autoUpdater.on('update-available', (info) => {
+  updateAvailableVersion = info.version;
+  updateDownloaded = false;
+  publishUpdateStatus('available', { version: info.version, currentVersion: app.getVersion() });
+});
+autoUpdater.on('update-not-available', () => {
+  updateAvailableVersion = null;
+  publishUpdateStatus('current', { version: app.getVersion() });
+});
+autoUpdater.on('download-progress', (progress) => publishUpdateStatus('downloading', {
+  percent: Math.round(progress.percent),
+  version: updateAvailableVersion
+}));
 autoUpdater.on('update-downloaded', (info) => {
   updateDownloaded = true;
+  updateAvailableVersion = info.version;
   publishUpdateStatus('downloaded', { version: info.version });
 });
-autoUpdater.on('error', (error) => publishUpdateStatus('error', { message: error.message }));
+autoUpdater.on('error', (error) => publishUpdateStatus('error', {
+  message: error.message,
+  version: updateAvailableVersion,
+  canRetry: Boolean(updateAvailableVersion)
+}));
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -356,12 +373,46 @@ registerIpcHandler('updates:check', async () => {
 
   try {
     const result = await autoUpdater.checkForUpdates();
+    if (result?.isUpdateAvailable) {
+      updateAvailableVersion = result.updateInfo.version;
+      return {
+        state: 'available',
+        version: updateAvailableVersion,
+        currentVersion: app.getVersion()
+      };
+    }
+    updateAvailableVersion = null;
     return {
-      state: result?.isUpdateAvailable ? 'downloading' : 'current',
-      version: result?.updateInfo?.version || app.getVersion()
+      state: 'current',
+      version: app.getVersion()
     };
   } catch (error) {
     return { state: 'error', message: error.message };
+  }
+});
+
+registerIpcHandler('updates:download', async () => {
+  if (!app.isPackaged) return { state: 'development', version: app.getVersion() };
+  if (updateDownloaded) return { state: 'downloaded', version: updateAvailableVersion };
+  if (!updateAvailableVersion) return { state: 'current', version: app.getVersion() };
+  if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion };
+
+  updateDownloadInProgress = true;
+  try {
+    await autoUpdater.downloadUpdate();
+    return {
+      state: updateDownloaded ? 'downloaded' : 'downloading',
+      version: updateAvailableVersion
+    };
+  } catch (error) {
+    return {
+      state: 'error',
+      message: error.message,
+      version: updateAvailableVersion,
+      canRetry: true
+    };
+  } finally {
+    updateDownloadInProgress = false;
   }
 });
 

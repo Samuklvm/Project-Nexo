@@ -8,6 +8,8 @@ const chooseWallpaperButton = document.getElementById('choose-wallpaper');
 const resetWallpaperButton = document.getElementById('reset-wallpaper');
 const updateButton = document.getElementById('update-app');
 const installUpdatePageButton = document.getElementById('install-update-page');
+const downloadUpdateButton = document.getElementById('download-update');
+const deferUpdateButton = document.getElementById('defer-update');
 const updatePanel = document.getElementById('update-panel');
 const checkUpdatesButton = document.getElementById('check-updates');
 const windowMinimizeButton = document.getElementById('window-minimize');
@@ -40,6 +42,7 @@ const autoCleanRequiredSamples = 4;
 const autoCleanMinimumPersistenceMs = 60 * 1000;
 const autoCleanCooldownMs = 60 * 60 * 1000;
 let systemSnapshot = null;
+let currentUpdateStatus = { state: 'checking' };
 let toastTimeout;
 let highDiskSamples = 0;
 let highDiskSince = 0;
@@ -743,20 +746,24 @@ runRepairButton.addEventListener('click', runRepair);
 function renderUpdateStatus(status) {
   const messages = {
     checking: ['Conferindo novidades', 'Estamos verificando se há uma versão mais recente do Nexo.', 'Verificação em andamento'],
-    downloading: ['Uma nova versão está chegando', `Baixando a versão ${status.version || 'mais recente'} em segundo plano.`, 'Download em andamento'],
+    available: ['Nova atualização disponível', `A versão ${status.version || 'mais recente'} está pronta para baixar. Deseja atualizar o app agora?`, 'Nova versão disponível'],
+    downloading: ['Baixando atualização', `A versão ${status.version || 'mais recente'} está sendo baixada. Você poderá escolher quando instalar.`, 'Download em andamento'],
     current: ['Você está em dia', 'Esta instalação já está na versão mais recente disponível.', 'Tudo atualizado'],
     downloaded: ['Pronto para atualizar', `A versão ${status.version || 'mais recente'} foi baixada e está pronta para instalar.`, 'Atualização pronta'],
     development: ['Atualizações disponíveis na versão instalada', 'Instale o aplicativo para receber versões publicadas pelo GitHub.', 'Modo de desenvolvimento'],
-    error: ['Não foi possível verificar', status.message || 'Confira sua conexão e tente novamente.', 'Falha na verificação']
+    error: ['Não foi possível concluir a atualização', status.message || 'Confira sua conexão e tente novamente.', 'Falha na atualização']
   };
   const [heading, detail, eyebrow] = messages[status.state] || ['Status indisponível', 'Tente verificar novamente.', 'Atualizações'];
   const percent = Math.max(0, Math.min(100, Number(status.percent) || 0));
+  const isAvailable = status.state === 'available';
   const isDownloading = status.state === 'downloading';
   const isChecking = status.state === 'checking';
   const isDownloaded = status.state === 'downloaded';
+  const canRetryDownload = status.state === 'error' && status.canRetry;
+  currentUpdateStatus = status;
   setText('update-status', status.state === 'downloading' && status.percent !== undefined
     ? `Baixando atualização · ${percent}%`
-    : heading);
+    : isAvailable ? `Nova versão · ${status.version || 'disponível'}` : heading);
   setText('update-state-heading', heading);
   setText('update-state-detail', detail);
   setText('update-state-eyebrow', eyebrow);
@@ -769,10 +776,18 @@ function renderUpdateStatus(status) {
   if (progressWrap) progressWrap.hidden = !isDownloading && !isChecking;
   if (progressTrack) progressTrack.setAttribute('aria-valuenow', String(isChecking ? 0 : percent));
   if (progressFill) progressFill.style.width = isChecking ? '34%' : `${percent}%`;
-  updateButton.hidden = !isDownloaded;
+  updateButton.hidden = !isAvailable && !isDownloaded && !canRetryDownload;
+  updateButton.querySelector('span:last-child').textContent = isDownloaded
+    ? `Instalar versão ${status.version || ''}`.trim()
+    : `Atualização ${status.version || ''}`.trim();
+  downloadUpdateButton.hidden = !isAvailable && !canRetryDownload;
+  downloadUpdateButton.dataset.idleText = canRetryDownload ? 'Tentar baixar novamente' : 'Baixar e atualizar';
+  downloadUpdateButton.textContent = downloadUpdateButton.dataset.idleText;
+  checkUpdatesButton.disabled = isChecking || isDownloading;
+  deferUpdateButton.hidden = !isAvailable;
   installUpdatePageButton.hidden = !isDownloaded;
   const updateIndicator = document.getElementById('update-nav-indicator');
-  if (updateIndicator) updateIndicator.hidden = !isDownloaded;
+  if (updateIndicator) updateIndicator.hidden = !isAvailable && !isDownloaded && !canRetryDownload;
 }
 
 async function checkForUpdates() {
@@ -790,22 +805,42 @@ async function checkForUpdates() {
 if (desktopBridge?.onUpdateStatus) desktopBridge.onUpdateStatus(renderUpdateStatus);
 
 updateButton.addEventListener('click', async () => {
+  if (currentUpdateStatus.state !== 'downloaded') {
+    setView('updates');
+    return;
+  }
+  await installDownloadedUpdate();
+});
+
+async function installDownloadedUpdate() {
   if (!desktopBridge?.installUpdate) return;
   try {
     await desktopBridge.installUpdate();
   } catch (error) {
     showToast(error.message || 'Não foi possível instalar a atualização.');
+  }
+}
+
+installUpdatePageButton.addEventListener('click', installDownloadedUpdate);
+
+downloadUpdateButton.addEventListener('click', async () => {
+  if (!desktopBridge?.downloadUpdate) return;
+  setButtonBusy(downloadUpdateButton, true, 'Baixando...');
+  try {
+    renderUpdateStatus(await desktopBridge.downloadUpdate());
+  } catch (error) {
+    renderUpdateStatus({
+      state: 'error',
+      message: error.message || 'Não foi possível baixar a atualização.',
+      version: currentUpdateStatus.version,
+      canRetry: true
+    });
+  } finally {
+    setButtonBusy(downloadUpdateButton, false);
   }
 });
 
-installUpdatePageButton.addEventListener('click', async () => {
-  if (!desktopBridge?.installUpdate) return;
-  try {
-    await desktopBridge.installUpdate();
-  } catch (error) {
-    showToast(error.message || 'Não foi possível instalar a atualização.');
-  }
-});
+deferUpdateButton.addEventListener('click', () => setView('overview'));
 
 checkUpdatesButton.addEventListener('click', async () => {
   setButtonBusy(checkUpdatesButton, true, 'Verificando...');

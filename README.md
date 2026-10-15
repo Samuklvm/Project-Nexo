@@ -42,7 +42,7 @@ O assistente do Windows permite escolher a pasta de instalação e exige a leitu
 
 3. A GitHub Action compila o instalador Windows x64 e publica a release. Acompanhe a execução na aba **Actions**; após o sucesso, os arquivos ficam na página **Releases**.
 
-O aplicativo instalado verifica atualizações ao iniciar e baixa novas versões automaticamente. Depois do download, é possível instalá-las pelo botão do aplicativo ou ao fechar e abrir o programa. O atualizador funciona apenas na versão empacotada. Para que outras pessoas baixem atualizações sem autenticação, o repositório e as releases devem ser públicos.
+O aplicativo instalado verifica atualizações ao iniciar e mostra a versão disponível na aba **Atualizações**. O download só começa quando a pessoa seleciona **Baixar e atualizar**; depois, ela escolhe quando instalar e reiniciar o app. O atualizador funciona apenas na versão empacotada. Para que outras pessoas baixem atualizações sem autenticação, o repositório e as releases devem ser públicos.
 
 ## Limites e privacidade
 

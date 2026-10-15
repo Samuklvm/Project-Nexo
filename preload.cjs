@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   cleanupTempFiles: () => ipcRenderer.invoke('cleanup:run'),
   repairSystemFiles: () => ipcRenderer.invoke('system:repair'),
   checkForUpdates: () => ipcRenderer.invoke('updates:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
   installUpdate: () => ipcRenderer.invoke('updates:install'),
   onUpdateStatus: (callback) => {
     const listener = (_event, status) => callback(status);

@@ -32,7 +32,8 @@
       "app.js",
       "main.cjs",
       "preload.cjs",
-      "package.json"
+      "package.json",
+      "assets/**/*"
     ],
     "win": {
       "target": [
