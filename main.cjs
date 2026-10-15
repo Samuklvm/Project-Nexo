@@ -10,11 +10,15 @@ const { pathToFileURL } = require('url');
 const execFileAsync = promisify(execFile);
 const CLEANUP_MAX_FILES = 5000;
 const CLEANUP_MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const DRIVE_CACHE_TTL_MS = 30 * 1000;
+const TEMPERATURE_CACHE_TTL_MS = 15 * 1000;
 const trustedDocumentUrl = pathToFileURL(path.join(__dirname, 'index.html')).href;
 let mainWindow;
 let updateDownloaded = false;
 let updateAvailableVersion = null;
 let updateDownloadInProgress = false;
+let driveCache = { expiresAt: 0, value: null, pending: null };
+let temperatureCache = { expiresAt: 0, value: null, pending: null };
 
 function runPowerShell(script, timeout = 15000) {
   if (process.platform !== 'win32') {
@@ -50,7 +54,7 @@ async function getCpuUsage() {
 
   if (totalDelta <= 0) return 0;
   const usage = Math.round((1 - (after.idle - before.idle) / totalDelta) * 100);
-  return Math.max(0, Math.min(100, usage));
+  return Math.round(Math.max(0, Math.min(100, usage)) * 10) / 10;
 }
 
 function normalizeDrive(item) {
@@ -93,10 +97,90 @@ async function listDrives() {
   })];
 }
 
+async function getCachedDrives() {
+  if (driveCache.value && Date.now() < driveCache.expiresAt) return driveCache.value;
+  if (driveCache.pending) return driveCache.pending;
+
+  driveCache.pending = listDrives().then((drives) => {
+    driveCache.value = drives;
+    driveCache.expiresAt = Date.now() + DRIVE_CACHE_TTL_MS;
+    return drives;
+  }).finally(() => {
+    driveCache.pending = null;
+  });
+  return driveCache.pending;
+}
+
+async function getTemperatureReadings() {
+  if (process.platform !== 'win32') return { acpiSensors: [], gpuSensors: [] };
+
+  const [acpiSensors, gpuSensors] = await Promise.all([
+    (async () => {
+      const script = String.raw`
+$sensors = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue | ForEach-Object {
+  $celsius = [Math]::Round(([double]$_.CurrentTemperature / 10) - 273.15, 1)
+  if ($celsius -ge 0 -and $celsius -le 125) {
+    [pscustomobject]@{ name = [string]$_.InstanceName; celsius = $celsius }
+  }
+})
+$sensors | ConvertTo-Json -Compress
+`;
+      try {
+        const { stdout } = await runPowerShell(script, 5000);
+        if (!stdout.trim()) return [];
+        const result = JSON.parse(stdout);
+        return (Array.isArray(result) ? result : [result]).map((sensor, index) => ({
+          name: `Zona ACPI ${index + 1}`,
+          celsius: Number(sensor.celsius)
+        })).filter((sensor) => Number.isFinite(sensor.celsius));
+      } catch {
+        return [];
+      }
+    })(),
+    (async () => {
+      try {
+        const { stdout } = await execFileAsync('nvidia-smi', [
+          '--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total',
+          '--format=csv,noheader,nounits'
+        ], { windowsHide: true, timeout: 3000, maxBuffer: 64 * 1024 });
+        return stdout.trim().split(/\r?\n/).filter(Boolean).map((line, index) => {
+          const [temperature, usage, memoryUsed, memoryTotal] = line.split(',').map((value) => Number(value.trim()));
+          return {
+            name: `GPU ${index + 1}`,
+            temperatureCelsius: Number.isFinite(temperature) ? temperature : null,
+            usagePercent: Number.isFinite(usage) ? Math.max(0, Math.min(100, usage)) : null,
+            memoryUsedMb: Number.isFinite(memoryUsed) ? memoryUsed : null,
+            memoryTotalMb: Number.isFinite(memoryTotal) ? memoryTotal : null
+          };
+        });
+      } catch {
+        return [];
+      }
+    })()
+  ]);
+
+  return { acpiSensors, gpuSensors };
+}
+
+async function getCachedTemperatureReadings() {
+  if (temperatureCache.value && Date.now() < temperatureCache.expiresAt) return temperatureCache.value;
+  if (temperatureCache.pending) return temperatureCache.pending;
+
+  temperatureCache.pending = getTemperatureReadings().then((readings) => {
+    temperatureCache.value = readings;
+    temperatureCache.expiresAt = Date.now() + TEMPERATURE_CACHE_TTL_MS;
+    return readings;
+  }).finally(() => {
+    temperatureCache.pending = null;
+  });
+  return temperatureCache.pending;
+}
+
 async function getSystemSnapshot() {
-  const [cpuUsage, drives] = await Promise.all([
+  const [cpuUsage, drives, temperatureReadings] = await Promise.all([
     getCpuUsage(),
-    listDrives().catch(() => [])
+    getCachedDrives().catch(() => []),
+    getCachedTemperatureReadings()
   ]);
   const memoryTotalBytes = os.totalmem();
   const memoryFreeBytes = os.freemem();
@@ -118,6 +202,7 @@ async function getSystemSnapshot() {
     memoryUsedBytes,
     memoryPercent: memoryTotalBytes ? Math.round((memoryUsedBytes / memoryTotalBytes) * 100) : 0,
     networkConnected,
+    temperatureReadings,
     uptimeSeconds: os.uptime(),
     drives,
     primaryDrive,

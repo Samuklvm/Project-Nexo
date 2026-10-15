@@ -129,9 +129,19 @@
                 <small id="memory-usage-state">Aguardando leitura</small>
               </article>
               <article class="panel-box stat-box">
-                <span class="stat-label">Uso do disco</span>
+                <span class="stat-label">Espaço usado</span>
                 <strong id="disk-usage-value">--%</strong>
                 <small id="disk-usage-state">Aguardando leitura</small>
+              </article>
+              <article class="panel-box stat-box">
+                <span class="stat-label">GPU NVIDIA</span>
+                <strong id="gpu-usage-value">--</strong>
+                <small id="gpu-usage-state">Sensor não detectado</small>
+              </article>
+              <article class="panel-box stat-box">
+                <span class="stat-label">Temperatura</span>
+                <strong id="system-temperature-value">--</strong>
+                <small id="system-temperature-state">Sensor ACPI não detectado</small>
               </article>
               <article class="panel-box stat-box accent">
                 <span class="stat-label">Versão do app</span>
@@ -139,6 +149,43 @@
                 <small id="update-status">Verificando atualizações</small>
               </article>
             </div>
+
+            <section class="performance-section" aria-labelledby="performance-heading">
+              <div class="performance-heading">
+                <div>
+                  <span class="eyebrow">Monitoramento local</span>
+                  <h2 id="performance-heading">Desempenho em tempo real</h2>
+                </div>
+                <span class="telemetry-updated"><i></i><span id="telemetry-updated-at">Aguardando leitura</span></span>
+              </div>
+              <div class="performance-grid">
+                <article class="panel-box performance-card">
+                  <div class="performance-card-heading"><span>Processador</span><strong id="chart-cpu-value">--%</strong></div>
+                  <canvas class="metric-chart" id="chart-cpu" role="img" aria-label="Histórico de uso do processador"></canvas>
+                  <div class="chart-footer"><span>Uso total</span><span>Últimos 5 min</span></div>
+                </article>
+                <article class="panel-box performance-card">
+                  <div class="performance-card-heading"><span>Memória RAM</span><strong id="chart-memory-value">--%</strong></div>
+                  <canvas class="metric-chart" id="chart-memory" role="img" aria-label="Histórico de uso da memória RAM"></canvas>
+                  <div class="chart-footer"><span>Memória usada</span><span>Últimos 5 min</span></div>
+                </article>
+                <article class="panel-box performance-card">
+                  <div class="performance-card-heading"><span>Espaço em disco</span><strong id="chart-disk-value">--%</strong></div>
+                  <canvas class="metric-chart" id="chart-disk" role="img" aria-label="Histórico de uso do disco principal"></canvas>
+                  <div class="chart-footer"><span>Capacidade ocupada · unidade principal</span><span>Últimos 5 min</span></div>
+                </article>
+                <article class="panel-box performance-card">
+                  <div class="performance-card-heading"><span>GPU NVIDIA</span><strong id="chart-gpu-value">--</strong></div>
+                  <canvas class="metric-chart" id="chart-gpu" role="img" aria-label="Histórico de uso da GPU NVIDIA"></canvas>
+                  <div class="chart-footer"><span id="chart-gpu-detail">Sensor não detectado</span><span>Últimos 5 min</span></div>
+                </article>
+                <article class="panel-box performance-card temperature-chart-card">
+                  <div class="performance-card-heading"><span>Temperatura reportada</span><strong id="chart-temperature-value">--</strong></div>
+                  <canvas class="metric-chart" id="chart-temperature" role="img" aria-label="Histórico dos sensores térmicos disponíveis"></canvas>
+                  <div class="chart-footer"><span id="chart-temperature-detail">Sem sensores compatíveis</span><span>Últimos 5 min</span></div>
+                </article>
+              </div>
+            </section>
 
             <div class="two-col">
               <article class="panel-box">
@@ -195,6 +242,14 @@
                 <div class="metric">
                   <span>Interface de rede</span>
                   <strong id="diagnosis-network">--</strong>
+                </div>
+                <div class="metric">
+                  <span>GPU NVIDIA</span>
+                  <strong id="diagnosis-gpu">--</strong>
+                </div>
+                <div class="metric">
+                  <span>Temperatura reportada</span>
+                  <strong id="diagnosis-temperature">--</strong>
                 </div>
               </div>
 

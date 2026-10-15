@@ -34,15 +34,18 @@ const autoCleanLastRunKey = 'nexo-auto-clean-last-run';
 const performanceHistoryKey = 'nexo-performance-history';
 const recommendationFeedbackKey = 'nexo-recommendation-feedback';
 const maxWallpaperBytes = 5 * 1024 * 1024;
-const historyIntervalMs = 15 * 60 * 1000;
+const historyIntervalMs = 5 * 60 * 1000;
 const historyRetentionMs = 7 * 24 * 60 * 60 * 1000;
-const maxHistorySamples = 672;
+const maxHistorySamples = 2016;
 const autoCleanDiskThreshold = 90;
 const autoCleanRequiredSamples = 4;
 const autoCleanMinimumPersistenceMs = 60 * 1000;
 const autoCleanCooldownMs = 60 * 60 * 1000;
+const maxLivePerformanceSamples = 60;
 let systemSnapshot = null;
 let currentUpdateStatus = { state: 'checking' };
+let snapshotRefreshInProgress = false;
+const livePerformanceSamples = [];
 let toastTimeout;
 let highDiskSamples = 0;
 let highDiskSince = 0;
@@ -103,6 +106,7 @@ function setView(viewName) {
     updates: 'Atualizações'
   };
   if (breadcrumbCurrent) breadcrumbCurrent.textContent = labelMap[viewName] || 'Visão geral';
+  if (viewName === 'overview') drawPerformanceCharts();
 }
 
 viewButtons.forEach((button) => {
@@ -168,8 +172,18 @@ function getLocalBaseline(metric) {
     .map((sample) => sample[metric])
     .filter(Number.isFinite);
   if (samples.length < 4) return null;
+  const sortedSamples = [...samples].sort((left, right) => left - right);
+  const median = sortedSamples.length % 2
+    ? sortedSamples[Math.floor(sortedSamples.length / 2)]
+    : (sortedSamples[sortedSamples.length / 2 - 1] + sortedSamples[sortedSamples.length / 2]) / 2;
+  const deviations = sortedSamples.map((value) => Math.abs(value - median)).sort((left, right) => left - right);
+  const medianAbsoluteDeviation = deviations.length % 2
+    ? deviations[Math.floor(deviations.length / 2)]
+    : (deviations[deviations.length / 2 - 1] + deviations[deviations.length / 2]) / 2;
   return {
     average: samples.reduce((total, value) => total + value, 0) / samples.length,
+    median,
+    medianAbsoluteDeviation,
     sampleCount: samples.length
   };
 }
@@ -177,9 +191,9 @@ function getLocalBaseline(metric) {
 function describeLocalTrend(metric, currentValue) {
   const baseline = getLocalBaseline(metric);
   if (!baseline) return 'Ainda há poucos registros locais para comparar com o padrão habitual.';
-  const delta = Math.round(currentValue - baseline.average);
-  if (delta >= 10) return `${delta} pontos acima da média local de 7 dias (${Math.round(baseline.average)}%, ${baseline.sampleCount} amostras).`;
-  return `Média local de 7 dias: ${Math.round(baseline.average)}% (${baseline.sampleCount} amostras); sem aumento grande sobre o padrão.`;
+  const delta = Math.round(currentValue - baseline.median);
+  if (delta >= 10) return `${delta} pontos acima da mediana local de 7 dias (${Math.round(baseline.median)}%, ${baseline.sampleCount} amostras).`;
+  return `Mediana local de 7 dias: ${Math.round(baseline.median)}% (${baseline.sampleCount} amostras); sem aumento grande sobre o padrão.`;
 }
 
 function getRecommendationConfidence(category, baseConfidence) {
@@ -321,9 +335,148 @@ function hydrateDriveView(driveLetter = driveSelect.value) {
   driveOptimizeButton.disabled = false;
 }
 
+function getPerformanceSample(snapshot, timestamp = Date.now()) {
+  const thermal = snapshot.temperatureReadings || {};
+  const acpiTemperature = (thermal.acpiSensors || [])
+    .map((sensor) => sensor.celsius)
+    .filter(Number.isFinite)
+    .reduce((highest, value) => Math.max(highest, value), null);
+  const gpu = thermal.gpuSensors?.[0] || null;
+
+  return {
+    timestamp,
+    cpu: snapshot.cpuUsage,
+    memory: snapshot.memoryPercent,
+    disk: snapshot.primaryDrive?.usedPercent ?? null,
+    gpu: gpu?.usagePercent ?? null,
+    acpiTemperature,
+    gpuTemperature: gpu?.temperatureCelsius ?? null
+  };
+}
+
+function drawPerformanceChart(canvasId, series, range = { min: 0, max: 100 }) {
+  const canvas = document.getElementById(canvasId);
+  const bounds = canvas?.getBoundingClientRect();
+  if (!canvas || !bounds?.width || !bounds.height) return;
+
+  const pixelRatio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(bounds.width * pixelRatio);
+  canvas.height = Math.round(bounds.height * pixelRatio);
+  const context = canvas.getContext('2d');
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+  const width = bounds.width;
+  const height = bounds.height;
+  const padding = { top: 8, right: 7, bottom: 8, left: 7 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  context.clearRect(0, 0, width, height);
+
+  for (let index = 0; index <= 4; index += 1) {
+    const y = padding.top + (plotHeight * index) / 4;
+    context.beginPath();
+    context.moveTo(padding.left, y);
+    context.lineTo(width - padding.right, y);
+    context.strokeStyle = 'rgba(226, 232, 240, 0.075)';
+    context.lineWidth = 1;
+    context.stroke();
+  }
+
+  for (const item of series) {
+    const points = item.values.map((value, index) => {
+      if (!Number.isFinite(value)) return null;
+      const x = padding.left + (plotWidth * index) / Math.max(1, item.values.length - 1);
+      const boundedValue = Math.min(range.max, Math.max(range.min, value));
+      const y = padding.top + plotHeight * (1 - (boundedValue - range.min) / (range.max - range.min));
+      return { x, y };
+    });
+
+    context.beginPath();
+    let hasSegment = false;
+    for (const point of points) {
+      if (!point) {
+        hasSegment = false;
+        continue;
+      }
+      if (hasSegment) context.lineTo(point.x, point.y);
+      else context.moveTo(point.x, point.y);
+      hasSegment = true;
+    }
+    context.strokeStyle = item.color;
+    context.lineWidth = 2;
+    context.lineJoin = 'round';
+    context.lineCap = 'round';
+    context.shadowColor = item.color;
+    context.shadowBlur = 7;
+    context.stroke();
+    context.shadowBlur = 0;
+
+    const lastPoint = [...points].reverse().find(Boolean);
+    if (lastPoint) {
+      context.beginPath();
+      context.arc(lastPoint.x, lastPoint.y, 3, 0, Math.PI * 2);
+      context.fillStyle = item.color;
+      context.fill();
+    }
+  }
+}
+
+function drawPerformanceCharts() {
+  const samples = livePerformanceSamples;
+  const line = (key, color) => ({ values: samples.map((sample) => sample[key]), color });
+  drawPerformanceChart('chart-cpu', [line('cpu', '#9b8cff')]);
+  drawPerformanceChart('chart-memory', [line('memory', '#71c9bd')]);
+  drawPerformanceChart('chart-disk', [line('disk', '#e0a879')]);
+  drawPerformanceChart('chart-gpu', [line('gpu', '#84c99a')]);
+  drawPerformanceChart('chart-temperature', [
+    line('acpiTemperature', '#9b8cff'),
+    line('gpuTemperature', '#70c9bd')
+  ], { min: 20, max: 110 });
+}
+
+function updatePerformanceCharts(snapshot) {
+  const sample = getPerformanceSample(snapshot);
+  const lastSample = livePerformanceSamples[livePerformanceSamples.length - 1];
+  if (lastSample && sample.timestamp - lastSample.timestamp < 1500) return;
+  livePerformanceSamples.push(sample);
+  if (livePerformanceSamples.length > maxLivePerformanceSamples) livePerformanceSamples.shift();
+
+  const thermal = snapshot.temperatureReadings || {};
+  const gpu = thermal.gpuSensors?.[0] || null;
+  const systemTemperature = sample.gpuTemperature ?? sample.acpiTemperature;
+  const temperatureSource = sample.gpuTemperature !== null
+    ? `${gpu?.name || 'GPU'} NVIDIA`
+    : sample.acpiTemperature !== null ? 'Maior zona ACPI' : 'Sem sensor compatível';
+
+  setText('gpu-usage-value', Number.isFinite(gpu?.usagePercent) ? `${gpu.usagePercent}%` : '--');
+  setText('gpu-usage-state', gpu
+    ? `${gpu.temperatureCelsius === null ? 'Temperatura indisponível' : `${gpu.temperatureCelsius} °C`} · NVIDIA`
+    : 'Requer nvidia-smi');
+  setText('system-temperature-value', Number.isFinite(systemTemperature) ? `${systemTemperature} °C` : '--');
+  setText('system-temperature-state', temperatureSource);
+  setText('chart-cpu-value', `${snapshot.cpuUsage}%`);
+  setText('chart-memory-value', `${snapshot.memoryPercent}%`);
+  setText('chart-disk-value', snapshot.primaryDrive ? `${snapshot.primaryDrive.usedPercent}%` : '--');
+  setText('chart-gpu-value', Number.isFinite(gpu?.usagePercent) ? `${gpu.usagePercent}%` : '--');
+  setText('chart-gpu-detail', gpu ? `${gpu.name} · ${gpu.memoryUsedMb ?? '--'} / ${gpu.memoryTotalMb ?? '--'} MB` : 'Requer nvidia-smi');
+  setText('chart-temperature-value', Number.isFinite(systemTemperature) ? `${systemTemperature} °C` : '--');
+  setText('chart-temperature-detail', sample.acpiTemperature !== null || sample.gpuTemperature !== null
+    ? `${sample.acpiTemperature !== null ? 'ACPI' : ''}${sample.acpiTemperature !== null && sample.gpuTemperature !== null ? ' · ' : ''}${sample.gpuTemperature !== null ? 'GPU NVIDIA' : ''}`
+    : 'Sem sensores compatíveis');
+  setText('telemetry-updated-at', `Atualizado às ${new Date(sample.timestamp).toLocaleTimeString('pt-BR')}`);
+  drawPerformanceCharts();
+}
+
 function renderSystemSnapshot(snapshot) {
   systemSnapshot = snapshot;
   const primaryDrive = snapshot.primaryDrive;
+  const thermal = snapshot.temperatureReadings || {};
+  const gpu = thermal.gpuSensors?.[0] || null;
+  const acpiTemperature = (thermal.acpiSensors || [])
+    .map((sensor) => sensor.celsius)
+    .filter(Number.isFinite)
+    .reduce((highest, value) => Math.max(highest, value), null);
+  const reportedTemperature = gpu?.temperatureCelsius ?? acpiTemperature;
   const cpuText = `${snapshot.cpuUsage}%`;
   const memoryText = `${snapshot.memoryPercent}%`;
   const diskText = primaryDrive ? `${primaryDrive.usedPercent}%` : '--';
@@ -345,9 +498,12 @@ function renderSystemSnapshot(snapshot) {
   setText('diagnosis-memory', memoryText);
   setText('diagnosis-disk', primaryDrive ? `${diskText} usado` : 'Sem dados');
   setText('diagnosis-network', snapshot.networkConnected ? 'Conectada' : 'Desconectada');
+  setText('diagnosis-gpu', Number.isFinite(gpu?.usagePercent) ? `${gpu.usagePercent}%` : 'Não detectada');
+  setText('diagnosis-temperature', Number.isFinite(reportedTemperature) ? `${reportedTemperature} °C` : 'Não detectada');
   setText('system-health-badge', snapshot.cpuUsage >= 90 || snapshot.memoryPercent >= 95 || (primaryDrive && primaryDrive.usedPercent >= 95)
     ? 'Uso elevado detectado'
     : 'Medições atualizadas');
+  updatePerformanceCharts(snapshot);
 
   if (!snapshot.drives.some((drive) => drive.driveLetter === driveSelect.value)) {
     driveSelect.replaceChildren();
@@ -410,12 +566,18 @@ async function refreshSystemSnapshot() {
     setAppStatus('Abra o app desktop para monitorar');
     return null;
   }
-  const snapshot = await desktopBridge.getSystemSnapshot();
-  renderSystemSnapshot(snapshot);
-  recordPerformanceSample(snapshot);
-  setAppStatus('Monitoramento ativo');
-  await maybeRunAutonomousCleanup(snapshot);
-  return snapshot;
+  if (snapshotRefreshInProgress) return systemSnapshot;
+  snapshotRefreshInProgress = true;
+  try {
+    const snapshot = await desktopBridge.getSystemSnapshot();
+    renderSystemSnapshot(snapshot);
+    recordPerformanceSample(snapshot);
+    setAppStatus('Monitoramento ativo');
+    await maybeRunAutonomousCleanup(snapshot);
+    return snapshot;
+  } finally {
+    snapshotRefreshInProgress = false;
+  }
 }
 
 async function refreshCleanupPreview() {
@@ -612,8 +774,10 @@ async function runDiagnosis() {
     const memoryLeader = processes.byMemory?.[0];
     const cpuBaseline = getLocalBaseline('cpuPercent');
     const memoryBaseline = getLocalBaseline('memoryPercent');
-    const cpuSpike = cpuBaseline && snapshot.cpuUsage >= 60 && snapshot.cpuUsage - cpuBaseline.average >= 25;
-    const memorySpike = memoryBaseline && snapshot.memoryPercent >= 70 && snapshot.memoryPercent - memoryBaseline.average >= 20;
+    const cpuSpike = cpuBaseline && snapshot.cpuUsage >= 60
+      && snapshot.cpuUsage - cpuBaseline.median >= Math.max(25, cpuBaseline.medianAbsoluteDeviation * 3);
+    const memorySpike = memoryBaseline && snapshot.memoryPercent >= 70
+      && snapshot.memoryPercent - memoryBaseline.median >= Math.max(20, memoryBaseline.medianAbsoluteDeviation * 3);
 
     if (snapshot.cpuUsage >= 85 || cpuSpike) {
       recommendations.push({
@@ -660,8 +824,18 @@ async function runDiagnosis() {
         confidence: preview?.fileCount ? 75 : 55
       });
     }
+    const hotGpu = snapshot.temperatureReadings?.gpuSensors?.find((sensor) => sensor.temperatureCelsius >= 85);
+    if (hotGpu) {
+      recommendations.push({
+        category: 'gpu-temperature',
+        title: 'Temperatura elevada na GPU',
+        cause: `${hotGpu.name} reportou ${hotGpu.temperatureCelsius} °C. Esse valor merece comparação com o limite térmico indicado pelo fabricante.`,
+        action: 'Confira a ventilação e os limites do fabricante; reduza a carga se essa temperatura persistir fora de jogos ou renderização.',
+        confidence: 65
+      });
+    }
 
-    renderDiagnosisRecommendations(recommendations, 'Nenhum gargalo acima dos limites foi detectado nesta amostra. O diagnóstico consulta CPU, RAM, processos, conectividade e espaço em disco.');
+    renderDiagnosisRecommendations(recommendations, 'Nenhum gargalo acima dos limites foi detectado nesta amostra. O diagnóstico consulta CPU, RAM, GPU compatível, sensores térmicos, processos, conectividade e espaço em disco.');
     setAppStatus('Diagnóstico concluído');
     showToast(recommendations.length ? 'Recomendações de desempenho prontas.' : 'Nenhum gargalo relevante detectado.');
     recordActivity('Diagnóstico de desempenho', recommendations.length ? `${recommendations.length} recomendação(ões)` : 'sem gargalo detectado');
@@ -884,4 +1058,4 @@ refreshCleanupPreview().catch(() => {
 checkForUpdates();
 setInterval(() => {
   refreshSystemSnapshot().catch(() => setAppStatus('Falha ao atualizar leitura'));
-}, 15000);
+}, 5000);
