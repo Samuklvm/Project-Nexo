@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, session } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { execFile, spawn } = require('child_process');
 const fs = require('fs/promises');
@@ -19,6 +19,7 @@ let updateAvailableVersion = null;
 let updateDownloadInProgress = false;
 let driveCache = { expiresAt: 0, value: null, pending: null };
 let temperatureCache = { expiresAt: 0, value: null, pending: null };
+let activeOperation = null;
 
 function runPowerShell(script, timeout = 15000) {
   if (process.platform !== 'win32') {
@@ -36,6 +37,31 @@ function runPowerShell(script, timeout = 15000) {
     timeout,
     maxBuffer: 2 * 1024 * 1024
   });
+}
+
+async function withOperationLock(label, task) {
+  if (activeOperation) throw new Error(`Aguarde: ${activeOperation} ainda está em andamento.`);
+  activeOperation = label;
+  try {
+    return await task();
+  } finally {
+    activeOperation = null;
+  }
+}
+
+function adminOperationError(error, label) {
+  if (/Start-Process/i.test(String(error?.stderr || ''))) {
+    return new Error('O Windows não recebeu a permissão de administrador. Se você cancelou a janela de confirmação, tente de novo e escolha Sim.');
+  }
+  if (error?.killed) return new Error(`${label} passou do tempo limite e foi interrompida.`);
+  const code = Number.isFinite(error?.code) ? ` (código ${error.code})` : '';
+  return new Error(`${label} terminou com erro${code}.`);
+}
+
+function getOsLabel() {
+  if (process.platform !== 'win32') return `${os.type()} ${os.release()}`;
+  const build = Number(os.release().split('.')[2]) || 0;
+  return build >= 22000 ? 'Windows 11' : 'Windows 10';
 }
 
 function getCpuSample() {
@@ -197,6 +223,9 @@ async function getSystemSnapshot() {
   return {
     hostname: os.hostname(),
     operatingSystem: `${os.type()} ${os.release()}`,
+    osLabel: getOsLabel(),
+    cpuCores: os.cpus().length,
+    cpuModel: String(os.cpus()[0]?.model || '').replace(/\s+/g, ' ').trim(),
     cpuUsage,
     memoryTotalBytes,
     memoryUsedBytes,
@@ -332,13 +361,14 @@ function createWindow() {
     minWidth: 1200,
     minHeight: 760,
     frame: false,
-    backgroundColor: '#090a12',
+    backgroundColor: '#0b0f1d',
     title: 'Nexo Device Care',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     }
   });
 
@@ -409,7 +439,13 @@ registerIpcHandler('drives:optimize', async (_event, driveLetter) => {
 
   const letter = driveLetter.toUpperCase();
   const script = `$process = Start-Process -FilePath 'defrag.exe' -ArgumentList @('${letter}:', '/O', '/U', '/V') -Verb RunAs -Wait -PassThru; exit $process.ExitCode`;
-  await runPowerShell(script, 60 * 60 * 1000);
+  await withOperationLock('a otimização de unidade', async () => {
+    try {
+      await runPowerShell(script, 60 * 60 * 1000);
+    } catch (error) {
+      throw adminOperationError(error, 'A otimização');
+    }
+  });
   return { ok: true, driveLetter: letter };
 });
 
@@ -423,7 +459,7 @@ registerIpcHandler('cleanup:preview', async () => {
   };
 });
 
-registerIpcHandler('cleanup:run', async () => {
+registerIpcHandler('cleanup:run', () => withOperationLock('a limpeza de temporários', async () => {
   const { root, files } = await collectOldTempFiles();
   let removedCount = 0;
   let bytesFreed = 0;
@@ -441,15 +477,21 @@ registerIpcHandler('cleanup:run', async () => {
     }
   }
 
-  return { removedCount, bytesFreed };
-});
+  return { removedCount, bytesFreed, skippedCount: Math.max(0, files.length - removedCount) };
+}));
 
 registerIpcHandler('system:repair', async () => {
   if (process.platform !== 'win32') {
     throw new Error('A verificação de arquivos do sistema está disponível somente no Windows.');
   }
 
-  await runPowerShell("$process = Start-Process -FilePath 'sfc.exe' -ArgumentList '/scannow' -Verb RunAs -Wait -PassThru; exit $process.ExitCode", 60 * 60 * 1000);
+  await withOperationLock('a verificação de arquivos do Windows', async () => {
+    try {
+      await runPowerShell("$process = Start-Process -FilePath 'sfc.exe' -ArgumentList '/scannow' -Verb RunAs -Wait -PassThru; exit $process.ExitCode", 60 * 60 * 1000);
+    } catch (error) {
+      throw adminOperationError(error, 'A verificação');
+    }
+  });
   return { ok: true };
 });
 
@@ -507,13 +549,24 @@ registerIpcHandler('updates:install', async () => {
   return { ok: true };
 });
 
-app.whenReady().then(() => {
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
   });
-});
+
+  app.whenReady().then(() => {
+    session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
