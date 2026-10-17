@@ -1,0 +1,62 @@
+{
+  "name": "nexo-device-care",
+  "version": "0.1.3",
+  "private": true,
+  "description": "Nexo device care desktop app",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "release": "electron-builder --win nsis --publish always"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Samuklvm/Project-Nexo.git"
+  },
+  "devDependencies": {
+    "electron": "37.2.0",
+    "electron-builder": "26.0.12"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  },
+  "build": {
+    "appId": "com.samuklvm.nexo",
+    "productName": "Nexo Device Care",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "app.js",
+      "main.cjs",
+      "preload.cjs",
+      "package.json",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Nexo-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "license": "installer/AVISOS.txt",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Samuklvm",
+      "repo": "Project-Nexo",
+      "releaseType": "release"
+    }
+  }
+}

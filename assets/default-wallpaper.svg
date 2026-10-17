@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1200" viewBox="0 0 1920 1200" fill="none">
+  <defs>
+    <linearGradient id="base" x1="112" y1="77" x2="1764" y2="1131" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#13191C"/>
+      <stop offset=".52" stop-color="#1A2022"/>
+      <stop offset="1" stop-color="#242026"/>
+    </linearGradient>
+    <linearGradient id="ribbon-a" x1="250" y1="124" x2="1421" y2="1055" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8A7DDE" stop-opacity=".21"/>
+      <stop offset=".48" stop-color="#67B8AE" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#D1957C" stop-opacity=".1"/>
+    </linearGradient>
+    <linearGradient id="ribbon-b" x1="1660" y1="144" x2="467" y2="1032" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#72BFB1" stop-opacity=".15"/>
+      <stop offset=".52" stop-color="#7584B9" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#CE9A7B" stop-opacity=".13"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" stroke="#DCE5DF" stroke-opacity=".035"/>
+    </pattern>
+  </defs>
+  <path fill="url(#base)" d="M0 0h1920v1200H0z"/>
+  <path fill="url(#grid)" d="M0 0h1920v1200H0z"/>
+  <path d="M-106 864C179 689 339 760 555 827c222 69 404 114 660-82 245-187 421-363 811-317v842H-106z" fill="url(#ribbon-a)"/>
+  <path d="M-99 987c274-196 511-211 739-119 258 103 420 126 641-45 210-161 390-319 736-274v651H-99z" fill="url(#ribbon-b)"/>
+  <path d="M-32 751c276-152 433-114 641-43 224 76 438 78 679-95 205-147 381-261 663-224" stroke="#9DCFC2" stroke-opacity=".17" stroke-width="2"/>
+  <path d="M-32 796c276-152 433-114 641-43 224 76 438 78 679-95 205-147 381-261 663-224" stroke="#C1A8D8" stroke-opacity=".12" stroke-width="2"/>
+  <path d="M-32 841c276-152 433-114 641-43 224 76 438 78 679-95 205-147 381-261 663-224" stroke="#D9A98F" stroke-opacity=".1" stroke-width="2"/>
+</svg>
