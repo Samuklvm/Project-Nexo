@@ -1,9 +1,4 @@
-﻿!include "nsDialogs.nsh"
-!include "WinMessages.nsh"
-
-Var PrivacyDialog
-Var PrivacyDetails
-Var TelemetryCheckbox
+﻿
 Var DeveloperTelemetryConsent
 
 LangString PRIVACY_TITLE 1046 "Privacidade e transparência"
@@ -24,6 +19,14 @@ LangString PRIVACY_CREATOR 1033 "Creator profile"
   IfErrors 0 +2
     StrCpy $DeveloperTelemetryConsent 0
 !macroend
+
+!ifndef BUILD_UNINSTALLER
+!include "nsDialogs.nsh"
+!include "WinMessages.nsh"
+
+Var PrivacyDialog
+Var PrivacyDetails
+Var TelemetryCheckbox
 
 !macro customPageAfterChangeDir
   !insertmacro skipPageIfUpdated
@@ -81,6 +84,7 @@ FunctionEnd
 Function OpenCreatorProfile
   ExecShell "open" "https://github.com/Samuklvm"
 FunctionEnd
+!endif
 
 !macro customInstall
   WriteRegDWORD HKCU "Software\NexoDeviceCare\Privacy" "DeveloperTelemetryOptIn" $DeveloperTelemetryConsent
