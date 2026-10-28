@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
     return () => ipcRenderer.removeListener('window:state', listener);
   },
   getSystemSnapshot: () => ipcRenderer.invoke('system:snapshot'),
+  getHardwareSensors: () => ipcRenderer.invoke('sensors:snapshot'),
   getTopProcesses: () => ipcRenderer.invoke('system:top-processes'),
   openTaskManager: () => ipcRenderer.invoke('system:task-manager'),
   listDrives: () => ipcRenderer.invoke('drives:list'),

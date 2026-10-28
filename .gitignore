@@ -1,5 +1,8 @@
 node_modules/
 release/
 dist/
+sensor-host/bin/
+sensor-host/obj/
+sensor-host/publish/
 *.log
 .DS_Store

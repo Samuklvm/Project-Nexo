@@ -25,6 +25,12 @@ const runCleanupButton = document.getElementById('run-cleanup');
 const runRepairButton = document.getElementById('run-repair');
 const activityList = document.querySelector('.activity-list');
 const autoCleanToggle = document.getElementById('auto-clean-toggle');
+const sensorRefreshButton = document.getElementById('sensor-refresh');
+const sensorExportButton = document.getElementById('sensor-export');
+const sensorDeviceList = document.getElementById('sensor-device-list');
+const sensorCategoryFilters = document.getElementById('sensor-category-filters');
+const sensorSearchInput = document.getElementById('sensor-search');
+const sensorAdvancedToggle = document.getElementById('sensor-advanced');
 const desktopBridge = window.nexoDesktop;
 document.body.classList.toggle('desktop-app', Boolean(desktopBridge));
 
@@ -60,6 +66,9 @@ let highDiskSince = 0;
 let cleanupOperationInProgress = false;
 let performanceHistory = null;
 let selectedHistoryRange = '5m';
+let hardwareSensorSnapshot = null;
+let selectedSensorCategory = 'all';
+let sensorRefreshInProgress = false;
 let autoCleanupEnabled = getLocalStorageValue(autoCleanPreferenceKey) === 'true';
 
 function getLocalStorageValue(key) {
@@ -107,6 +116,7 @@ function setView(viewName) {
 
   const labelMap = {
     overview: 'Visão geral',
+    sensors: 'Sensores',
     diagnosis: 'Diagnóstico',
     cleanup: 'Limpeza',
     repairs: 'Reparos',
@@ -116,10 +126,157 @@ function setView(viewName) {
   };
   if (breadcrumbCurrent) breadcrumbCurrent.textContent = labelMap[viewName] || 'Visão geral';
   if (viewName === 'overview') drawPerformanceCharts();
+  if (viewName === 'sensors') refreshHardwareSensors().catch(() => {});
 }
 
 viewButtons.forEach((button) => {
   button.addEventListener('click', () => setView(button.dataset.view));
+});
+
+const sensorTypeLabels = {
+  Motherboard: 'Placa-mãe', SuperIO: 'Controlador da placa-mãe', Cpu: 'Processador', Memory: 'Memória',
+  GpuNvidia: 'GPU NVIDIA', GpuAmd: 'GPU AMD', GpuIntel: 'GPU Intel', Storage: 'Armazenamento',
+  Network: 'Rede', Cooler: 'Refrigeração', EmbeddedController: 'Controlador embarcado', Psu: 'Fonte',
+  Battery: 'Bateria', PowerMonitor: 'Medidor de energia'
+};
+const sensorMetricLabels = {
+  Voltage: 'Tensão', Current: 'Corrente', Power: 'Potência', Clock: 'Clock', Temperature: 'Temperatura',
+  Load: 'Uso', Frequency: 'Frequência', Fan: 'Ventoinha', Flow: 'Fluxo', Control: 'Controle', Level: 'Nível',
+  Factor: 'Fator', Data: 'Dados', Throughput: 'Transferência', TimeSpan: 'Tempo', Timing: 'Latência',
+  Energy: 'Energia', Noise: 'Ruído', Conductivity: 'Condutividade', Humidity: 'Umidade'
+};
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[character]);
+}
+
+function formatSensorValue(value, unit = '') {
+  if (!Number.isFinite(value)) return '—';
+  const digits = Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 ? 1 : 2;
+  const formatted = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: digits }).format(value);
+  if (unit === 'B') return formatBytes(value);
+  if (unit === 'B/s') return `${formatBytes(value)}/s`;
+  return `${formatted}${unit ? ` ${unit}` : ''}`;
+}
+
+function renderSensorExplorer() {
+  if (!hardwareSensorSnapshot || !sensorDeviceList) return;
+  const snapshot = hardwareSensorSnapshot;
+  const devices = Array.isArray(snapshot.devices) ? snapshot.devices : [];
+  const query = (sensorSearchInput?.value || '').trim().toLocaleLowerCase('pt-BR');
+  const includeAdvanced = Boolean(sensorAdvancedToggle?.checked);
+  const categories = [...new Set(devices.map((device) => device.type))];
+  const filterLabels = ['all', ...categories];
+  if (sensorCategoryFilters) {
+    sensorCategoryFilters.innerHTML = filterLabels.map((category) => {
+      const label = category === 'all' ? 'Tudo' : (sensorTypeLabels[category] || category);
+      const active = selectedSensorCategory === category;
+      return `<button type="button" data-sensor-category="${escapeHtml(category)}" aria-pressed="${active}">${escapeHtml(label)}</button>`;
+    }).join('');
+  }
+
+  const visibleDevices = devices.map((device) => ({
+    ...device,
+    visibleSensors: (Array.isArray(device.sensors) ? device.sensors : []).filter((sensor) => {
+      if (!includeAdvanced && sensor.advanced) return false;
+      if (selectedSensorCategory !== 'all' && device.type !== selectedSensorCategory) return false;
+      const terms = `${device.name} ${device.path} ${sensor.name} ${sensor.type} ${sensorMetricLabels[sensor.type] || ''}`.toLocaleLowerCase('pt-BR');
+      return !query || terms.includes(query);
+    })
+  })).filter((device) => {
+    if (selectedSensorCategory !== 'all' && device.type !== selectedSensorCategory) return false;
+    if (query && !device.visibleSensors.length && !`${device.name} ${device.path}`.toLocaleLowerCase('pt-BR').includes(query)) return false;
+    return device.visibleSensors.length > 0 || (!query && (device.sensors || []).length === 0);
+  });
+
+  if (snapshot.status !== 'ready') {
+    const message = snapshot.issues?.[0]?.message || 'O coletor detalhado ainda não está disponível.';
+    sensorDeviceList.innerHTML = `<article class="panel-box sensor-empty"><strong>Não foi possível ler os sensores</strong><span>${escapeHtml(message)}</span><small>As leituras básicas do painel continuam funcionando.</small></article>`;
+    return;
+  }
+  if (!visibleDevices.length) {
+    sensorDeviceList.innerHTML = `<article class="panel-box sensor-empty"><strong>${devices.length ? 'Nenhum sensor corresponde ao filtro' : 'Nenhum sensor foi exposto'}</strong><span>${devices.length ? 'Tente outra busca ou categoria, ou inclua sensores avançados.' : 'O Windows, firmware ou os componentes deste PC não disponibilizaram leituras ao Nexo nesta sessão.'}</span></article>`;
+    return;
+  }
+
+  sensorDeviceList.innerHTML = visibleDevices.map((device) => {
+    const sensorRows = device.visibleSensors.map((sensor) => {
+      const state = sensor.value === null ? 'Indisponível' : formatSensorValue(sensor.value, sensor.unit);
+      const maximum = sensor.max === null ? '—' : formatSensorValue(sensor.max, sensor.unit);
+      const minimum = sensor.min === null ? '—' : formatSensorValue(sensor.min, sensor.unit);
+      return `<tr class="${sensor.advanced ? 'is-advanced' : ''}"><td><span>${escapeHtml(sensor.name)}</span>${sensor.advanced ? '<small>Avançado</small>' : ''}</td><td>${escapeHtml(sensorMetricLabels[sensor.type] || sensor.type)}</td><td class="sensor-current-value">${escapeHtml(state)}</td><td>${escapeHtml(minimum)}</td><td>${escapeHtml(maximum)}</td></tr>`;
+    }).join('');
+    const deviceCategory = sensorTypeLabels[device.type] || device.type;
+    const noSensor = !device.visibleSensors.length;
+    return `<article class="panel-box sensor-device-card"><header class="sensor-device-heading"><div><span class="sensor-device-category">${escapeHtml(deviceCategory)}</span><h2>${escapeHtml(device.name)}</h2><small>${escapeHtml(device.path || deviceCategory)}</small></div><span class="sensor-device-total">${device.visibleSensors.length} leituras</span></header>${noSensor ? '<p class="sensor-no-readings">Hardware identificado; nenhum valor de sensor disponível.</p>' : `<div class="sensor-table-wrap"><table class="sensor-table"><thead><tr><th>Sensor</th><th>Métrica</th><th>Agora</th><th>Mín.</th><th>Máx.</th></tr></thead><tbody>${sensorRows}</tbody></table></div>`}</article>`;
+  }).join('');
+}
+
+async function refreshHardwareSensors() {
+  if (sensorRefreshInProgress) return hardwareSensorSnapshot;
+  if (!desktopBridge?.getHardwareSensors) {
+    hardwareSensorSnapshot = { status: 'unavailable', devices: [], sensorCount: 0, issues: [{ message: 'Abra o Nexo para computador para acessar os sensores.' }] };
+    renderSensorExplorer();
+    return hardwareSensorSnapshot;
+  }
+  sensorRefreshInProgress = true;
+  if (sensorRefreshButton) sensorRefreshButton.disabled = true;
+  setText('sensor-status-title', 'Lendo hardware localmente');
+  setText('sensor-status-detail', 'Atualizando os sensores disponíveis; essa leitura fica neste computador.');
+  try {
+    hardwareSensorSnapshot = await desktopBridge.getHardwareSensors();
+    const snapshot = hardwareSensorSnapshot;
+    setText('sensor-count', Number(snapshot.sensorCount || 0).toLocaleString('pt-BR'));
+    const time = snapshot.collectedAt ? new Date(snapshot.collectedAt) : new Date();
+    setText('sensor-updated-at', `Atualizado às ${time.toLocaleTimeString('pt-BR')}`);
+    if (snapshot.status === 'ready') {
+      setText('sensor-status-title', `${snapshot.sensorCount || 0} leituras disponíveis`);
+      const deviceCount = (snapshot.devices || []).length;
+      const issueCount = (snapshot.issues || []).length;
+      setText('sensor-status-detail', `${deviceCount} componentes detectados · somente leitura local${issueCount ? ` · ${issueCount} componente(s) não responderam` : ''}.`);
+    } else {
+      setText('sensor-status-title', 'Leitura detalhada indisponível');
+      setText('sensor-status-detail', snapshot.issues?.[0]?.message || 'Este sistema não disponibilizou o coletor de hardware.');
+    }
+    renderSensorExplorer();
+    return snapshot;
+  } finally {
+    sensorRefreshInProgress = false;
+    if (sensorRefreshButton) sensorRefreshButton.disabled = false;
+  }
+}
+
+sensorCategoryFilters?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-sensor-category]');
+  if (!button) return;
+  selectedSensorCategory = button.dataset.sensorCategory;
+  renderSensorExplorer();
+});
+sensorSearchInput?.addEventListener('input', renderSensorExplorer);
+sensorAdvancedToggle?.addEventListener('change', renderSensorExplorer);
+sensorRefreshButton?.addEventListener('click', () => refreshHardwareSensors().catch(() => {}));
+sensorExportButton?.addEventListener('click', () => {
+  const rows = [['Componente', 'Categoria', 'Sensor', 'Métrica', 'Valor', 'Unidade', 'Mínimo', 'Máximo', 'Avançado']];
+  for (const device of hardwareSensorSnapshot?.devices || []) {
+    for (const sensor of device.sensors || []) {
+      rows.push([device.path || device.name, sensorTypeLabels[device.type] || device.type, sensor.name,
+        sensorMetricLabels[sensor.type] || sensor.type, sensor.value ?? '', sensor.unit || '', sensor.min ?? '', sensor.max ?? '', sensor.advanced ? 'Sim' : 'Não']);
+    }
+  }
+  if (rows.length === 1) {
+    showToast('Ainda não há sensores para exportar.');
+    return;
+  }
+  const csv = `\uFEFF${rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\r\n')}`;
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `nexo-sensores-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast('Arquivo CSV salvo localmente.');
 });
 
 document.querySelectorAll('[data-history-range]').forEach((button) => {
@@ -170,7 +327,9 @@ function getPerformanceHistory() {
       diskPercent: sample[3],
       gpuPercent: sample[4],
       acpiTemperatureCelsius: sample[5],
-      gpuTemperatureCelsius: sample[6]
+      gpuTemperatureCelsius: sample[6],
+      cpuSensorTemperatureCelsius: sample[7],
+      gpuSensorTemperatureCelsius: sample[8]
     }) : sample)
     .filter((sample) => sample && Number.isFinite(sample.timestamp) && sample.timestamp >= cutoff)
     .slice(-maxHistorySamples);
@@ -188,14 +347,17 @@ function recordPerformanceSample(snapshot) {
     .filter(Number.isFinite)
     .reduce((highest, value) => Math.max(highest, value), null);
   const gpu = thermal.gpuSensors?.[0] || null;
+  const deepMetrics = getDeepSensorMetrics();
   samples.push({
     timestamp: now,
     cpuPercent: snapshot.cpuUsage,
     memoryPercent: snapshot.memoryPercent,
     diskPercent: snapshot.primaryDrive?.usedPercent ?? null,
-    gpuPercent: gpu?.usagePercent ?? null,
+    gpuPercent: deepMetrics.gpuLoad ?? gpu?.usagePercent ?? null,
     acpiTemperatureCelsius: acpiTemperature,
-    gpuTemperatureCelsius: gpu?.temperatureCelsius ?? null
+    gpuTemperatureCelsius: deepMetrics.gpuTemperature ?? gpu?.temperatureCelsius ?? null,
+    cpuSensorTemperatureCelsius: deepMetrics.cpuTemperature,
+    gpuSensorTemperatureCelsius: deepMetrics.gpuTemperature
   });
   performanceHistory = samples
     .filter((sample) => sample.timestamp >= now - historyRetentionMs)
@@ -208,7 +370,9 @@ function recordPerformanceSample(snapshot) {
       sample.diskPercent,
       sample.gpuPercent,
       sample.acpiTemperatureCelsius,
-      sample.gpuTemperatureCelsius
+      sample.gpuTemperatureCelsius,
+      sample.cpuSensorTemperatureCelsius,
+      sample.gpuSensorTemperatureCelsius
     ]);
     localStorage.setItem(performanceHistoryKey, JSON.stringify(compactHistory));
     refreshLearningStatus();
@@ -394,15 +558,33 @@ function getPerformanceSample(snapshot, timestamp = Date.now()) {
     .filter(Number.isFinite)
     .reduce((highest, value) => Math.max(highest, value), null);
   const gpu = thermal.gpuSensors?.[0] || null;
+  const deepMetrics = getDeepSensorMetrics();
 
   return {
     timestamp,
     cpu: snapshot.cpuUsage,
     memory: snapshot.memoryPercent,
     disk: snapshot.primaryDrive?.usedPercent ?? null,
-    gpu: gpu?.usagePercent ?? null,
+    gpu: deepMetrics.gpuLoad ?? gpu?.usagePercent ?? null,
     acpiTemperature,
-    gpuTemperature: gpu?.temperatureCelsius ?? null
+    gpuTemperature: deepMetrics.gpuTemperature ?? gpu?.temperatureCelsius ?? null,
+    cpuSensorTemperature: deepMetrics.cpuTemperature
+  };
+}
+
+function getDeepSensorMetrics() {
+  const devices = hardwareSensorSnapshot?.status === 'ready' ? hardwareSensorSnapshot.devices || [] : [];
+  const collect = (types, sensorType) => devices
+    .filter((device) => types.includes(device.type))
+    .flatMap((device) => device.sensors || [])
+    .filter((sensor) => sensor.type === sensorType && Number.isFinite(sensor.value))
+    .map((sensor) => sensor.value);
+  const max = (values) => values.length ? Math.max(...values) : null;
+  const gpuTypes = ['GpuNvidia', 'GpuAmd', 'GpuIntel'];
+  return {
+    cpuTemperature: max(collect(['Cpu'], 'Temperature')),
+    gpuTemperature: max(collect(gpuTypes, 'Temperature')),
+    gpuLoad: max(collect(gpuTypes, 'Load'))
   };
 }
 
@@ -416,7 +598,8 @@ function getChartSamples(durationMs) {
     disk: sample.disk ?? sample.diskPercent ?? null,
     gpu: sample.gpu ?? sample.gpuPercent ?? null,
     acpiTemperature: sample.acpiTemperature ?? sample.acpiTemperatureCelsius ?? null,
-    gpuTemperature: sample.gpuTemperature ?? sample.gpuTemperatureCelsius ?? null
+    gpuTemperature: sample.gpuTemperature ?? sample.gpuTemperatureCelsius ?? null,
+    cpuSensorTemperature: sample.cpuSensorTemperature ?? sample.cpuSensorTemperatureCelsius ?? null
   });
 
   for (const sample of getPerformanceHistory()) {
@@ -590,8 +773,9 @@ function drawPerformanceCharts() {
   drawPerformanceChart('chart-disk', [line('disk', '#ffb56b')], percentRange, timeWindow);
   drawPerformanceChart('chart-gpu', [line('gpu', '#96e37c')], percentRange, timeWindow);
   drawPerformanceChart('chart-temperature', [
-    line('acpiTemperature', '#a996ff', false),
-    line('gpuTemperature', '#63dcc7', false)
+    line('acpiTemperature', '#ffb56b', false),
+    line('gpuTemperature', '#63dcc7', false),
+    line('cpuSensorTemperature', '#a996ff', false)
   ], temperatureRange, timeWindow);
   document.querySelectorAll('[data-history-window]').forEach((label) => { label.textContent = selectedRange.label; });
   updateChartSummary('chart-cpu-summary', samples, 'cpu', '%');
@@ -626,7 +810,7 @@ function updateChartSummary(elementId, samples, metric, suffix) {
 
 function updateTemperatureSummary(samples) {
   const summaries = [];
-  for (const [key, label] of [['acpiTemperature', 'ACPI'], ['gpuTemperature', 'GPU']]) {
+  for (const [key, label] of [['cpuSensorTemperature', 'CPU'], ['gpuTemperature', 'GPU'], ['acpiTemperature', 'ACPI']]) {
     const values = samples.map((sample) => sample[key]).filter(Number.isFinite);
     if (!values.length) continue;
     const average = Math.round(values.reduce((total, value) => total + value, 0) / values.length);
@@ -727,6 +911,7 @@ processRefreshButton?.addEventListener('click', refreshProcessInsights);
 
 function updatePerformanceCharts(snapshot) {
   const sample = getPerformanceSample(snapshot);
+  const deepMetrics = getDeepSensorMetrics();
   const lastSample = livePerformanceSamples[livePerformanceSamples.length - 1];
   if (lastSample && sample.timestamp - lastSample.timestamp < 1500) return;
   livePerformanceSamples.push(sample);
@@ -734,25 +919,30 @@ function updatePerformanceCharts(snapshot) {
 
   const thermal = snapshot.temperatureReadings || {};
   const gpu = thermal.gpuSensors?.[0] || null;
-  const systemTemperature = sample.gpuTemperature ?? sample.acpiTemperature;
+  const systemTemperature = sample.gpuTemperature ?? sample.cpuSensorTemperature ?? sample.acpiTemperature;
   const temperatureSource = sample.gpuTemperature !== null
-    ? `${gpu?.name || 'GPU'} NVIDIA`
+    ? `${gpu?.name || 'GPU'} · sensor do hardware`
+    : sample.cpuSensorTemperature !== null ? 'Processador · sensor do hardware'
     : sample.acpiTemperature !== null ? 'Maior zona ACPI' : 'Sem sensor compatível';
 
-  setText('gpu-usage-value', Number.isFinite(gpu?.usagePercent) ? `${gpu.usagePercent}%` : '--');
-  setText('gpu-usage-state', gpu
-    ? `${gpu.name} · ${gpu.temperatureCelsius === null ? 'sem temperatura' : `${gpu.temperatureCelsius} °C`} · VRAM ${gpu.memoryUsedMb ?? '--'}/${gpu.memoryTotalMb ?? '--'} MB`
-    : 'Requer NVIDIA compatível e nvidia-smi');
+  const gpuLoad = deepMetrics.gpuLoad ?? gpu?.usagePercent;
+  setMeter('gpu-usage-meter', gpuLoad);
+  setText('gpu-usage-value', Number.isFinite(gpuLoad) ? `${gpuLoad.toFixed(0)}%` : '--');
+  setText('gpu-usage-state', deepMetrics.gpuLoad !== null
+    ? 'Leitura do hardware · NVIDIA, AMD ou Intel conforme suporte'
+    : gpu ? `${gpu.name} · ${gpu.temperatureCelsius === null ? 'sem temperatura' : `${gpu.temperatureCelsius} °C`} · VRAM ${gpu.memoryUsedMb ?? '--'}/${gpu.memoryTotalMb ?? '--'} MB`
+      : 'A GPU pode não expor sensores neste computador');
   setText('system-temperature-value', Number.isFinite(systemTemperature) ? `${systemTemperature} °C` : '--');
   setText('system-temperature-state', temperatureSource);
   setText('chart-cpu-value', `${snapshot.cpuUsage}%`);
   setText('chart-memory-value', `${snapshot.memoryPercent}%`);
   setText('chart-disk-value', snapshot.primaryDrive ? `${snapshot.primaryDrive.usedPercent}%` : '--');
-  setText('chart-gpu-value', Number.isFinite(gpu?.usagePercent) ? `${gpu.usagePercent}%` : '--');
-  setText('chart-gpu-hardware', gpu ? `${gpu.name} · ${gpu.memoryUsedMb ?? '--'} / ${gpu.memoryTotalMb ?? '--'} MB` : 'Requer nvidia-smi');
+  setText('chart-gpu-value', Number.isFinite(gpuLoad) ? `${gpuLoad.toFixed(0)}%` : '--');
+  setText('chart-gpu-hardware', deepMetrics.gpuLoad !== null ? 'Sensor do hardware · qualquer fabricante' : gpu ? `${gpu.name} · ${gpu.memoryUsedMb ?? '--'} / ${gpu.memoryTotalMb ?? '--'} MB` : 'Sensor da GPU indisponível');
+  setText('diagnosis-gpu', Number.isFinite(gpuLoad) ? `${gpuLoad.toFixed(0)}%` : 'Não detectada');
   setText('chart-temperature-value', Number.isFinite(systemTemperature) ? `${systemTemperature} °C` : '--');
-  setText('chart-temperature-detail', sample.acpiTemperature !== null || sample.gpuTemperature !== null
-    ? `${sample.acpiTemperature !== null ? 'ACPI' : ''}${sample.acpiTemperature !== null && sample.gpuTemperature !== null ? ' · ' : ''}${sample.gpuTemperature !== null ? 'GPU NVIDIA' : ''}`
+  setText('chart-temperature-detail', sample.acpiTemperature !== null || sample.gpuTemperature !== null || sample.cpuSensorTemperature !== null
+    ? `${sample.cpuSensorTemperature !== null ? 'CPU' : ''}${sample.cpuSensorTemperature !== null && (sample.gpuTemperature !== null || sample.acpiTemperature !== null) ? ' · ' : ''}${sample.gpuTemperature !== null ? 'GPU' : ''}${sample.gpuTemperature !== null && sample.acpiTemperature !== null ? ' · ' : ''}${sample.acpiTemperature !== null ? 'ACPI' : ''}`
     : 'Sem sensores compatíveis');
   setText('telemetry-updated-at', `Atualizado às ${new Date(sample.timestamp).toLocaleTimeString('pt-BR')}`);
   drawPerformanceCharts();
@@ -786,7 +976,8 @@ function renderSystemSnapshot(snapshot) {
     .map((sensor) => sensor.celsius)
     .filter(Number.isFinite)
     .reduce((highest, value) => Math.max(highest, value), null);
-  const reportedTemperature = gpu?.temperatureCelsius ?? acpiTemperature;
+  const deepMetrics = getDeepSensorMetrics();
+  const reportedTemperature = deepMetrics.gpuTemperature ?? deepMetrics.cpuTemperature ?? gpu?.temperatureCelsius ?? acpiTemperature;
   const cpuText = `${snapshot.cpuUsage}%`;
   const memoryText = `${snapshot.memoryPercent}%`;
   const diskText = primaryDrive ? `${primaryDrive.usedPercent}%` : '--';
@@ -1490,3 +1681,7 @@ checkForUpdates();
 setInterval(() => {
   refreshSystemSnapshot().catch(() => setAppStatus('Falha ao atualizar leitura'));
 }, 5000);
+refreshHardwareSensors().catch(() => {});
+setInterval(() => {
+  refreshHardwareSensors().catch(() => {});
+}, 15000);

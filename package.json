@@ -1,13 +1,14 @@
 {
   "name": "nexo-device-care",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "Nexo device care desktop app",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis",
-    "release": "electron-builder --win nsis --publish always"
+    "build:sensors": "dotnet publish sensor-host/Nexo.SensorHost.csproj -c Release -r win-x64 --self-contained true -o sensor-host/publish",
+    "dist": "npm run build:sensors && electron-builder --win nsis",
+    "release": "npm run build:sensors && electron-builder --win nsis --publish always"
   },
   "repository": {
     "type": "git",
@@ -34,6 +35,17 @@
       "preload.cjs",
       "package.json",
       "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "sensor-host/publish",
+        "to": "sensor-host",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "THIRD-PARTY-NOTICES.md",
+        "to": "THIRD-PARTY-NOTICES.md"
+      }
     ],
     "win": {
       "target": [

@@ -4,8 +4,9 @@ Aplicativo desktop para Windows que reúne indicadores do computador e ferrament
 
 ## Recursos atuais
 
-- Painel com uso de CPU, memória, disco e GPU NVIDIA compatível, além de temperaturas reportadas por sensores disponíveis.
-- Gráficos locais de desempenho atualizados a cada cinco segundos, com períodos de 5 minutos a 7 dias. O histórico local persiste CPU, RAM, disco principal, GPU NVIDIA compatível e temperaturas disponíveis, com picos preservados na visualização de períodos longos.
+- Painel com uso de CPU, memória, disco e GPU, além de temperaturas reportadas por sensores disponíveis.
+- Explorador local com sensores detalhados para CPU, GPU NVIDIA/AMD/Intel, placa-mãe, memória, armazenamento, rede, bateria, fonte e controladores compatíveis; permite pesquisar, filtrar, incluir sensores avançados e exportar CSV.
+- Gráficos locais de desempenho atualizados a cada cinco segundos, com períodos de 5 minutos a 7 dias. O histórico mantém CPU, RAM, disco principal, GPU e temperaturas disponíveis; as curvas incluem temperaturas de CPU, GPU e ACPI conforme expostas pelo computador.
 - Diagnóstico sob demanda que compara CPU, RAM e disco com o padrão local e identifica processos que mais consomem CPU ou memória. A página inicial também oferece uma leitura de processos sob demanda.
 - Prévia e remoção de arquivos temporários antigos do usuário.
 - Limpeza automática opcional quando o disco principal permanece com uso elevado.
@@ -14,12 +15,13 @@ Aplicativo desktop para Windows que reúne indicadores do computador e ferrament
 
 ## Executar em desenvolvimento
 
-Requisitos: Windows e Node.js 20 ou superior.
+Requisitos: Windows, Node.js 20 ou superior e .NET SDK 10 para compilar o coletor de sensores.
 
 Na pasta do projeto, instale as dependências e inicie o aplicativo:
 
 ```powershell
 npm install
+npm run build:sensors
 npm start
 ```
 
@@ -35,12 +37,12 @@ O instalador também permite escolher Português (Brasil) ou English, mostra a a
 
 ## Publicar uma versão
 
-1. Altere o campo `version` em `package.json` e envie o commit para o GitHub.
-2. Crie uma tag `v` seguida exatamente da mesma versão. Por exemplo, para a versão `0.1.3`:
+1. Altere o campo `version` em `package.json` e envie o commit para o GitHub. A Action compila o coletor local em .NET 10 e empacota o instalador Electron.
+2. Crie uma tag `v` seguida exatamente da mesma versão. Para a versão `0.1.6`:
 
    ```powershell
-   git tag v0.1.3
-   git push origin v0.1.3
+   git tag v0.1.6
+   git push origin v0.1.6
    ```
 
 3. A GitHub Action compila o instalador Windows x64 e publica a release. Acompanhe a execução na aba **Actions**; após o sucesso, os arquivos ficam na página **Releases**.
@@ -58,8 +60,8 @@ Sem esses segredos, a release continua sendo criada, mas sem assinatura. Nunca c
 
 ## Limites e privacidade
 
-- As leituras são feitas localmente. A temperatura ACPI depende do suporte do firmware; métricas de GPU dependem de uma NVIDIA compatível e do comando `nvidia-smi`. Muitos PCs não expõem sensores térmicos ao aplicativo, e nesses casos a temperatura aparece como indisponível.
-- Os gráficos ao vivo atualizam a cada cinco segundos e mantêm a sessão recente em memória. O seletor mostra 5 minutos, 30 minutos, 24 horas ou até 7 dias de histórico local, com CPU, RAM, disco principal, GPU NVIDIA compatível e temperaturas disponíveis. As curvas são resumidas para manter os picos visíveis em períodos longos. Nada disso é enviado a servidores.
+- As leituras de hardware são feitas localmente pela LibreHardwareMonitorLib, além das consultas de sistema já existentes. A disponibilidade depende do componente, firmware e suporte da biblioteca. Algumas leituras avançadas exigem driver ou privilégios que o Nexo não instala nem solicita silenciosamente; sem eles, o sensor pode ficar indisponível. A NVIDIA também pode fornecer campos extras pelo `nvidia-smi` quando instalado.
+- Os gráficos ao vivo atualizam a cada cinco segundos e mantêm a sessão recente em memória. O seletor mostra 5 minutos, 30 minutos, 24 horas ou até 7 dias de histórico local, com CPU, RAM, disco principal, GPU e temperaturas disponíveis. As curvas são resumidas para manter os picos visíveis em períodos longos. Nada disso é enviado a servidores.
 - O diagnóstico usa sinais observáveis e regras heurísticas; indica possibilidades, não comprova causas. Ele não encerra processos.
 - O histórico usado pelo diagnóstico e pelos gráficos guarda até sete dias de amostras locais em intervalos de um minuto. O feedback também fica neste computador; esses dados não são enviados para servidores.
 - A limpeza exibe uma prévia e remove somente arquivos regulares diretamente na pasta temporária do usuário, com mais de sete dias. Há um limite de 5.000 arquivos por execução; subpastas e links são ignorados.

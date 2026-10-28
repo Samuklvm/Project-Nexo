@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { promisify } = require('util');
 const { pathToFileURL } = require('url');
+const readline = require('readline');
 
 const execFileAsync = promisify(execFile);
 const CLEANUP_MAX_FILES = 5000;
@@ -22,6 +23,9 @@ let updateReleaseInfo = null;
 let updateProgress = null;
 let driveCache = { expiresAt: 0, value: null, pending: null };
 let temperatureCache = { expiresAt: 0, value: null, pending: null };
+let sensorHost = null;
+let sensorRequestPending = null;
+let sensorHostStatus = 'starting';
 
 function runPowerShell(script, timeout = 15000) {
   if (process.platform !== 'win32') {
@@ -177,6 +181,82 @@ async function getCachedTemperatureReadings() {
     temperatureCache.pending = null;
   });
   return temperatureCache.pending;
+}
+
+function startSensorHost() {
+  if (sensorHost) return sensorHost;
+  if (process.platform !== 'win32') {
+    sensorHostStatus = 'unsupported';
+    return null;
+  }
+
+  const helperPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'sensor-host', 'Nexo.SensorHost.exe')
+    : path.join(__dirname, 'sensor-host', 'publish', 'Nexo.SensorHost.exe');
+  const spawnedHost = spawn(helperPath, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+  sensorHost = spawnedHost;
+  sensorHostStatus = 'starting';
+  const output = readline.createInterface({ input: spawnedHost.stdout });
+  output.on('line', (line) => {
+    if (sensorHost !== spawnedHost) return;
+    if (!sensorRequestPending) return;
+    try {
+      sensorRequestPending.resolve(JSON.parse(line));
+    } catch {
+      sensorRequestPending.resolve({ status: 'error', devices: [], sensorCount: 0, issues: [{ device: 'Coletor', message: 'Resposta de sensor inválida.' }] });
+    }
+    clearTimeout(sensorRequestPending.timeout);
+    sensorRequestPending = null;
+  });
+  spawnedHost.once('error', () => {
+    if (sensorHost !== spawnedHost) return;
+    sensorHostStatus = 'unavailable';
+    sensorHost = null;
+    if (sensorRequestPending) {
+      clearTimeout(sensorRequestPending.timeout);
+      sensorRequestPending.resolve({ status: 'unavailable', devices: [], sensorCount: 0, issues: [{ device: 'Coletor', message: 'O coletor de sensores não está instalado. Gere o app com o SDK .NET 10.' }] });
+      sensorRequestPending = null;
+    }
+  });
+  spawnedHost.once('exit', () => {
+    if (sensorHost !== spawnedHost) return;
+    sensorHostStatus = 'unavailable';
+    sensorHost = null;
+    if (sensorRequestPending) {
+      clearTimeout(sensorRequestPending.timeout);
+      sensorRequestPending.resolve({ status: 'unavailable', devices: [], sensorCount: 0, issues: [{ device: 'Coletor', message: 'O coletor de sensores foi encerrado.' }] });
+      sensorRequestPending = null;
+    }
+  });
+  return spawnedHost;
+}
+
+async function getHardwareSensors() {
+  if (process.platform !== 'win32') {
+    return { status: 'unsupported', collectedAt: new Date().toISOString(), devices: [], sensorCount: 0, issues: [] };
+  }
+  if (sensorRequestPending) return sensorRequestPending.promise;
+  const host = startSensorHost();
+  if (!host) return { status: sensorHostStatus, collectedAt: new Date().toISOString(), devices: [], sensorCount: 0, issues: [] };
+
+  let resolvePending;
+  const promise = new Promise((resolve) => { resolvePending = resolve; });
+  const pending = { promise, resolve: resolvePending, timeout: null };
+  sensorRequestPending = pending;
+  pending.timeout = setTimeout(() => {
+    if (sensorRequestPending !== pending) return;
+    sensorRequestPending = null;
+    sensorHost?.kill();
+    sensorHost = null;
+    pending.resolve({ status: 'timeout', collectedAt: new Date().toISOString(), devices: [], sensorCount: 0, issues: [{ device: 'Coletor', message: 'A leitura de sensores demorou demais e foi interrompida.' }] });
+  }, 20000);
+  host.stdin.write('{"command":"sample"}\n', (error) => {
+    if (!error || sensorRequestPending !== pending) return;
+    clearTimeout(pending.timeout);
+    sensorRequestPending = null;
+    pending.resolve({ status: 'unavailable', collectedAt: new Date().toISOString(), devices: [], sensorCount: 0, issues: [{ device: 'Coletor', message: 'Não foi possível iniciar a leitura detalhada.' }] });
+  });
+  return promise;
 }
 
 async function getSystemSnapshot() {
@@ -427,6 +507,8 @@ registerIpcHandler('window:get-state', () => ({ maximized: mainWindow?.isMaximiz
 
 registerIpcHandler('system:snapshot', getSystemSnapshot);
 
+registerIpcHandler('sensors:snapshot', getHardwareSensors);
+
 registerIpcHandler('system:top-processes', getTopProcesses);
 
 registerIpcHandler('system:task-manager', async () => {
@@ -590,4 +672,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  sensorHost?.kill();
 });

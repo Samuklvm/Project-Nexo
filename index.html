@@ -45,6 +45,10 @@
             <span class="nav-icon">◎</span>
             <span>Visão geral</span>
           </button>
+          <button class="nav-item" type="button" data-view="sensors">
+            <span class="nav-icon">⌁</span>
+            <span>Sensores</span>
+          </button>
           <button class="nav-item" type="button" data-view="diagnosis">
             <span class="nav-icon">◌</span>
             <span>Diagnóstico</span>
@@ -138,7 +142,7 @@
                 <small id="disk-usage-state">Aguardando leitura</small>
               </article>
               <article class="panel-box stat-box">
-                <span class="stat-label">GPU NVIDIA</span>
+                <span class="stat-label">Uso da GPU</span>
                 <strong id="gpu-usage-value">--</strong>
                 <span class="stat-meter gpu-meter" aria-hidden="true"><i id="gpu-usage-meter"></i></span>
                 <small id="gpu-usage-state">Sensor não detectado</small>
@@ -188,13 +192,13 @@
                   <div class="chart-footer"><span id="chart-disk-summary">Unidade principal</span><span data-history-window>5 min</span></div>
                 </article>
                 <article class="panel-box performance-card">
-                  <div class="performance-card-heading"><span>GPU NVIDIA</span><strong id="chart-gpu-value">--</strong></div>
-                  <canvas class="metric-chart" id="chart-gpu" role="img" aria-label="Histórico de uso da GPU NVIDIA"></canvas>
+                  <div class="performance-card-heading"><span>Uso da GPU</span><strong id="chart-gpu-value">--</strong></div>
+                  <canvas class="metric-chart" id="chart-gpu" role="img" aria-label="Histórico de uso da GPU"></canvas>
                   <div class="chart-footer"><span id="chart-gpu-hardware">Sensor não detectado</span><span id="chart-gpu-summary">Aguardando leitura</span><span data-history-window>5 min</span></div>
                 </article>
                 <article class="panel-box performance-card temperature-chart-card">
                   <div class="performance-card-heading"><span>Temperatura reportada</span><strong id="chart-temperature-value">--</strong></div>
-                  <div class="chart-legend" aria-label="Legenda dos sensores de temperatura"><span><i class="legend-acpi"></i>ACPI</span><span><i class="legend-gpu"></i>GPU NVIDIA</span></div>
+                  <div class="chart-legend" aria-label="Legenda dos sensores de temperatura"><span><i class="legend-acpi"></i>CPU</span><span><i class="legend-gpu"></i>GPU</span><span><i class="legend-cpu"></i>ACPI</span></div>
                   <canvas class="metric-chart" id="chart-temperature" role="img" aria-label="Histórico dos sensores térmicos disponíveis"></canvas>
                   <div class="chart-footer"><span id="chart-temperature-detail">Sem sensores compatíveis</span><span id="chart-temperature-summary">Aguardando leitura</span><span data-history-window>5 min</span></div>
                 </article>
@@ -242,6 +246,42 @@
                 <p class="empty-state">Use “Analisar agora” para ver quais programas estão usando mais recursos.</p>
               </div>
             </article>
+          </section>
+
+          <section class="view-panel" data-view-panel="sensors">
+            <div class="page-heading sensor-page-heading">
+              <div>
+                <span class="eyebrow">Telemetria local profunda</span>
+                <h1>Explorador de hardware</h1>
+                <p>Leituras detalhadas de componentes e sensores disponíveis neste computador.</p>
+              </div>
+              <div class="sensor-page-actions">
+                <button class="button button-secondary" id="sensor-export" type="button">Exportar CSV</button>
+                <button class="button" id="sensor-refresh" type="button">Atualizar sensores</button>
+              </div>
+            </div>
+
+            <article class="panel-box sensor-status-panel">
+              <div class="sensor-status-icon" aria-hidden="true">⌁</div>
+              <div class="sensor-status-copy">
+                <strong id="sensor-status-title">Iniciando leitura local</strong>
+                <span id="sensor-status-detail">Nenhum dado é enviado. A disponibilidade depende dos sensores expostos pelo hardware e pelo firmware.</span>
+              </div>
+              <div class="sensor-status-count"><strong id="sensor-count">--</strong><span>sensores</span></div>
+            </article>
+
+            <div class="sensor-toolbar panel-box">
+              <label class="sensor-search"><span>⌕</span><input id="sensor-search" type="search" placeholder="Buscar componente ou sensor" autocomplete="off" /></label>
+              <label class="sensor-advanced-toggle"><input id="sensor-advanced" type="checkbox" /><span>Incluir sensores avançados</span></label>
+              <span class="sensor-updated" id="sensor-updated-at">Aguardando leitura</span>
+            </div>
+
+            <div class="sensor-category-filters" id="sensor-category-filters" role="group" aria-label="Filtrar categorias de sensores"></div>
+            <div class="sensor-device-grid" id="sensor-device-list" aria-live="polite">
+              <article class="panel-box sensor-empty"><strong>Preparando o explorador</strong><span>As categorias e leituras aparecem quando o coletor local terminar a primeira varredura.</span></article>
+            </div>
+
+            <p class="sensor-footnote">O Nexo não instala drivers de kernel nem abre um serviço oculto para ler sensores. Alguns dados avançados exigem suporte do fabricante ou um driver autorizado; nesses casos o sensor pode permanecer indisponível.</p>
           </section>
 
           <section class="view-panel" data-view-panel="diagnosis">

@@ -21,6 +21,11 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
       - name: Verify tag matches package version
         shell: pwsh
         run: |
