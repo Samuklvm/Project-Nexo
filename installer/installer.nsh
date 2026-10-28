@@ -42,8 +42,9 @@ Function PrivacyPageCreate
   ${NSD_CreateLabel} 0 15u 100% 13u "$(PRIVACY_SUBTITLE)"
   Pop $0
 
-  ${NSD_CreateMLText} 0 31u 100% 63u "$(PRIVACY_DETAILS)"
+  ${NSD_CreateText} 0 31u 100% 63u "$(PRIVACY_DETAILS)"
   Pop $PrivacyDetails
+  ${NSD_AddStyle} $PrivacyDetails ${ES_MULTILINE}|${ES_AUTOVSCROLL}|${ES_WANTRETURN}|${WS_HSCROLL}|${WS_VSCROLL}
   SendMessage $PrivacyDetails ${EM_SETREADONLY} 1 0
 
   ${NSD_CreateCheckBox} 0 98u 100% 12u "$(TELEMETRY_LABEL)"
