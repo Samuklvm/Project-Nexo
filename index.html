@@ -110,6 +110,7 @@
               <div>
                 <span class="eyebrow">Sistema</span>
                 <h1>Manutenção rápida do PC</h1>
+                <p class="hero-copy">Monitoramento ao vivo e histórico guardado só neste computador.</p>
               </div>
               <div class="status-badge">
                 <span class="mini-dot"></span>
@@ -121,21 +122,25 @@
               <article class="panel-box stat-box">
                 <span class="stat-label">Uso da CPU</span>
                 <strong id="cpu-usage-value">--%</strong>
+                <span class="stat-meter" aria-hidden="true"><i id="cpu-usage-meter"></i></span>
                 <small id="cpu-usage-state">Aguardando leitura</small>
               </article>
               <article class="panel-box stat-box">
                 <span class="stat-label">Memória RAM</span>
                 <strong id="memory-usage-value">--%</strong>
+                <span class="stat-meter memory-meter" aria-hidden="true"><i id="memory-usage-meter"></i></span>
                 <small id="memory-usage-state">Aguardando leitura</small>
               </article>
               <article class="panel-box stat-box">
                 <span class="stat-label">Espaço usado</span>
                 <strong id="disk-usage-value">--%</strong>
+                <span class="stat-meter disk-meter" aria-hidden="true"><i id="disk-usage-meter"></i></span>
                 <small id="disk-usage-state">Aguardando leitura</small>
               </article>
               <article class="panel-box stat-box">
                 <span class="stat-label">GPU NVIDIA</span>
                 <strong id="gpu-usage-value">--</strong>
+                <span class="stat-meter gpu-meter" aria-hidden="true"><i id="gpu-usage-meter"></i></span>
                 <small id="gpu-usage-state">Sensor não detectado</small>
               </article>
               <article class="panel-box stat-box">
@@ -144,9 +149,9 @@
                 <small id="system-temperature-state">Sensor ACPI não detectado</small>
               </article>
               <article class="panel-box stat-box accent">
-                <span class="stat-label">Versão do app</span>
-                <strong id="app-version">--</strong>
-                <small id="update-status">Verificando atualizações</small>
+                <span class="stat-label">Tempo ligado</span>
+                <strong id="uptime-value">--</strong>
+                <small id="uptime-detail">Desde a última inicialização</small>
               </article>
             </div>
 
@@ -155,34 +160,43 @@
                 <div>
                   <span class="eyebrow">Monitoramento local</span>
                   <h2 id="performance-heading">Desempenho em tempo real</h2>
+                  <p class="performance-caption">Leitura a cada 5 s · histórico local por até 7 dias</p>
                 </div>
                 <span class="telemetry-updated"><i></i><span id="telemetry-updated-at">Aguardando leitura</span></span>
+              </div>
+              <div class="history-toolbar" role="group" aria-label="Período do histórico local">
+                <span>Exibir período</span>
+                <button type="button" data-history-range="5m" aria-pressed="true">5 min</button>
+                <button type="button" data-history-range="30m" aria-pressed="false">30 min</button>
+                <button type="button" data-history-range="24h" aria-pressed="false">24 horas</button>
+                <button type="button" data-history-range="7d" aria-pressed="false">7 dias</button>
               </div>
               <div class="performance-grid">
                 <article class="panel-box performance-card">
                   <div class="performance-card-heading"><span>Processador</span><strong id="chart-cpu-value">--%</strong></div>
                   <canvas class="metric-chart" id="chart-cpu" role="img" aria-label="Histórico de uso do processador"></canvas>
-                  <div class="chart-footer"><span>Uso total</span><span>Últimos 5 min</span></div>
+                  <div class="chart-footer"><span id="chart-cpu-summary">Uso atual</span><span data-history-window>5 min</span></div>
                 </article>
                 <article class="panel-box performance-card">
                   <div class="performance-card-heading"><span>Memória RAM</span><strong id="chart-memory-value">--%</strong></div>
                   <canvas class="metric-chart" id="chart-memory" role="img" aria-label="Histórico de uso da memória RAM"></canvas>
-                  <div class="chart-footer"><span>Memória usada</span><span>Últimos 5 min</span></div>
+                  <div class="chart-footer"><span id="chart-memory-summary">Memória usada</span><span data-history-window>5 min</span></div>
                 </article>
                 <article class="panel-box performance-card">
-                  <div class="performance-card-heading"><span>Espaço em disco</span><strong id="chart-disk-value">--%</strong></div>
+                  <div class="performance-card-heading"><span id="chart-disk-name">Espaço em disco</span><strong id="chart-disk-value">--%</strong></div>
                   <canvas class="metric-chart" id="chart-disk" role="img" aria-label="Histórico de uso do disco principal"></canvas>
-                  <div class="chart-footer"><span>Capacidade ocupada · unidade principal</span><span>Últimos 5 min</span></div>
+                  <div class="chart-footer"><span id="chart-disk-summary">Unidade principal</span><span data-history-window>5 min</span></div>
                 </article>
                 <article class="panel-box performance-card">
                   <div class="performance-card-heading"><span>GPU NVIDIA</span><strong id="chart-gpu-value">--</strong></div>
                   <canvas class="metric-chart" id="chart-gpu" role="img" aria-label="Histórico de uso da GPU NVIDIA"></canvas>
-                  <div class="chart-footer"><span id="chart-gpu-detail">Sensor não detectado</span><span>Últimos 5 min</span></div>
+                  <div class="chart-footer"><span id="chart-gpu-hardware">Sensor não detectado</span><span id="chart-gpu-summary">Aguardando leitura</span><span data-history-window>5 min</span></div>
                 </article>
                 <article class="panel-box performance-card temperature-chart-card">
                   <div class="performance-card-heading"><span>Temperatura reportada</span><strong id="chart-temperature-value">--</strong></div>
+                  <div class="chart-legend" aria-label="Legenda dos sensores de temperatura"><span><i class="legend-acpi"></i>ACPI</span><span><i class="legend-gpu"></i>GPU NVIDIA</span></div>
                   <canvas class="metric-chart" id="chart-temperature" role="img" aria-label="Histórico dos sensores térmicos disponíveis"></canvas>
-                  <div class="chart-footer"><span id="chart-temperature-detail">Sem sensores compatíveis</span><span>Últimos 5 min</span></div>
+                  <div class="chart-footer"><span id="chart-temperature-detail">Sem sensores compatíveis</span><span id="chart-temperature-summary">Aguardando leitura</span><span data-history-window>5 min</span></div>
                 </article>
               </div>
             </section>
@@ -214,6 +228,20 @@
                 </div>
               </article>
             </div>
+
+            <article class="panel-box process-insights">
+              <div class="panel-head">
+                <div>
+                  <span class="eyebrow">Uso por aplicativo</span>
+                  <h2>Processos em destaque</h2>
+                </div>
+                <button class="button-small" type="button" id="refresh-processes">Analisar agora</button>
+              </div>
+              <p class="process-note">Amostra local de CPU e memória. Nada é enviado; a leitura detalhada leva cerca de um segundo.</p>
+              <div id="process-insights-list" class="process-insights-list" aria-live="polite">
+                <p class="empty-state">Use “Analisar agora” para ver quais programas estão usando mais recursos.</p>
+              </div>
+            </article>
           </section>
 
           <section class="view-panel" data-view-panel="diagnosis">
@@ -395,6 +423,7 @@
                 <span class="eyebrow" id="update-state-eyebrow">Central de atualizações</span>
                 <h2 id="update-state-heading">Verificando atualizações</h2>
                 <p id="update-state-detail">Estamos conferindo se existe uma versão mais recente do Nexo.</p>
+                <span class="update-version-chip" id="update-version-chip" hidden></span>
               </div>
               <div class="update-progress-wrap" id="update-progress-wrap" hidden>
                 <div class="update-progress-labels">
@@ -404,18 +433,23 @@
                 <div class="update-progress-track" id="update-progress-track" role="progressbar" aria-label="Progresso da atualização" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                   <span id="update-progress-fill"></span>
                 </div>
+                <div class="update-progress-meta"><span id="update-progress-size">Aguardando transferência</span><span id="update-progress-speed"></span></div>
               </div>
+              <section class="update-release-notes" id="update-release-notes" aria-label="Novidades desta versão" hidden>
+                <h3 id="update-release-heading">Novidades</h3>
+                <ul id="update-release-list"></ul>
+              </section>
               <div class="update-actions">
                 <button class="button button-secondary" id="check-updates" type="button">Verificar novamente</button>
                 <button class="button button-secondary" id="defer-update" type="button" hidden>Agora não</button>
-                <button class="button" id="download-update" type="button" hidden>Baixar e atualizar</button>
+                <button class="button" id="download-update" type="button" hidden>Baixar atualização</button>
                 <button class="button" id="install-update-page" type="button" hidden>Instalar e reiniciar</button>
               </div>
             </article>
 
             <div class="update-footnote">
               <span class="update-footnote-icon">i</span>
-              <p>O download só começa quando você confirma. Depois de concluído, você decide quando reiniciar o aplicativo para aplicar a versão nova.</p>
+              <p>O download só começa quando você confirma. O Nexo não fecha o app até você escolher <strong>Instalar e reiniciar</strong>.</p>
             </div>
           </section>
         </div>

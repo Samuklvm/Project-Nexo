@@ -17,6 +17,9 @@ let mainWindow;
 let updateDownloaded = false;
 let updateAvailableVersion = null;
 let updateDownloadInProgress = false;
+let updateCheckInProgress = false;
+let updateReleaseInfo = null;
+let updateProgress = null;
 let driveCache = { expiresAt: 0, value: null, pending: null };
 let temperatureCache = { expiresAt: 0, value: null, pending: null };
 
@@ -53,7 +56,7 @@ async function getCpuUsage() {
   const totalDelta = after.total - before.total;
 
   if (totalDelta <= 0) return 0;
-  const usage = Math.round((1 - (after.idle - before.idle) / totalDelta) * 100);
+  const usage = (1 - (after.idle - before.idle) / totalDelta) * 100;
   return Math.round(Math.max(0, Math.min(100, usage)) * 10) / 10;
 }
 
@@ -183,6 +186,7 @@ async function getSystemSnapshot() {
     getCachedTemperatureReadings()
   ]);
   const memoryTotalBytes = os.totalmem();
+  const cpuInformation = os.cpus();
   const memoryFreeBytes = os.freemem();
   const memoryUsedBytes = memoryTotalBytes - memoryFreeBytes;
   const addresses = Object.values(os.networkInterfaces()).flat().filter(Boolean);
@@ -197,6 +201,8 @@ async function getSystemSnapshot() {
   return {
     hostname: os.hostname(),
     operatingSystem: `${os.type()} ${os.release()}`,
+    cpuModel: cpuInformation[0]?.model || 'Processador',
+    logicalCpuCount: cpuInformation.length,
     cpuUsage,
     memoryTotalBytes,
     memoryUsedBytes,
@@ -300,28 +306,70 @@ function registerIpcHandler(channel, handler) {
 
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = false;
-autoUpdater.on('checking-for-update', () => publishUpdateStatus('checking'));
+autoUpdater.on('checking-for-update', () => publishUpdateStatus('checking', { currentVersion: app.getVersion() }));
 autoUpdater.on('update-available', (info) => {
   updateAvailableVersion = info.version;
+  updateReleaseInfo = info;
   updateDownloaded = false;
-  publishUpdateStatus('available', { version: info.version, currentVersion: app.getVersion() });
+  updateProgress = null;
+  publishUpdateStatus('available', {
+    version: info.version,
+    currentVersion: app.getVersion(),
+    releaseName: info.releaseName,
+    releaseDate: info.releaseDate,
+    releaseNotes: info.releaseNotes
+  });
 });
 autoUpdater.on('update-not-available', () => {
   updateAvailableVersion = null;
-  publishUpdateStatus('current', { version: app.getVersion() });
+  updateReleaseInfo = null;
+  updateProgress = null;
+  publishUpdateStatus('current', { version: app.getVersion(), currentVersion: app.getVersion() });
 });
-autoUpdater.on('download-progress', (progress) => publishUpdateStatus('downloading', {
-  percent: Math.round(progress.percent),
-  version: updateAvailableVersion
-}));
+autoUpdater.on('download-progress', (progress) => {
+  updateProgress = {
+    percent: Math.round(progress.percent),
+    transferred: progress.transferred,
+    total: progress.total,
+    bytesPerSecond: progress.bytesPerSecond
+  };
+  publishUpdateStatus('downloading', {
+    ...updateProgress,
+    version: updateAvailableVersion
+  });
+});
 autoUpdater.on('update-downloaded', (info) => {
   updateDownloaded = true;
   updateAvailableVersion = info.version;
-  publishUpdateStatus('downloaded', { version: info.version });
+  updateReleaseInfo = info;
+  updateProgress = { percent: 100, transferred: null, total: null, bytesPerSecond: 0 };
+  publishUpdateStatus('downloaded', {
+    version: info.version,
+    currentVersion: app.getVersion(),
+    releaseName: info.releaseName,
+    releaseDate: info.releaseDate,
+    releaseNotes: info.releaseNotes
+  });
+});
+autoUpdater.on('update-cancelled', () => {
+  updateDownloadInProgress = false;
+  publishUpdateStatus('available', {
+    version: updateAvailableVersion,
+    releaseName: updateReleaseInfo?.releaseName,
+    releaseDate: updateReleaseInfo?.releaseDate,
+    releaseNotes: updateReleaseInfo?.releaseNotes
+  });
 });
 autoUpdater.on('error', (error) => publishUpdateStatus('error', {
   message: error.message,
   version: updateAvailableVersion,
+  releaseName: updateReleaseInfo?.releaseName,
+  releaseDate: updateReleaseInfo?.releaseDate,
+  releaseNotes: updateReleaseInfo?.releaseNotes,
+  percent: updateProgress?.percent || 0,
+  transferred: updateProgress?.transferred,
+  total: updateProgress?.total,
+  bytesPerSecond: updateProgress?.bytesPerSecond || 0,
   canRetry: Boolean(updateAvailableVersion)
 }));
 
@@ -455,45 +503,70 @@ registerIpcHandler('system:repair', async () => {
 
 registerIpcHandler('updates:check', async () => {
   if (!app.isPackaged) return { state: 'development', version: app.getVersion() };
+  if (updateDownloaded) return { state: 'downloaded', version: updateAvailableVersion, currentVersion: app.getVersion() };
+  if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion, ...updateProgress };
+  if (updateCheckInProgress) return { state: 'checking', currentVersion: app.getVersion() };
 
+  updateCheckInProgress = true;
   try {
     const result = await autoUpdater.checkForUpdates();
     if (result?.isUpdateAvailable) {
       updateAvailableVersion = result.updateInfo.version;
+      updateReleaseInfo = result.updateInfo;
       return {
         state: 'available',
         version: updateAvailableVersion,
-        currentVersion: app.getVersion()
+        currentVersion: app.getVersion(),
+        releaseName: result.updateInfo.releaseName,
+        releaseDate: result.updateInfo.releaseDate,
+        releaseNotes: result.updateInfo.releaseNotes
       };
     }
+    if (updateDownloaded) return { state: 'downloaded', version: updateAvailableVersion, currentVersion: app.getVersion() };
     updateAvailableVersion = null;
+    updateReleaseInfo = null;
     return {
       state: 'current',
-      version: app.getVersion()
+      version: app.getVersion(),
+      currentVersion: app.getVersion(),
+      checkedAt: new Date().toISOString()
     };
   } catch (error) {
     return { state: 'error', message: error.message };
+  } finally {
+    updateCheckInProgress = false;
   }
 });
 
 registerIpcHandler('updates:download', async () => {
   if (!app.isPackaged) return { state: 'development', version: app.getVersion() };
   if (updateDownloaded) return { state: 'downloaded', version: updateAvailableVersion };
+  if (updateCheckInProgress) return { state: 'checking', currentVersion: app.getVersion() };
   if (!updateAvailableVersion) return { state: 'current', version: app.getVersion() };
-  if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion };
+  if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion, ...updateProgress };
 
   updateDownloadInProgress = true;
+  updateProgress = { percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 };
+  publishUpdateStatus('downloading', { version: updateAvailableVersion, ...updateProgress });
   try {
     await autoUpdater.downloadUpdate();
     return {
       state: updateDownloaded ? 'downloaded' : 'downloading',
-      version: updateAvailableVersion
+      version: updateAvailableVersion,
+      ...updateProgress
     };
   } catch (error) {
     return {
       state: 'error',
       message: error.message,
       version: updateAvailableVersion,
+      releaseName: updateReleaseInfo?.releaseName,
+      releaseDate: updateReleaseInfo?.releaseDate,
+      releaseNotes: updateReleaseInfo?.releaseNotes,
+      percent: updateProgress?.percent || 0,
+      transferred: updateProgress?.transferred,
+      total: updateProgress?.total,
+      bytesPerSecond: updateProgress?.bytesPerSecond || 0,
       canRetry: true
     };
   } finally {

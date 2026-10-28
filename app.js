@@ -17,6 +17,8 @@ const windowMaximizeButton = document.getElementById('window-maximize');
 const windowCloseButton = document.getElementById('window-close');
 const driveSelect = document.getElementById('drive-select');
 const driveOptimizeButton = document.getElementById('drive-optimize');
+const processRefreshButton = document.getElementById('refresh-processes');
+const processInsightsList = document.getElementById('process-insights-list');
 const diagnosisResult = document.getElementById('diagnosis-result');
 const runDiagnosisButton = document.getElementById('run-diagnosis');
 const runCleanupButton = document.getElementById('run-cleanup');
@@ -34,14 +36,20 @@ const autoCleanLastRunKey = 'nexo-auto-clean-last-run';
 const performanceHistoryKey = 'nexo-performance-history';
 const recommendationFeedbackKey = 'nexo-recommendation-feedback';
 const maxWallpaperBytes = 5 * 1024 * 1024;
-const historyIntervalMs = 5 * 60 * 1000;
+const historyIntervalMs = 60 * 1000;
 const historyRetentionMs = 7 * 24 * 60 * 60 * 1000;
-const maxHistorySamples = 2016;
+const maxHistorySamples = Math.ceil(historyRetentionMs / historyIntervalMs);
 const autoCleanDiskThreshold = 90;
 const autoCleanRequiredSamples = 4;
 const autoCleanMinimumPersistenceMs = 60 * 1000;
 const autoCleanCooldownMs = 60 * 60 * 1000;
 const maxLivePerformanceSamples = 60;
+const historyRanges = {
+  '5m': { duration: 5 * 60 * 1000, label: '5 min' },
+  '30m': { duration: 30 * 60 * 1000, label: '30 min' },
+  '24h': { duration: 24 * 60 * 60 * 1000, label: '24 horas' },
+  '7d': { duration: 7 * 24 * 60 * 60 * 1000, label: '7 dias' }
+};
 let systemSnapshot = null;
 let currentUpdateStatus = { state: 'checking' };
 let snapshotRefreshInProgress = false;
@@ -51,6 +59,7 @@ let highDiskSamples = 0;
 let highDiskSince = 0;
 let cleanupOperationInProgress = false;
 let performanceHistory = null;
+let selectedHistoryRange = '5m';
 let autoCleanupEnabled = getLocalStorageValue(autoCleanPreferenceKey) === 'true';
 
 function getLocalStorageValue(key) {
@@ -113,6 +122,22 @@ viewButtons.forEach((button) => {
   button.addEventListener('click', () => setView(button.dataset.view));
 });
 
+document.querySelectorAll('[data-history-range]').forEach((button) => {
+  button.addEventListener('click', () => {
+    selectedHistoryRange = button.dataset.historyRange;
+    document.querySelectorAll('[data-history-range]').forEach((option) => {
+      option.setAttribute('aria-pressed', String(option === button));
+    });
+    drawPerformanceCharts();
+  });
+});
+
+let chartResizeFrame = 0;
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(chartResizeFrame);
+  chartResizeFrame = requestAnimationFrame(drawPerformanceCharts);
+});
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return '--';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -138,6 +163,15 @@ function getPerformanceHistory() {
   if (performanceHistory) return performanceHistory;
   const cutoff = Date.now() - historyRetentionMs;
   performanceHistory = readStoredArray(performanceHistoryKey)
+    .map((sample) => Array.isArray(sample) ? ({
+      timestamp: sample[0],
+      cpuPercent: sample[1],
+      memoryPercent: sample[2],
+      diskPercent: sample[3],
+      gpuPercent: sample[4],
+      acpiTemperatureCelsius: sample[5],
+      gpuTemperatureCelsius: sample[6]
+    }) : sample)
     .filter((sample) => sample && Number.isFinite(sample.timestamp) && sample.timestamp >= cutoff)
     .slice(-maxHistorySamples);
   return performanceHistory;
@@ -148,17 +182,35 @@ function recordPerformanceSample(snapshot) {
   const now = Date.now();
   if (samples.length && now - samples[samples.length - 1].timestamp < historyIntervalMs) return;
 
+  const thermal = snapshot.temperatureReadings || {};
+  const acpiTemperature = (thermal.acpiSensors || [])
+    .map((sensor) => sensor.celsius)
+    .filter(Number.isFinite)
+    .reduce((highest, value) => Math.max(highest, value), null);
+  const gpu = thermal.gpuSensors?.[0] || null;
   samples.push({
     timestamp: now,
     cpuPercent: snapshot.cpuUsage,
     memoryPercent: snapshot.memoryPercent,
-    diskPercent: snapshot.primaryDrive?.usedPercent ?? null
+    diskPercent: snapshot.primaryDrive?.usedPercent ?? null,
+    gpuPercent: gpu?.usagePercent ?? null,
+    acpiTemperatureCelsius: acpiTemperature,
+    gpuTemperatureCelsius: gpu?.temperatureCelsius ?? null
   });
   performanceHistory = samples
     .filter((sample) => sample.timestamp >= now - historyRetentionMs)
     .slice(-maxHistorySamples);
   try {
-    localStorage.setItem(performanceHistoryKey, JSON.stringify(performanceHistory));
+    const compactHistory = performanceHistory.map((sample) => [
+      sample.timestamp,
+      sample.cpuPercent,
+      sample.memoryPercent,
+      sample.diskPercent,
+      sample.gpuPercent,
+      sample.acpiTemperatureCelsius,
+      sample.gpuTemperatureCelsius
+    ]);
+    localStorage.setItem(performanceHistoryKey, JSON.stringify(compactHistory));
     refreshLearningStatus();
   } catch {
     setText('diagnosis-learning-status', 'O histórico local não pôde ser salvo; o diagnóstico atual continua disponível.');
@@ -354,7 +406,50 @@ function getPerformanceSample(snapshot, timestamp = Date.now()) {
   };
 }
 
-function drawPerformanceChart(canvasId, series, range = { min: 0, max: 100 }) {
+function getChartSamples(durationMs) {
+  const start = Date.now() - durationMs;
+  const samplesBySlot = new Map();
+  const normalize = (sample) => ({
+    timestamp: sample.timestamp,
+    cpu: sample.cpu ?? sample.cpuPercent ?? null,
+    memory: sample.memory ?? sample.memoryPercent ?? null,
+    disk: sample.disk ?? sample.diskPercent ?? null,
+    gpu: sample.gpu ?? sample.gpuPercent ?? null,
+    acpiTemperature: sample.acpiTemperature ?? sample.acpiTemperatureCelsius ?? null,
+    gpuTemperature: sample.gpuTemperature ?? sample.gpuTemperatureCelsius ?? null
+  });
+
+  for (const sample of getPerformanceHistory()) {
+    if (sample.timestamp >= start) samplesBySlot.set(Math.floor(sample.timestamp / 5000), normalize(sample));
+  }
+  for (const sample of livePerformanceSamples) {
+    if (sample.timestamp >= start) samplesBySlot.set(Math.floor(sample.timestamp / 5000), normalize(sample));
+  }
+
+  return [...samplesBySlot.values()].sort((left, right) => left.timestamp - right.timestamp);
+}
+
+function downsampleChartPoints(points, targetCount) {
+  if (points.length <= targetCount) return points;
+  const bucketSize = points.length / targetCount;
+  const compacted = [];
+  for (let bucket = 0; bucket < targetCount; bucket += 1) {
+    const start = Math.floor(bucket * bucketSize);
+    const end = Math.min(points.length, Math.floor((bucket + 1) * bucketSize));
+    const entries = points.slice(start, end).filter((point) => Number.isFinite(point.value));
+    if (!entries.length) continue;
+    let minimum = entries[0];
+    let maximum = entries[0];
+    for (const point of entries) {
+      if (point.value < minimum.value) minimum = point;
+      if (point.value > maximum.value) maximum = point;
+    }
+    compacted.push(...(minimum.timestamp <= maximum.timestamp ? [minimum, maximum] : [maximum, minimum]));
+  }
+  return compacted.filter((point, index, all) => index === 0 || point.timestamp !== all[index - 1].timestamp);
+}
+
+function drawPerformanceChart(canvasId, series, range, timeWindow) {
   const canvas = document.getElementById(canvasId);
   const bounds = canvas?.getBoundingClientRect();
   if (!canvas || !bounds?.width || !bounds.height) return;
@@ -367,7 +462,7 @@ function drawPerformanceChart(canvasId, series, range = { min: 0, max: 100 }) {
 
   const width = bounds.width;
   const height = bounds.height;
-  const padding = { top: 8, right: 7, bottom: 8, left: 7 };
+  const padding = { top: 12, right: 10, bottom: 24, left: 36 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   context.clearRect(0, 0, width, height);
@@ -377,62 +472,258 @@ function drawPerformanceChart(canvasId, series, range = { min: 0, max: 100 }) {
     context.beginPath();
     context.moveTo(padding.left, y);
     context.lineTo(width - padding.right, y);
-    context.strokeStyle = 'rgba(226, 232, 240, 0.075)';
+    context.strokeStyle = index === 4 ? 'rgba(226, 232, 240, 0.14)' : 'rgba(226, 232, 240, 0.075)';
     context.lineWidth = 1;
     context.stroke();
+    const tickValue = Math.round(range.max - ((range.max - range.min) * index) / 4);
+    context.fillStyle = 'rgba(206, 211, 222, 0.58)';
+    context.font = '10px Segoe UI, sans-serif';
+    context.textAlign = 'right';
+    context.textBaseline = 'middle';
+    context.fillText(`${tickValue}${range.unit || '%'}`, padding.left - 7, y);
   }
 
-  for (const item of series) {
-    const points = item.values.map((value, index) => {
-      if (!Number.isFinite(value)) return null;
-      const x = padding.left + (plotWidth * index) / Math.max(1, item.values.length - 1);
-      const boundedValue = Math.min(range.max, Math.max(range.min, value));
-      const y = padding.top + plotHeight * (1 - (boundedValue - range.min) / (range.max - range.min));
-      return { x, y };
-    });
+  const startTime = timeWindow.end - timeWindow.duration;
+  const timeLabels = [startTime, startTime + timeWindow.duration / 2, timeWindow.end];
+  context.fillStyle = 'rgba(206, 211, 222, 0.5)';
+  context.font = '10px Segoe UI, sans-serif';
+  context.textBaseline = 'top';
+  timeLabels.forEach((time, index) => {
+    const x = padding.left + (plotWidth * index) / 2;
+    context.textAlign = index === 0 ? 'left' : index === 2 ? 'right' : 'center';
+    const label = timeWindow.duration >= 24 * 60 * 60 * 1000
+      ? new Date(time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : new Date(time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    context.fillText(label, x, height - padding.bottom + 8);
+  });
 
-    context.beginPath();
-    let hasSegment = false;
-    for (const point of points) {
-      if (!point) {
-        hasSegment = false;
+  let hasAnyPoint = false;
+  for (const item of series) {
+    const targetCount = Math.max(100, Math.min(700, Math.floor(plotWidth * 1.5)));
+    const maximumGap = Math.max(30 * 1000, Math.min(5 * 60 * 1000, timeWindow.duration / 20));
+    const segments = [];
+    let currentSegment = null;
+    for (const point of item.values) {
+      if (!Number.isFinite(point.value)) {
+        currentSegment = null;
         continue;
       }
-      if (hasSegment) context.lineTo(point.x, point.y);
-      else context.moveTo(point.x, point.y);
-      hasSegment = true;
+      if (!currentSegment || point.timestamp - currentSegment[currentSegment.length - 1].timestamp > maximumGap) {
+        const nextSegment = [{ ...point, value: Math.min(range.max, Math.max(range.min, point.value)) }];
+        segments.push(nextSegment);
+        currentSegment = nextSegment;
+      } else {
+        currentSegment.push({ ...point, value: Math.min(range.max, Math.max(range.min, point.value)) });
+      }
     }
-    context.strokeStyle = item.color;
-    context.lineWidth = 2;
-    context.lineJoin = 'round';
-    context.lineCap = 'round';
-    context.shadowColor = item.color;
-    context.shadowBlur = 7;
-    context.stroke();
-    context.shadowBlur = 0;
 
-    const lastPoint = [...points].reverse().find(Boolean);
-    if (lastPoint) {
+    for (const segment of segments) {
+      const points = downsampleChartPoints(segment, targetCount).map((point) => {
+        const x = padding.left + (plotWidth * (point.timestamp - startTime)) / timeWindow.duration;
+        const y = padding.top + plotHeight * (1 - (point.value - range.min) / (range.max - range.min));
+        return { x, y, timestamp: point.timestamp, value: point.value };
+      });
+      if (!points.length) continue;
+      hasAnyPoint = true;
+
+      if (item.fill && points.length > 1) {
+        context.beginPath();
+        context.moveTo(points[0].x, points[0].y);
+        for (let index = 1; index < points.length; index += 1) context.lineTo(points[index].x, points[index].y);
+        context.lineTo(points[points.length - 1].x, padding.top + plotHeight);
+        context.lineTo(points[0].x, padding.top + plotHeight);
+        context.closePath();
+        const gradient = context.createLinearGradient(0, padding.top, 0, padding.top + plotHeight);
+        gradient.addColorStop(0, `${item.color}44`);
+        gradient.addColorStop(1, `${item.color}00`);
+        context.fillStyle = gradient;
+        context.fill();
+      }
+
       context.beginPath();
-      context.arc(lastPoint.x, lastPoint.y, 3, 0, Math.PI * 2);
+      context.moveTo(points[0].x, points[0].y);
+      for (let index = 1; index < points.length; index += 1) context.lineTo(points[index].x, points[index].y);
+      context.strokeStyle = item.color;
+      context.lineWidth = 2;
+      context.lineJoin = 'round';
+      context.lineCap = 'round';
+      context.shadowColor = item.color;
+      context.shadowBlur = 7;
+      context.stroke();
+      context.shadowBlur = 0;
+
+      const lastPoint = points[points.length - 1];
+      context.beginPath();
+      context.arc(lastPoint.x, lastPoint.y, 3.4, 0, Math.PI * 2);
       context.fillStyle = item.color;
       context.fill();
+      context.beginPath();
+      context.arc(lastPoint.x, lastPoint.y, 7, 0, Math.PI * 2);
+      context.strokeStyle = `${item.color}66`;
+      context.lineWidth = 1;
+      context.stroke();
     }
+  }
+
+  if (!hasAnyPoint) {
+    context.fillStyle = 'rgba(206, 211, 222, 0.6)';
+    context.font = '12px Segoe UI, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('Aguardando dados locais neste período', padding.left + plotWidth / 2, padding.top + plotHeight / 2);
   }
 }
 
 function drawPerformanceCharts() {
-  const samples = livePerformanceSamples;
-  const line = (key, color) => ({ values: samples.map((sample) => sample[key]), color });
-  drawPerformanceChart('chart-cpu', [line('cpu', '#9b8cff')]);
-  drawPerformanceChart('chart-memory', [line('memory', '#71c9bd')]);
-  drawPerformanceChart('chart-disk', [line('disk', '#e0a879')]);
-  drawPerformanceChart('chart-gpu', [line('gpu', '#84c99a')]);
+  const selectedRange = historyRanges[selectedHistoryRange] || historyRanges['5m'];
+  const timeWindow = { duration: selectedRange.duration, end: Date.now() };
+  const samples = getChartSamples(timeWindow.duration);
+  const line = (key, color, fill = true) => ({
+    values: samples.map((sample) => ({ timestamp: sample.timestamp, value: sample[key] })),
+    color,
+    fill
+  });
+  const percentRange = { min: 0, max: 100, unit: '%' };
+  const temperatureRange = { min: 0, max: 125, unit: '°' };
+  drawPerformanceChart('chart-cpu', [line('cpu', '#a996ff')], percentRange, timeWindow);
+  drawPerformanceChart('chart-memory', [line('memory', '#63dcc7')], percentRange, timeWindow);
+  drawPerformanceChart('chart-disk', [line('disk', '#ffb56b')], percentRange, timeWindow);
+  drawPerformanceChart('chart-gpu', [line('gpu', '#96e37c')], percentRange, timeWindow);
   drawPerformanceChart('chart-temperature', [
-    line('acpiTemperature', '#9b8cff'),
-    line('gpuTemperature', '#70c9bd')
-  ], { min: 20, max: 110 });
+    line('acpiTemperature', '#a996ff', false),
+    line('gpuTemperature', '#63dcc7', false)
+  ], temperatureRange, timeWindow);
+  document.querySelectorAll('[data-history-window]').forEach((label) => { label.textContent = selectedRange.label; });
+  updateChartSummary('chart-cpu-summary', samples, 'cpu', '%');
+  updateChartSummary('chart-memory-summary', samples, 'memory', '%');
+  updateChartSummary('chart-disk-summary', samples, 'disk', '%');
+  updateChartSummary('chart-gpu-summary', samples, 'gpu', '%');
+  updateTemperatureSummary(samples);
 }
+
+function animatePerformanceCharts() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('.metric-chart').forEach((canvas) => {
+    if (!canvas.getClientRects().length) return;
+    canvas.animate([
+      { opacity: 0.74, transform: 'translateY(2px)' },
+      { opacity: 1, transform: 'translateY(0)' }
+    ], { duration: 360, easing: 'ease-out' });
+  });
+}
+
+function updateChartSummary(elementId, samples, metric, suffix) {
+  const values = samples.map((sample) => sample[metric]).filter(Number.isFinite);
+  if (!values.length) {
+    const noSensor = metric === 'gpu' || metric === 'temperature';
+    setText(elementId, noSensor ? 'Sensor indisponível' : 'Aguardando amostras locais');
+    return;
+  }
+  const average = Math.round(values.reduce((total, value) => total + value, 0) / values.length);
+  const peak = Math.round(Math.max(...values));
+  setText(elementId, `Média ${average}${suffix} · pico ${peak}${suffix}`);
+}
+
+function updateTemperatureSummary(samples) {
+  const summaries = [];
+  for (const [key, label] of [['acpiTemperature', 'ACPI'], ['gpuTemperature', 'GPU']]) {
+    const values = samples.map((sample) => sample[key]).filter(Number.isFinite);
+    if (!values.length) continue;
+    const average = Math.round(values.reduce((total, value) => total + value, 0) / values.length);
+    const peak = Math.round(Math.max(...values));
+    summaries.push(`${label} média ${average}° · pico ${peak}°`);
+  }
+  setText('chart-temperature-summary', summaries.join('  /  ') || 'Sem leituras térmicas neste período');
+}
+
+function renderTopProcesses(result) {
+  if (!processInsightsList || !result) return;
+  const byId = new Map();
+  for (const process of [...(result.byCpu || []), ...(result.byMemory || [])]) {
+    const id = Number(process.processId) || 0;
+    if (!id) continue;
+    const existing = byId.get(id) || {
+      processId: id,
+      name: String(process.name || 'Processo'),
+      cpuPercent: 0,
+      memoryBytes: 0,
+      memoryPercent: 0
+    };
+    existing.cpuPercent = Math.max(existing.cpuPercent, Number(process.cpuPercent) || 0);
+    existing.memoryBytes = Math.max(existing.memoryBytes, Number(process.memoryBytes) || 0);
+    existing.memoryPercent = Math.max(existing.memoryPercent, Number(process.memoryPercent) || 0);
+    byId.set(id, existing);
+  }
+
+  const processes = [...byId.values()]
+    .sort((left, right) => Math.max(right.cpuPercent, right.memoryPercent) - Math.max(left.cpuPercent, left.memoryPercent))
+    .slice(0, 5);
+  processInsightsList.replaceChildren();
+  if (!processes.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'Nenhum processo em destaque nesta amostra.';
+    processInsightsList.append(empty);
+    return;
+  }
+
+  for (const process of processes) {
+    const row = document.createElement('div');
+    row.className = 'process-row';
+    const identity = document.createElement('div');
+    identity.className = 'process-identity';
+    const name = document.createElement('strong');
+    name.textContent = process.name;
+    const pid = document.createElement('small');
+    pid.textContent = 'PID ' + process.processId;
+    identity.append(name, pid);
+
+    const cpu = document.createElement('div');
+    cpu.className = 'process-metric';
+    cpu.setAttribute('aria-label', 'CPU ' + Math.round(process.cpuPercent) + '%');
+    const cpuLabel = document.createElement('span');
+    cpuLabel.textContent = 'CPU ' + Math.round(process.cpuPercent) + '%';
+    const cpuTrack = document.createElement('span');
+    cpuTrack.className = 'process-track cpu-track';
+    const cpuFill = document.createElement('i');
+    cpuFill.style.width = Math.min(100, Math.max(0, process.cpuPercent)) + '%';
+    cpuTrack.append(cpuFill);
+    cpu.append(cpuLabel, cpuTrack);
+
+    const memory = document.createElement('div');
+    memory.className = 'process-metric';
+    memory.setAttribute('aria-label', 'Memória ' + formatBytes(process.memoryBytes));
+    const memoryLabel = document.createElement('span');
+    memoryLabel.textContent = 'RAM ' + formatBytes(process.memoryBytes);
+    const memoryTrack = document.createElement('span');
+    memoryTrack.className = 'process-track memory-track';
+    const memoryFill = document.createElement('i');
+    memoryFill.style.width = Math.min(100, Math.max(0, process.memoryPercent)) + '%';
+    memoryTrack.append(memoryFill);
+    memory.append(memoryLabel, memoryTrack);
+    row.append(identity, cpu, memory);
+    processInsightsList.append(row);
+  }
+}
+
+async function refreshProcessInsights() {
+  if (!desktopBridge?.getTopProcesses) {
+    showToast('A leitura de processos está disponível no aplicativo desktop.');
+    return;
+  }
+  setButtonBusy(processRefreshButton, true, 'Analisando...');
+  try {
+    const result = await desktopBridge.getTopProcesses();
+    renderTopProcesses(result);
+    showToast('Amostra local de processos atualizada.');
+  } catch (error) {
+    showToast(error.message || 'Não foi possível ler os processos.');
+  } finally {
+    setButtonBusy(processRefreshButton, false);
+  }
+}
+
+processRefreshButton?.addEventListener('click', refreshProcessInsights);
 
 function updatePerformanceCharts(snapshot) {
   const sample = getPerformanceSample(snapshot);
@@ -450,21 +741,40 @@ function updatePerformanceCharts(snapshot) {
 
   setText('gpu-usage-value', Number.isFinite(gpu?.usagePercent) ? `${gpu.usagePercent}%` : '--');
   setText('gpu-usage-state', gpu
-    ? `${gpu.temperatureCelsius === null ? 'Temperatura indisponível' : `${gpu.temperatureCelsius} °C`} · NVIDIA`
-    : 'Requer nvidia-smi');
+    ? `${gpu.name} · ${gpu.temperatureCelsius === null ? 'sem temperatura' : `${gpu.temperatureCelsius} °C`} · VRAM ${gpu.memoryUsedMb ?? '--'}/${gpu.memoryTotalMb ?? '--'} MB`
+    : 'Requer NVIDIA compatível e nvidia-smi');
   setText('system-temperature-value', Number.isFinite(systemTemperature) ? `${systemTemperature} °C` : '--');
   setText('system-temperature-state', temperatureSource);
   setText('chart-cpu-value', `${snapshot.cpuUsage}%`);
   setText('chart-memory-value', `${snapshot.memoryPercent}%`);
   setText('chart-disk-value', snapshot.primaryDrive ? `${snapshot.primaryDrive.usedPercent}%` : '--');
   setText('chart-gpu-value', Number.isFinite(gpu?.usagePercent) ? `${gpu.usagePercent}%` : '--');
-  setText('chart-gpu-detail', gpu ? `${gpu.name} · ${gpu.memoryUsedMb ?? '--'} / ${gpu.memoryTotalMb ?? '--'} MB` : 'Requer nvidia-smi');
+  setText('chart-gpu-hardware', gpu ? `${gpu.name} · ${gpu.memoryUsedMb ?? '--'} / ${gpu.memoryTotalMb ?? '--'} MB` : 'Requer nvidia-smi');
   setText('chart-temperature-value', Number.isFinite(systemTemperature) ? `${systemTemperature} °C` : '--');
   setText('chart-temperature-detail', sample.acpiTemperature !== null || sample.gpuTemperature !== null
     ? `${sample.acpiTemperature !== null ? 'ACPI' : ''}${sample.acpiTemperature !== null && sample.gpuTemperature !== null ? ' · ' : ''}${sample.gpuTemperature !== null ? 'GPU NVIDIA' : ''}`
     : 'Sem sensores compatíveis');
   setText('telemetry-updated-at', `Atualizado às ${new Date(sample.timestamp).toLocaleTimeString('pt-BR')}`);
   drawPerformanceCharts();
+  animatePerformanceCharts();
+}
+
+function formatUptime(seconds) {
+  const totalMinutes = Math.max(0, Math.floor((Number(seconds) || 0) / 60));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  return [days ? days + 'd' : '', hours ? hours + 'h' : '', minutes + ' min']
+    .filter(Boolean)
+    .join(' ');
+}
+
+function setMeter(id, value) {
+  const meter = document.getElementById(id);
+  if (!meter) return;
+  const percent = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
+  meter.style.width = percent + '%';
+  meter.closest('.stat-box')?.classList.toggle('is-elevated', percent >= 85);
 }
 
 function renderSystemSnapshot(snapshot) {
@@ -482,14 +792,26 @@ function renderSystemSnapshot(snapshot) {
   const diskText = primaryDrive ? `${primaryDrive.usedPercent}%` : '--';
 
   setText('computer-name', snapshot.hostname);
-  setText('app-version', snapshot.version);
   setText('updates-current-version', snapshot.version);
+  const operatingSystemLabel = document.querySelector('.device-meta span');
+  if (operatingSystemLabel) operatingSystemLabel.textContent = snapshot.operatingSystem || 'Estação de trabalho';
   setText('cpu-usage-value', cpuText);
-  setText('cpu-usage-state', 'Uso atual');
+  setText('cpu-usage-state', `${snapshot.logicalCpuCount || '--'} threads · leitura local`);
+  const cpuState = document.getElementById('cpu-usage-state');
+  if (cpuState) cpuState.title = snapshot.cpuModel || '';
   setText('memory-usage-value', memoryText);
   setText('memory-usage-state', `${formatBytes(snapshot.memoryUsedBytes)} de ${formatBytes(snapshot.memoryTotalBytes)}`);
   setText('disk-usage-value', diskText);
-  setText('disk-usage-state', primaryDrive ? `${primaryDrive.driveLetter}: unidade principal` : 'Sem dados de unidade');
+  setText('disk-usage-state', primaryDrive
+    ? `${formatBytes(primaryDrive.freeBytes)} livres · ${primaryDrive.driveLetter}:`
+    : 'Sem dados de unidade');
+  setText('chart-disk-name', primaryDrive ? `Espaço em disco · ${primaryDrive.driveLetter}:` : 'Espaço em disco');
+  setText('uptime-value', formatUptime(snapshot.uptimeSeconds));
+  setText('uptime-detail', 'Desde a última inicialização');
+  setMeter('cpu-usage-meter', snapshot.cpuUsage);
+  setMeter('memory-usage-meter', snapshot.memoryPercent);
+  setMeter('disk-usage-meter', primaryDrive?.usedPercent);
+  setMeter('gpu-usage-meter', gpu?.usagePercent);
   setText('overview-cpu', cpuText);
   setText('overview-memory', memoryText);
   setText('overview-disk', primaryDrive ? `${diskText} usado` : '--');
@@ -500,6 +822,7 @@ function renderSystemSnapshot(snapshot) {
   setText('diagnosis-network', snapshot.networkConnected ? 'Conectada' : 'Desconectada');
   setText('diagnosis-gpu', Number.isFinite(gpu?.usagePercent) ? `${gpu.usagePercent}%` : 'Não detectada');
   setText('diagnosis-temperature', Number.isFinite(reportedTemperature) ? `${reportedTemperature} °C` : 'Não detectada');
+  document.querySelector('.online-dot')?.classList.toggle('is-offline', !snapshot.networkConnected);
   setText('system-health-badge', snapshot.cpuUsage >= 90 || snapshot.memoryPercent >= 95 || (primaryDrive && primaryDrive.usedPercent >= 95)
     ? 'Uso elevado detectado'
     : 'Medições atualizadas');
@@ -768,16 +1091,23 @@ async function runDiagnosis() {
       ? desktopBridge.getTopProcesses().catch(() => null)
       : Promise.resolve(null);
     const [snapshot, sampledProcesses] = await Promise.all([refreshSystemSnapshot(), processSample]);
+    if (sampledProcesses) renderTopProcesses(sampledProcesses);
     const processes = sampledProcesses || { byCpu: [], byMemory: [] };
     const recommendations = [];
     const cpuLeader = processes.byCpu?.[0];
     const memoryLeader = processes.byMemory?.[0];
     const cpuBaseline = getLocalBaseline('cpuPercent');
     const memoryBaseline = getLocalBaseline('memoryPercent');
+    const diskBaseline = getLocalBaseline('diskPercent');
     const cpuSpike = cpuBaseline && snapshot.cpuUsage >= 60
       && snapshot.cpuUsage - cpuBaseline.median >= Math.max(25, cpuBaseline.medianAbsoluteDeviation * 3);
     const memorySpike = memoryBaseline && snapshot.memoryPercent >= 70
       && snapshot.memoryPercent - memoryBaseline.median >= Math.max(20, memoryBaseline.medianAbsoluteDeviation * 3);
+    const diskIncrease = diskBaseline && snapshot.primaryDrive
+      ? snapshot.primaryDrive.usedPercent - diskBaseline.median
+      : 0;
+    const diskSpike = snapshot.primaryDrive && snapshot.primaryDrive.usedPercent >= 75
+      && diskBaseline && diskIncrease >= Math.max(15, diskBaseline.medianAbsoluteDeviation * 3);
 
     if (snapshot.cpuUsage >= 85 || cpuSpike) {
       recommendations.push({
@@ -805,7 +1135,7 @@ async function runDiagnosis() {
         confidence: memoryLeader ? (memorySpike ? 78 : 65) : memorySpike ? 55 : 40
       });
     }
-    if (snapshot.primaryDrive?.usedPercent >= autoCleanDiskThreshold) {
+    if (snapshot.primaryDrive && (snapshot.primaryDrive.usedPercent >= autoCleanDiskThreshold || diskSpike)) {
       let preview = null;
       try {
         preview = await desktopBridge.getCleanupPreview();
@@ -815,13 +1145,13 @@ async function runDiagnosis() {
       recommendations.push({
         category: 'disk',
         title: 'Pouco espaço livre',
-        cause: `Unidade ${snapshot.primaryDrive.driveLetter}: com ${snapshot.primaryDrive.usedPercent}% ocupado. ${preview ? `${preview.fileCount} temporários antigos somam ${formatBytes(preview.bytes)}.` : 'Não foi possível calcular os temporários disponíveis.'}`,
+        cause: `Unidade ${snapshot.primaryDrive.driveLetter}: com ${snapshot.primaryDrive.usedPercent}% ocupado. ${diskSpike ? describeLocalTrend('diskPercent', snapshot.primaryDrive.usedPercent) : ''} ${preview ? `${preview.fileCount} temporários antigos somam ${formatBytes(preview.bytes)}.` : 'Não foi possível calcular os temporários disponíveis.'}`,
         action: preview?.fileCount
           ? `${autoCleanupEnabled ? 'A limpeza automática está ativa.' : 'Revise a prévia e confirme a limpeza.'} Outros arquivos grandes devem ser revisados manualmente.`
           : 'Revise arquivos pessoais grandes; nenhum temporário elegível foi encontrado.',
         actionType: preview?.fileCount ? 'cleanup' : null,
         actionLabel: 'Limpar temporários',
-        confidence: preview?.fileCount ? 75 : 55
+        confidence: preview?.fileCount ? 75 : diskSpike ? 65 : 55
       });
     }
     const hotGpu = snapshot.temperatureReadings?.gpuSensors?.find((sensor) => sensor.temperatureCelsius >= 85);
@@ -832,6 +1162,16 @@ async function runDiagnosis() {
         cause: `${hotGpu.name} reportou ${hotGpu.temperatureCelsius} °C. Esse valor merece comparação com o limite térmico indicado pelo fabricante.`,
         action: 'Confira a ventilação e os limites do fabricante; reduza a carga se essa temperatura persistir fora de jogos ou renderização.',
         confidence: 65
+      });
+    }
+    const hotAcpi = snapshot.temperatureReadings?.acpiSensors?.find((sensor) => sensor.celsius >= 90);
+    if (hotAcpi) {
+      recommendations.push({
+        category: 'acpi-temperature',
+        title: 'Zona térmica ACPI elevada',
+        cause: `Um sensor do firmware reportou ${hotAcpi.celsius} °C. O nome da zona não identifica com precisão qual componente está medindo.`,
+        action: 'Confira se a leitura corresponde a CPU ou GPU e compare com os limites informados pelo fabricante.',
+        confidence: 45
       });
     }
 
@@ -917,47 +1257,138 @@ async function runRepair() {
 
 runRepairButton.addEventListener('click', runRepair);
 
+function formatUpdateEta(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '';
+  const remaining = Math.ceil(seconds);
+  if (remaining < 60) return `${remaining} s restantes`;
+  return `${Math.floor(remaining / 60)} min restantes`;
+}
+
+function getUpdateErrorMessage(message) {
+  const raw = String(message || '');
+  const normalized = raw.toLowerCase();
+  if (/enotfound|econn|timed? ?out|network|internet/.test(normalized)) {
+    return 'Não foi possível conectar ao GitHub. Confira a internet e tente novamente.';
+  }
+  if (/404|not found|latest\.yml/.test(normalized)) {
+    return 'O GitHub não encontrou os arquivos desta atualização. Você pode tentar de novo ou baixar o instalador na página de releases.';
+  }
+  if (/signature|publisher|certificate/.test(normalized)) {
+    return 'O Windows não conseguiu confirmar a assinatura deste pacote. Não instalamos a atualização.';
+  }
+  return raw || 'Confira sua conexão e tente novamente.';
+}
+
+function getReleaseNoteLines(notes) {
+  const text = Array.isArray(notes)
+    ? notes.map((note) => typeof note === 'string' ? note : note?.note || note?.text || '').join('\n')
+    : String(notes || '');
+  return text.split(/\r?\n/)
+    .map((line) => line.trim()
+      .replace(/^#{1,6}\s*/, '')
+      .replace(/^[-*+]\s+/, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/[*_`~]/g, ''))
+    .filter(Boolean)
+    .slice(0, 8)
+    .map((line) => line.length > 180 ? `${line.slice(0, 177)}...` : line);
+}
+
+function renderUpdateReleaseNotes(status) {
+  const section = document.getElementById('update-release-notes');
+  const list = document.getElementById('update-release-list');
+  if (!section || !list) return;
+  const shouldShow = ['available', 'downloading', 'downloaded'].includes(status.state)
+    || (status.state === 'error' && status.canRetry);
+  if (!shouldShow || !status.version) {
+    section.hidden = true;
+    list.replaceChildren();
+    return;
+  }
+
+  setText('update-release-heading', status.releaseName || `Novidades da versão ${status.version}`);
+  const notes = getReleaseNoteLines(status.releaseNotes);
+  list.replaceChildren();
+  if (!notes.length) notes.push('Esta versão não tem notas de alteração publicadas.');
+  for (const note of notes) {
+    const item = document.createElement('li');
+    item.textContent = note;
+    list.append(item);
+  }
+  section.hidden = false;
+}
+
 function renderUpdateStatus(status) {
-  const messages = {
-    checking: ['Conferindo novidades', 'Estamos verificando se há uma versão mais recente do Nexo.', 'Verificação em andamento'],
-    available: ['Nova atualização disponível', `A versão ${status.version || 'mais recente'} está pronta para baixar. Deseja atualizar o app agora?`, 'Nova versão disponível'],
-    downloading: ['Baixando atualização', `A versão ${status.version || 'mais recente'} está sendo baixada. Você poderá escolher quando instalar.`, 'Download em andamento'],
+  const errorMessage = status.state === 'error' ? getUpdateErrorMessage(status.message) : '';
+  const details = {
+    checking: ['Conferindo novidades', 'Consultando as versões públicas do GitHub.', 'Verificação em andamento'],
+    available: ['Nova atualização disponível', `A versão ${status.version || 'mais recente'} está pronta. Baixe quando quiser; você escolhe quando instalar.`, 'Nova versão disponível'],
+    downloading: ['Baixando atualização', `A versão ${status.version || 'mais recente'} está sendo baixada. Você pode continuar usando o app.`, 'Download em andamento'],
     current: ['Você está em dia', 'Esta instalação já está na versão mais recente disponível.', 'Tudo atualizado'],
-    downloaded: ['Pronto para atualizar', `A versão ${status.version || 'mais recente'} foi baixada e está pronta para instalar.`, 'Atualização pronta'],
-    development: ['Atualizações disponíveis na versão instalada', 'Instale o aplicativo para receber versões publicadas pelo GitHub.', 'Modo de desenvolvimento'],
-    error: ['Não foi possível concluir a atualização', status.message || 'Confira sua conexão e tente novamente.', 'Falha na atualização']
+    downloaded: ['Pronto para atualizar', `A versão ${status.version || 'mais recente'} foi baixada. Feche os trabalhos abertos e instale quando estiver pronto.`, 'Atualização pronta'],
+    development: ['Atualizações da versão instalada', 'Instale o Nexo para receber atualizações publicadas no GitHub.', 'Modo de desenvolvimento'],
+    error: ['A atualização não foi concluída', errorMessage, 'Falha na atualização']
   };
-  const [heading, detail, eyebrow] = messages[status.state] || ['Status indisponível', 'Tente verificar novamente.', 'Atualizações'];
+  const [heading, detail, eyebrow] = details[status.state] || ['Status indisponível', 'Tente verificar novamente.', 'Atualizações'];
   const percent = Math.max(0, Math.min(100, Number(status.percent) || 0));
   const isAvailable = status.state === 'available';
   const isDownloading = status.state === 'downloading';
   const isChecking = status.state === 'checking';
   const isDownloaded = status.state === 'downloaded';
   const canRetryDownload = status.state === 'error' && status.canRetry;
+  const hasInterruptedDownload = canRetryDownload && Number(status.total) > 0;
   currentUpdateStatus = status;
-  setText('update-status', status.state === 'downloading' && status.percent !== undefined
+
+  setText('update-status', isDownloading
     ? `Baixando atualização · ${percent}%`
     : isAvailable ? `Nova versão · ${status.version || 'disponível'}` : heading);
   setText('update-state-heading', heading);
   setText('update-state-detail', detail);
   setText('update-state-eyebrow', eyebrow);
-  setText('update-progress-label', isChecking ? 'Buscando uma versão nova' : 'Download da atualização');
-  setText('update-progress-percent', isChecking ? '...' : `${percent}%`);
+  setText('update-progress-label', isChecking ? 'Buscando uma versão nova' : hasInterruptedDownload ? 'Download interrompido' : 'Baixando pacote do GitHub');
+  setText('update-progress-percent', isChecking ? '…' : `${percent}%`);
+
+  const versionChip = document.getElementById('update-version-chip');
+  if (versionChip) {
+    const releaseDate = status.releaseDate ? new Date(status.releaseDate) : null;
+    const dateLabel = releaseDate && Number.isFinite(releaseDate.getTime())
+      ? ` · ${releaseDate.toLocaleDateString('pt-BR')}`
+      : '';
+    versionChip.textContent = status.version ? `Versão ${status.version}${dateLabel}` : '';
+    versionChip.hidden = !status.version || !['available', 'downloading', 'downloaded', 'error'].includes(status.state);
+  }
+  renderUpdateReleaseNotes(status);
   if (updatePanel) updatePanel.dataset.state = status.state;
+
   const progressWrap = document.getElementById('update-progress-wrap');
   const progressTrack = document.getElementById('update-progress-track');
   const progressFill = document.getElementById('update-progress-fill');
-  if (progressWrap) progressWrap.hidden = !isDownloading && !isChecking;
+  const showProgress = isChecking || isDownloading || hasInterruptedDownload;
+  if (progressWrap) progressWrap.hidden = !showProgress;
   if (progressTrack) progressTrack.setAttribute('aria-valuenow', String(isChecking ? 0 : percent));
   if (progressFill) progressFill.style.width = isChecking ? '34%' : `${percent}%`;
+  if (isChecking) {
+    setText('update-progress-size', 'Conectando ao GitHub…');
+    setText('update-progress-speed', '');
+  } else if (Number(status.total) > 0) {
+    setText('update-progress-size', `${formatBytes(Number(status.transferred) || 0)} de ${formatBytes(Number(status.total))}`);
+    const speed = Number(status.bytesPerSecond) || 0;
+    const eta = speed > 0 ? formatUpdateEta((status.total - (status.transferred || 0)) / speed) : '';
+    setText('update-progress-speed', speed > 0 ? `${formatBytes(speed)}/s${eta ? ` · ${eta}` : ''}` : 'Calculando velocidade…');
+  } else {
+    setText('update-progress-size', isDownloading ? 'Preparando o download…' : '');
+    setText('update-progress-speed', '');
+  }
+
   updateButton.hidden = !isAvailable && !isDownloaded && !canRetryDownload;
   updateButton.querySelector('span:last-child').textContent = isDownloaded
     ? `Instalar versão ${status.version || ''}`.trim()
-    : `Atualização ${status.version || ''}`.trim();
+    : `Ver versão ${status.version || ''}`.trim();
   downloadUpdateButton.hidden = !isAvailable && !canRetryDownload;
-  downloadUpdateButton.dataset.idleText = canRetryDownload ? 'Tentar baixar novamente' : 'Baixar e atualizar';
-  downloadUpdateButton.textContent = downloadUpdateButton.dataset.idleText;
-  checkUpdatesButton.disabled = isChecking || isDownloading;
+  downloadUpdateButton.dataset.idleText = canRetryDownload ? 'Tentar baixar novamente' : 'Baixar atualização';
+  if (!downloadUpdateButton.disabled) downloadUpdateButton.textContent = downloadUpdateButton.dataset.idleText;
+  checkUpdatesButton.disabled = isChecking || isDownloading || isDownloaded;
+  checkUpdatesButton.textContent = status.state === 'error' ? 'Tentar verificar novamente' : 'Verificar novamente';
   deferUpdateButton.hidden = !isAvailable;
   installUpdatePageButton.hidden = !isDownloaded;
   const updateIndicator = document.getElementById('update-nav-indicator');
