@@ -29,11 +29,14 @@ Var PrivacyDetails
 Var TelemetryCheckbox
 
 !macro customPageAfterChangeDir
-  !insertmacro skipPageIfUpdated
   Page custom PrivacyPageCreate PrivacyPageLeave
 !macroend
 
 Function PrivacyPageCreate
+  ${If} ${isUpdated}
+    Abort
+  ${EndIf}
+
   nsDialogs::Create 1018
   Pop $PrivacyDialog
   ${If} $PrivacyDialog == error
