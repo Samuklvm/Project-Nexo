@@ -1,6 +1,4 @@
 ﻿
-Var DeveloperTelemetryConsent
-
 LangString PRIVACY_TITLE 1046 "Privacidade e transparência"
 LangString PRIVACY_SUBTITLE 1046 "A coleta local mantém recursos do app; compartilhar com o criador é opcional."
 LangString PRIVACY_DETAILS 1046 "COLETA LOCAL — ATIVA PARA OS RECURSOS DO APP:$\r$\n• Painel: nome do computador, versão do Windows e do app, tempo ligado, uso de CPU, RAM total/livre/usada, indicador local de conexão (sim/não) e discos fixos (letra, rótulo, sistema de arquivos, total/livre/usado). Endereços de rede só são examinados localmente para obter o indicador; o Nexo não os guarda nem envia.$\r$\n• GPU NVIDIA compatível: temperatura, uso e memória usada/total. Sensores ACPI: temperatura reportada pelo firmware.$\r$\n• Diagnóstico: PID, nome e uso de CPU/memória dos cinco processos com maior consumo de cada recurso, calculados neste PC.$\r$\n• Limpeza: caminho e tamanho de arquivos temporários antigos, exibidos para prévia e remoção local.$\r$\n• Perfil local: amostras de CPU/RAM/disco/GPU e temperaturas locais a cada minuto (até 7 dias); feedback (categoria, útil/não útil e horário; até 100); título, detalhe e horário das últimas 20 atividades; papel de parede escolhido (até 5 MB); configuração e horário da limpeza automática. Gráficos da sessão ficam em memória por até 5 minutos.$\r$\n$\r$\nREDE E ATUALIZAÇÕES:$\r$\nAo abrir, o app consulta as releases públicas do GitHub. O GitHub pode receber dados normais da conexão, como endereço IP, horário, URL e identificação do app. O download só começa por ação da pessoa.$\r$\n$\r$\nCOMPARTILHAMENTO COM O CRIADOR — OPCIONAL:$\r$\nA opção abaixo começa desativada. Nesta versão, marcar ou desmarcar apenas salva sua preferência neste computador; o Nexo não envia telemetria ao criador. Uma versão futura só poderá enviar dados após informar os campos exatos, finalidade, destino, retenção e como revogar a autorização."
@@ -14,13 +12,15 @@ LangString PRIVACY_PROJECT 1033 "Project and privacy policy on GitHub"
 LangString PRIVACY_CREATOR 1046 "Perfil do criador"
 LangString PRIVACY_CREATOR 1033 "Creator profile"
 
+!ifndef BUILD_UNINSTALLER
+Var DeveloperTelemetryConsent
+
 !macro customInit
   ReadRegDWORD $DeveloperTelemetryConsent HKCU "Software\NexoDeviceCare\Privacy" "DeveloperTelemetryOptIn"
   IfErrors 0 +2
     StrCpy $DeveloperTelemetryConsent 0
 !macroend
 
-!ifndef BUILD_UNINSTALLER
 !include "nsDialogs.nsh"
 !include "WinMessages.nsh"
 
@@ -84,8 +84,8 @@ FunctionEnd
 Function OpenCreatorProfile
   ExecShell "open" "https://github.com/Samuklvm"
 FunctionEnd
-!endif
 
 !macro customInstall
   WriteRegDWORD HKCU "Software\NexoDeviceCare\Privacy" "DeveloperTelemetryOptIn" $DeveloperTelemetryConsent
 !macroend
+!endif
