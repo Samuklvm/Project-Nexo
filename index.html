@@ -3,26 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; base-uri 'none'" />
-    <meta name="theme-color" content="#0b0f1d" />
+    <meta name="theme-color" content="#0b0912" />
     <title>Nexo Device Care</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <svg class="sprite" aria-hidden="true" focusable="false">
-      <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
-      <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></symbol>
-      <symbol id="i-tune" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
-      <symbol id="i-history" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
-      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></symbol>
-      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="m6.5 7 .8 12.5h9.4L17.5 7"/></symbol>
-      <symbol id="i-drive" viewBox="0 0 24 24"><rect x="3.5" y="13" width="17" height="7" rx="2"/><path d="m5.5 13 2-8h9l2 8"/><circle cx="7.5" cy="16.5" r=".9"/></symbol>
-      <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3.5 7 2.8v5.4c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6.3z"/><path d="m9 12 2.2 2.2L15.2 10"/></symbol>
-      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/></symbol>
-      <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 4.5V10h5.5"/><path d="M5.2 14.5A7.5 7.5 0 1 0 6 7.7L4 10"/></symbol>
-      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/></symbol>
-    </svg>
-
     <div class="app-shell">
       <header class="window-titlebar">
         <div class="window-drag-space">
@@ -37,216 +22,408 @@
       </header>
 
       <div class="app-layout">
-        <aside class="sidebar">
-          <div class="device">
+      <aside class="sidebar">
+        <div class="brand-wrap">
+          <div class="brand-mark">N</div>
+          <div class="brand-text">
+            <strong>nexo</strong>
+            <span>device care</span>
+          </div>
+        </div>
+
+        <div class="device-card">
+          <div class="device-pill">PC</div>
+          <div class="device-meta">
             <strong id="computer-name">Meu computador</strong>
-            <span id="device-meta">Lendo o sistema</span>
-            <span class="device-network" id="device-network" data-online="false">Verificando a rede</span>
+            <span>Estação de trabalho</span>
+          </div>
+          <span class="online-dot"></span>
+        </div>
+
+        <nav class="nav" aria-label="Navegação principal">
+          <button class="nav-item active" type="button" data-view="overview" aria-current="page">
+            <span class="nav-icon">◎</span>
+            <span>Visão geral</span>
+          </button>
+          <button class="nav-item" type="button" data-view="diagnosis">
+            <span class="nav-icon">◌</span>
+            <span>Diagnóstico</span>
+          </button>
+          <button class="nav-item" type="button" data-view="cleanup">
+            <span class="nav-icon">✦</span>
+            <span>Limpeza</span>
+          </button>
+          <button class="nav-item" type="button" data-view="repairs">
+            <span class="nav-icon">＋</span>
+            <span>Reparos</span>
+          </button>
+          <button class="nav-item" type="button" data-view="drives">
+            <span class="nav-icon">▣</span>
+            <span>Unidades</span>
+          </button>
+          <button class="nav-item" type="button" data-view="activity">
+            <span class="nav-icon">◫</span>
+            <span>Atividade</span>
+          </button>
+          <button class="nav-item" type="button" data-view="updates">
+            <span class="nav-icon">↻</span>
+            <span>Atualizações</span>
+            <span class="nav-indicator" id="update-nav-indicator" hidden></span>
+          </button>
+        </nav>
+
+        <div class="wallpaper-box">
+          <button id="choose-wallpaper" class="wallpaper-button" type="button">
+            <span class="wallpaper-icon">▣</span>
+            <span>
+              <strong>Wallpaper</strong>
+              <small>Imagem customizada</small>
+            </span>
+            <span class="plus">＋</span>
+          </button>
+          <input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+          <button id="reset-wallpaper" class="reset-wallpaper" type="button" hidden>Restaurar</button>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div class="breadcrumb">
+            <span class="crumb">Dashboard</span>
+            <span class="crumb-separator">/</span>
+            <strong id="breadcrumb-current">Visão geral</strong>
           </div>
 
-          <nav class="nav" aria-label="Navegação principal">
-            <button class="nav-item active" type="button" data-view="overview" aria-current="page" aria-keyshortcuts="Control+1" title="Ctrl+1">
-              <svg class="icon"><use href="#i-overview"/></svg><span>Visão geral</span>
+          <div class="topbar-actions">
+            <button id="update-app" class="button button-violet update-button" type="button" hidden>
+              <span>↓</span>
+              <span>Instalar atualização</span>
             </button>
-            <button class="nav-item" type="button" data-view="diagnosis" aria-keyshortcuts="Control+2" title="Ctrl+2">
-              <svg class="icon"><use href="#i-pulse"/></svg><span>Diagnóstico</span>
-            </button>
-            <button class="nav-item" type="button" data-view="maintenance" aria-keyshortcuts="Control+3" title="Ctrl+3">
-              <svg class="icon"><use href="#i-tune"/></svg><span>Manutenção</span>
-            </button>
-            <button class="nav-item" type="button" data-view="activity" aria-keyshortcuts="Control+4" title="Ctrl+4">
-              <svg class="icon"><use href="#i-history"/></svg><span>Atividade</span>
-            </button>
-            <button class="nav-item" type="button" data-view="updates" aria-keyshortcuts="Control+5" title="Ctrl+5">
-              <svg class="icon"><use href="#i-download"/></svg><span>Atualizações</span>
-              <span class="nav-indicator" id="update-nav-indicator" hidden></span>
-            </button>
-          </nav>
-
-          <div class="sidebar-foot">
-            <button id="choose-wallpaper" class="foot-button" type="button"><svg class="icon"><use href="#i-image"/></svg><span>Trocar wallpaper</span></button>
-            <input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" hidden />
-            <button id="reset-wallpaper" class="foot-button" type="button" hidden><svg class="icon"><use href="#i-reset"/></svg><span>Restaurar padrão</span></button>
-            <p class="version"><span>Nexo <span id="app-version">--</span></span><small id="update-status">Verificando atualizações</small></p>
+            <span class="safe-status"><span class="safe-dot"></span><span id="app-status-label">Modo demonstração</span></span>
+            <button class="icon-button" type="button" aria-label="Notificações">◍</button>
           </div>
-        </aside>
+        </header>
 
-        <main class="main-panel">
-          <header class="topbar">
-            <h1 id="view-title">Visão geral</h1>
-            <div class="topbar-actions">
-              <button id="update-app" class="button button-quiet button-small" type="button" hidden>
-                <svg class="icon"><use href="#i-download"/></svg>
-                <span>Instalar atualização</span>
-              </button>
-              <span class="status" id="status-pill" data-busy="false" role="status"><i></i><span id="app-status-label">Iniciando…</span></span>
+        <div class="views">
+          <section class="view-panel active" data-view-panel="overview">
+            <div class="hero-card panel-box">
+              <div>
+                <span class="eyebrow">Sistema</span>
+                <h1>Manutenção rápida do PC</h1>
+              </div>
+              <div class="status-badge">
+                <span class="mini-dot"></span>
+                <span id="system-health-badge">Aguardando diagnóstico</span>
+              </div>
             </div>
-          </header>
 
-          <div class="views">
-            <section class="view-panel active" data-view-panel="overview">
-              <section class="verdict" id="verdict" data-level="idle" aria-live="polite">
-                <div class="verdict-text">
-                  <h2 id="verdict-headline">Lendo o seu PC…</h2>
-                  <p id="verdict-detail">As primeiras medições chegam em alguns segundos.</p>
+            <div class="stats-grid">
+              <article class="panel-box stat-box">
+                <span class="stat-label">Uso da CPU</span>
+                <strong id="cpu-usage-value">--%</strong>
+                <small id="cpu-usage-state">Aguardando leitura</small>
+              </article>
+              <article class="panel-box stat-box">
+                <span class="stat-label">Memória RAM</span>
+                <strong id="memory-usage-value">--%</strong>
+                <small id="memory-usage-state">Aguardando leitura</small>
+              </article>
+              <article class="panel-box stat-box">
+                <span class="stat-label">Espaço usado</span>
+                <strong id="disk-usage-value">--%</strong>
+                <small id="disk-usage-state">Aguardando leitura</small>
+              </article>
+              <article class="panel-box stat-box">
+                <span class="stat-label">GPU NVIDIA</span>
+                <strong id="gpu-usage-value">--</strong>
+                <small id="gpu-usage-state">Sensor não detectado</small>
+              </article>
+              <article class="panel-box stat-box">
+                <span class="stat-label">Temperatura</span>
+                <strong id="system-temperature-value">--</strong>
+                <small id="system-temperature-state">Sensor ACPI não detectado</small>
+              </article>
+              <article class="panel-box stat-box accent">
+                <span class="stat-label">Versão do app</span>
+                <strong id="app-version">--</strong>
+                <small id="update-status">Verificando atualizações</small>
+              </article>
+            </div>
+
+            <section class="performance-section" aria-labelledby="performance-heading">
+              <div class="performance-heading">
+                <div>
+                  <span class="eyebrow">Monitoramento local</span>
+                  <h2 id="performance-heading">Desempenho em tempo real</h2>
                 </div>
-                <div class="verdict-actions">
-                  <button class="button" id="verdict-primary" type="button" data-action="diagnose">Analisar desempenho</button>
-                  <button class="button button-quiet" id="verdict-secondary" type="button" data-action="cleanup" hidden>Limpar temporários</button>
-                </div>
-              </section>
-
-              <p class="metrics-meta"><i class="live-dot"></i><span>Últimos 5 minutos</span><span id="telemetry-updated-at">Aguardando leitura</span></p>
-
-              <div class="metrics" aria-label="Medições em tempo real">
-                <article class="tile" data-tile="cpu" data-level="idle">
-                  <header><h3>Processador</h3><span class="tile-state" id="cpu-state"></span></header>
-                  <p class="tile-value" id="cpu-value">--</p>
-                  <p class="tile-caption" id="cpu-caption">Aguardando leitura</p>
-                  <canvas class="spark" id="chart-cpu" role="img" aria-label="Uso do processador nos últimos 5 minutos"></canvas>
+                <span class="telemetry-updated"><i></i><span id="telemetry-updated-at">Aguardando leitura</span></span>
+              </div>
+              <div class="performance-grid">
+                <article class="panel-box performance-card">
+                  <div class="performance-card-heading"><span>Processador</span><strong id="chart-cpu-value">--%</strong></div>
+                  <canvas class="metric-chart" id="chart-cpu" role="img" aria-label="Histórico de uso do processador"></canvas>
+                  <div class="chart-footer"><span>Uso total</span><span>Últimos 5 min</span></div>
                 </article>
-                <article class="tile" data-tile="memory" data-level="idle">
-                  <header><h3>Memória RAM</h3><span class="tile-state" id="memory-state"></span></header>
-                  <p class="tile-value" id="memory-value">--</p>
-                  <p class="tile-caption" id="memory-caption">Aguardando leitura</p>
-                  <canvas class="spark" id="chart-memory" role="img" aria-label="Uso da memória RAM nos últimos 5 minutos"></canvas>
+                <article class="panel-box performance-card">
+                  <div class="performance-card-heading"><span>Memória RAM</span><strong id="chart-memory-value">--%</strong></div>
+                  <canvas class="metric-chart" id="chart-memory" role="img" aria-label="Histórico de uso da memória RAM"></canvas>
+                  <div class="chart-footer"><span>Memória usada</span><span>Últimos 5 min</span></div>
                 </article>
-                <article class="tile" data-tile="disk" data-level="idle">
-                  <header><h3>Espaço em disco</h3><span class="tile-state" id="disk-state"></span></header>
-                  <p class="tile-value" id="disk-value">--</p>
-                  <p class="tile-caption" id="disk-caption">Aguardando leitura</p>
-                  <canvas class="spark" id="chart-disk" role="img" aria-label="Espaço ocupado na unidade principal nos últimos 5 minutos"></canvas>
+                <article class="panel-box performance-card">
+                  <div class="performance-card-heading"><span>Espaço em disco</span><strong id="chart-disk-value">--%</strong></div>
+                  <canvas class="metric-chart" id="chart-disk" role="img" aria-label="Histórico de uso do disco principal"></canvas>
+                  <div class="chart-footer"><span>Capacidade ocupada · unidade principal</span><span>Últimos 5 min</span></div>
                 </article>
-                <article class="tile tile-wide" data-tile="gpu" data-level="idle">
-                  <header><h3>GPU NVIDIA</h3><span class="tile-state" id="gpu-state"></span></header>
-                  <p class="tile-value" id="gpu-value">--</p>
-                  <p class="tile-caption" id="gpu-caption">Requer placa NVIDIA e nvidia-smi</p>
-                  <canvas class="spark" id="chart-gpu" role="img" aria-label="Uso da GPU NVIDIA nos últimos 5 minutos"></canvas>
+                <article class="panel-box performance-card">
+                  <div class="performance-card-heading"><span>GPU NVIDIA</span><strong id="chart-gpu-value">--</strong></div>
+                  <canvas class="metric-chart" id="chart-gpu" role="img" aria-label="Histórico de uso da GPU NVIDIA"></canvas>
+                  <div class="chart-footer"><span id="chart-gpu-detail">Sensor não detectado</span><span>Últimos 5 min</span></div>
                 </article>
-                <article class="tile tile-wide" data-tile="temperature" data-level="idle">
-                  <header>
-                    <h3>Temperatura</h3>
-                    <div class="tile-meta">
-                      <span class="legend" aria-hidden="true"><i class="key key-gpu"></i>GPU<i class="key key-acpi"></i>ACPI</span>
-                      <span class="tile-state" id="temperature-state"></span>
-                    </div>
-                  </header>
-                  <p class="tile-value" id="temperature-value">--</p>
-                  <p class="tile-caption" id="temperature-caption">Sem sensores compatíveis</p>
-                  <canvas class="spark" id="chart-temperature" role="img" aria-label="Temperatura dos sensores disponíveis nos últimos 5 minutos"></canvas>
+                <article class="panel-box performance-card temperature-chart-card">
+                  <div class="performance-card-heading"><span>Temperatura reportada</span><strong id="chart-temperature-value">--</strong></div>
+                  <canvas class="metric-chart" id="chart-temperature" role="img" aria-label="Histórico dos sensores térmicos disponíveis"></canvas>
+                  <div class="chart-footer"><span id="chart-temperature-detail">Sem sensores compatíveis</span><span>Últimos 5 min</span></div>
                 </article>
               </div>
             </section>
 
-            <section class="view-panel" data-view-panel="diagnosis">
-              <div class="section-head">
-                <p>Verifica CPU, memória, disco e temperatura e mostra quais programas estão pesando. Nada é encerrado.</p>
+            <div class="two-col">
+              <article class="panel-box">
+                <div class="panel-head">
+                  <span>Diagnóstico geral</span>
+                  <button class="button-small" type="button" data-scan="diagnosis">Executar</button>
+                </div>
+                <ul class="check-list">
+                  <li><span>Uso da CPU</span><strong id="overview-cpu">--</strong></li>
+                  <li><span>Uso da memória</span><strong id="overview-memory">--</strong></li>
+                  <li><span>Espaço em disco</span><strong id="overview-disk">--</strong></li>
+                  <li><span>Interface de rede</span><strong id="overview-network">--</strong></li>
+                </ul>
+              </article>
+
+              <article class="panel-box">
+                <div class="panel-head">
+                  <span>Limpeza rápida</span>
+                  <button class="button-small" type="button" data-scan="cleanup">Executar</button>
+                </div>
+                <div class="progress-wrap">
+                  <div class="progress-labels">
+                    <span>Temporários com mais de 7 dias</span>
+                    <strong id="cleanup-preview">Calculando...</strong>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="view-panel" data-view-panel="diagnosis">
+            <article class="panel-box diagnose-box">
+              <div class="panel-head">
+                <div>
+                  <span class="eyebrow">Diagnóstico</span>
+                  <h2>Causas prováveis e recomendações</h2>
+                </div>
                 <button class="button" type="button" id="run-diagnosis">Analisar desempenho</button>
               </div>
-              <div id="diagnosis-result" class="diagnosis-result">
-                <p class="empty-note">Nada analisado ainda. Clique em Analisar desempenho para ver as recomendações.</p>
+
+              <div class="diagnostic-grid">
+                <div class="metric">
+                  <span>CPU</span>
+                  <strong id="diagnosis-cpu">--</strong>
+                </div>
+                <div class="metric">
+                  <span>RAM</span>
+                  <strong id="diagnosis-memory">--</strong>
+                </div>
+                <div class="metric">
+                  <span>Disco</span>
+                  <strong id="diagnosis-disk">--</strong>
+                </div>
+                <div class="metric">
+                  <span>Interface de rede</span>
+                  <strong id="diagnosis-network">--</strong>
+                </div>
+                <div class="metric">
+                  <span>GPU NVIDIA</span>
+                  <strong id="diagnosis-gpu">--</strong>
+                </div>
+                <div class="metric">
+                  <span>Temperatura reportada</span>
+                  <strong id="diagnosis-temperature">--</strong>
+                </div>
               </div>
-              <div id="diagnosis-processes" class="proc-grid"></div>
-              <small id="diagnosis-learning-status" class="fine-print">Histórico de desempenho e feedback ficam armazenados localmente neste computador.</small>
-            </section>
 
-            <section class="view-panel" data-view-panel="maintenance">
-              <ul class="tasks">
-                <li class="task">
-                  <span class="task-icon"><svg class="icon"><use href="#i-trash"/></svg></span>
-                  <div class="task-body">
-                    <h2>Limpar arquivos temporários</h2>
-                    <p>Remove da pasta temporária do seu usuário os arquivos com mais de 7 dias. A remoção é definitiva.</p>
-                    <p class="task-meta"><span id="cleanup-summary">Calculando…</span><span>Última vez: <span id="cleanup-last-run">nunca</span></span></p>
-                    <label class="switch" for="auto-clean-toggle">
-                      <input id="auto-clean-toggle" type="checkbox" role="switch" />
-                      <span>
-                        Limpar sozinho quando o disco principal passar de 90%
-                        <small>Roda no máximo uma vez por hora e não fecha programas nem muda configurações do Windows.</small>
-                      </span>
-                    </label>
-                  </div>
-                  <button class="button task-action" type="button" id="run-cleanup">Limpar agora</button>
-                </li>
+              <div id="diagnosis-result" class="result-box" data-result>
+                <p>Pronto para análise.</p>
+              </div>
+              <small id="diagnosis-learning-status" class="diagnosis-learning-status">Histórico de desempenho e feedback ficam armazenados localmente neste computador.</small>
+            </article>
+          </section>
 
-                <li class="task">
-                  <span class="task-icon"><svg class="icon"><use href="#i-drive"/></svg></span>
-                  <div class="task-body">
-                    <h2>Otimizar unidade</h2>
-                    <p>Usa a ferramenta do Windows: desfragmenta discos HDD e executa TRIM em SSDs.</p>
-                    <div class="drive-picker">
-                      <label for="drive-select">Unidade</label>
-                      <select id="drive-select"><option value="">Carregando unidades…</option></select>
-                    </div>
-                    <div class="capacity" id="drive-capacity" role="progressbar" aria-label="Espaço usado na unidade" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-level="idle"><span id="drive-capacity-bar"></span></div>
-                    <p class="task-meta"><span id="drive-summary">Carregando…</span><span>Pede permissão de administrador</span><span>Última vez: <span id="drive-last-run">nunca</span></span></p>
-                  </div>
-                  <button class="button task-action" type="button" id="drive-optimize">Otimizar</button>
-                </li>
+          <section class="view-panel" data-view-panel="cleanup">
+            <article class="panel-box">
+              <div class="panel-head">
+                <div>
+                  <span class="eyebrow">Limpeza</span>
+                  <h2>Otimização do sistema</h2>
+                </div>
+                <button class="button" type="button" id="run-cleanup">Executar limpeza</button>
+              </div>
 
-                <li class="task">
-                  <span class="task-icon"><svg class="icon"><use href="#i-shield"/></svg></span>
-                  <div class="task-body">
-                    <h2>Verificar arquivos do Windows</h2>
-                    <p>Executa o verificador de arquivos do sistema (sfc /scannow) e repara o que encontrar corrompido.</p>
-                    <p class="task-meta"><span id="repair-status">Sob demanda</span><span>Pede permissão de administrador</span><span>Costuma levar de 10 a 30 minutos</span><span>Última vez: <span id="repair-last-run">nunca</span></span></p>
-                  </div>
-                  <button class="button task-action" type="button" id="run-repair">Verificar</button>
-                </li>
+              <ul class="clean-list">
+                <li><span>Temporários com mais de 7 dias</span><strong id="cleanup-file-count">Calculando...</strong></li>
+                <li><span>Espaço estimado</span><strong id="cleanup-size">Calculando...</strong></li>
               </ul>
-            </section>
-
-            <section class="view-panel" data-view-panel="activity">
-              <div class="section-head">
-                <p>Análises, limpezas e otimizações feitas neste computador.</p>
-                <button class="button button-quiet" type="button" id="clear-activity" hidden>Limpar histórico</button>
+              <div class="auto-clean-setting">
+                <label for="auto-clean-toggle">
+                  <input id="auto-clean-toggle" type="checkbox" />
+                  <span>Ativar otimização automática segura</span>
+                </label>
+                <small>Age após pressão persistente de disco e remove apenas temporários antigos. Não encerra apps nem altera configurações do Windows.</small>
               </div>
-              <p class="empty-note" id="activity-empty">Nada registrado ainda. Quando você analisar, limpar ou otimizar, o registro aparece aqui.</p>
-              <div class="feed" id="activity-feed"></div>
-            </section>
+            </article>
+          </section>
 
-            <section class="view-panel" data-view-panel="updates">
-              <article class="update-card" id="update-panel" data-state="checking" aria-live="polite">
-                <div class="update-icon" aria-hidden="true"><span><svg class="icon icon-lg"><use href="#i-refresh"/></svg></span></div>
+          <section class="view-panel" data-view-panel="repairs">
+            <article class="panel-box">
+              <div class="panel-head">
+                <div>
+                  <span class="eyebrow">Reparos</span>
+                  <h2>Verificação de arquivos do sistema</h2>
+                </div>
+                <button class="button" type="button" id="run-repair">Verificar e reparar</button>
+              </div>
+              <div class="repair-list">
+                <div class="repair-item"><span>Ferramenta</span><strong>SFC do Windows</strong></div>
+                <div class="repair-item"><span>Permissão</span><strong>Administrador</strong></div>
+                <div class="repair-item"><span>Execução</span><strong id="repair-status">Sob demanda</strong></div>
+              </div>
+            </article>
+          </section>
+
+          <section class="view-panel" data-view-panel="drives">
+            <article class="panel-box drive-panel">
+              <div class="panel-head">
+                <div>
+                  <span class="eyebrow">Unidades</span>
+                  <h2>Reparo e otimização</h2>
+                </div>
+                <div class="drive-select-wrap">
+                  <label for="drive-select">Selecione:</label>
+                  <select id="drive-select">
+                    <option value="">Carregando unidades...</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="drive-summary">
+                <div class="drive-icon">▣</div>
+                <div>
+                  <span class="drive-type" id="drive-type">Unidade local</span>
+                  <h3 id="drive-model">Carregando...</h3>
+                </div>
+              </div>
+
+              <div class="drive-stats">
+                <div>
+                  <span>Temperatura</span>
+                  <strong id="drive-temp">Não medida</strong>
+                </div>
+                <div>
+                  <span>Formato</span>
+                  <strong id="drive-format">--</strong>
+                </div>
+                <div>
+                  <span>Estado</span>
+                  <strong id="drive-state">Aguardando leitura</strong>
+                </div>
+              </div>
+
+              <div class="drive-operation">
+                <div class="operation-copy">
+                  <span class="tiny-label">Ação sugerida</span>
+                  <h4 id="drive-operation-title">Otimização do Windows</h4>
+                  <p id="drive-operation-description">O Windows seleciona a operação adequada para a unidade.</p>
+                </div>
+                <div class="chip" id="drive-method">Otimizar</div>
+              </div>
+
+              <div class="capacity-block">
+                <div class="capacity-labels">
+                  <span>Espaço usado</span>
+                  <strong><span id="drive-used-capacity">--</span> <small>de <span id="drive-total-capacity">--</span></small></strong>
+                </div>
+                <div class="capacity-track"><span id="drive-capacity-bar" style="width: 0%;"></span></div>
+                <div class="capacity-legend">
+                  <span><i class="used-key"></i><span id="drive-used-label">-- usados</span></span>
+                  <span><i class="free-key"></i><span id="drive-free-label">-- livres</span></span>
+                </div>
+              </div>
+
+              <div class="drive-actions">
+                <button id="drive-optimize" class="button" type="button">Otimizar unidade</button>
+              </div>
+            </article>
+          </section>
+
+          <section class="view-panel" data-view-panel="activity">
+            <article class="panel-box">
+              <div class="panel-head">
+                <div>
+                  <span class="eyebrow">Atividade</span>
+                  <h2>Histórico recente</h2>
+                </div>
+              </div>
+              <ul class="activity-list">
+              </ul>
+            </article>
+          </section>
+
+          <section class="view-panel" data-view-panel="updates">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">Nexo Device Care</span>
+                <h1>Atualizações</h1>
+                <p>Versões, melhorias e segurança do aplicativo.</p>
+              </div>
+              <span class="version-pill">Versão <strong id="updates-current-version">--</strong></span>
+            </div>
+
+            <article class="panel-box update-panel" id="update-panel" data-state="checking" aria-live="polite">
+              <div class="update-orbit" aria-hidden="true"><span>↻</span></div>
+              <div class="update-copy">
+                <span class="eyebrow" id="update-state-eyebrow">Central de atualizações</span>
                 <h2 id="update-state-heading">Verificando atualizações</h2>
                 <p id="update-state-detail">Estamos conferindo se existe uma versão mais recente do Nexo.</p>
-                <div class="update-progress" id="update-progress-wrap" hidden>
-                  <div class="update-progress-labels">
-                    <span id="update-progress-label">Preparando download</span>
-                    <strong id="update-progress-percent">0%</strong>
-                  </div>
-                  <div class="update-progress-track" id="update-progress-track" role="progressbar" aria-label="Progresso da atualização" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                    <span id="update-progress-fill"></span>
-                  </div>
+              </div>
+              <div class="update-progress-wrap" id="update-progress-wrap" hidden>
+                <div class="update-progress-labels">
+                  <span id="update-progress-label">Preparando download</span>
+                  <strong id="update-progress-percent">0%</strong>
                 </div>
-                <div class="update-actions">
-                  <button class="button button-quiet" id="check-updates" type="button">Verificar novamente</button>
-                  <button class="button button-quiet" id="defer-update" type="button" hidden>Agora não</button>
-                  <button class="button" id="download-update" type="button" hidden>Baixar e atualizar</button>
-                  <button class="button" id="install-update-page" type="button" hidden>Instalar e reiniciar</button>
+                <div class="update-progress-track" id="update-progress-track" role="progressbar" aria-label="Progresso da atualização" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                  <span id="update-progress-fill"></span>
                 </div>
-                <p class="update-version">Versão instalada <strong id="updates-current-version">--</strong></p>
-              </article>
-              <p class="fine-print update-note">O download só começa quando você confirma. Depois de concluído, você decide quando reiniciar o aplicativo para aplicar a versão nova.</p>
-            </section>
-          </div>
-        </main>
+              </div>
+              <div class="update-actions">
+                <button class="button button-secondary" id="check-updates" type="button">Verificar novamente</button>
+                <button class="button button-secondary" id="defer-update" type="button" hidden>Agora não</button>
+                <button class="button" id="download-update" type="button" hidden>Baixar e atualizar</button>
+                <button class="button" id="install-update-page" type="button" hidden>Instalar e reiniciar</button>
+              </div>
+            </article>
+
+            <div class="update-footnote">
+              <span class="update-footnote-icon">i</span>
+              <p>O download só começa quando você confirma. Depois de concluído, você decide quando reiniciar o aplicativo para aplicar a versão nova.</p>
+            </div>
+          </section>
+        </div>
+      </main>
       </div>
     </div>
 
-    <dialog class="dialog" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
-      <form method="dialog" class="dialog-card">
-        <h2 id="confirm-title">Confirmar</h2>
-        <p id="confirm-body"></p>
-        <ul class="dialog-points" id="confirm-points" hidden></ul>
-        <div class="dialog-actions">
-          <button class="button button-quiet" id="confirm-cancel" type="submit" value="cancel">Cancelar</button>
-          <button class="button" id="confirm-ok" type="submit" value="ok">Continuar</button>
-        </div>
-      </form>
-    </dialog>
-
-    <div class="toast" id="toast" role="status" aria-live="polite" data-tone="info"></div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script src="app.js"></script>
   </body>
