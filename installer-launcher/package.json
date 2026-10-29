@@ -1,6 +1,6 @@
 {
   "name": "nexo-installer-launcher",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "Instalador visual do Nexo Device Care",
   "main": "main.cjs",

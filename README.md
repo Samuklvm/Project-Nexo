@@ -38,11 +38,11 @@ O instalador visual do Windows permite escolher Português ou English, a pasta d
 ## Publicar uma versão
 
 1. Altere o campo `version` em `package.json` e envie o commit para o GitHub. A Action compila o coletor local em .NET 10 e empacota o instalador Electron.
-2. Crie uma tag `v` seguida exatamente da mesma versão. Para a versão `0.1.7`:
+2. Crie uma tag `v` seguida exatamente da mesma versão. Para a versão `0.1.8`:
 
    ```powershell
-   git tag v0.1.7
-   git push origin v0.1.7
+   git tag v0.1.8
+   git push origin v0.1.8
    ```
 
 3. A GitHub Action compila o app, publica `Nexo-Setup` para atualizações automáticas e anexa `Nexo-Instalador` à release como instalador visual de primeira instalação. Acompanhe a execução na aba **Actions**; após o sucesso, os dois arquivos ficam na página **Releases**.

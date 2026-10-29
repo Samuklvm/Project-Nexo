@@ -1,6 +1,6 @@
 {
   "name": "nexo-device-care",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "Nexo device care desktop app",
   "main": "main.cjs",

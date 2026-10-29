@@ -20,15 +20,14 @@ canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .tb{position:absolute;top:0;left:0;right:0;height:2.8em;display:flex;justify-content:flex-end;align-items:center;gap:.2em;padding:0 .6em}
 .tb button{width:2.2em;height:2.2em;display:grid;place-items:center;border-radius:.5em;opacity:.7}
 .tb button:hover{background:rgba(255,255,255,.12);opacity:1}
-.tb select{height:2em;margin-right:auto;border:1px solid rgba(255,255,255,.2);border-radius:.5em;padding:0 .6em;background:rgba(10,15,35,.72);color:#e9eeff;font:inherit;font-size:.78em;-webkit-app-region:no-drag}
 .logo{position:absolute;left:3.4em;top:2.8em;display:flex;align-items:center;gap:.8em}
-.logo img{width:2.4em;height:2.4em;object-fit:contain;filter:drop-shadow(0 0 .5em #5ad7ff)}
+.logo svg{width:2.4em;height:2.4em;filter:drop-shadow(0 0 .5em #5ad7ff)}
 .logo b{display:block;font-size:2.3em;line-height:1;font-weight:800;letter-spacing:.4em;background:linear-gradient(90deg,#fff,#9fd8ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 .logo small{display:block;margin-top:.5em;font-size:.78em;letter-spacing:.6em;opacity:.75}
 .scr{position:absolute;left:3.4em;right:3.4em;bottom:2.6em;display:none;align-items:flex-end;justify-content:space-between;gap:2em}
 .scr.on{display:flex;animation:up .45s ease both}
 @keyframes up{from{opacity:0;transform:translateY(12px)}}
-h1{margin:0 0 .35em;font-size:2.1em;line-height:1.15;font-weight:700;white-space:pre-line}
+h1{margin:0 0 .35em;font-size:2.1em;line-height:1.15;font-weight:700}
 p{margin:0}.mut{opacity:.75}.fine{font-size:.8em;opacity:.6;margin-top:1.1em;max-width:34em}
 .btns{display:flex;gap:.8em;align-items:center;flex:none}
 .btn{font:inherit;font-weight:700;color:#fff;cursor:pointer;padding:.85em 2.2em;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(8px);transition:transform .15s,box-shadow .15s}
@@ -39,7 +38,6 @@ button:focus-visible,.sw input:focus-visible+i{outline:2px solid #8fe3ff;outline
 #opts{justify-content:flex-end}
 .card{width:min(27em,50%);padding:1.4em;border-radius:1.2em;background:rgba(9,13,36,.68);backdrop-filter:blur(18px) saturate(1.2);border:1px solid rgba(160,190,255,.22)}
 .card h2{margin:0 0 .6em;font-size:1.15em}
-.card{max-height:calc(100vh - 5em);overflow:auto;scrollbar-color:rgba(150,190,255,.4) transparent}
 .path{display:flex;gap:.6em;align-items:center;margin:.2em 0 .8em}
 .path code{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:.6em .8em;border-radius:.6em;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.14);font:inherit;font-size:.85em}
 .sw{display:flex;align-items:center;gap:.7em;margin:.6em 0;cursor:pointer;position:relative}
@@ -50,18 +48,7 @@ button:focus-visible,.sw input:focus-visible+i{outline:2px solid #8fe3ff;outline
 .sw input:checked+i::after{transform:translateX(1.1em)}
 .sw small{display:block;opacity:.6;font-size:.82em}
 .lnk{background:none;border:0;color:#8fd0ff;font:inherit;font-size:.86em;padding:0;cursor:pointer;text-decoration:underline}
-#priv{display:none;white-space:pre-line;font-size:.72em;line-height:1.42;opacity:.84;margin:.5em 0 0;max-height:10em;overflow:auto;padding:.7em;border-radius:.6em;background:rgba(0,0,0,.2)}#priv.on{display:block}
-.consent{margin-top:.8em!important;padding-top:.7em;border-top:1px solid rgba(255,255,255,.14)}
-.terms-link{margin-top:.35em}
-.links{display:flex;gap:1.2em;flex-wrap:wrap;margin-top:.4em}
-.links .lnk{font-size:.78em}
-.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
-.modal{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:2em;background:rgba(3,6,18,.82);backdrop-filter:blur(12px)}
-.modal[hidden]{display:none}
-.modal-card{width:min(100%,42em);max-height:100%;display:flex;flex-direction:column;padding:1.4em;border:1px solid rgba(160,190,255,.28);border-radius:1em;background:rgba(9,13,36,.96);box-shadow:0 20px 60px rgba(0,0,0,.5)}
-.modal-card h2{margin:0 0 .8em;font-size:1.2em}
-.modal-card pre{max-height:56vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:.8em;border-radius:.6em;background:rgba(0,0,0,.24);color:#e9eeff;font:inherit;font-size:.8em;line-height:1.55}
-.modal-card .btns{margin-top:1em}
+#priv{display:none;font-size:.8em;opacity:.8;margin:.5em 0 0}#priv.on{display:block}
 .card .btns{justify-content:flex-end;margin-top:1.1em}
 .card .btn{padding:.7em 1.6em}.card .pri{font-size:1em}
 .pg{width:100%}
@@ -83,53 +70,47 @@ body{padding:0;display:block;overflow:hidden;background:#060919}.wrap{width:100v
 <body>
 <div class="wrap"><div class="win" id="win">
   <div class="bg" id="bg"></div><div class="shade"></div><canvas id="fx"></canvas>
-  <div class="tb"><select id="language" aria-label="Idioma"><option value="pt">Português</option><option value="en">English</option></select><button id="min" aria-label="Minimizar">–</button><button id="x" aria-label="Fechar">✕</button></div>
+  <div class="tb"><button id="min" aria-label="Minimizar">–</button><button id="x" aria-label="Fechar">✕</button></div>
   <div class="logo">
-    <img src="assets/nexo-star.png" alt="" aria-hidden="true" />
+    <svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#5ad7ff"/></linearGradient></defs><path d="M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z" fill="url(#g)"/></svg>
     <div><b>NEXO</b><small>DEVICE CARE</small></div>
   </div>
 
   <section class="scr on">
     <div>
-      <h1 data-i18n="welcomeTitle">Cuide do seu PC<br>sob as estrelas.</h1>
-      <p class="mut" data-i18n="welcomeText">Diagnóstico, limpeza e monitoramento — tudo feito localmente.</p>
-      <p class="fine" data-i18n="welcomeFine">O compartilhamento de dados com o criador é opcional e começa desativado.</p>
+      <h1>Cuide do seu PC<br>sob as estrelas.</h1>
+      <p class="mut">Diagnóstico, limpeza e monitoramento — tudo feito localmente.</p>
+      <p class="fine">Ao instalar, você confirma que leu os Avisos. O compartilhamento de dados com o criador é opcional e começa desativado.</p>
     </div>
-    <div class="btns"><button class="btn" data-go="1" data-i18n="options">Opções</button><button class="btn pri" data-go="1" data-i18n="continue">Continuar</button></div>
+    <div class="btns"><button class="btn" data-go="1">Opções</button><button class="btn pri" data-go="2">Instalar</button></div>
   </section>
 
   <section class="scr" id="opts">
     <div class="card">
-      <h2 data-i18n="optionsTitle">Opções de instalação</h2>
-      <div class="mut" style="font-size:.85em" data-i18n="destination">Pasta de destino</div>
-      <div class="path"><code id="dir"></code><button class="btn" id="pick" style="padding:.5em 1.1em" data-i18n="change">Alterar</button></div>
-      <label class="sw"><input type="checkbox" checked id="o-desk"><i></i><span data-i18n="desktopShortcut">Atalho na área de trabalho</span></label>
-      <label class="sw"><input type="checkbox" checked id="o-run"><i></i><span data-i18n="openWhenDone">Abrir o Nexo ao terminar</span></label>
-      <label class="sw"><input type="checkbox" id="o-tel"><i></i><span><span data-i18n="shareCreator">Compartilhar dados opcionais com o criador</span><small data-i18n="offByDefault">Desativado por padrão</small></span></label>
-      <button class="lnk" id="pl" aria-expanded="false" data-i18n="dataDetails">O que o Nexo coleta neste PC?</button>
-      <div id="priv" role="region" aria-label="Detalhes da coleta" data-i18n="privacyDetails"></div>
-      <div class="links"><button class="lnk" id="project-link" data-i18n="projectLink">Projeto no GitHub</button><button class="lnk" id="privacy-link" data-i18n="privacyLink">Privacidade</button><button class="lnk" id="creator-link" data-i18n="creatorLink">Perfil do criador</button></div>
-      <label class="sw consent"><input type="checkbox" id="o-terms"><i></i><span data-i18n="acceptNotices">Li e aceito os Avisos do produto</span></label>
-      <button class="lnk terms-link" id="show-notices" data-i18n="readNotices">Ler os Avisos</button>
-      <div class="btns"><button class="btn" data-go="0" data-i18n="back">Voltar</button><button class="btn pri" id="install-button" data-go="2" disabled data-i18n="install">Instalar</button></div>
+      <h2>Opções de instalação</h2>
+      <div class="mut" style="font-size:.85em">Pasta de destino</div>
+      <div class="path"><code id="dir"></code><button class="btn" id="pick" style="padding:.5em 1.1em">Alterar</button></div>
+      <label class="sw"><input type="checkbox" checked id="o-desk"><i></i><span>Atalho na área de trabalho</span></label>
+      <label class="sw"><input type="checkbox" checked id="o-run"><i></i><span>Abrir o Nexo ao terminar</span></label>
+      <label class="sw"><input type="checkbox" id="o-tel"><i></i><span>Compartilhar dados opcionais com o criador<small>Desativado por padrão</small></span></label>
+      <button class="lnk" id="pl" aria-expanded="false">O que o Nexo coleta neste PC?</button>
+      <p id="priv">CPU, RAM, discos, processos e temperaturas ficam só neste computador, para os recursos do app. Nada é enviado ao criador sem a sua autorização.</p>
+      <div class="btns"><button class="btn" data-go="0">Voltar</button><button class="btn pri" data-go="2">Instalar</button></div>
     </div>
   </section>
 
   <section class="scr">
     <div class="pg" aria-live="polite">
-      <div class="row"><span id="st" class="mut" data-i18n="preparing">Preparando arquivos…</span><span id="pct">0%</span></div>
+      <div class="row"><span id="st" class="mut">Preparando arquivos…</span><span id="pct">0%</span></div>
       <div class="track"><div class="fill" id="fill"></div></div>
       <div class="btns" id="err" hidden style="margin-top:1.2em;justify-content:flex-end"><button class="btn" id="close3">Fechar</button><button class="btn pri" id="retry">Tentar de novo</button></div>
     </div>
   </section>
 
   <section class="scr">
-    <div><h1 data-i18n="doneTitle">Tudo pronto.</h1><p class="mut" data-i18n="doneText">O Nexo Device Care foi instalado com sucesso.</p></div>
-    <div class="btns"><button class="btn" id="close2" data-i18n="close">Fechar</button><button class="btn pri" id="open" data-i18n="openApp">Abrir o Nexo</button></div>
+    <div><h1>Tudo pronto.</h1><p class="mut">O Nexo Device Care foi instalado com sucesso.</p></div>
+    <div class="btns"><button class="btn" id="close2">Fechar</button><button class="btn pri" id="open">Abrir o Nexo</button></div>
   </section>
-  <div class="modal" id="notices-modal" hidden role="dialog" aria-modal="true" aria-labelledby="notices-title">
-    <div class="modal-card"><h2 id="notices-title" data-i18n="noticesTitle">Avisos do produto</h2><pre id="notices-text"></pre><div class="btns"><button class="btn pri" id="close-notices" data-i18n="close">Fechar</button></div></div>
-  </div>
 </div></div>
 
 

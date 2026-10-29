@@ -19,7 +19,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 920, height: 575, useContentSize: true, resizable: false, maximizable: false,
     frame: false, show: false, backgroundColor: '#060919', title: 'Nexo Device Care',
-    icon: path.join(__dirname, 'assets', 'icon.ico'),
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true }
   });
   win.setMenuBarVisibility(false);
