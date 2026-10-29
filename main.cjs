@@ -462,6 +462,7 @@ function createWindow() {
     frame: false,
     backgroundColor: '#090a12',
     title: 'Nexo Device Care',
+    icon: path.join(__dirname, 'assets', 'icon.ico'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

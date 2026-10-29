@@ -1,14 +1,15 @@
 {
   "name": "nexo-device-care",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "description": "Nexo device care desktop app",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
     "build:sensors": "dotnet publish sensor-host/Nexo.SensorHost.csproj -c Release -r win-x64 --self-contained true -o sensor-host/publish",
-    "dist": "npm run build:sensors && electron-builder --win nsis",
-    "release": "npm run build:sensors && electron-builder --win nsis --publish always"
+    "build:visual-installer": "node installer-launcher/scripts/prepare.cjs && electron-builder --projectDir installer-launcher --win portable --publish never",
+    "dist": "npm run build:sensors && electron-builder --win nsis && npm run build:visual-installer",
+    "release": "npm run build:sensors && electron-builder --win nsis --publish always && npm run build:visual-installer"
   },
   "repository": {
     "type": "git",
@@ -48,6 +49,7 @@
       }
     ],
     "win": {
+      "icon": "assets/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -57,6 +59,8 @@
       "artifactName": "Nexo-Setup-${version}.${ext}"
     },
     "nsis": {
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

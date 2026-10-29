@@ -1,0 +1,27 @@
+{
+  "name": "nexo-installer-launcher",
+  "version": "0.1.7",
+  "private": true,
+  "description": "Instalador visual do Nexo Device Care",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "node scripts/prepare.cjs && electron .",
+    "dist": "node scripts/prepare.cjs && electron-builder --win portable --publish never"
+  },
+  "devDependencies": {
+    "electron": "37.2.0",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.samuklvm.nexo.installer",
+    "productName": "Nexo Instalador",
+    "directories": { "output": "dist" },
+    "files": ["index.html", "renderer.js", "main.cjs", "preload.cjs", "assets/**/*"],
+    "extraResources": [{ "from": "payload", "to": "payload" }],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "artifactName": "Nexo-Instalador-${version}.${ext}"
+    }
+  }
+}

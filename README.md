@@ -31,21 +31,21 @@ npm start
 npm run dist
 ```
 
-O assistente do Windows permite escolher a pasta de instalação e exige a leitura e o aceite dos avisos antes de continuar. Ao concluir, o aplicativo é aberto. O instalador Windows x64 é gerado na pasta `release/`.
+O instalador visual do Windows permite escolher Português ou English, a pasta de destino, a criação de atalho e a abertura do app após a instalação. Ele mostra os avisos do produto antes de exigir o aceite e detalha todos os dados locais e as conexões de rede. O compartilhamento com o criador começa desativado e, nesta versão, a opção apenas guarda a preferência localmente. A tela de instalação exibe a arte e o novo ícone do Nexo.
 
-O instalador também permite escolher Português (Brasil) ou English, mostra a arte do Nexo e apresenta uma página de privacidade com links do projeto e do criador. A coleta local de métricas usada pelos recursos do app está ativa. Já o compartilhamento de telemetria com o criador é opcional e fica desativado por padrão; nesta versão, não existe envio de telemetria nem de relatórios de falha. Consulte [PRIVACIDADE.md](PRIVACIDADE.md) para o inventário detalhado.
+`npm run dist` gera o instalador NSIS em `release/` e o launcher visual em `installer-launcher/dist/`. O NSIS continua sendo o instalador usado pelo atualizador interno do app. A coleta local de métricas usada pelos recursos do app está ativa. Consulte [PRIVACIDADE.md](PRIVACIDADE.md) para o inventário detalhado.
 
 ## Publicar uma versão
 
 1. Altere o campo `version` em `package.json` e envie o commit para o GitHub. A Action compila o coletor local em .NET 10 e empacota o instalador Electron.
-2. Crie uma tag `v` seguida exatamente da mesma versão. Para a versão `0.1.6`:
+2. Crie uma tag `v` seguida exatamente da mesma versão. Para a versão `0.1.7`:
 
    ```powershell
-   git tag v0.1.6
-   git push origin v0.1.6
+   git tag v0.1.7
+   git push origin v0.1.7
    ```
 
-3. A GitHub Action compila o instalador Windows x64 e publica a release. Acompanhe a execução na aba **Actions**; após o sucesso, os arquivos ficam na página **Releases**.
+3. A GitHub Action compila o app, publica `Nexo-Setup` para atualizações automáticas e anexa `Nexo-Instalador` à release como instalador visual de primeira instalação. Acompanhe a execução na aba **Actions**; após o sucesso, os dois arquivos ficam na página **Releases**.
 
 O aplicativo instalado verifica atualizações ao iniciar e mostra a versão disponível na aba **Atualizações**. A tela mostra as novidades, o progresso, a velocidade e o tamanho do download, com opção para tentar novamente. O download só começa quando a pessoa seleciona **Baixar atualização**; depois, ela escolhe quando instalar e reiniciar o app. O atualizador funciona apenas na versão empacotada. Para que outras pessoas baixem atualizações sem autenticação, o repositório e as releases devem ser públicos.
 

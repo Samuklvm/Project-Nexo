@@ -4,5 +4,6 @@ dist/
 sensor-host/bin/
 sensor-host/obj/
 sensor-host/publish/
+/installer-launcher/payload/
 *.log
 .DS_Store
