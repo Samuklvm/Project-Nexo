@@ -1,504 +1,286 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b0912" />
-    <title>Nexo Device Care</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <header class="window-titlebar">
-        <div class="window-drag-space">
-          <span class="window-brand-mark"><img src="assets/nexo-star.png" alt="" /></span>
-          <span class="window-brand-name">Nexo <span>Device Care</span></span>
-        </div>
-        <div class="window-controls" aria-label="Controles da janela">
-          <button class="window-control" id="window-minimize" type="button" aria-label="Minimizar" title="Minimizar">−</button>
-          <button class="window-control" id="window-maximize" type="button" aria-label="Maximizar" title="Maximizar"><span class="maximize-glyph"></span></button>
-          <button class="window-control window-close" id="window-close" type="button" aria-label="Fechar" title="Fechar">×</button>
-        </div>
-      </header>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="theme-color" content="#060919" />
+  <title>Nexo Device Care</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="g-star" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#5ad7ff"/></linearGradient>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z" fill="currentColor"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10M10 19.5v-5h4v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5l1.9 5.6 5.6 1.9-5.6 1.9L12 18.5l-1.9-5.6L4.5 11l5.6-1.9zM19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+      <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5h3.5M3 14.5h3.5M17.5 9.5H21M17.5 14.5H21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 6.2a4.2 4.2 0 0 0-5.3 5.3L3.5 17.2a1.9 1.9 0 0 0 2.7 2.7l5.7-5.7a4.2 4.2 0 0 0 5.3-5.3l-2.6 2.6-2.4-.6-.6-2.4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5.1M4.5 12a7.5 7.5 0 0 1 13-5.1M17.5 3.5v3.8h-3.8M6.5 20.5v-3.8h3.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M4 12h3M11 12h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="15" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="9" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-min" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+      <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+      <symbol id="i-restore" viewBox="0 0 12 12"><path d="M4 2.2h5.8v5.8M2.2 4h5.8v5.8H2.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+      <symbol id="i-close" viewBox="0 0 12 12"><path d="m2.5 2.5 7 7m0-7-7 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+    </defs>
+  </svg>
 
-      <div class="app-layout">
-      <aside class="sidebar">
-        <div class="brand-wrap">
-          <div class="brand-mark"><img src="assets/nexo-star.png" alt="" /></div>
-          <div class="brand-text">
-            <strong>nexo</strong>
-            <span>device care</span>
-          </div>
-        </div>
+  <div class="sky" aria-hidden="true"><canvas id="ambient"></canvas></div>
 
-        <div class="device-card">
-          <div class="device-pill">PC</div>
-          <div class="device-meta">
-            <strong id="computer-name">Meu computador</strong>
-            <span>Estação de trabalho</span>
-          </div>
-          <span class="online-dot"></span>
-        </div>
-
-        <nav class="nav" aria-label="Navegação principal">
-          <button class="nav-item active" type="button" data-view="overview" aria-current="page">
-            <span class="nav-icon">◎</span>
-            <span>Visão geral</span>
-          </button>
-          <button class="nav-item" type="button" data-view="sensors">
-            <span class="nav-icon">⌁</span>
-            <span>Sensores</span>
-          </button>
-          <button class="nav-item" type="button" data-view="diagnosis">
-            <span class="nav-icon">◌</span>
-            <span>Diagnóstico</span>
-          </button>
-          <button class="nav-item" type="button" data-view="cleanup">
-            <span class="nav-icon">✦</span>
-            <span>Limpeza</span>
-          </button>
-          <button class="nav-item" type="button" data-view="repairs">
-            <span class="nav-icon">＋</span>
-            <span>Reparos</span>
-          </button>
-          <button class="nav-item" type="button" data-view="drives">
-            <span class="nav-icon">▣</span>
-            <span>Unidades</span>
-          </button>
-          <button class="nav-item" type="button" data-view="activity">
-            <span class="nav-icon">◫</span>
-            <span>Atividade</span>
-          </button>
-          <button class="nav-item" type="button" data-view="updates">
-            <span class="nav-icon">↻</span>
-            <span>Atualizações</span>
-            <span class="nav-indicator" id="update-nav-indicator" hidden></span>
-          </button>
-        </nav>
-
-        <div class="wallpaper-box">
-          <button id="choose-wallpaper" class="wallpaper-button" type="button">
-            <span class="wallpaper-icon">▣</span>
-            <span>
-              <strong>Wallpaper</strong>
-              <small>Imagem customizada</small>
-            </span>
-            <span class="plus">＋</span>
-          </button>
-          <input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" hidden />
-          <button id="reset-wallpaper" class="reset-wallpaper" type="button" hidden>Restaurar</button>
-        </div>
-      </aside>
-
-      <main class="main-panel">
-        <header class="topbar">
-          <div class="breadcrumb">
-            <span class="crumb">Dashboard</span>
-            <span class="crumb-separator">/</span>
-            <strong id="breadcrumb-current">Visão geral</strong>
-          </div>
-
-          <div class="topbar-actions">
-            <button id="update-app" class="button button-violet update-button" type="button" hidden>
-              <span>↓</span>
-              <span>Instalar atualização</span>
-            </button>
-            <span class="safe-status"><span class="safe-dot"></span><span id="app-status-label">Modo demonstração</span></span>
-            <button class="icon-button" type="button" aria-label="Notificações">◍</button>
-          </div>
-        </header>
-
-        <div class="views">
-          <section class="view-panel active" data-view-panel="overview">
-            <div class="hero-card panel-box">
-              <div>
-                <span class="eyebrow">Sistema</span>
-                <h1>Manutenção rápida do PC</h1>
-                <p class="hero-copy">Monitoramento ao vivo e histórico guardado só neste computador.</p>
-              </div>
-              <div class="status-badge">
-                <span class="mini-dot"></span>
-                <span id="system-health-badge">Aguardando diagnóstico</span>
-              </div>
-            </div>
-
-            <div class="stats-grid">
-              <article class="panel-box stat-box">
-                <span class="stat-label">Uso da CPU</span>
-                <strong id="cpu-usage-value">--%</strong>
-                <span class="stat-meter" aria-hidden="true"><i id="cpu-usage-meter"></i></span>
-                <small id="cpu-usage-state">Aguardando leitura</small>
-              </article>
-              <article class="panel-box stat-box">
-                <span class="stat-label">Memória RAM</span>
-                <strong id="memory-usage-value">--%</strong>
-                <span class="stat-meter memory-meter" aria-hidden="true"><i id="memory-usage-meter"></i></span>
-                <small id="memory-usage-state">Aguardando leitura</small>
-              </article>
-              <article class="panel-box stat-box">
-                <span class="stat-label">Espaço usado</span>
-                <strong id="disk-usage-value">--%</strong>
-                <span class="stat-meter disk-meter" aria-hidden="true"><i id="disk-usage-meter"></i></span>
-                <small id="disk-usage-state">Aguardando leitura</small>
-              </article>
-              <article class="panel-box stat-box">
-                <span class="stat-label">Uso da GPU</span>
-                <strong id="gpu-usage-value">--</strong>
-                <span class="stat-meter gpu-meter" aria-hidden="true"><i id="gpu-usage-meter"></i></span>
-                <small id="gpu-usage-state">Sensor não detectado</small>
-              </article>
-              <article class="panel-box stat-box">
-                <span class="stat-label">Temperatura</span>
-                <strong id="system-temperature-value">--</strong>
-                <small id="system-temperature-state">Sensor ACPI não detectado</small>
-              </article>
-              <article class="panel-box stat-box accent">
-                <span class="stat-label">Tempo ligado</span>
-                <strong id="uptime-value">--</strong>
-                <small id="uptime-detail">Desde a última inicialização</small>
-              </article>
-            </div>
-
-            <section class="performance-section" aria-labelledby="performance-heading">
-              <div class="performance-heading">
-                <div>
-                  <span class="eyebrow">Monitoramento local</span>
-                  <h2 id="performance-heading">Desempenho em tempo real</h2>
-                  <p class="performance-caption">Leitura a cada 5 s · histórico local por até 7 dias</p>
-                </div>
-                <span class="telemetry-updated"><i></i><span id="telemetry-updated-at">Aguardando leitura</span></span>
-              </div>
-              <div class="history-toolbar" role="group" aria-label="Período do histórico local">
-                <span>Exibir período</span>
-                <button type="button" data-history-range="5m" aria-pressed="true">5 min</button>
-                <button type="button" data-history-range="30m" aria-pressed="false">30 min</button>
-                <button type="button" data-history-range="24h" aria-pressed="false">24 horas</button>
-                <button type="button" data-history-range="7d" aria-pressed="false">7 dias</button>
-              </div>
-              <div class="performance-grid">
-                <article class="panel-box performance-card">
-                  <div class="performance-card-heading"><span>Processador</span><strong id="chart-cpu-value">--%</strong></div>
-                  <canvas class="metric-chart" id="chart-cpu" role="img" aria-label="Histórico de uso do processador"></canvas>
-                  <div class="chart-footer"><span id="chart-cpu-summary">Uso atual</span><span data-history-window>5 min</span></div>
-                </article>
-                <article class="panel-box performance-card">
-                  <div class="performance-card-heading"><span>Memória RAM</span><strong id="chart-memory-value">--%</strong></div>
-                  <canvas class="metric-chart" id="chart-memory" role="img" aria-label="Histórico de uso da memória RAM"></canvas>
-                  <div class="chart-footer"><span id="chart-memory-summary">Memória usada</span><span data-history-window>5 min</span></div>
-                </article>
-                <article class="panel-box performance-card">
-                  <div class="performance-card-heading"><span id="chart-disk-name">Espaço em disco</span><strong id="chart-disk-value">--%</strong></div>
-                  <canvas class="metric-chart" id="chart-disk" role="img" aria-label="Histórico de uso do disco principal"></canvas>
-                  <div class="chart-footer"><span id="chart-disk-summary">Unidade principal</span><span data-history-window>5 min</span></div>
-                </article>
-                <article class="panel-box performance-card">
-                  <div class="performance-card-heading"><span>Uso da GPU</span><strong id="chart-gpu-value">--</strong></div>
-                  <canvas class="metric-chart" id="chart-gpu" role="img" aria-label="Histórico de uso da GPU"></canvas>
-                  <div class="chart-footer"><span id="chart-gpu-hardware">Sensor não detectado</span><span id="chart-gpu-summary">Aguardando leitura</span><span data-history-window>5 min</span></div>
-                </article>
-                <article class="panel-box performance-card temperature-chart-card">
-                  <div class="performance-card-heading"><span>Temperatura reportada</span><strong id="chart-temperature-value">--</strong></div>
-                  <div class="chart-legend" aria-label="Legenda dos sensores de temperatura"><span><i class="legend-acpi"></i>CPU</span><span><i class="legend-gpu"></i>GPU</span><span><i class="legend-cpu"></i>ACPI</span></div>
-                  <canvas class="metric-chart" id="chart-temperature" role="img" aria-label="Histórico dos sensores térmicos disponíveis"></canvas>
-                  <div class="chart-footer"><span id="chart-temperature-detail">Sem sensores compatíveis</span><span id="chart-temperature-summary">Aguardando leitura</span><span data-history-window>5 min</span></div>
-                </article>
-              </div>
-            </section>
-
-            <div class="two-col">
-              <article class="panel-box">
-                <div class="panel-head">
-                  <span>Diagnóstico geral</span>
-                  <button class="button-small" type="button" data-scan="diagnosis">Executar</button>
-                </div>
-                <ul class="check-list">
-                  <li><span>Uso da CPU</span><strong id="overview-cpu">--</strong></li>
-                  <li><span>Uso da memória</span><strong id="overview-memory">--</strong></li>
-                  <li><span>Espaço em disco</span><strong id="overview-disk">--</strong></li>
-                  <li><span>Interface de rede</span><strong id="overview-network">--</strong></li>
-                </ul>
-              </article>
-
-              <article class="panel-box">
-                <div class="panel-head">
-                  <span>Limpeza rápida</span>
-                  <button class="button-small" type="button" data-scan="cleanup">Executar</button>
-                </div>
-                <div class="progress-wrap">
-                  <div class="progress-labels">
-                    <span>Temporários com mais de 7 dias</span>
-                    <strong id="cleanup-preview">Calculando...</strong>
-                  </div>
-                </div>
-              </article>
-            </div>
-
-            <article class="panel-box process-insights">
-              <div class="panel-head">
-                <div>
-                  <span class="eyebrow">Uso por aplicativo</span>
-                  <h2>Processos em destaque</h2>
-                </div>
-                <button class="button-small" type="button" id="refresh-processes">Analisar agora</button>
-              </div>
-              <p class="process-note">Amostra local de CPU e memória. Nada é enviado; a leitura detalhada leva cerca de um segundo.</p>
-              <div id="process-insights-list" class="process-insights-list" aria-live="polite">
-                <p class="empty-state">Use “Analisar agora” para ver quais programas estão usando mais recursos.</p>
-              </div>
-            </article>
-          </section>
-
-          <section class="view-panel" data-view-panel="sensors">
-            <div class="page-heading sensor-page-heading">
-              <div>
-                <span class="eyebrow">Telemetria local profunda</span>
-                <h1>Explorador de hardware</h1>
-                <p>Leituras detalhadas de componentes e sensores disponíveis neste computador.</p>
-              </div>
-              <div class="sensor-page-actions">
-                <button class="button button-secondary" id="sensor-export" type="button">Exportar CSV</button>
-                <button class="button" id="sensor-refresh" type="button">Atualizar sensores</button>
-              </div>
-            </div>
-
-            <article class="panel-box sensor-status-panel">
-              <div class="sensor-status-icon" aria-hidden="true">⌁</div>
-              <div class="sensor-status-copy">
-                <strong id="sensor-status-title">Iniciando leitura local</strong>
-                <span id="sensor-status-detail">Nenhum dado é enviado. A disponibilidade depende dos sensores expostos pelo hardware e pelo firmware.</span>
-              </div>
-              <div class="sensor-status-count"><strong id="sensor-count">--</strong><span>sensores</span></div>
-            </article>
-
-            <div class="sensor-toolbar panel-box">
-              <label class="sensor-search"><span>⌕</span><input id="sensor-search" type="search" placeholder="Buscar componente ou sensor" autocomplete="off" /></label>
-              <label class="sensor-advanced-toggle"><input id="sensor-advanced" type="checkbox" /><span>Incluir sensores avançados</span></label>
-              <span class="sensor-updated" id="sensor-updated-at">Aguardando leitura</span>
-            </div>
-
-            <div class="sensor-category-filters" id="sensor-category-filters" role="group" aria-label="Filtrar categorias de sensores"></div>
-            <div class="sensor-device-grid" id="sensor-device-list" aria-live="polite">
-              <article class="panel-box sensor-empty"><strong>Preparando o explorador</strong><span>As categorias e leituras aparecem quando o coletor local terminar a primeira varredura.</span></article>
-            </div>
-
-            <p class="sensor-footnote">O Nexo não instala drivers de kernel nem abre um serviço oculto para ler sensores. Alguns dados avançados exigem suporte do fabricante ou um driver autorizado; nesses casos o sensor pode permanecer indisponível.</p>
-          </section>
-
-          <section class="view-panel" data-view-panel="diagnosis">
-            <article class="panel-box diagnose-box">
-              <div class="panel-head">
-                <div>
-                  <span class="eyebrow">Diagnóstico</span>
-                  <h2>Causas prováveis e recomendações</h2>
-                </div>
-                <button class="button" type="button" id="run-diagnosis">Analisar desempenho</button>
-              </div>
-
-              <div class="diagnostic-grid">
-                <div class="metric">
-                  <span>CPU</span>
-                  <strong id="diagnosis-cpu">--</strong>
-                </div>
-                <div class="metric">
-                  <span>RAM</span>
-                  <strong id="diagnosis-memory">--</strong>
-                </div>
-                <div class="metric">
-                  <span>Disco</span>
-                  <strong id="diagnosis-disk">--</strong>
-                </div>
-                <div class="metric">
-                  <span>Interface de rede</span>
-                  <strong id="diagnosis-network">--</strong>
-                </div>
-                <div class="metric">
-                  <span>GPU NVIDIA</span>
-                  <strong id="diagnosis-gpu">--</strong>
-                </div>
-                <div class="metric">
-                  <span>Temperatura reportada</span>
-                  <strong id="diagnosis-temperature">--</strong>
-                </div>
-              </div>
-
-              <div id="diagnosis-result" class="result-box" data-result>
-                <p>Pronto para análise.</p>
-              </div>
-              <small id="diagnosis-learning-status" class="diagnosis-learning-status">Histórico de desempenho e feedback ficam armazenados localmente neste computador.</small>
-            </article>
-          </section>
-
-          <section class="view-panel" data-view-panel="cleanup">
-            <article class="panel-box">
-              <div class="panel-head">
-                <div>
-                  <span class="eyebrow">Limpeza</span>
-                  <h2>Otimização do sistema</h2>
-                </div>
-                <button class="button" type="button" id="run-cleanup">Executar limpeza</button>
-              </div>
-
-              <ul class="clean-list">
-                <li><span>Temporários com mais de 7 dias</span><strong id="cleanup-file-count">Calculando...</strong></li>
-                <li><span>Espaço estimado</span><strong id="cleanup-size">Calculando...</strong></li>
-              </ul>
-              <div class="auto-clean-setting">
-                <label for="auto-clean-toggle">
-                  <input id="auto-clean-toggle" type="checkbox" />
-                  <span>Ativar otimização automática segura</span>
-                </label>
-                <small>Age após pressão persistente de disco e remove apenas temporários antigos. Não encerra apps nem altera configurações do Windows.</small>
-              </div>
-            </article>
-          </section>
-
-          <section class="view-panel" data-view-panel="repairs">
-            <article class="panel-box">
-              <div class="panel-head">
-                <div>
-                  <span class="eyebrow">Reparos</span>
-                  <h2>Verificação de arquivos do sistema</h2>
-                </div>
-                <button class="button" type="button" id="run-repair">Verificar e reparar</button>
-              </div>
-              <div class="repair-list">
-                <div class="repair-item"><span>Ferramenta</span><strong>SFC do Windows</strong></div>
-                <div class="repair-item"><span>Permissão</span><strong>Administrador</strong></div>
-                <div class="repair-item"><span>Execução</span><strong id="repair-status">Sob demanda</strong></div>
-              </div>
-            </article>
-          </section>
-
-          <section class="view-panel" data-view-panel="drives">
-            <article class="panel-box drive-panel">
-              <div class="panel-head">
-                <div>
-                  <span class="eyebrow">Unidades</span>
-                  <h2>Reparo e otimização</h2>
-                </div>
-                <div class="drive-select-wrap">
-                  <label for="drive-select">Selecione:</label>
-                  <select id="drive-select">
-                    <option value="">Carregando unidades...</option>
-                  </select>
-                </div>
-              </div>
-
-              <div class="drive-summary">
-                <div class="drive-icon">▣</div>
-                <div>
-                  <span class="drive-type" id="drive-type">Unidade local</span>
-                  <h3 id="drive-model">Carregando...</h3>
-                </div>
-              </div>
-
-              <div class="drive-stats">
-                <div>
-                  <span>Temperatura</span>
-                  <strong id="drive-temp">Não medida</strong>
-                </div>
-                <div>
-                  <span>Formato</span>
-                  <strong id="drive-format">--</strong>
-                </div>
-                <div>
-                  <span>Estado</span>
-                  <strong id="drive-state">Aguardando leitura</strong>
-                </div>
-              </div>
-
-              <div class="drive-operation">
-                <div class="operation-copy">
-                  <span class="tiny-label">Ação sugerida</span>
-                  <h4 id="drive-operation-title">Otimização do Windows</h4>
-                  <p id="drive-operation-description">O Windows seleciona a operação adequada para a unidade.</p>
-                </div>
-                <div class="chip" id="drive-method">Otimizar</div>
-              </div>
-
-              <div class="capacity-block">
-                <div class="capacity-labels">
-                  <span>Espaço usado</span>
-                  <strong><span id="drive-used-capacity">--</span> <small>de <span id="drive-total-capacity">--</span></small></strong>
-                </div>
-                <div class="capacity-track"><span id="drive-capacity-bar" style="width: 0%;"></span></div>
-                <div class="capacity-legend">
-                  <span><i class="used-key"></i><span id="drive-used-label">-- usados</span></span>
-                  <span><i class="free-key"></i><span id="drive-free-label">-- livres</span></span>
-                </div>
-              </div>
-
-              <div class="drive-actions">
-                <button id="drive-optimize" class="button" type="button">Otimizar unidade</button>
-              </div>
-            </article>
-          </section>
-
-          <section class="view-panel" data-view-panel="activity">
-            <article class="panel-box">
-              <div class="panel-head">
-                <div>
-                  <span class="eyebrow">Atividade</span>
-                  <h2>Histórico recente</h2>
-                </div>
-              </div>
-              <ul class="activity-list">
-              </ul>
-            </article>
-          </section>
-
-          <section class="view-panel" data-view-panel="updates">
-            <div class="page-heading">
-              <div>
-                <span class="eyebrow">Nexo Device Care</span>
-                <h1>Atualizações</h1>
-                <p>Versões, melhorias e segurança do aplicativo.</p>
-              </div>
-              <span class="version-pill">Versão <strong id="updates-current-version">--</strong></span>
-            </div>
-
-            <article class="panel-box update-panel" id="update-panel" data-state="checking" aria-live="polite">
-              <div class="update-orbit" aria-hidden="true"><span>↻</span></div>
-              <div class="update-copy">
-                <span class="eyebrow" id="update-state-eyebrow">Central de atualizações</span>
-                <h2 id="update-state-heading">Verificando atualizações</h2>
-                <p id="update-state-detail">Estamos conferindo se existe uma versão mais recente do Nexo.</p>
-                <span class="update-version-chip" id="update-version-chip" hidden></span>
-              </div>
-              <div class="update-progress-wrap" id="update-progress-wrap" hidden>
-                <div class="update-progress-labels">
-                  <span id="update-progress-label">Preparando download</span>
-                  <strong id="update-progress-percent">0%</strong>
-                </div>
-                <div class="update-progress-track" id="update-progress-track" role="progressbar" aria-label="Progresso da atualização" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                  <span id="update-progress-fill"></span>
-                </div>
-                <div class="update-progress-meta"><span id="update-progress-size">Aguardando transferência</span><span id="update-progress-speed"></span></div>
-              </div>
-              <section class="update-release-notes" id="update-release-notes" aria-label="Novidades desta versão" hidden>
-                <h3 id="update-release-heading">Novidades</h3>
-                <ul id="update-release-list"></ul>
-              </section>
-              <div class="update-actions">
-                <button class="button button-secondary" id="check-updates" type="button">Verificar novamente</button>
-                <button class="button button-secondary" id="defer-update" type="button" hidden>Agora não</button>
-                <button class="button" id="download-update" type="button" hidden>Baixar atualização</button>
-                <button class="button" id="install-update-page" type="button" hidden>Instalar e reiniciar</button>
-              </div>
-            </article>
-
-            <div class="update-footnote">
-              <span class="update-footnote-icon">i</span>
-              <p>O download só começa quando você confirma. O Nexo não fecha o app até você escolher <strong>Instalar e reiniciar</strong>.</p>
-            </div>
-          </section>
-        </div>
-      </main>
+  <div class="app">
+    <nav class="rail" id="rail" aria-label="Navegação principal">
+      <div class="rail-brand">
+        <svg class="brand-star" aria-hidden="true"><use href="#i-star"/></svg>
+        <span class="rail-label"><strong>Nexo</strong><small id="rail-host">Device Care</small></span>
       </div>
+      <div class="rail-items">
+        <button class="rail-item active" type="button" data-view="home" aria-current="page"><svg><use href="#i-home"/></svg><span class="rail-label">Início</span></button>
+        <button class="rail-item" type="button" data-view="analysis"><svg><use href="#i-spark"/></svg><span class="rail-label">Análise</span></button>
+        <button class="rail-item" type="button" data-view="optimize"><svg><use href="#i-bolt"/></svg><span class="rail-label">Otimizar</span></button>
+        <button class="rail-item" type="button" data-view="hardware"><svg><use href="#i-chip"/></svg><span class="rail-label">Hardware</span></button>
+        <button class="rail-item" type="button" data-view="maintenance"><svg><use href="#i-wrench"/></svg><span class="rail-label">Manutenção</span></button>
+      </div>
+      <div class="rail-items rail-bottom">
+        <button class="rail-item" type="button" data-view="activity"><svg><use href="#i-clock"/></svg><span class="rail-label">Atividade</span></button>
+        <button class="rail-item" type="button" data-view="updates"><svg><use href="#i-refresh"/></svg><span class="rail-label">Atualizações</span><i class="rail-dot" id="update-nav-indicator" hidden></i></button>
+        <button class="rail-item" type="button" data-view="settings"><svg><use href="#i-sliders"/></svg><span class="rail-label">Ajustes</span></button>
+      </div>
+    </nav>
+
+    <header class="titlebar">
+      <h1 class="page-title" id="page-title">Início</h1>
+      <div class="bar-spacer"></div>
+      <span class="status-pill"><i class="pulse"></i><span id="app-status-label">Iniciando</span></span>
+      <button class="bar-button" id="open-palette" type="button" aria-label="Buscar comandos (Ctrl+K)"><svg><use href="#i-search"/></svg><span>Buscar</span><kbd>Ctrl K</kbd></button>
+      <button class="btn primary sm" id="update-app" type="button" hidden><svg><use href="#i-down"/></svg><span>Instalar atualização</span></button>
+      <div class="window-controls" aria-label="Controles da janela">
+        <button id="window-minimize" type="button" aria-label="Minimizar" title="Minimizar"><svg><use href="#i-min"/></svg></button>
+        <button id="window-maximize" type="button" aria-label="Maximizar" title="Maximizar"><svg><use href="#i-max"/></svg></button>
+        <button id="window-close" class="close" type="button" aria-label="Fechar" title="Fechar"><svg><use href="#i-close"/></svg></button>
+      </div>
+    </header>
+
+    <main class="stage" id="stage">
+      <!-- INÍCIO -->
+      <section class="view active" data-view-panel="home">
+        <div class="hero">
+          <div class="health" id="health" data-tone="good">
+            <svg class="health-ring" viewBox="0 0 240 240" aria-hidden="true">
+              <circle class="ring-track" cx="120" cy="120" r="104" />
+              <circle class="ring-arc" id="ring-arc" cx="120" cy="120" r="104" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 120 120)" />
+              <g class="ring-head" id="ring-head"><svg x="109" y="5" width="22" height="22" viewBox="0 0 24 24"><use href="#i-star"/></svg></g>
+            </svg>
+            <div class="health-readout" role="img" aria-label="Índice Nexo de saúde do computador"><strong id="health-score">--</strong><span>Índice Nexo</span></div>
+          </div>
+          <div class="hero-copy">
+            <h2 id="health-verdict">Conhecendo o seu PC</h2>
+            <p id="health-sub">Em alguns instantes o Nexo mostra como está o desempenho.</p>
+            <ul class="factors" id="health-factors"></ul>
+            <div class="hero-actions">
+              <button class="btn primary" id="hero-analyze" type="button">Analisar agora</button>
+              <button class="btn" id="hero-clean" type="button">Limpeza segura</button>
+              <button class="link" id="why-score" type="button">Como o índice é calculado?</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="live" aria-label="Medições ao vivo">
+          <div class="metric"><span class="metric-label">Processador</span><strong id="cpu-usage-value">--%</strong><small id="cpu-usage-state">Aguardando leitura</small><canvas class="spark" data-spark="cpu" aria-hidden="true"></canvas></div>
+          <div class="metric"><span class="metric-label">Memória</span><strong id="memory-usage-value">--%</strong><small id="memory-usage-state">Aguardando leitura</small><canvas class="spark" data-spark="memory" aria-hidden="true"></canvas></div>
+          <div class="metric"><span class="metric-label">Armazenamento</span><strong id="disk-usage-value">--%</strong><small id="disk-usage-state">Aguardando leitura</small><canvas class="spark" data-spark="disk" aria-hidden="true"></canvas></div>
+          <div class="metric"><span class="metric-label">Placa de vídeo</span><strong id="gpu-usage-value">--</strong><small id="gpu-usage-state">Sensor não detectado</small><canvas class="spark" data-spark="gpu" aria-hidden="true"></canvas></div>
+          <div class="metric"><span class="metric-label">Temperatura</span><strong id="system-temperature-value">--</strong><small id="system-temperature-state">Sem sensor compatível</small><canvas class="spark" data-spark="temp" aria-hidden="true"></canvas></div>
+          <div class="metric"><span class="metric-label">Ligado há</span><strong id="uptime-value">--</strong><small id="uptime-detail">Desde a última inicialização</small></div>
+        </div>
+
+        <div class="section-head">
+          <div><h2>Desempenho ao longo do tempo</h2><p>Leitura a cada 5 s; o histórico fica só neste computador, por até 7 dias.</p></div>
+          <div class="segmented" role="group" aria-label="Período do histórico">
+            <button type="button" data-history-range="5m" aria-pressed="true">5 min</button>
+            <button type="button" data-history-range="30m" aria-pressed="false">30 min</button>
+            <button type="button" data-history-range="24h" aria-pressed="false">24 h</button>
+            <button type="button" data-history-range="7d" aria-pressed="false">7 dias</button>
+          </div>
+        </div>
+        <div class="chart-grid">
+          <article class="sheet chart span-7"><header><h3>Processador</h3><strong id="chart-cpu-value">--%</strong></header><div class="chart-body"><canvas id="chart-cpu" role="img" aria-label="Histórico de uso do processador"></canvas></div><footer><span id="chart-cpu-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-5"><header><h3>Memória</h3><strong id="chart-memory-value">--%</strong></header><div class="chart-body"><canvas id="chart-memory" role="img" aria-label="Histórico de uso da memória"></canvas></div><footer><span id="chart-memory-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-6"><header><h3>Temperatura</h3><strong id="chart-temperature-value">--</strong></header><div class="chart-legend"><span><i style="background:var(--c-cpu)"></i>Processador</span><span><i style="background:var(--c-gpu)"></i>Vídeo</span><span><i style="background:var(--c-acpi)"></i>Zona ACPI</span></div><div class="chart-body"><canvas id="chart-temperature" role="img" aria-label="Histórico de temperaturas"></canvas></div><footer><span id="chart-temperature-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-3"><header><h3>Vídeo</h3><strong id="chart-gpu-value">--</strong></header><div class="chart-body"><canvas id="chart-gpu" role="img" aria-label="Histórico de uso da placa de vídeo"></canvas></div><footer><span id="chart-gpu-summary">Sensor indisponível</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-3"><header><h3 id="chart-disk-name">Disco</h3><strong id="chart-disk-value">--%</strong></header><div class="chart-body"><canvas id="chart-disk" role="img" aria-label="Histórico de ocupação do disco"></canvas></div><footer><span id="chart-disk-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
+        </div>
+
+        <div class="section-head"><div><h2>O que o Nexo notou</h2><p>Observações baseadas na sua rotina, com a evidência de cada uma.</p></div><button class="link" type="button" data-goto="analysis">Ver análise completa</button></div>
+        <div class="sheet" id="home-insights" aria-live="polite"></div>
+      </section>
+
+      <!-- ANÁLISE -->
+      <section class="view" data-view-panel="analysis">
+        <header class="page-head"><div><h2>Análise inteligente</h2><p>O Nexo compara o que acontece agora com a sua rotina, aponta causas prováveis e mostra a evidência de cada uma. São indícios, não certezas.</p></div><div class="page-actions"><button class="btn primary" id="run-diagnosis" type="button">Analisar agora</button></div></header>
+        <div class="learn sheet" id="learn-strip" aria-label="O que o Nexo já aprendeu">
+          <div><strong id="learn-days">0</strong><span>dias de convivência</span></div>
+          <div><strong id="learn-coverage">0%</strong><span>da sua rotina semanal conhecida</span></div>
+          <div><strong id="learn-episodes">0</strong><span>lentidões registradas</span></div>
+          <div><strong id="learn-culprits">0</strong><span>programas identificados</span></div>
+        </div>
+        <div class="split">
+          <section class="sheet"><div class="sheet-head"><h3>O que encontrei</h3></div><div id="insight-list" aria-live="polite"></div><small class="muted" id="diagnosis-learning-status"></small></section>
+          <div class="stack">
+            <section class="sheet"><div class="sheet-head"><h3>Lentidões recentes</h3></div><ol class="timeline" id="episode-list"></ol></section>
+            <section class="sheet"><div class="sheet-head"><h3>Quem mais atrapalha</h3></div><ul class="ledger" id="ledger-list"></ul></section>
+          </div>
+        </div>
+        <section class="sheet">
+          <div class="sheet-head"><h3>Sua rotina na semana</h3><div class="segmented sm" role="group" aria-label="Métrica da rotina"><button type="button" data-habit="cpu" aria-pressed="true">Processador</button><button type="button" data-habit="mem" aria-pressed="false">Memória</button></div></div>
+          <div class="habit" id="habit-grid" role="img" aria-label="Mapa de uso médio por dia da semana e hora"></div>
+          <p class="muted" id="habit-caption">O mapa se completa conforme o Nexo observa o uso do computador.</p>
+        </section>
+        <section class="sheet process-insights">
+          <div class="sheet-head"><h3>Quem está usando mais agora</h3><button class="btn sm" type="button" id="refresh-processes">Medir agora</button></div>
+          <p class="muted">Amostra local de CPU e memória por programa (leva cerca de um segundo). Nada é enviado e o Nexo nunca encerra programas por conta própria.</p>
+          <div id="process-insights-list" class="process-list" aria-live="polite"><p class="empty">Use “Medir agora” para ver quais programas estão usando mais recursos.</p></div>
+        </section>
+      </section>
+
+      <!-- OTIMIZAR -->
+      <section class="view" data-view-panel="optimize">
+        <header class="page-head"><div><h2>Otimizar</h2><p>Ações reais, com prévia e confirmação. Nada é apagado ou alterado sem você ver antes o que será feito.</p></div></header>
+        <div class="split">
+          <section class="sheet" id="cleanup-sheet">
+            <div class="sheet-head"><div><h3>Limpeza segura</h3><p class="muted">Só arquivos antigos que o Windows e os programas recriam sozinhos.</p></div><button class="btn sm" id="cleanup-rescan" type="button">Recalcular</button></div>
+            <ul class="cleanup-list" id="cleanup-list" aria-live="polite"><li class="empty">Calculando o que pode ser liberado…</li></ul>
+            <div class="cleanup-foot"><div class="cleanup-total"><strong id="cleanup-total">0 B</strong><span id="cleanup-total-detail">nada selecionado</span></div><button class="btn primary" id="run-cleanup" type="button" disabled>Limpar selecionados</button></div>
+            <label class="switch auto-clean"><input id="auto-clean-toggle" type="checkbox" /><i></i><span><strong>Limpeza automática dos temporários</strong><small>Age depois de quatro leituras seguidas com o disco acima de 90%, no máximo uma vez por hora. Só remove temporários antigos; não fecha programas nem altera configurações do Windows.</small></span></label>
+          </section>
+          <div class="stack">
+            <section class="sheet"><div class="sheet-head"><div><h3>Plano de energia</h3><p class="muted">Define o quanto o Windows pode acelerar o processador.</p></div></div><div id="power-list" aria-live="polite"><p class="empty">Lendo os planos disponíveis…</p></div></section>
+            <section class="sheet"><div class="sheet-head"><div><h3>Início com o Windows</h3><p class="muted">Programas que abrem sozinhos ao ligar o PC (somente leitura).</p></div></div><ul class="startup-list" id="startup-list" aria-live="polite"><li class="empty">Lendo a lista…</li></ul><button class="btn sm" id="open-startup-settings" type="button">Gerenciar no Windows</button></section>
+          </div>
+        </div>
+      </section>
+
+      <!-- HARDWARE -->
+      <section class="view" data-view-panel="hardware">
+        <header class="page-head"><div><h2>Explorador de hardware</h2><p>Leituras detalhadas dos componentes e sensores que este computador expõe.</p></div><div class="page-actions"><button class="btn" id="sensor-export" type="button">Exportar CSV</button><button class="btn primary" id="sensor-refresh" type="button">Atualizar sensores</button></div></header>
+        <section class="sheet sensor-status">
+          <svg aria-hidden="true"><use href="#i-chip"/></svg>
+          <div><strong id="sensor-status-title">Iniciando leitura local</strong><span id="sensor-status-detail">Nenhum dado é enviado. A disponibilidade depende dos sensores expostos pelo hardware e pelo firmware.</span></div>
+          <div class="sensor-count"><strong id="sensor-count">--</strong><span>sensores</span></div>
+        </section>
+        <div class="sensor-toolbar">
+          <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="sensor-search" type="search" placeholder="Buscar componente ou sensor" autocomplete="off" /></label>
+          <label class="switch compact"><input id="sensor-advanced" type="checkbox" /><i></i><span>Incluir sensores avançados</span></label>
+          <span class="muted" id="sensor-updated-at">Aguardando leitura</span>
+        </div>
+        <div class="chips" id="sensor-category-filters" role="group" aria-label="Filtrar categorias de sensores"></div>
+        <div class="sensor-grid" id="sensor-device-list" aria-live="polite"><article class="sheet sensor-empty"><strong>Preparando o explorador</strong><span>As categorias e leituras aparecem quando o coletor local terminar a primeira varredura.</span></article></div>
+        <p class="muted footnote">O Nexo não instala drivers de kernel nem abre um serviço oculto para ler sensores. Alguns dados avançados exigem suporte do fabricante; nesses casos o sensor pode permanecer indisponível.</p>
+      </section>
+
+      <!-- MANUTENÇÃO -->
+      <section class="view" data-view-panel="maintenance">
+        <header class="page-head"><div><h2>Manutenção</h2><p>Ferramentas nativas do Windows, chamadas com a sua confirmação.</p></div></header>
+        <div class="split even">
+          <section class="sheet">
+            <div class="sheet-head"><div><h3>Verificar arquivos do sistema</h3><p class="muted">Executa o SFC do Windows, que confere e repara arquivos protegidos.</p></div></div>
+            <dl class="facts"><div><dt>Ferramenta</dt><dd>SFC do Windows</dd></div><div><dt>Permissão</dt><dd>Administrador</dd></div><div><dt>Situação</dt><dd id="repair-status">Sob demanda</dd></div></dl>
+            <button class="btn primary" id="run-repair" type="button">Verificar e reparar</button>
+          </section>
+          <section class="sheet drive-panel">
+            <div class="sheet-head"><div><h3>Unidades de armazenamento</h3><p class="muted">Otimização feita pelo Windows (TRIM em SSD, desfragmentação em HD).</p></div><label class="select"><span class="sr-only">Unidade</span><select id="drive-select"><option value="">Carregando unidades…</option></select></label></div>
+            <div class="drive-head"><span class="drive-type" id="drive-type">Unidade local</span><strong id="drive-model">Carregando…</strong></div>
+            <div class="capacity"><div class="capacity-labels"><span>Espaço usado</span><strong><span id="drive-used-capacity">--</span> <small>de <span id="drive-total-capacity">--</span></small></strong></div><div class="capacity-track"><span id="drive-capacity-bar" style="width:0%"></span></div><div class="capacity-legend"><span id="drive-used-label">-- usados</span><span id="drive-free-label">-- livres</span></div></div>
+            <dl class="facts"><div><dt>Formato</dt><dd id="drive-format">--</dd></div><div><dt>Temperatura</dt><dd id="drive-temp">Não medida</dd></div><div><dt>Estado</dt><dd id="drive-state">Aguardando leitura</dd></div></dl>
+            <div class="drive-op"><div><strong id="drive-operation-title">Otimização do Windows</strong><p class="muted" id="drive-operation-description">O Windows seleciona a operação adequada para a unidade.</p></div><span class="pill" id="drive-method">Otimizar</span></div>
+            <button class="btn primary" id="drive-optimize" type="button">Otimizar unidade</button>
+          </section>
+        </div>
+      </section>
+
+      <!-- ATIVIDADE -->
+      <section class="view" data-view-panel="activity">
+        <header class="page-head"><div><h2>Atividade</h2><p>As últimas ações feitas pelo Nexo neste computador.</p></div></header>
+        <section class="sheet"><ul class="activity-list" id="activity-list"></ul><p class="empty" id="activity-empty">Nenhuma ação registrada ainda.</p></section>
+      </section>
+
+      <!-- ATUALIZAÇÕES -->
+      <section class="view" data-view-panel="updates">
+        <header class="page-head"><div><h2>Atualizações</h2><p>Versões, melhorias e segurança do aplicativo.</p></div><span class="pill">Versão <strong id="updates-current-version">--</strong></span></header>
+        <article class="sheet update-panel" id="update-panel" data-state="checking" aria-live="polite">
+          <div class="update-orbit" aria-hidden="true"><svg><use href="#i-refresh"/></svg></div>
+          <div class="update-copy">
+            <span class="muted" id="update-state-eyebrow">Central de atualizações</span>
+            <h3 id="update-state-heading">Verificando atualizações</h3>
+            <p id="update-state-detail">Estamos conferindo se existe uma versão mais recente do Nexo.</p>
+            <span class="pill" id="update-version-chip" hidden></span>
+          </div>
+          <div class="update-progress" id="update-progress-wrap" hidden>
+            <div class="row"><span id="update-progress-label">Preparando download</span><strong id="update-progress-percent">0%</strong></div>
+            <div class="progress-track" id="update-progress-track" role="progressbar" aria-label="Progresso da atualização" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="update-progress-fill"></span></div>
+            <div class="row muted"><span id="update-progress-size">Aguardando transferência</span><span id="update-progress-speed"></span></div>
+          </div>
+          <section class="release-notes" id="update-release-notes" aria-label="Novidades desta versão" hidden><h4 id="update-release-heading">Novidades</h4><ul id="update-release-list"></ul></section>
+          <div class="update-actions">
+            <button class="btn" id="check-updates" type="button">Verificar novamente</button>
+            <button class="btn" id="defer-update" type="button" hidden>Agora não</button>
+            <button class="btn primary" id="download-update" type="button" hidden>Baixar atualização</button>
+            <button class="btn primary" id="install-update-page" type="button" hidden>Instalar e reiniciar</button>
+          </div>
+        </article>
+        <p class="muted footnote">O download só começa quando você confirma, e o Nexo não fecha o app até você escolher <strong>Instalar e reiniciar</strong>.</p>
+      </section>
+
+      <!-- AJUSTES -->
+      <section class="view" data-view-panel="settings">
+        <header class="page-head"><div><h2>Ajustes</h2><p>Aparência, privacidade e controle dos seus dados.</p></div></header>
+        <div class="split even">
+          <section class="sheet">
+            <div class="sheet-head"><h3>Aparência</h3></div>
+            <div class="wall-row"><div class="wall-preview" id="wall-preview" aria-hidden="true"></div><div><strong>Papel de parede</strong><p class="muted">Imagens PNG, JPEG ou WebP. O Nexo reduz o tamanho antes de guardar.</p><div class="btn-row"><button class="btn sm" id="choose-wallpaper" type="button">Escolher imagem</button><button class="btn sm ghost" id="reset-wallpaper" type="button" hidden>Restaurar padrão</button></div><input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" hidden /></div></div>
+            <div class="setting-row"><div><strong>Efeitos visuais</strong><p class="muted">O modo leve desliga o desfoque de vidro e as animações de fundo para poupar GPU e bateria.</p></div><div class="segmented sm" role="group" aria-label="Efeitos visuais"><button type="button" data-effects="full" aria-pressed="true">Completo</button><button type="button" data-effects="lite" aria-pressed="false">Leve</button></div></div>
+          </section>
+          <section class="sheet">
+            <div class="sheet-head"><h3>Privacidade e dados</h3></div>
+            <p class="muted">Tudo o que o Nexo aprende fica neste computador. Nada é enviado, exceto a consulta pública de atualizações ao GitHub.</p>
+            <dl class="facts"><div><dt>Dados locais</dt><dd id="data-size">--</dd></div><div><dt>Pasta</dt><dd class="path" id="data-path">--</dd></div></dl>
+            <label class="switch"><input id="share-toggle" type="checkbox" /><i></i><span><strong>Compartilhamento opcional com o criador</strong><small>Desativado por padrão. Nesta versão a escolha só é guardada aqui; o Nexo não envia telemetria.</small></span></label>
+            <div class="btn-row"><button class="btn sm" id="export-data" type="button">Exportar meus dados</button><button class="btn sm" id="erase-learning" type="button">Apagar aprendizado e histórico</button><button class="btn sm ghost" id="open-privacy" type="button">Política completa</button></div>
+          </section>
+        </div>
+        <section class="sheet danger-zone">
+          <div class="sheet-head"><div><h3>Desinstalar completamente</h3><p class="muted">Remove o programa, os dados e as preferências, os atalhos e as entradas do Registro, e limpa os rastros que o próprio Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes). Ao final, mostra o que não conseguiu apagar, se houver.</p></div><button class="btn danger" id="uninstall-app" type="button">Desinstalar o Nexo</button></div>
+        </section>
+        <section class="sheet about"><div><strong>Nexo Device Care</strong><span class="muted">Versão <span id="about-version">--</span> · gratuito e de código aberto</span></div><div class="btn-row"><button class="btn sm ghost" data-link="repo" type="button">Projeto no GitHub</button><button class="btn sm ghost" data-link="issues" type="button">Relatar um problema</button><button class="btn sm ghost" data-link="creator" type="button">Criador</button></div></section>
+      </section>
+    </main>
+  </div>
+
+  <div class="toasts" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal-root" id="modal-root"></div>
+  <div class="palette" id="palette" hidden>
+    <div class="palette-box" role="dialog" aria-modal="true" aria-label="Buscar comandos">
+      <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="palette-input" type="text" placeholder="Digite um comando ou página…" autocomplete="off" /></label>
+      <ul id="palette-list" role="listbox"></ul>
     </div>
+  </div>
 
-    <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-    <script src="app.js"></script>
-  </body>
+  <script src="src/brain.js"></script>
+  <script src="src/core.js"></script>
+  <script src="src/ui-kit.js"></script>
+  <script src="src/charts.js"></script>
+  <script src="src/store.js"></script>
+  <script src="src/view-home.js"></script>
+  <script src="src/view-analysis.js"></script>
+  <script src="src/view-optimize.js"></script>
+  <script src="src/view-hardware.js"></script>
+  <script src="src/view-maintenance.js"></script>
+  <script src="src/view-updates.js"></script>
+  <script src="src/view-settings.js"></script>
+  <script src="app.js"></script>
+</body>
 </html>

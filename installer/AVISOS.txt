@@ -2,14 +2,18 @@ NEXO DEVICE CARE - AVISOS IMPORTANTES
 
 Leia estas informacoes antes de instalar e usar o Nexo Device Care.
 
-1. O Nexo apresenta indicadores locais e recomendacoes baseadas em heuristicas. Os resultados nao garantem aumento de desempenho e nao substituem avaliacao tecnica.
+1. O Nexo apresenta indicadores locais e recomendacoes baseadas em heuristicas e estatistica simples sobre o uso do seu computador. Os resultados nao garantem aumento de desempenho e nao substituem avaliacao tecnica.
 
-2. A limpeza de temporarios permite revisar uma previa e remove apenas arquivos regulares antigos da pasta temporaria do usuario. A limpeza automatica e opcional e pode ser desativada nas configuracoes do aplicativo.
+2. A limpeza segura mostra uma previa e remove apenas arquivos antigos: temporarios da pasta do usuario, relatorios de falha e relatorios de erro do Windows. Esvaziar a Lixeira so acontece se voce marcar essa opcao e nao pode ser desfeito. A limpeza automatica considera somente temporarios, e e opcional e pode ser desativada nas configuracoes do aplicativo.
 
-3. A otimizacao de unidades e a verificacao de arquivos do Windows usam ferramentas nativas do sistema. Essas operacoes podem solicitar permissao de administrador e devem ser confirmadas pelo usuario.
+3. O app pode trocar o plano de energia do Windows quando voce escolher. A troca pode ser desfeita no mesmo lugar.
 
-4. O historico de desempenho e as avaliacoes ficam armazenados localmente neste computador. O aplicativo consulta o GitHub para verificar e baixar atualizacoes.
+4. A otimizacao de unidades e a verificacao de arquivos do Windows usam ferramentas nativas do sistema. Essas operacoes podem solicitar permissao de administrador e devem ser confirmadas pelo usuario.
 
-5. Ao continuar, voce confirma que leu estes avisos e que revisara as confirmacoes apresentadas pelo Windows antes de autorizar operacoes administrativas.
+5. O historico de desempenho, o aprendizado sobre a sua rotina (medias por hora da semana, lentidoes e nomes dos programas que mais pesaram) e as avaliacoes ficam armazenados localmente neste computador. Voce pode exporta-los ou apaga-los em Ajustes. O aplicativo consulta o GitHub para verificar e baixar atualizacoes.
+
+6. A desinstalacao pelas Configuracoes do Windows, ou pelo botao Desinstalar completamente em Ajustes, remove o programa, os dados e preferencias, os atalhos e as entradas do Registro do Nexo. Atualizacoes preservam os seus dados.
+
+7. Ao continuar, voce confirma que leu estes avisos e que revisara as confirmacoes apresentadas pelo Windows antes de autorizar operacoes administrativas.
 
 Este aviso descreve o funcionamento atual do aplicativo. Ele nao substitui termos de licenca ou documentos legais preparados para a distribuicao do produto.

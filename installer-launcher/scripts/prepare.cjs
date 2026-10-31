@@ -1,28 +1,13 @@
-const fs = require('fs');
-const path = require('path');
-
-const projectDir = path.resolve(__dirname, '..', '..');
-const launcherDir = path.resolve(__dirname, '..');
-const project = require(path.join(projectDir, 'package.json'));
-const launcher = require(path.join(launcherDir, 'package.json'));
-
-if (launcher.version !== project.version) {
-  throw new Error(`Launcher ${launcher.version} must match app ${project.version}.`);
+// Copia o Setup gerado pelo app principal (../release) para ./payload/Nexo-Setup.exe
+const fs = require('fs'), path = require('path');
+const rel = path.join(__dirname, '..', '..', 'release');
+const files = fs.existsSync(rel) ? fs.readdirSync(rel).filter(n => /^Nexo-Setup-.*\.exe$/.test(n)) : [];
+if (!files.length) {
+  console.error('Nexo-Setup-*.exe não encontrado em ' + rel + '. Rode "npm run dist" na raiz do projeto antes.');
+  process.exit(1);
 }
-
-const setupName = `Nexo-Setup-${project.version}.exe`;
-const setupPath = path.join(projectDir, 'release', setupName);
-if (!fs.existsSync(setupPath)) {
-  throw new Error(`Missing ${setupPath}. Build the main Windows installer first.`);
-}
-
-const noticesPath = path.join(projectDir, 'installer', 'AVISOS.txt');
-if (!fs.existsSync(noticesPath)) {
-  throw new Error(`Missing product notices: ${noticesPath}`);
-}
-
-const payloadDir = path.join(launcherDir, 'payload');
-fs.mkdirSync(payloadDir, { recursive: true });
-fs.copyFileSync(setupPath, path.join(payloadDir, 'Nexo-Setup.exe'));
-fs.copyFileSync(noticesPath, path.join(payloadDir, 'AVISOS.txt'));
-console.log(`Prepared ${setupName} and AVISOS.txt for the visual installer.`);
+files.sort((a, b) => fs.statSync(path.join(rel, b)).mtimeMs - fs.statSync(path.join(rel, a)).mtimeMs);
+const out = path.join(__dirname, '..', 'payload');
+fs.mkdirSync(out, { recursive: true });
+fs.copyFileSync(path.join(rel, files[0]), path.join(out, 'Nexo-Setup.exe'));
+console.log('payload:', files[0]);

@@ -13,7 +13,6 @@ let win, installing = false, lastExe = null;
 if (!app.requestSingleInstanceLock()) app.quit();
 
 const setupPath = () => path.join(app.isPackaged ? process.resourcesPath : __dirname, 'payload', 'Nexo-Setup.exe');
-const noticesPath = () => path.join(app.isPackaged ? process.resourcesPath : __dirname, 'payload', 'AVISOS.txt');
 
 function createWindow() {
   win = new BrowserWindow({
@@ -47,17 +46,6 @@ const setTelemetry = on => new Promise(r => execFile('reg',
   () => r()));
 
 ipcMain.handle('info', () => ({ defaultDir: DEFAULT_DIR, version: app.getVersion() }));
-ipcMain.handle('notices', () => fs.readFileSync(noticesPath(), 'utf8'));
-ipcMain.handle('open-link', async (_event, key) => {
-  const links = {
-    project: 'https://github.com/Samuklvm/Project-Nexo',
-    privacy: 'https://github.com/Samuklvm/Project-Nexo/blob/main/PRIVACIDADE.md',
-    creator: 'https://github.com/Samuklvm'
-  };
-  if (!Object.hasOwn(links, key)) return false;
-  await shell.openExternal(links[key]);
-  return true;
-});
 
 ipcMain.handle('pick-dir', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], defaultPath: path.dirname(DEFAULT_DIR) });
@@ -76,7 +64,7 @@ ipcMain.handle('install', async (_e, o) => {
   await setTelemetry(!!o.telemetry);
 
   const args = ['/S'];
-  if (o.dir) args.push('/D=' + o.dir);   // NSIS exige /D= por último; o spawn padrão escapa espaços do caminho.
+  if (o.dir) args.push('/D=' + o.dir);   // NSIS: /D= precisa ser o último argumento e sem aspas
 
   // O NSIS silencioso não informa progresso: estimamos pelo tamanho da pasta de destino.
   const t0 = Date.now();
@@ -95,7 +83,7 @@ ipcMain.handle('install', async (_e, o) => {
   }, 600);
 
   const code = await new Promise(res => {
-    const c = spawn(setup, args, { windowsHide: true, stdio: 'ignore' });
+    const c = spawn(setup, args, { windowsVerbatimArguments: true, windowsHide: true, stdio: 'ignore' });
     c.on('error', () => res(-1));
     c.on('exit', x => res(x ?? -1));
   });
@@ -112,4 +100,6 @@ ipcMain.handle('open-app', () => {
   if (lastExe && fs.existsSync(lastExe)) spawn(lastExe, [], { detached: true, stdio: 'ignore' }).unref();
   app.quit();
 });
+const LINKS = { privacy: 'https://github.com/Samuklvm/Project-Nexo/blob/main/PRIVACIDADE.md', repo: 'https://github.com/Samuklvm/Project-Nexo' };
+ipcMain.handle('open-link', (_e, key) => { if (LINKS[key]) return shell.openExternal(LINKS[key]); });
 ipcMain.on('win', (_e, a) => { if (a === 'min') win.minimize(); else win.close(); });

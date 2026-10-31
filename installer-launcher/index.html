@@ -65,12 +65,19 @@ button:focus-visible,.sw input:focus-visible+i{outline:2px solid #8fe3ff;outline
 .tb{-webkit-app-region:drag}.tb button{-webkit-app-region:no-drag;font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 [hidden]{display:none!important}
 body{padding:0;display:block;overflow:hidden;background:#060919}.wrap{width:100vw}.win{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;box-shadow:none}
+
+.agree{max-width:36em;margin-top:1.2em;font-size:.9em;opacity:.9;align-items:flex-start}.agree i{margin-top:.15em}.agree .lnk{font-size:1em}
+.pri:disabled{opacity:.4;box-shadow:none;cursor:default;transform:none}
+.notices{position:absolute;z-index:6;inset:3.4em 3.4em 2.4em;display:flex;flex-direction:column;gap:1em;padding:1.6em 1.8em;border-radius:1.2em;background:rgba(7,11,32,.9);backdrop-filter:blur(18px);border:1px solid rgba(160,190,255,.25)}
+.notices h2{margin:0;font-size:1.5em}.notices .doc{flex:1;overflow:auto;padding-right:.8em;scrollbar-width:thin}
+.notices h3{margin:1em 0 .3em;font-size:1em;color:#8fd0ff}.notices ul{margin:0;padding-left:1.1em;display:grid;gap:.35em;font-size:.9em;opacity:.9}.notices .btns{justify-content:flex-end}
+#lang{width:auto!important;padding:0 .8em;font-size:.78em;font-weight:700;letter-spacing:.08em}
 </style>
 </head>
 <body>
 <div class="wrap"><div class="win" id="win">
   <div class="bg" id="bg"></div><div class="shade"></div><canvas id="fx"></canvas>
-  <div class="tb"><button id="min" aria-label="Minimizar">–</button><button id="x" aria-label="Fechar">✕</button></div>
+  <div class="tb"><button id="lang" type="button" aria-label="Language: English">EN</button><button id="min" aria-label="Minimizar">–</button><button id="x" aria-label="Fechar">✕</button></div>
   <div class="logo">
     <svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#5ad7ff"/></linearGradient></defs><path d="M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z" fill="url(#g)"/></svg>
     <div><b>NEXO</b><small>DEVICE CARE</small></div>
@@ -79,8 +86,8 @@ body{padding:0;display:block;overflow:hidden;background:#060919}.wrap{width:100v
   <section class="scr on">
     <div>
       <h1>Cuide do seu PC<br>sob as estrelas.</h1>
-      <p class="mut">Diagnóstico, limpeza e monitoramento — tudo feito localmente.</p>
-      <p class="fine">Ao instalar, você confirma que leu os Avisos. O compartilhamento de dados com o criador é opcional e começa desativado.</p>
+      <p class="mut">Análise que aprende a sua rotina, limpeza segura e monitoramento — tudo feito localmente.</p>
+      <label class="sw agree"><input type="checkbox" id="agree"><i></i><span>Li e aceito os <button class="lnk" type="button" id="open-notices">Avisos e a Privacidade</button>. O compartilhamento com o criador é opcional e começa desativado.</span></label>
     </div>
     <div class="btns"><button class="btn" data-go="1">Opções</button><button class="btn pri" data-go="2">Instalar</button></div>
   </section>
@@ -93,8 +100,7 @@ body{padding:0;display:block;overflow:hidden;background:#060919}.wrap{width:100v
       <label class="sw"><input type="checkbox" checked id="o-desk"><i></i><span>Atalho na área de trabalho</span></label>
       <label class="sw"><input type="checkbox" checked id="o-run"><i></i><span>Abrir o Nexo ao terminar</span></label>
       <label class="sw"><input type="checkbox" id="o-tel"><i></i><span>Compartilhar dados opcionais com o criador<small>Desativado por padrão</small></span></label>
-      <button class="lnk" id="pl" aria-expanded="false">O que o Nexo coleta neste PC?</button>
-      <p id="priv">CPU, RAM, discos, processos e temperaturas ficam só neste computador, para os recursos do app. Nada é enviado ao criador sem a sua autorização.</p>
+      <button class="lnk" id="pl" type="button">O que o Nexo guarda neste PC?</button>
       <div class="btns"><button class="btn" data-go="0">Voltar</button><button class="btn pri" data-go="2">Instalar</button></div>
     </div>
   </section>
@@ -110,6 +116,35 @@ body{padding:0;display:block;overflow:hidden;background:#060919}.wrap{width:100v
   <section class="scr">
     <div><h1>Tudo pronto.</h1><p class="mut">O Nexo Device Care foi instalado com sucesso.</p></div>
     <div class="btns"><button class="btn" id="close2">Fechar</button><button class="btn pri" id="open">Abrir o Nexo</button></div>
+  </section>
+
+  <section class="notices" id="notices" role="dialog" aria-modal="true" aria-labelledby="notices-title" hidden>
+    <h2 id="notices-title">Avisos e privacidade</h2>
+    <div class="doc">
+      <h3>Avisos</h3>
+      <ul>
+        <li>Os indicadores e as recomendações são heurísticos: não garantem ganho de desempenho nem substituem avaliação técnica.</li>
+        <li>A limpeza mostra uma prévia e só mexe em arquivos antigos. Esvaziar a Lixeira, se você escolher, não pode ser desfeito.</li>
+        <li>Otimizar unidades e verificar arquivos do Windows usam ferramentas nativas e podem pedir permissão de administrador.</li>
+      </ul>
+      <h3>O que o Nexo guarda neste PC (nada sai dele)</h3>
+      <ul>
+        <li>Painel: nome do computador, versões do Windows e do app, tempo ligado, uso de CPU, RAM e discos, temperaturas e uso da GPU quando houver sensor.</li>
+        <li>Diagnóstico: nome e uso dos programas que mais consomem. Durante lentidões, só o nome do programa é guardado (sem caminho nem linha de comando).</li>
+        <li>Aprendizado local: amostras por minuto (até 7 dias), médias por hora da semana, lentidões detectadas e até 60 programas recorrentes.</li>
+        <li>Limpeza e otimização: caminho, tamanho e quantidade de arquivos antigos; plano de energia e programas de inicialização, lidos só para exibir.</li>
+        <li>Preferências: avaliações das sugestões (até 100), últimas 20 atividades e o papel de parede escolhido.</li>
+        <li>Tudo pode ser exportado ou apagado em Ajustes.</li>
+      </ul>
+      <h3>Rede e compartilhamento</h3>
+      <ul>
+        <li>Ao abrir, o app consulta as releases públicas do GitHub, que pode receber dados normais da conexão (como o IP). O download só começa por ação sua.</li>
+        <li>O compartilhamento opcional com o criador começa desativado. Nesta versão a escolha só é guardada aqui: o Nexo não envia telemetria.</li>
+      </ul>
+      <h3>Desinstalação</h3>
+      <ul><li>Desinstalar pelo Windows, ou por Ajustes, remove o programa, os dados, as preferências, os atalhos e as entradas do Registro. Atualizações preservam os seus dados.</li></ul>
+    </div>
+    <div class="btns"><button class="btn" type="button" id="notices-policy">Política completa no GitHub</button><button class="btn pri" type="button" id="close-notices">Entendi</button></div>
   </section>
 </div></div>
 

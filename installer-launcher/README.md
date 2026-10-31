@@ -1,11 +1,19 @@
 # Instalador visual do Nexo
 
-Este launcher mostra a tela de boas-vindas e as opções de instalação. Ele inclui o instalador NSIS do Nexo e o executa em modo silencioso após a pessoa escolher o destino, as opções, ler os Avisos e aceitar continuar.
+Janela em Electron com a arte de fundo que roda o `Nexo-Setup` (NSIS) em modo silencioso.
+O Setup original continua sendo o que o `electron-updater` usa nas atualizações.
 
-## Gerar localmente
+## Como usar
+1. Na raiz do projeto: `npm run dist` (gera `release/Nexo-Setup-X.exe`).
+2. Aqui dentro: `npm install`, depois `npm start` para testar ou `npm run dist` para gerar `dist/Nexo-Instalador-X.exe`.
 
-Na raiz do projeto, execute `npm run dist`. O processo gera `release/Nexo-Setup-X.exe` e `installer-launcher/dist/Nexo-Instalador-X.exe`. O primeiro continua sendo usado pelo atualizador interno do Nexo; o segundo é o instalador visual para uma instalação nova.
+## Ajustes
+- `EXPECTED_MB` no `main.cjs`: instale uma vez, veja o tamanho da pasta e coloque o valor. Ele só calibra a barra de progresso.
+- Ícone do app principal: no `package.json` da raiz, adicione `"icon": "assets/icon.ico"` dentro de `build.win`.
 
-O launcher e o aplicativo devem ter a mesma versão em seus `package.json`. O script `scripts/prepare.cjs` verifica isso e inclui o instalador principal e `installer/AVISOS.txt` no pacote visual.
+## release.yml (já aplicado neste repositório)
+Os passos "Build visual installer" e "Upload visual installer to the release" já estão no `.github/workflows/release.yml`.
 
-O progresso é estimado porque o NSIS não expõe o progresso de uma execução silenciosa. A opção de compartilhar dados fica desativada por padrão e, nesta versão, só grava a preferência localmente.
+## Cuidados
+- Assine o launcher e o Setup com o mesmo certificado: um .exe que roda outro .exe em modo silencioso é padrão que antivírus e SmartScreen desconfiam.
+- O launcher embute o Setup, então o download fica grande (Electron + Setup).

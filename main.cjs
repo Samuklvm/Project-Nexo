@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { execFile, spawn } = require('child_process');
 const fs = require('fs/promises');
@@ -10,6 +10,7 @@ const readline = require('readline');
 
 const execFileAsync = promisify(execFile);
 const CLEANUP_MAX_FILES = 5000;
+const WALLPAPER_MAX_BYTES = 12 * 1024 * 1024;
 const CLEANUP_MIN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DRIVE_CACHE_TTL_MS = 30 * 1000;
 const TEMPERATURE_CACHE_TTL_MS = 15 * 1000;
@@ -341,28 +342,70 @@ $result | ConvertTo-Json -Depth 3 -Compress
   };
 }
 
-async function collectOldTempFiles() {
-  const root = await fs.realpath(path.resolve(os.tmpdir()));
-  const cutoff = Date.now() - CLEANUP_MIN_AGE_MS;
-  const files = [];
-  const entries = await fs.readdir(root, { withFileTypes: true });
+const LOCAL_APPDATA = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+const CLEANUP_CATEGORIES = [
+  { id: 'temp', label: 'Temporários antigos', description: 'Arquivos com mais de 7 dias na pasta temporária do usuário (sem subpastas).', recursive: false, roots: () => [os.tmpdir()] },
+  { id: 'crashdumps', label: 'Relatórios de falha de programas', description: 'Despejos de memória (.dmp) de programas que travaram, com mais de 7 dias.', recursive: true, roots: () => [path.join(LOCAL_APPDATA, 'CrashDumps')] },
+  { id: 'wer', label: 'Relatórios de erro do Windows', description: 'Relatórios antigos, enviados ou pendentes, do Relatório de Erros do Windows.', recursive: true,
+    roots: () => [path.join(LOCAL_APPDATA, 'Microsoft', 'Windows', 'WER', 'ReportArchive'), path.join(LOCAL_APPDATA, 'Microsoft', 'Windows', 'WER', 'ReportQueue')] },
+  { id: 'recycle', label: 'Lixeira', description: 'Esvazia a Lixeira de todas as unidades. Os arquivos não poderão ser recuperados.', special: true }
+];
 
+async function walkFiles(root, recursive, cutoff, limit, depth = 0, out = []) {
+  let entries;
+  try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { return out; }
   for (const entry of entries) {
-    if (files.length >= CLEANUP_MAX_FILES) break;
-    if (!entry.isFile()) continue;
-
-    const entryPath = path.join(root, entry.name);
+    if (out.length >= limit) break;
+    const full = path.join(root, entry.name);
     try {
-      const stats = await fs.lstat(entryPath);
-      if (stats.isFile() && !stats.isSymbolicLink() && stats.mtimeMs < cutoff) {
-        files.push({ path: entryPath, size: stats.size });
+      const stats = await fs.lstat(full);
+      if (stats.isSymbolicLink()) continue;
+      if (stats.isDirectory()) {
+        if (recursive && depth < 4) await walkFiles(full, recursive, cutoff, limit, depth + 1, out);
+        continue;
       }
-    } catch {
-      continue;
-    }
+      if (stats.isFile() && stats.mtimeMs < cutoff) out.push({ path: full, size: stats.size });
+    } catch { continue; }
   }
+  return out;
+}
 
-  return { root, files };
+async function collectCategoryFiles(category) {
+  const cutoff = Date.now() - CLEANUP_MIN_AGE_MS;
+  const found = [];
+  for (const candidate of category.roots()) {
+    let root;
+    try { root = await fs.realpath(path.resolve(candidate)); } catch { continue; }
+    const files = await walkFiles(root, category.recursive, cutoff, CLEANUP_MAX_FILES - found.length);
+    for (const file of files) found.push({ ...file, root });
+    if (found.length >= CLEANUP_MAX_FILES) break;
+  }
+  return found;
+}
+
+async function collectOldTempFiles() {
+  const files = await collectCategoryFiles(CLEANUP_CATEGORIES[0]);
+  return { root: files[0]?.root || os.tmpdir(), files };
+}
+
+async function pruneEmptyDirectories(root, depth = 0) {
+  let entries;
+  try { entries = await fs.readdir(root, { withFileTypes: true }); } catch { return; }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.isSymbolicLink() || depth >= 4) continue;
+    const full = path.join(root, entry.name);
+    await pruneEmptyDirectories(full, depth + 1);
+    try { await fs.rmdir(full); } catch { /* não está vazia ou está em uso */ }
+  }
+}
+
+async function scanRecycleBin() {
+  if (process.platform !== 'win32') return { fileCount: 0, bytes: 0 };
+  try {
+    const { stdout } = await runPowerShell(String.raw`$ErrorActionPreference='SilentlyContinue'; $items=@((New-Object -ComObject Shell.Application).Namespace(0xA).Items()); $b=[int64]0; foreach($i in $items){ $b += [int64]$i.Size }; '{0};{1}' -f $items.Count, $b`, 12000);
+    const [count, bytes] = stdout.trim().split(';').map(Number);
+    return { fileCount: Number.isFinite(count) ? count : 0, bytes: Number.isFinite(bytes) ? bytes : 0 };
+  } catch { return { fileCount: 0, bytes: 0 }; }
 }
 
 function isInsideDirectory(root, candidate) {
@@ -457,20 +500,23 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1500,
     height: 980,
-    minWidth: 1200,
-    minHeight: 760,
+    minWidth: 1100,
+    minHeight: 700,
     frame: false,
-    backgroundColor: '#090a12',
+    show: false,
+    backgroundColor: '#060919',
     title: 'Nexo Device Care',
-    icon: path.join(__dirname, 'assets', 'icon.ico'),
+    icon: path.join(__dirname, 'assets', 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     }
   });
 
+  mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== trustedDocumentUrl) event.preventDefault();
   });
@@ -544,6 +590,21 @@ registerIpcHandler('drives:optimize', async (_event, driveLetter) => {
   return { ok: true, driveLetter: letter };
 });
 
+registerIpcHandler('cleanup:scan', async () => {
+  const categories = [];
+  for (const category of CLEANUP_CATEGORIES) {
+    const base = { id: category.id, label: category.label, description: category.description, destructive: Boolean(category.special) };
+    if (category.special) {
+      categories.push({ ...base, ...(await scanRecycleBin()) });
+      continue;
+    }
+    const files = await collectCategoryFiles(category);
+    categories.push({ ...base, fileCount: files.length, bytes: files.reduce((total, file) => total + file.size, 0) });
+  }
+  return { categories, minAgeDays: CLEANUP_MIN_AGE_MS / (24 * 60 * 60 * 1000), maxFiles: CLEANUP_MAX_FILES };
+});
+
+// Usado pela limpeza automática: somente a categoria "temp", como descrito no consentimento.
 registerIpcHandler('cleanup:preview', async () => {
   const { files } = await collectOldTempFiles();
   return {
@@ -554,25 +615,45 @@ registerIpcHandler('cleanup:preview', async () => {
   };
 });
 
-registerIpcHandler('cleanup:run', async () => {
-  const { root, files } = await collectOldTempFiles();
-  let removedCount = 0;
-  let bytesFreed = 0;
-
-  for (const file of files) {
-    if (!isInsideDirectory(root, file.path)) continue;
-    try {
-      const stats = await fs.lstat(file.path);
-      if (!stats.isFile() || stats.mtimeMs >= Date.now() - CLEANUP_MIN_AGE_MS) continue;
-      await fs.unlink(file.path);
-      removedCount += 1;
-      bytesFreed += stats.size;
-    } catch {
-      continue;
+registerIpcHandler('cleanup:run', async (_event, ids) => {
+  const known = new Map(CLEANUP_CATEGORIES.map((category) => [category.id, category]));
+  const selected = [...new Set(Array.isArray(ids) && ids.length ? ids : ['temp'])].filter((id) => known.has(id));
+  const results = [];
+  for (const id of selected) {
+    const category = known.get(id);
+    let removedCount = 0;
+    let bytesFreed = 0;
+    if (category.special) {
+      const before = await scanRecycleBin();
+      if (process.platform === 'win32') {
+        try { await runPowerShell("Clear-RecycleBin -Force -ErrorAction SilentlyContinue", 60000); } catch { /* o Windows pode recusar itens em uso */ }
+      }
+      const after = await scanRecycleBin();
+      removedCount = Math.max(0, before.fileCount - after.fileCount);
+      bytesFreed = Math.max(0, before.bytes - after.bytes);
+    } else {
+      const files = await collectCategoryFiles(category);
+      for (const file of files) {
+        if (!isInsideDirectory(file.root, file.path)) continue;
+        try {
+          const stats = await fs.lstat(file.path);
+          if (!stats.isFile() || stats.isSymbolicLink() || stats.mtimeMs >= Date.now() - CLEANUP_MIN_AGE_MS) continue;
+          await fs.unlink(file.path);
+          removedCount += 1;
+          bytesFreed += stats.size;
+        } catch { continue; }
+      }
+      if (category.recursive) {
+        for (const root of new Set(files.map((file) => file.root))) await pruneEmptyDirectories(root);
+      }
     }
+    results.push({ id, removedCount, bytesFreed });
   }
-
-  return { removedCount, bytesFreed };
+  return {
+    results,
+    removedCount: results.reduce((total, item) => total + item.removedCount, 0),
+    bytesFreed: results.reduce((total, item) => total + item.bytesFreed, 0)
+  };
 });
 
 registerIpcHandler('system:repair', async () => {
@@ -663,13 +744,237 @@ registerIpcHandler('updates:install', async () => {
   return { ok: true };
 });
 
-app.whenReady().then(() => {
-  createWindow();
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UTF8_PS = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ErrorActionPreference='SilentlyContinue'; ";
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+async function listPowerPlans() {
+  if (process.platform !== 'win32') return [];
+  const script = UTF8_PS + String.raw`$p=@(Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan | ForEach-Object { [pscustomobject]@{ guid = ([string]$_.InstanceID -replace '.*\{|\}.*',''); name = [string]$_.ElementName; active = [bool]$_.IsActive } }); ConvertTo-Json -InputObject $p -Compress`;
+  const { stdout } = await runPowerShell(script, 10000);
+  if (!stdout.trim()) return [];
+  const parsed = JSON.parse(stdout);
+  return (Array.isArray(parsed) ? parsed : [parsed])
+    .filter((plan) => GUID_PATTERN.test(plan.guid))
+    .map((plan) => ({ guid: plan.guid.toLowerCase(), name: String(plan.name || 'Plano'), active: Boolean(plan.active) }));
+}
+
+registerIpcHandler('power:list', listPowerPlans);
+
+registerIpcHandler('power:set', async (_event, guid) => {
+  const plans = await listPowerPlans();
+  const target = plans.find((plan) => plan.guid === String(guid || '').toLowerCase());
+  if (!target) throw new Error('Plano de energia não reconhecido.');
+  await execFileAsync('powercfg', ['/setactive', target.guid], { windowsHide: true, timeout: 10000 });
+  return { ok: true, plans: await listPowerPlans() };
 });
+
+registerIpcHandler('startup:list', async () => {
+  if (process.platform !== 'win32') return [];
+  const script = UTF8_PS + String.raw`$s=@(Get-CimInstance Win32_StartupCommand | ForEach-Object { [pscustomobject]@{ name = [string]$_.Name; command = [string]$_.Command; location = [string]$_.Location; user = [string]$_.User } }); ConvertTo-Json -InputObject $s -Compress`;
+  const { stdout } = await runPowerShell(script, 12000);
+  if (!stdout.trim()) return [];
+  const parsed = JSON.parse(stdout);
+  return (Array.isArray(parsed) ? parsed : [parsed]).map((item) => ({
+    name: String(item.name || 'Programa').slice(0, 80),
+    command: String(item.command || '').slice(0, 220),
+    location: String(item.location || '').slice(0, 120),
+    user: String(item.user || '').slice(0, 60)
+  }));
+});
+
+const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings:powersleep', storage: 'ms-settings:storagesense' };
+registerIpcHandler('system:open-settings', async (_event, page) => {
+  const uri = SETTINGS_PAGES[page];
+  if (!uri) throw new Error('Página de configurações não permitida.');
+  await shell.openExternal(uri);
+  return { ok: true };
+});
+
+const EXTERNAL_LINKS = {
+  repo: 'https://github.com/Samuklvm/Project-Nexo',
+  privacy: 'https://github.com/Samuklvm/Project-Nexo/blob/main/PRIVACIDADE.md',
+  creator: 'https://github.com/Samuklvm',
+  issues: 'https://github.com/Samuklvm/Project-Nexo/issues',
+  releases: 'https://github.com/Samuklvm/Project-Nexo/releases'
+};
+registerIpcHandler('app:open-link', async (_event, key) => {
+  const url = EXTERNAL_LINKS[key];
+  if (!url) throw new Error('Link não permitido.');
+  await shell.openExternal(url);
+  return { ok: true };
+});
+
+async function directorySize(directory) {
+  let total = 0;
+  let entries = [];
+  try { entries = await fs.readdir(directory, { withFileTypes: true }); } catch { return 0; }
+  for (const entry of entries) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) total += await directorySize(full);
+    else if (entry.isFile()) { try { total += (await fs.stat(full)).size; } catch { /* ignorado */ } }
+  }
+  return total;
+}
+
+registerIpcHandler('app:info', async () => ({
+  version: app.getVersion(),
+  packaged: app.isPackaged,
+  platform: process.platform,
+  userDataPath: app.getPath('userData'),
+  userDataBytes: await directorySize(app.getPath('userData'))
+}));
+
+// ---- Wallpaper personalizado: arquivo em userData em vez de base64 no localStorage ----
+const WALLPAPER_EXTENSIONS = ['webp', 'png', 'jpg'];
+const wallpaperFile = (extension) => path.join(app.getPath('userData'), `wallpaper.${extension}`);
+
+function detectImageExtension(bytes) {
+  if (bytes.length > 12 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'png';
+  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg';
+  if (bytes.length > 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+  return null;
+}
+
+async function currentWallpaperUrl() {
+  for (const extension of WALLPAPER_EXTENSIONS) {
+    try {
+      const stats = await fs.stat(wallpaperFile(extension));
+      return `${pathToFileURL(wallpaperFile(extension)).href}?v=${Math.round(stats.mtimeMs)}`;
+    } catch { /* tenta a próxima extensão */ }
+  }
+  return null;
+}
+
+registerIpcHandler('wallpaper:get', async () => ({ url: await currentWallpaperUrl() }));
+
+registerIpcHandler('wallpaper:set', async (_event, data) => {
+  const bytes = Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+  if (!bytes.length || bytes.length > WALLPAPER_MAX_BYTES) throw new Error('Escolha uma imagem de até 12 MB.');
+  const extension = detectImageExtension(bytes);
+  if (!extension) throw new Error('Use uma imagem PNG, JPEG ou WebP.');
+  for (const other of WALLPAPER_EXTENSIONS) await fs.rm(wallpaperFile(other), { force: true });
+  await fs.writeFile(wallpaperFile(extension), bytes);
+  return { url: await currentWallpaperUrl() };
+});
+
+registerIpcHandler('wallpaper:reset', async () => {
+  for (const extension of WALLPAPER_EXTENSIONS) await fs.rm(wallpaperFile(extension), { force: true });
+  return { url: null };
+});
+
+// ---- Preferência de compartilhamento opcional (Registro do Windows, como no instalador) ----
+const PRIVACY_KEY = 'HKCU\\Software\\NexoDeviceCare\\Privacy';
+registerIpcHandler('privacy:get', async () => {
+  if (process.platform !== 'win32') return { shareWithCreator: false };
+  try {
+    const { stdout } = await execFileAsync('reg', ['query', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn'], { windowsHide: true, timeout: 5000 });
+    return { shareWithCreator: /0x1\b/i.test(stdout) };
+  } catch { return { shareWithCreator: false }; }
+});
+registerIpcHandler('privacy:set', async (_event, enabled) => {
+  if (process.platform !== 'win32') return { shareWithCreator: false };
+  await execFileAsync('reg', ['add', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', enabled ? '1' : '0', '/f'], { windowsHide: true, timeout: 5000 });
+  return { shareWithCreator: Boolean(enabled) };
+});
+
+// ---- Desinstalação completa ----
+// A lista de alvos abaixo precisa ficar alinhada com `customUnInstall` em installer/installer.nsh.
+const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
+
+function buildRemovalScript({ installDir, uninstaller, pid }) {
+  return String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+Wait-Process -Id ${pid} -Timeout 60
+Start-Sleep -Milliseconds 800
+Get-Process -Name 'Nexo.SensorHost' | Stop-Process -Force
+$dir = ${psQuote(installDir)}
+$un = ${psQuote(uninstaller)}
+$env:NEXO_PURGE = '1'
+Remove-Item -LiteralPath 'Env:\NEXO_KEEP' -ErrorAction SilentlyContinue
+if (Test-Path -LiteralPath $un) { Start-Process -FilePath $un -ArgumentList '/S', ('_?=' + $dir) -Wait }
+Remove-Item -LiteralPath $un -Force
+if ($dir.Length -gt 15) { Remove-Item -LiteralPath $dir -Recurse -Force }
+
+$roaming = $env:APPDATA; $local = $env:LOCALAPPDATA
+$targets = @(
+  (Join-Path $roaming 'nexo-device-care'), (Join-Path $roaming 'Nexo Device Care'),
+  (Join-Path $local 'nexo-device-care'), (Join-Path $local 'nexo-device-care-updater'),
+  (Join-Path $roaming 'Microsoft\Windows\Start Menu\Programs\Nexo Device Care'),
+  (Join-Path $roaming 'Microsoft\Windows\Start Menu\Programs\Nexo Device Care.lnk'),
+  (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Nexo Device Care.lnk')
+)
+foreach ($t in $targets) { Remove-Item -LiteralPath $t -Recurse -Force }
+Get-ChildItem -LiteralPath (Join-Path $roaming 'Microsoft\Windows\Recent') -Filter 'Nexo*' | Remove-Item -Force
+Remove-Item -LiteralPath 'HKCU:\Software\NexoDeviceCare' -Recurse -Force
+
+# Caches do próprio Windows que guardam o caminho do programa
+$caches = @(
+  'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache',
+  'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store',
+  'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+)
+foreach ($k in $caches) {
+  $item = Get-Item -LiteralPath $k
+  if ($item) { foreach ($n in $item.GetValueNames()) { if ($n.StartsWith($dir, 'OrdinalIgnoreCase')) { Remove-ItemProperty -LiteralPath $k -Name $n -Force } } }
+}
+foreach ($guid in (Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist')) {
+  $count = Join-Path $guid.PSPath 'Count'
+  $key = Get-Item -LiteralPath $count
+  if ($key) {
+    foreach ($n in $key.GetValueNames()) {
+      $decoded = -join ($n.ToCharArray() | ForEach-Object { if ($_ -cmatch '[a-z]') { [char]((([int][char]$_ - 97 + 13) % 26) + 97) } elseif ($_ -cmatch '[A-Z]') { [char]((([int][char]$_ - 65 + 13) % 26) + 65) } else { $_ } })
+      if ($decoded -like '*Nexo Device Care*') { Remove-ItemProperty -LiteralPath $count -Name $n -Force }
+    }
+  }
+}
+
+$left = @()
+foreach ($t in (@($dir) + $targets + @('HKCU:\Software\NexoDeviceCare'))) { if (Test-Path -LiteralPath $t) { $left += $t } }
+Add-Type -AssemblyName PresentationFramework
+if ($left.Count -eq 0) {
+  [void][System.Windows.MessageBox]::Show('O Nexo Device Care foi removido por completo: programa, dados, atalhos e entradas do Registro.', 'Nexo Device Care')
+} else {
+  [void][System.Windows.MessageBox]::Show(('O Nexo foi removido, mas estes itens não puderam ser apagados:' + [Environment]::NewLine + ($left -join [Environment]::NewLine)), 'Nexo Device Care')
+}
+`;
+}
+
+registerIpcHandler('app:uninstall', async () => {
+  if (process.platform !== 'win32' || !app.isPackaged) {
+    throw new Error('A desinstalação completa só está disponível na versão instalada do Nexo.');
+  }
+  const installDir = path.dirname(process.execPath);
+  const names = await fs.readdir(installDir);
+  const uninstallerName = names.find((name) => /^Uninstall .*\.exe$/i.test(name));
+  if (!uninstallerName) throw new Error('Não encontrei o desinstalador desta instalação.');
+  const script = buildRemovalScript({ installDir, uninstaller: path.join(installDir, uninstallerName), pid: process.pid });
+  const helper = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', script], {
+    detached: true, stdio: 'ignore', windowsHide: true
+  });
+  helper.unref();
+  setTimeout(() => app.quit(), 400);
+  return { ok: true };
+});
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  });
+
+  app.whenReady().then(() => {
+    if (process.platform === 'win32') app.setAppUserModelId('com.samuklvm.nexo');
+    Menu.setApplicationMenu(null);
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

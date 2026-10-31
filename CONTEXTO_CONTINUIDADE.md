@@ -79,3 +79,33 @@ Antes de editar, conferir se a imagem original ainda está acessível e como os 
 ## Nota sobre precisão
 
 Este documento reúne as decisões e o estado de projeto relevantes desta conversa. Não contém cada mensagem, imagem em resolução original, credencial, log completo ou detalhe incidental. A conversa original deve continuar na história do Codex enquanto não for excluída; este arquivo serve como referência portátil para um novo chat.
+
+## Versão 0.2.0 — repaginação completa (31/10/2026)
+
+Registro do que foi feito e decidido. Conferir o estado do repositório antes de agir.
+
+### Decisões e arquitetura
+
+- **Interface nova** ("noite estrelada"): `index.html`, `style.css`, `app.js` e módulos em `src/` (`core`, `ui-kit`, `charts`, `store`, `view-*`). Páginas: Início, Análise, Otimizar, Hardware, Manutenção, Atividade, Atualizações, Ajustes. Sem framework e sem etapa de build.
+- **Motor de análise** em `src/brain.js` (UMD, testado em `tests/brain.test.cjs` com `npm test`). Aprendizado = estatística simples por hora da semana + episódios + programas recorrentes + confiança ajustada por feedback. Não vender como "IA".
+- **Privacidade:** o aprendizado guarda nomes de programas só durante episódios de lentidão. `PRIVACIDADE.md`, `installer/installer.nsh` (texto PT/EN), `installer/AVISOS.txt` e o launcher foram atualizados juntos; manter os quatro sincronizados.
+- **Papel de parede:** arquivo em `userData` (via IPC), não mais base64 no `localStorage`. O padrão é `assets/wallpaper.webp` (a arte do instalador; o PNG de 26 MB saiu do pacote, mas continua no histórico do Git).
+- **CSP** adicionada ao `index.html` (`script-src 'self'`, sem scripts inline).
+- **Limpeza por categorias** (`cleanup:scan`/`cleanup:run`). A limpeza automática continua restrita aos temporários, como no consentimento.
+- **Novos recursos no `main.cjs`:** plano de energia (`power:*`), programas de inicialização (`startup:*`), atalhos para o Windows (`system:open-settings`), links permitidos, privacidade no Registro, instância única, AppUserModelID.
+
+### Instalador e desinstalador
+
+- `installer-launcher/`: instalador visual em Electron (portable) que executa o `Nexo-Setup` em modo silencioso. Escreve `DeveloperTelemetryOptIn` antes de instalar, exige aceitar os avisos e tem PT/EN. O Setup NSIS continua sendo o que o `electron-updater` usa.
+- `installer.nsh`: `customInit` define `NEXO_KEEP=1` (instalador substituindo versão existente); `customUnInstall` apaga dados, caches, Registro e atalhos **exceto** se `NEXO_KEEP` existir. Silencioso sem `NEXO_PURGE=1` também não apaga. Não foi usado `${isUpdated}`, conforme a lição da 0.1.5.
+- **Ajustes → Desinstalar o Nexo** abre um script PowerShell oculto que espera o app fechar, roda o desinstalador com `NEXO_PURGE=1` e limpa MuiCache, UserAssist e Recentes. Lista de alvos em `buildRemovalScript()` (`main.cjs`) e em `customUnInstall`: manter alinhadas.
+- Ícone do app: `assets/icon.ico` e `icon.png` (a estrela do logo). Barras laterais do NSIS regeneradas com a arte.
+
+### Não validado em Windows (testar antes de publicar)
+
+Eu só tinha Linux ao escrever isto. Verificado: sintaxe, testes do motor, interface renderizada no navegador (com CSP real) e o fluxo do launcher com ponte simulada. **Não verificado:** compilação do NSIS, execução do Electron, `powercfg`/CIM, o script de remoção em PowerShell, o launcher empacotado e o `/D=` com espaços. Sugestão: criar uma branch, rodar `npm run dist` e testar instalar, atualizar sobre a versão anterior (dados preservados?), desinstalar (nada sobrou?) numa VM antes de criar a tag `v0.2.0`.
+
+### Ideias para depois
+
+Idioma EN no app principal; bandeja do sistema com monitoramento em segundo plano (opt-in, ampliaria a coleta e a lista de rastros a remover); relatório de saúde exportável; assinatura digital (ver seção anterior).
+

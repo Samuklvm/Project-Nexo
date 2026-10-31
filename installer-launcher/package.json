@@ -1,6 +1,6 @@
 {
   "name": "nexo-installer-launcher",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "private": true,
   "description": "Instalador visual do Nexo Device Care",
   "main": "main.cjs",
@@ -15,12 +15,32 @@
   "build": {
     "appId": "com.samuklvm.nexo.installer",
     "productName": "Nexo Instalador",
-    "directories": { "output": "dist" },
-    "files": ["index.html", "renderer.js", "main.cjs", "preload.cjs", "assets/**/*"],
-    "extraResources": [{ "from": "payload", "to": "payload" }],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "renderer.js",
+      "main.cjs",
+      "preload.cjs",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "payload",
+        "to": "payload"
+      }
+    ],
     "win": {
       "icon": "assets/icon.ico",
-      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "artifactName": "Nexo-Instalador-${version}.${ext}"
     }
   }
