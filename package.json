@@ -1,15 +1,17 @@
 {
   "name": "nexo-device-care",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "private": true,
-  "description": "Nexo device care desktop app",
+  "description": "Nexo Device Care: cuidado e otimização do seu PC, com análise local que aprende a sua rotina",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
     "build:sensors": "dotnet publish sensor-host/Nexo.SensorHost.csproj -c Release -r win-x64 --self-contained true -o sensor-host/publish",
-    "build:visual-installer": "node installer-launcher/scripts/prepare.cjs && electron-builder --projectDir installer-launcher --win portable --publish never",
-    "dist": "npm run build:sensors && electron-builder --win nsis && npm run build:visual-installer",
-    "release": "npm run build:sensors && electron-builder --win nsis --publish always && npm run build:visual-installer"
+    "dist": "npm run build:sensors && electron-builder --win nsis",
+    "release": "npm run build:sensors && electron-builder --win nsis --publish always",
+    "test": "node --test tests/brain.test.cjs tests/main-ipc.test.cjs",
+    "preview": "node dev/build-preview.cjs",
+    "build:launcher": "npm --prefix installer-launcher install && npm --prefix installer-launcher run dist"
   },
   "repository": {
     "type": "git",
@@ -35,13 +37,16 @@
       "main.cjs",
       "preload.cjs",
       "package.json",
+      "src/**/*",
       "assets/**/*"
     ],
     "extraResources": [
       {
         "from": "sensor-host/publish",
         "to": "sensor-host",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "THIRD-PARTY-NOTICES.md",
@@ -49,30 +54,35 @@
       }
     ],
     "win": {
-      "icon": "assets/icon.ico",
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "artifactName": "Nexo-Setup-${version}.${ext}"
+      "artifactName": "Nexo-Setup-${version}.${ext}",
+      "icon": "assets/icon.ico"
     },
     "nsis": {
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "license": "installer/AVISOS.txt",
       "displayLanguageSelector": true,
-      "installerLanguages": ["pt_BR", "en_US"],
+      "installerLanguages": [
+        "pt_BR",
+        "en_US"
+      ],
       "language": "1046",
       "installerSidebar": "installer/installer-sidebar.bmp",
-      "uninstallerSidebar": "installer/installer-sidebar.bmp",
+      "uninstallerSidebar": "installer/uninstaller-sidebar.bmp",
       "include": "installer/installer.nsh",
       "runAfterFinish": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
     },
     "publish": {
       "provider": "github",

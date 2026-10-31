@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run unit tests
+        run: npm test
+
       - name: Build and publish installer
         run: npm run release
         env:
@@ -44,11 +47,22 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
-      - name: Upload visual installer
+      # O instalador visual embute o Nexo-Setup gerado acima. Se falhar, a release principal já está publicada.
+      - name: Build visual installer
+        continue-on-error: true
         shell: pwsh
         run: |
-          $asset = Get-ChildItem "installer-launcher/dist/Nexo-Instalador-*.exe" | Select-Object -First 1
-          if (-not $asset) { throw "Visual installer was not generated." }
-          gh release upload "$env:GITHUB_REF_NAME" "$($asset.FullName)" --clobber
+          npm --prefix installer-launcher install
+          npm --prefix installer-launcher run dist
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Upload visual installer to the release
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem installer-launcher/dist/Nexo-Instalador-*.exe | Select-Object -First 1
+          gh release upload "$env:GITHUB_REF_NAME" $file.FullName --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

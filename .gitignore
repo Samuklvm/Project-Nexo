@@ -4,6 +4,10 @@ dist/
 sensor-host/bin/
 sensor-host/obj/
 sensor-host/publish/
-/installer-launcher/payload/
 *.log
 .DS_Store
+installer-launcher/node_modules/
+installer-launcher/dist/
+installer-launcher/payload/
+dev/preview.html
+dev/csp-test.html
