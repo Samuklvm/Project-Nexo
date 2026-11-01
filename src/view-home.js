@@ -37,6 +37,8 @@
     const tone = health.score >= 75 ? 'good' : health.score >= 55 ? 'warn' : 'bad';
     const box = document.getElementById('health');
     box.dataset.tone = tone;
+    Nexo.setTone?.(tone);
+    Nexo.lightTicks?.(health.score);
     document.getElementById('ring-head').style.transform = `rotate(${(health.score * 3.6).toFixed(1)}deg)`;
     document.getElementById('ring-arc').setAttribute('stroke-dasharray', `${health.score} 100`);
     animateScore(health.score);
@@ -51,17 +53,17 @@
     const snapshot = Nexo.state.snapshot;
     if (!snapshot) return;
     const sample = Nexo.store.live().slice(-1)[0] || {};
-    setText('cpu-usage-value', pct(snapshot.cpuUsage));
+    Nexo.num('cpu-usage-value', snapshot.cpuUsage, (v) => `${Math.round(v)}%`);
     setText('cpu-usage-state', `${snapshot.logicalCpuCount || '--'} threads · ${snapshot.cpuUsage >= 85 ? 'carga alta' : snapshot.cpuUsage >= 60 ? 'carga moderada' : 'folgado'}`);
-    setText('memory-usage-value', pct(snapshot.memoryPercent));
+    Nexo.num('memory-usage-value', snapshot.memoryPercent, (v) => `${Math.round(v)}%`);
     setText('memory-usage-state', `${formatBytes(snapshot.memoryUsedBytes)} de ${formatBytes(snapshot.memoryTotalBytes)}`);
     const drive = snapshot.primaryDrive;
-    setText('disk-usage-value', pct(drive?.usedPercent));
+    Nexo.num('disk-usage-value', drive?.usedPercent, (v) => `${Math.round(v)}%`);
     setText('disk-usage-state', drive ? `${drive.driveLetter}: · ${formatBytes(drive.freeBytes)} livres` : 'Sem unidade detectada');
-    setText('gpu-usage-value', Number.isFinite(sample.gpu) ? pct(sample.gpu) : '--');
+    Nexo.num('gpu-usage-value', sample.gpu, (v) => `${Math.round(v)}%`);
     setText('gpu-usage-state', Number.isFinite(sample.gpu) ? (Number.isFinite(sample.gpuTemperature) ? `${deg(sample.gpuTemperature)} · em uso` : 'em uso') : 'Sensor não detectado');
     const hot = Nexo.store.hottest(sample);
-    setText('system-temperature-value', Number.isFinite(hot) ? deg(hot) : '--');
+    Nexo.num('system-temperature-value', hot, (v) => `${Math.round(v)} °C`);
     setText('system-temperature-state', Number.isFinite(hot) ? (hot >= 85 ? 'Acima do ideal' : 'Dentro do esperado') : 'Sem sensor compatível');
     setText('uptime-value', formatUptime(snapshot.uptimeSeconds));
     setText('uptime-detail', `Desde ${new Date(Date.now() - snapshot.uptimeSeconds * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`);
@@ -83,12 +85,13 @@
       const box = document.createElement('div'); box.className = 'chart-tip'; box.hidden = true;
       document.getElementById(id).parentElement.append(box); return box;
     })();
-    const draw = (id, options) => { const canvas = document.getElementById(id); if (canvas) Nexo.charts.render(canvas, { from, to, ...options }, tip(id)); };
-    draw('chart-cpu', { series: [{ label: 'Processador', color: c.cpu, data: series('cpu') }], yMin: 0, yMax: 100, unit: '%' });
-    draw('chart-memory', { series: [{ label: 'Memória', color: c.mem, data: series('memory') }], yMin: 0, yMax: 100, unit: '%' });
+    const alert = (low) => [{ from: low, to: 100, color: 'rgba(255, 122, 149, 0.07)', line: 'rgba(255, 122, 149, 0.4)' }];
+    const draw = (id, options) => { const canvas = document.getElementById(id); if (canvas) Nexo.charts.render(canvas, { from, to, key: `${id}:${range}`, ...options }, tip(id)); };
+    draw('chart-cpu', { series: [{ label: 'Processador', color: c.cpu, data: series('cpu') }], yMin: 0, yMax: 100, unit: '%', bands: alert(85) });
+    draw('chart-memory', { series: [{ label: 'Memória', color: c.mem, data: series('memory') }], yMin: 0, yMax: 100, unit: '%', bands: alert(85) });
     draw('chart-gpu', { series: [{ label: 'Vídeo', color: c.gpu, data: series('gpu') }], yMin: 0, yMax: 100, unit: '%' });
-    draw('chart-disk', { series: [{ label: 'Disco', color: c.disk, data: series('disk') }], yMin: 0, yMax: 100, unit: '%' });
-    draw('chart-temperature', { unit: '°C', series: [
+    draw('chart-disk', { series: [{ label: 'Disco', color: c.disk, data: series('disk') }], yMin: 0, yMax: 100, unit: '%', bands: alert(90) });
+    draw('chart-temperature', { unit: '°C', bands: [{ from: 85, to: 120, color: 'rgba(255, 122, 149, 0.07)', line: 'rgba(255, 122, 149, 0.4)' }], series: [
       { label: 'Processador', color: c.cpu, data: series('cpuSensorTemperature') },
       { label: 'Vídeo', color: c.gpu, data: series('gpuTemperature') },
       { label: 'ACPI', color: c.acpi, data: series('acpiTemperature') }
@@ -123,7 +126,7 @@
       return;
     }
     container.innerHTML = insights.slice(0, limit).map((insight) => `<article class="insight" data-severity="${insight.severity}">
-      <div class="insight-head"><strong>${escapeHtml(insight.title)}</strong><span>confiança ${insight.confidence}%${insight.votes >= 3 ? ` · ajustada por ${insight.votes} avaliações` : ''}</span></div>
+      <div class="insight-head"><span class="sev" aria-hidden="true"><svg><use href="#${insight.severity === 'info' ? 'i-spark' : 'i-alert'}"/></svg></span><strong>${escapeHtml(insight.title)}</strong><span>confiança ${insight.confidence}%${insight.votes >= 3 ? ` · ajustada por ${insight.votes} avaliações` : ''}</span></div>
       <p>${escapeHtml(insight.summary)}</p>
       <ul>${insight.evidence.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
       ${(insight.actions.length || withFeedback) ? `<div class="insight-actions">${insight.actions.map((action) => `<button class="btn sm" type="button" data-insight-action="${action.type}">${escapeHtml(action.label)}</button>`).join('')}${withFeedback ? `<span class="ask">Isso ajudou?</span><button class="btn sm ghost" type="button" data-feedback="${insight.category}" data-helpful="1">Sim</button><button class="btn sm ghost" type="button" data-feedback="${insight.category}" data-helpful="0">Não</button>` : ''}</div>` : ''}

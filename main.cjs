@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, powerMonitor } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { execFile, spawn } = require('child_process');
 const fs = require('fs/promises');
@@ -7,6 +7,7 @@ const path = require('path');
 const { promisify } = require('util');
 const { pathToFileURL } = require('url');
 const readline = require('readline');
+const { Worker } = require('worker_threads');
 
 const execFileAsync = promisify(execFile);
 const CLEANUP_MAX_FILES = 5000;
@@ -348,7 +349,7 @@ const CLEANUP_CATEGORIES = [
   { id: 'crashdumps', label: 'Relatórios de falha de programas', description: 'Despejos de memória (.dmp) de programas que travaram, com mais de 7 dias.', recursive: true, roots: () => [path.join(LOCAL_APPDATA, 'CrashDumps')] },
   { id: 'wer', label: 'Relatórios de erro do Windows', description: 'Relatórios antigos, enviados ou pendentes, do Relatório de Erros do Windows.', recursive: true,
     roots: () => [path.join(LOCAL_APPDATA, 'Microsoft', 'Windows', 'WER', 'ReportArchive'), path.join(LOCAL_APPDATA, 'Microsoft', 'Windows', 'WER', 'ReportQueue')] },
-  { id: 'recycle', label: 'Lixeira', description: 'Esvazia a Lixeira de todas as unidades. Os arquivos não poderão ser recuperados.', special: true }
+  { id: 'recycle', label: 'Lixeira', description: 'Esvazia a sua Lixeira, em todas as unidades. Os arquivos não poderão ser recuperados.', special: true }
 ];
 
 async function walkFiles(root, recursive, cutoff, limit, depth = 0, out = []) {
@@ -782,11 +783,74 @@ registerIpcHandler('startup:list', async () => {
   }));
 });
 
+// ---- Benchmark curto de CPU (experimento A/B do plano de energia) ----
+// Carga determinística de inteiros; mede iterações por segundo em cada worker. Sempre iniciado pelo usuário.
+const BENCH_WORKER = String.raw`
+const { parentPort, workerData } = require('worker_threads');
+let x = 0x9e3779b9 | 0;
+let iterations = 0;
+const started = performance.now();
+const end = started + workerData.ms;
+while (performance.now() < end) {
+  for (let i = 0; i < 100000; i += 1) {
+    x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d);
+    x ^= x >>> 12;
+    x = Math.imul(x, 0x297a2d39);
+    x ^= x >>> 15;
+  }
+  iterations += 100000;
+}
+parentPort.postMessage({ iterations, seconds: (performance.now() - started) / 1000, checksum: x >>> 0 });
+`;
+let activeBench = null;
+
+async function runCpuBench(mode, ms) {
+  if (activeBench) throw new Error('Já existe um teste em andamento.');
+  const threads = mode === 'single' ? 1 : Math.max(1, os.cpus().length - 1);
+  const state = { workers: [], cancelled: false };
+  activeBench = state;
+  try {
+    const results = await Promise.all(Array.from({ length: threads }, () => new Promise((resolve, reject) => {
+      const worker = new Worker(BENCH_WORKER, { eval: true, workerData: { ms } });
+      state.workers.push(worker);
+      worker.once('message', resolve);
+      worker.once('error', reject);
+      worker.once('exit', () => { if (state.cancelled) reject(new Error('Teste cancelado.')); });
+    })));
+    const mopsPerSec = results.reduce((sum, item) => sum + item.iterations / item.seconds, 0) / 1e6;
+    return { mode, threads, ms, mopsPerSec };
+  } finally {
+    activeBench = null;
+    for (const worker of state.workers) worker.terminate();
+  }
+}
+
+registerIpcHandler('bench:cpu', async (_event, options) => {
+  const mode = options?.mode;
+  if (mode !== 'single' && mode !== 'multi') throw new Error('Modo de teste inválido.');
+  const ms = Math.min(3000, Math.max(200, Math.round(Number(options.ms) || 1200)));
+  return runCpuBench(mode, ms);
+});
+registerIpcHandler('bench:cancel', async () => {
+  if (activeBench) {
+    activeBench.cancelled = true;
+    for (const worker of activeBench.workers) worker.terminate();
+  }
+  return { ok: true };
+});
+registerIpcHandler('system:power-source', async () => ({ onBattery: Boolean(powerMonitor?.isOnBatteryPower?.()) }));
+
 const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings:powersleep', storage: 'ms-settings:storagesense' };
 registerIpcHandler('system:open-settings', async (_event, page) => {
   const uri = SETTINGS_PAGES[page];
   if (!uri) throw new Error('Página de configurações não permitida.');
   await shell.openExternal(uri);
+  return { ok: true };
+});
+
+registerIpcHandler('app:open-doc', async (_event, url) => {
+  if (typeof url !== 'string' || !/^https:\/\/(learn|support)\.microsoft\.com\/[\w\-./()%?=&#]*$/.test(url)) throw new Error('Link não permitido.');
+  await shell.openExternal(url);
   return { ok: true };
 });
 

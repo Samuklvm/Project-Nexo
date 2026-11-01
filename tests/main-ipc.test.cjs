@@ -22,7 +22,7 @@ const electronStub = {
   },
   BrowserWindow: class { constructor() { this.webContents = { on() {}, setWindowOpenHandler() {}, send() {} }; } once() {} on() {} loadURL(url) { loadedUrl = url; } static getAllWindows() { return []; } },
   ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on() {} },
-  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }
+  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }
 };
 const updaterStub = { autoUpdater: { on() {}, autoDownload: false, autoInstallOnAppQuit: false, checkForUpdates: async () => null, logger: null } };
 const originalLoad = Module._load;
@@ -101,11 +101,34 @@ test('links e páginas do Windows só aceitam o que está na lista', async () =>
   assert.deepEqual(await call('app:open-link', 'repo'), { ok: true });
 });
 
+test('documentação: só abre páginas oficiais da Microsoft', async () => {
+  assert.deepEqual(await call('app:open-doc', 'https://learn.microsoft.com/powershell/module/storage/optimize-volume'), { ok: true });
+  assert.deepEqual(await call('app:open-doc', 'https://support.microsoft.com/kb/929833'), { ok: true });
+  for (const bad of ['http://learn.microsoft.com/x', 'https://learn.microsoft.com.evil.com/x', 'https://exemplo.com', 'file:///C:/Windows/notepad.exe', 42]) {
+    await assert.rejects(() => call('app:open-doc', bad), /não permitido/, String(bad));
+  }
+});
+
 test('desinstalação completa só existe na versão instalada', async () => {
   await assert.rejects(() => call('app:uninstall'), /versão instalada/);
   const info = await call('app:info');
   assert.equal(info.version, '0.2.0-test');
   assert.equal(info.packaged, false);
+});
+
+test('benchmark de CPU: valida o modo, mede em um e vários núcleos e pode ser cancelado', async () => {
+  await assert.rejects(() => call('bench:cpu', { mode: 'estresse' }), /inválido/);
+  const single = await call('bench:cpu', { mode: 'single', ms: 200 });
+  assert.equal(single.threads, 1);
+  assert.ok(single.mopsPerSec > 1, `taxa implausível: ${single.mopsPerSec}`);
+  const multi = await call('bench:cpu', { mode: 'multi', ms: 200 });
+  assert.ok(multi.threads >= 1 && multi.mopsPerSec > 1);
+  const pending = call('bench:cpu', { mode: 'single', ms: 3000 });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await assert.rejects(() => call('bench:cpu', { mode: 'single', ms: 200 }), /em andamento/);
+  await call('bench:cancel');
+  await assert.rejects(() => pending, /cancelado/);
+  assert.deepEqual(await call('system:power-source'), { onBattery: false });
 });
 
 test.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));

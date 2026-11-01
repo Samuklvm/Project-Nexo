@@ -57,6 +57,8 @@
       await desktopBridge.optimizeDrive(drive.driveLetter);
       showToast(`O Windows concluiu a otimização de ${drive.driveLetter}:.`);
       recordActivity('Otimização de unidade', `${drive.driveLetter}:`);
+      Nexo.journal.record({ actionId: 'drive-optimize', title: `Otimizar a unidade ${drive.driveLetter}:`, risk: 'baixo', reversible: false, detail: 'concluída pelo Windows' });
+      Nexo.emit('journal');
     } catch (error) {
       showToast(error.message || 'Não foi possível otimizar a unidade.');
     } finally {
@@ -83,6 +85,8 @@
       setText('repair-status', 'Verificação concluída');
       showToast('O Windows concluiu a verificação SFC.');
       recordActivity('Verificação SFC', 'concluída');
+      Nexo.journal.record({ actionId: 'sfc-scan', title: 'Verificar arquivos do sistema (SFC)', risk: 'baixo', reversible: false, detail: 'concluída pelo Windows' });
+      Nexo.emit('journal');
     } catch (error) {
       setText('repair-status', 'Não concluída');
       showToast(error.message || 'O Windows não concluiu a verificação.');

@@ -19,6 +19,8 @@ A coleta local é parte do funcionamento do Nexo e não depende do consentimento
 - **Sensores detalhados:** valores atuais e mínimos/máximos da sessão ficam em memória para a tela de sensores e não são gravados automaticamente no histórico de sete dias. Se a pessoa escolher **Exportar CSV**, o Nexo cria um arquivo local com nome/categoria do componente, nome e tipo do sensor, valor atual, unidade, mínimo, máximo e indicador de sensor avançado.
 - **Feedback local:** categoria da recomendação, resposta útil/não útil e horário, limitado aos últimos 100 registros.
 - **Atividade local:** título, detalhe e horário das últimas 20 atividades exibidas pelo app.
+- **Diário de alterações:** para cada alteração feita pelo Nexo (plano de energia, limpezas, otimização de unidade, verificação do sistema) ficam registrados o nome da operação, o horário, o risco, o valor anterior e o novo (por exemplo, nome e identificador do plano de energia), a quantidade e o tamanho dos itens removidos e a forma de autorização. Guarda até 100 registros e serve para você auditar e reverter.
+- **Benchmark local:** o experimento do plano de energia executa uma carga sintética de CPU por cerca de 20 segundos, sempre iniciada por você. Só os números resultantes (medianas, ruído e veredito) são guardados no Diário.
 - **Preferências locais:** papel de parede escolhido (até 12 MB, guardado como arquivo na pasta de dados do app), modo de efeitos visuais, configuração da limpeza automática e horário da última execução.
 - **Compartilhamento opcional:** a preferência para enviar telemetria ao criador, hoje inativa, é guardada no Registro do Windows em `HKCU\Software\NexoDeviceCare\Privacy\DeveloperTelemetryOptIn`. Não é enviada ao desenvolvedor.
 

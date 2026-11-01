@@ -6,7 +6,7 @@ Leia estas informacoes antes de instalar e usar o Nexo Device Care.
 
 2. A limpeza segura mostra uma previa e remove apenas arquivos antigos: temporarios da pasta do usuario, relatorios de falha e relatorios de erro do Windows. Esvaziar a Lixeira so acontece se voce marcar essa opcao e nao pode ser desfeito. A limpeza automatica considera somente temporarios, e e opcional e pode ser desativada nas configuracoes do aplicativo.
 
-3. O app pode trocar o plano de energia do Windows quando voce escolher. A troca pode ser desfeita no mesmo lugar.
+3. O app pode trocar o plano de energia do Windows quando voce escolher e, se voce pedir, medir antes e depois com um teste de CPU de cerca de 20 segundos, com o processador em carga maxima. Toda alteracao fica registrada no Diario de alteracoes, e a troca de plano pode ser desfeita ali.
 
 4. A otimizacao de unidades e a verificacao de arquivos do Windows usam ferramentas nativas do sistema. Essas operacoes podem solicitar permissao de administrador e devem ser confirmadas pelo usuario.
 

@@ -28,7 +28,7 @@
       const empty = !category.fileCount;
       const checked = !empty && !category.destructive;
       return `<li data-id="${category.id}"><label class="check"><input type="checkbox" ${checked ? 'checked' : ''} ${empty ? 'disabled' : ''} aria-label="${escapeHtml(category.label)}"><i></i></label>
-        <div><strong>${escapeHtml(category.label)}${category.destructive ? '<span class="warn-tag">não pode ser desfeito</span>' : ''}</strong><small>${escapeHtml(category.description)}</small></div>
+        <div><strong>${escapeHtml(category.label)}<button class="info" type="button" data-op="cleanup-${category.id}" aria-label="Detalhes da operação: ${escapeHtml(category.label)}">i</button>${category.destructive ? '<span class="warn-tag">não pode ser desfeito</span>' : ''}</strong><small>${escapeHtml(category.description)}</small></div>
         <div class="size">${empty ? '—' : formatBytes(category.bytes)}<small>${empty ? 'nada para limpar' : `${category.fileCount.toLocaleString('pt-BR')} itens`}</small></div></li>`;
     }).join('');
     $$('input', list()).forEach((input) => input.addEventListener('change', updateTotals));
@@ -68,6 +68,12 @@
       const message = result.removedCount ? `${result.removedCount.toLocaleString('pt-BR')} itens removidos; ${formatBytes(result.bytesFreed)} liberados.` : 'Nada precisou ser removido.';
       showToast(message);
       recordActivity('Limpeza segura', `${result.removedCount} itens · ${formatBytes(result.bytesFreed)}`);
+      for (const item of result.results || []) {
+        if (!item.removedCount && !item.bytesFreed) continue;
+        const info = NexoCatalog.get(`cleanup-${item.id}`);
+        Nexo.journal.record({ actionId: `cleanup-${item.id}`, title: info?.titulo || 'Limpeza', risk: info?.risco || 'baixo', reversible: false, after: { removedCount: item.removedCount, bytesFreed: item.bytesFreed } });
+      }
+      Nexo.emit('journal');
       markCleanupRun();
     } catch (error) {
       showToast(error.message || 'A limpeza não pôde ser concluída.');
@@ -103,6 +109,8 @@
       if (result.removedCount > 0) {
         showToast(`Limpeza automática: ${result.removedCount} temporários removidos; ${formatBytes(result.bytesFreed)} liberados.`);
         recordActivity('Limpeza automática', `${result.removedCount} arquivos`);
+        Nexo.journal.record({ actionId: 'cleanup-temp', title: 'Limpeza automática dos temporários', risk: 'baixo', reversible: false, after: { removedCount: result.removedCount, bytesFreed: result.bytesFreed }, authorization: 'limpeza automática (consentimento dado nos Ajustes)' });
+        Nexo.emit('journal');
       }
     } catch (error) {
       showToast(error.message || 'A limpeza automática não pôde ser concluída.');
@@ -148,19 +156,44 @@
     } catch { Nexo.state.power = { plans: [], active: null }; renderPower(); }
   };
 
+  /** Troca o plano e registra no Diário, com o plano anterior guardado para a reversão. */
+  Nexo.switchPowerPlan = async function switchPowerPlan(target, { notify = true } = {}) {
+    const before = Nexo.state.power?.active;
+    const result = await desktopBridge.setPowerPlan(target.guid);
+    Nexo.state.power = { plans: result.plans, active: result.plans.find((plan) => plan.active) || null };
+    const entry = Nexo.journal.record({ actionId: 'power-plan-switch', title: 'Plano de energia', risk: 'baixo', reversible: true, before: before ? { guid: before.guid, name: before.name } : null, after: { guid: target.guid, name: target.name } });
+    renderPower();
+    Nexo.emit('journal');
+    recordActivity('Plano de energia', target.name);
+    if (notify) showToast(`Plano de energia: ${target.name}.`, before ? { label: 'Desfazer', run: () => Nexo.revertJournal(entry.id) } : null);
+    return entry;
+  };
+
   document.getElementById('power-list').addEventListener('click', async (event) => {
     const item = event.target.closest('[data-guid]');
     if (!item || item.getAttribute('aria-checked') === 'true') return;
     const plan = Nexo.state.power.plans.find((candidate) => candidate.guid === item.dataset.guid);
-    $$('.power-item').forEach((button) => { button.disabled = true; });
-    try {
-      const result = await desktopBridge.setPowerPlan(item.dataset.guid);
-      Nexo.state.power = { plans: result.plans, active: result.plans.find((candidate) => candidate.active) || null };
-      showToast(`Plano de energia: ${plan?.name || 'alterado'}.`);
-      recordActivity('Plano de energia', plan?.name || 'alterado');
-    } catch (error) { showToast(error.message || 'Não foi possível trocar o plano de energia.'); }
-    renderPower();
+    const current = Nexo.state.power.active;
+    if (!plan) return;
+    const info = NexoCatalog.get('power-plan-switch');
+    const choice = await Nexo.dialog({
+      title: `Trocar para “${plan.name}”?`, wide: true,
+      html: `<p>${escapeHtml(info.oQueAltera)}</p>
+        <ul><li><strong>${NexoCatalog.RISK_LABEL[info.risco]}, reversível:</strong> o plano atual${current ? ` (${escapeHtml(current.name)})` : ''} fica guardado no Diário e você pode voltar a qualquer momento.</li>
+        <li><strong>Pode não ajudar:</strong> ${escapeHtml(info.quandoNaoAjuda)}</li>
+        <li><strong>Quer saber se ajuda neste PC?</strong> “Trocar e medir” compara a velocidade do processador antes e depois (cerca de 20 s).</li></ul>`,
+      actions: [{ id: 'no', label: 'Cancelar' }, { id: 'switch', label: 'Só trocar' }, { id: 'measure', label: 'Trocar e medir', tone: 'primary' }]
+    }).done;
+    if (choice === 'switch') {
+      $$('.power-item').forEach((button) => { button.disabled = true; });
+      try { await Nexo.switchPowerPlan(plan); } catch (error) { showToast(error.message || 'Não foi possível trocar o plano de energia.'); }
+      renderPower();
+    } else if (choice === 'measure') {
+      await Nexo.experimentPowerPlan(plan);
+      renderPower();
+    }
   });
+  Nexo.on('power', renderPower);
 
   /* ---------- Início com o Windows ---------- */
   async function loadStartup() {

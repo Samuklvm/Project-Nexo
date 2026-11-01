@@ -58,7 +58,7 @@
   }
 
   /** options: {series:[{label,color,data:[[t,v]]}], from, to, yMin, yMax, unit, decimals} */
-  function line(canvas, options, hover = null) {
+  function line(canvas, options, hover = null, progress = 1) {
     const { context, width, height } = prepare(canvas);
     const pad = { left: 38, right: 8, top: 10, bottom: 20 };
     const plotW = width - pad.left - pad.right;
@@ -95,6 +95,16 @@
     context.textAlign = 'right';
     context.fillText(tickLabel(to, to - from), width - pad.right, height - 4);
 
+    for (const band of options.bands || []) {
+      const top = yOf(Math.min(yMax, band.to));
+      const bottom = yOf(Math.max(yMin, band.from));
+      if (bottom <= top) continue;
+      context.fillStyle = band.color; context.fillRect(pad.left, top, plotW, bottom - top);
+      context.strokeStyle = band.line || band.color; context.setLineDash([4, 5]); context.beginPath(); context.moveTo(pad.left, Math.round(bottom) + 0.5); context.lineTo(width - pad.right, Math.round(bottom) + 0.5); context.stroke(); context.setLineDash([]);
+    }
+
+    context.save();
+    if (progress < 1) { context.beginPath(); context.rect(0, 0, pad.left + plotW * progress + 8, height); context.clip(); }
     const drawn = [];
     for (const serie of options.series) {
       const points = downsample(serie.data, Math.max(30, Math.floor(plotW / 3)));
@@ -111,7 +121,9 @@
           context.fillStyle = gradient; context.fill();
         }
         context.save();
-        context.strokeStyle = serie.color; context.lineWidth = 2; context.lineJoin = 'round'; context.lineCap = 'round';
+        const fade = context.createLinearGradient(pad.left, 0, pad.left + plotW, 0);
+        fade.addColorStop(0, `${serie.color}88`); fade.addColorStop(1, serie.color);
+        context.strokeStyle = fade; context.lineWidth = 2; context.lineJoin = 'round'; context.lineCap = 'round';
         context.shadowColor = serie.color; context.shadowBlur = 10;
         context.beginPath(); trace(context, pts); context.stroke();
         context.restore();
@@ -124,6 +136,7 @@
       }
       drawn.push({ serie, points });
     }
+    context.restore();
 
     if (hover !== null) {
       const t = from + ((hover - pad.left) / plotW) * (to - from);
@@ -144,10 +157,23 @@
   }
 
   const states = new WeakMap();
-  /** Desenha e liga o mouse uma única vez por canvas. */
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  /** Desenha e liga o mouse uma única vez por canvas. Uma troca de `options.key` dispara a animação de revelação. */
   function render(canvas, options, tip) {
     states.set(canvas, { options, tip });
-    line(canvas, options);
+    if (performance.now() < (canvas._revealUntil || 0)) { /* revelação em curso: ela redesenha com os dados mais novos */ }
+    else if (options.key && canvas._revealKey !== options.key && !Nexo.effectsLite && !reduceMotion.matches) {
+      canvas._revealKey = options.key;
+      canvas._revealUntil = performance.now() + 800;
+      cancelAnimationFrame(canvas._revealFrame);
+      const start = performance.now();
+      const step = (now) => {
+        const k = Math.min(1, (now - start) / 760);
+        line(canvas, states.get(canvas).options, null, 1 - (1 - k) ** 3);
+        if (k < 1) canvas._revealFrame = requestAnimationFrame(step);
+      };
+      canvas._revealFrame = requestAnimationFrame(step);
+    } else { canvas._revealKey = options.key; line(canvas, options); }
     if (canvas.dataset.bound) return;
     canvas.dataset.bound = '1';
     canvas.addEventListener('pointermove', (event) => {

@@ -38,14 +38,14 @@
   function renderEpisodes() {
     const episodes = Nexo.store.brain.recentEpisodes(14 * 24 * 3600e3).slice(0, 8);
     document.getElementById('episode-list').innerHTML = episodes.length ? episodes.map((e) => `<li data-kind="${e.kind}"><i class="dot"></i><div><strong>${KIND_LABEL[e.kind] || e.kind}${e.ongoing ? ' · em andamento' : ''}</strong><small>${e.peak != null ? `${e.kind === 'throttle' ? 'mínimo' : 'pico'} ${Math.round(e.peak)}${e.kind === 'thermal' ? ' °C' : '%'} · ` : ''}${e.minutes} min${e.culprit ? ` · ${escapeHtml(e.culprit)}` : ''}</small></div><time>${formatRelative(e.start)}</time></li>`).join('')
-      : '<li class="muted">Nenhuma lentidão sustentada registrada. Quando houver, ela aparece aqui com o programa que mais pesou.</li>';
+      : `<li class="empty-art">${Nexo.constellation()}<span>Nenhuma lentidão sustentada registrada. Quando houver, ela aparece aqui com o programa que mais pesou.</span></li>`;
   }
 
   function renderLedger() {
     const ledger = Nexo.store.brain.ledger().slice(0, 6);
     const top = ledger[0]?.minutes || 1;
     document.getElementById('ledger-list').innerHTML = ledger.length ? ledger.map((e) => `<li><div class="row"><strong>${escapeHtml(e.name)}</strong><span>${e.events} episódio${e.events > 1 ? 's' : ''} · ${e.minutes} min</span></div><div class="bar"><i style="width:${Math.max(6, (e.minutes / top) * 100)}%"></i></div></li>`).join('')
-      : '<li class="muted">Ainda não identifiquei programas recorrentes. Isso depende de acontecerem lentidões enquanto o Nexo observa.</li>';
+      : `<li class="empty-art">${Nexo.constellation()}<span>Ainda não identifiquei programas recorrentes. Isso depende de acontecerem lentidões enquanto o Nexo observa.</span></li>`;
   }
 
   function renderHabit() {

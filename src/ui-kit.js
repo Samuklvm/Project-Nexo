@@ -50,6 +50,52 @@
     });
   };
 
+
+  /* ---------- Diálogo rico: corpo atualizável, ações próprias, resultado por promessa ---------- */
+  Nexo.dialog = function dialog({ title, html = '', actions = [], dismissible = true, wide = false }) {
+    const root = document.getElementById('modal-root');
+    const previousFocus = document.activeElement;
+    root.innerHTML = `<div class="modal-backdrop"><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><h3 id="dialog-title"></h3><div class="dialog-body"></div><div class="modal-actions"></div></div></div>`;
+    const heading = $('#dialog-title', root);
+    const body = $('.dialog-body', root);
+    const bar = $('.modal-actions', root);
+    heading.textContent = title;
+    body.innerHTML = html;
+    let finish;
+    const done = new Promise((resolve) => { finish = resolve; });
+    let closed = false;
+    const api = {
+      done,
+      setTitle: (value) => { heading.textContent = value; },
+      setBody: (value) => { body.innerHTML = value; },
+      setActions(list) {
+        bar.replaceChildren(...list.map((action) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `btn${action.tone === 'primary' ? ' primary' : action.tone === 'danger' ? ' danger' : ''}`;
+          button.textContent = action.label;
+          button.disabled = Boolean(action.disabled);
+          button.addEventListener('click', () => { action.onClick?.(); if (!action.keepOpen) api.close(action.id); });
+          return button;
+        }));
+        bar.querySelector('.primary, .danger, .btn:last-child')?.focus?.();
+      },
+      close(result) {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey, true);
+        root.innerHTML = '';
+        previousFocus?.focus?.();
+        finish(result);
+      }
+    };
+    const onKey = (event) => { if (event.key === 'Escape' && dismissible) { event.preventDefault(); api.close('dismiss'); } };
+    document.addEventListener('keydown', onKey, true);
+    if (dismissible) root.querySelector('.modal-backdrop').addEventListener('mousedown', (event) => { if (event.target.classList.contains('modal-backdrop')) api.close('dismiss'); });
+    api.setActions(actions);
+    return api;
+  };
+
   /* ---------- Paleta de comandos (Ctrl+K) ---------- */
   Nexo.commands = [];
   const palette = document.getElementById('palette');

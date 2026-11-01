@@ -32,9 +32,14 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   setPowerPlan: (guid) => call('power:set', guid),
   listStartupItems: () => call('startup:list'),
   openWindowsSettings: (page) => call('system:open-settings', page),
+  // Experimento A/B
+  runCpuBench: (options) => call('bench:cpu', options),
+  cancelCpuBench: () => call('bench:cancel'),
+  getPowerSource: () => call('system:power-source'),
   // Aplicativo
   getAppInfo: () => call('app:info'),
   openLink: (key) => call('app:open-link', key),
+  openDoc: (url) => call('app:open-doc', url),
   getWallpaper: () => call('wallpaper:get'),
   setWallpaper: (bytes) => call('wallpaper:set', bytes),
   resetWallpaper: () => call('wallpaper:reset'),

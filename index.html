@@ -22,6 +22,8 @@
       <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5.1M4.5 12a7.5 7.5 0 0 1 13-5.1M17.5 3.5v3.8h-3.8M6.5 20.5v-3.8h3.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M4 12h3M11 12h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="15" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="9" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.8 19.5h18.4zM12 10v4.5M12 17v.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-min" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
       <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
@@ -30,10 +32,11 @@
     </defs>
   </svg>
 
-  <div class="sky" aria-hidden="true"><canvas id="ambient"></canvas></div>
+  <div class="sky" aria-hidden="true"><div class="sky-art"></div><div class="aurora"><i></i><i></i><i></i></div><canvas id="ambient"></canvas></div>
 
   <div class="app">
     <nav class="rail" id="rail" aria-label="Navegação principal">
+      <i class="rail-pill" id="rail-pill" aria-hidden="true"></i>
       <div class="rail-brand">
         <svg class="brand-star" aria-hidden="true"><use href="#i-star"/></svg>
         <span class="rail-label"><strong>Nexo</strong><small id="rail-host">Device Care</small></span>
@@ -71,6 +74,8 @@
         <div class="hero">
           <div class="health" id="health" data-tone="good">
             <svg class="health-ring" viewBox="0 0 240 240" aria-hidden="true">
+              <circle class="ring-orbit" cx="120" cy="120" r="127" />
+              <g id="ring-ticks"></g>
               <circle class="ring-track" cx="120" cy="120" r="104" />
               <circle class="ring-arc" id="ring-arc" cx="120" cy="120" r="104" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 120 120)" />
               <g class="ring-head" id="ring-head"><svg x="109" y="5" width="22" height="22" viewBox="0 0 24 24"><use href="#i-star"/></svg></g>
@@ -97,6 +102,15 @@
           <div class="metric"><span class="metric-label">Temperatura</span><strong id="system-temperature-value">--</strong><small id="system-temperature-state">Sem sensor compatível</small><canvas class="spark" data-spark="temp" aria-hidden="true"></canvas></div>
           <div class="metric"><span class="metric-label">Ligado há</span><strong id="uptime-value">--</strong><small id="uptime-detail">Desde a última inicialização</small></div>
         </div>
+
+        <section class="sheet orbit" aria-label="Mapa do sistema">
+          <div class="orbit-copy">
+            <h3>Mapa do sistema</h3>
+            <p>Cada planeta é um componente do seu PC. Quanto mais carga, maior ele fica e mais rápido gira. Planetas que esquentam ficam avermelhados.</p>
+            <ul class="orbit-legend" id="orbit-legend"></ul>
+          </div>
+          <canvas id="orbit-canvas" role="img" aria-label="Mapa em órbitas do uso de cada componente"></canvas>
+        </section>
 
         <div class="section-head">
           <div><h2>Desempenho ao longo do tempo</h2><p>Leitura a cada 5 s; o histórico fica só neste computador, por até 7 dias.</p></div>
@@ -153,12 +167,12 @@
         <div class="split">
           <section class="sheet" id="cleanup-sheet">
             <div class="sheet-head"><div><h3>Limpeza segura</h3><p class="muted">Só arquivos antigos que o Windows e os programas recriam sozinhos.</p></div><button class="btn sm" id="cleanup-rescan" type="button">Recalcular</button></div>
-            <ul class="cleanup-list" id="cleanup-list" aria-live="polite"><li class="empty">Calculando o que pode ser liberado…</li></ul>
+            <ul class="cleanup-list" id="cleanup-list" aria-live="polite"><li class="empty"><span class="skeleton"></span><span class="skeleton short"></span></li></ul>
             <div class="cleanup-foot"><div class="cleanup-total"><strong id="cleanup-total">0 B</strong><span id="cleanup-total-detail">nada selecionado</span></div><button class="btn primary" id="run-cleanup" type="button" disabled>Limpar selecionados</button></div>
             <label class="switch auto-clean"><input id="auto-clean-toggle" type="checkbox" /><i></i><span><strong>Limpeza automática dos temporários</strong><small>Age depois de quatro leituras seguidas com o disco acima de 90%, no máximo uma vez por hora. Só remove temporários antigos; não fecha programas nem altera configurações do Windows.</small></span></label>
           </section>
           <div class="stack">
-            <section class="sheet"><div class="sheet-head"><div><h3>Plano de energia</h3><p class="muted">Define o quanto o Windows pode acelerar o processador.</p></div></div><div id="power-list" aria-live="polite"><p class="empty">Lendo os planos disponíveis…</p></div></section>
+            <section class="sheet"><div class="sheet-head"><div><h3>Plano de energia <button class="info" type="button" data-op="power-plan-switch" aria-label="Detalhes da operação: plano de energia">i</button></h3><p class="muted">Define o quanto o Windows pode acelerar o processador. Ao escolher um plano, o Nexo pode medir se ele ajuda neste PC.</p></div></div><div id="power-list" aria-live="polite"><p class="empty">Lendo os planos disponíveis…</p></div></section>
             <section class="sheet"><div class="sheet-head"><div><h3>Início com o Windows</h3><p class="muted">Programas que abrem sozinhos ao ligar o PC (somente leitura).</p></div></div><ul class="startup-list" id="startup-list" aria-live="polite"><li class="empty">Lendo a lista…</li></ul><button class="btn sm" id="open-startup-settings" type="button">Gerenciar no Windows</button></section>
           </div>
         </div>
@@ -187,12 +201,12 @@
         <header class="page-head"><div><h2>Manutenção</h2><p>Ferramentas nativas do Windows, chamadas com a sua confirmação.</p></div></header>
         <div class="split even">
           <section class="sheet">
-            <div class="sheet-head"><div><h3>Verificar arquivos do sistema</h3><p class="muted">Executa o SFC do Windows, que confere e repara arquivos protegidos.</p></div></div>
+            <div class="sheet-head"><div><h3>Verificar arquivos do sistema <button class="info" type="button" data-op="sfc-scan" aria-label="Detalhes da operação: SFC">i</button></h3><p class="muted">Executa o SFC do Windows, que confere e repara arquivos protegidos.</p></div></div>
             <dl class="facts"><div><dt>Ferramenta</dt><dd>SFC do Windows</dd></div><div><dt>Permissão</dt><dd>Administrador</dd></div><div><dt>Situação</dt><dd id="repair-status">Sob demanda</dd></div></dl>
             <button class="btn primary" id="run-repair" type="button">Verificar e reparar</button>
           </section>
           <section class="sheet drive-panel">
-            <div class="sheet-head"><div><h3>Unidades de armazenamento</h3><p class="muted">Otimização feita pelo Windows (TRIM em SSD, desfragmentação em HD).</p></div><label class="select"><span class="sr-only">Unidade</span><select id="drive-select"><option value="">Carregando unidades…</option></select></label></div>
+            <div class="sheet-head"><div><h3>Unidades de armazenamento <button class="info" type="button" data-op="drive-optimize" aria-label="Detalhes da operação: otimizar unidade">i</button></h3><p class="muted">Otimização feita pelo Windows (TRIM em SSD, desfragmentação em HD).</p></div><label class="select"><span class="sr-only">Unidade</span><select id="drive-select"><option value="">Carregando unidades…</option></select></label></div>
             <div class="drive-head"><span class="drive-type" id="drive-type">Unidade local</span><strong id="drive-model">Carregando…</strong></div>
             <div class="capacity"><div class="capacity-labels"><span>Espaço usado</span><strong><span id="drive-used-capacity">--</span> <small>de <span id="drive-total-capacity">--</span></small></strong></div><div class="capacity-track"><span id="drive-capacity-bar" style="width:0%"></span></div><div class="capacity-legend"><span id="drive-used-label">-- usados</span><span id="drive-free-label">-- livres</span></div></div>
             <dl class="facts"><div><dt>Formato</dt><dd id="drive-format">--</dd></div><div><dt>Temperatura</dt><dd id="drive-temp">Não medida</dd></div><div><dt>Estado</dt><dd id="drive-state">Aguardando leitura</dd></div></dl>
@@ -204,8 +218,13 @@
 
       <!-- ATIVIDADE -->
       <section class="view" data-view-panel="activity">
-        <header class="page-head"><div><h2>Atividade</h2><p>As últimas ações feitas pelo Nexo neste computador.</p></div></header>
-        <section class="sheet"><ul class="activity-list" id="activity-list"></ul><p class="empty" id="activity-empty">Nenhuma ação registrada ainda.</p></section>
+        <header class="page-head"><div><h2>Atividade</h2><p>O diário de tudo o que o Nexo alterou neste computador e as últimas ações feitas por ele.</p></div></header>
+        <section class="sheet">
+          <div class="sheet-head"><div><h3>Diário de alterações</h3><p class="muted">Cada alteração guarda o valor anterior, o risco, quem autorizou e, quando existe, a reversão.</p></div></div>
+          <ul class="journal" id="journal-list"></ul>
+          <p class="empty" id="journal-empty">Nenhuma alteração feita ainda. Quando o Nexo mudar algo, o registro aparece aqui.</p>
+        </section>
+        <section class="sheet"><div class="sheet-head"><h3>Outras atividades</h3></div><ul class="activity-list" id="activity-list"></ul><p class="empty" id="activity-empty">Nenhuma ação registrada ainda.</p></section>
       </section>
 
       <!-- ATUALIZAÇÕES -->
@@ -270,13 +289,20 @@
   </div>
 
   <script src="src/brain.js"></script>
+  <script src="src/catalog.js"></script>
+  <script src="src/journal.js"></script>
+  <script src="src/experiment.js"></script>
   <script src="src/core.js"></script>
   <script src="src/ui-kit.js"></script>
+  <script src="src/fx.js"></script>
   <script src="src/charts.js"></script>
   <script src="src/store.js"></script>
   <script src="src/view-home.js"></script>
+  <script src="src/orbit.js"></script>
   <script src="src/view-analysis.js"></script>
   <script src="src/view-optimize.js"></script>
+  <script src="src/view-experiment.js"></script>
+  <script src="src/view-journal.js"></script>
   <script src="src/view-hardware.js"></script>
   <script src="src/view-maintenance.js"></script>
   <script src="src/view-updates.js"></script>

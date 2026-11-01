@@ -9,7 +9,8 @@ const Nexo = (window.Nexo = {
     history: 'nexo-performance-history',
     feedback: 'nexo-recommendation-feedback',
     brain: 'nexo-brain-v1',
-    effects: 'nexo-effects'
+    effects: 'nexo-effects',
+    journal: 'nexo-journal-v1'
   },
   listeners: {},
   on(event, handler) { (this.listeners[event] ||= []).push(handler); },
@@ -74,13 +75,26 @@ function formatRelative(timestamp, now = Date.now()) {
 }
 
 let toastTimer;
-function showToast(message) {
+/** Mostra uma mensagem rápida. `action` ({ label, run }) adiciona um botão, como "Desfazer". */
+function showToast(message, action = null) {
   const toast = document.getElementById('toast');
   if (!toast) return;
-  toast.textContent = message;
+  toast.replaceChildren();
+  const text = document.createElement('span');
+  text.textContent = message;
+  toast.append(text);
+  if (action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'toast-action';
+    button.textContent = action.label;
+    button.addEventListener('click', () => { toast.classList.remove('visible'); action.run(); });
+    toast.append(button);
+  }
+  toast.classList.toggle('interactive', Boolean(action));
   toast.classList.add('visible');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('visible'), 3600);
+  toastTimer = setTimeout(() => toast.classList.remove('visible'), action ? 9000 : 3600);
 }
 
 function iconUse(id) { return `<svg aria-hidden="true"><use href="#${id}"/></svg>`; }
@@ -108,3 +122,9 @@ function renderActivity(entries = readJSON(Nexo.keys.activity, [])) {
     return item;
   }));
 }
+
+/* ---------- Diário de alterações (módulo puro em src/journal.js) ---------- */
+Nexo.journal = NexoJournal.create({
+  get: () => readJSON(Nexo.keys.journal, []),
+  set: (entries) => { if (!writeJSON(Nexo.keys.journal, entries)) showToast('Não foi possível salvar o diário de alterações neste computador.'); }
+});

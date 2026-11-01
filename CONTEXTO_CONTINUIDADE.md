@@ -109,3 +109,17 @@ Eu só tinha Linux ao escrever isto. Verificado: sintaxe, testes do motor, inter
 
 Idioma EN no app principal; bandeja do sistema com monitoramento em segundo plano (opt-in, ampliaria a coleta e a lista de rastros a remover); relatório de saúde exportável; assinatura digital (ver seção anterior).
 
+## Versão 0.3.0 — fatia vertical "catálogo, diário e experimento" + refinamento visual (31/10/2026)
+
+Origem: o usuário enviou o `prompt_mestre_otimizador_autonomo.txt` (norte do projeto). Ele manda auditar primeiro, não prometer ganho sem medição, separar diagnóstico, recomendação, autorização, execução, medição e reversão, e **não implementar tudo de uma vez**. Auditoria e plano: `docs/ARQUITETURA.md` (entregáveis 52.01 a 52.18).
+
+- **Catálogo** (`src/catalog.js`): 7 técnicas com mecanismo, risco, reversão, fontes oficiais verificadas (Microsoft Learn/Support) e estado de validação. O teste exige todos os campos. Nada entra no app sem ficha.
+- **Diário de alterações** (`src/journal.js`, tela Atividade): antes/depois, risco, autorização, medição e reversão com detecção de conflito. Irreversíveis nunca oferecem reversão.
+- **Experimento A/B do plano de energia** (`bench:cpu` no `main.cjs`, `src/experiment.js`, `src/view-experiment.js`): benchmark curto (um e vários núcleos, 3 repetições), compara com o ruído medido. Controle A contra A deu "sem diferença". Bloqueado com CPU ≥ 80% ou temperatura ≥ 88 °C; avisa na bateria; cancelar depois da troca restaura o plano.
+- **Interface:** aurora que muda de cor com o Índice (bom/atenção/crítico), foco de luz nos painéis, paralaxe da arte, marcas no anel, números animados, gráficos com revelação e faixas de alerta, mapa do sistema em órbitas, pílula deslizante na barra lateral, cascata de entrada, estados vazios com constelação. Tudo desligado no modo Leve.
+- **Privacidade:** diário e benchmark entraram em `PRIVACIDADE.md`, `installer.nsh` (PT/EN), `AVISOS.txt` e no launcher (PT/EN). Manter as quatro fontes sincronizadas.
+- **Correção de texto:** `Clear-RecycleBin` esvazia a Lixeira do usuário atual (não "de todos"). `powercfg` pode exigir administrador (documentação antiga): marcado "a validar".
+
+### Próxima fatia sugerida (fase D do prompt)
+Sessões de observação com início/fim, relatório da sessão, detecção de jogo por caminho de instalação (sem ler memória) e medição do próprio overhead do Nexo. FPS/frame time só com ETW/PresentMon, após decisão do usuário (ver 52.18).
+
