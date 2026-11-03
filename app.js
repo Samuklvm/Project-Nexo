@@ -20,7 +20,7 @@
     } finally { snapshotBusy = false; }
   }
 
-  const pages = [['home', 'Início'], ['analysis', 'Análise'], ['optimize', 'Otimizar'], ['hardware', 'Hardware'], ['maintenance', 'Manutenção'], ['activity', 'Atividade'], ['updates', 'Atualizações'], ['settings', 'Ajustes']];
+  const pages = [['home', 'Início'], ['analysis', 'Análise'], ['sessions', 'Sessões'], ['optimize', 'Otimizar'], ['hardware', 'Hardware'], ['maintenance', 'Manutenção'], ['activity', 'Atividade'], ['updates', 'Atualizações'], ['settings', 'Ajustes']];
   Nexo.commands.unshift(
     ...pages.map(([view, label]) => ({ label: `Ir para ${label}`, hint: 'Página', run: () => Nexo.go(view) })),
     { label: 'Analisar agora', hint: 'Análise inteligente', run: () => { Nexo.go('analysis'); Nexo.runAnalysis(); } },

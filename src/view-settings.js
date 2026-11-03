@@ -63,7 +63,7 @@
   document.getElementById('erase-learning').addEventListener('click', async () => {
     const confirmed = await Nexo.confirm({
       title: 'Apagar o aprendizado e o histórico?',
-      body: 'O Nexo esquece a sua rotina, as lentidões registradas, os programas identificados, o histórico de 7 dias e as suas avaliações. Ele volta a aprender do zero.',
+      body: 'O Nexo esquece a sua rotina, as lentidões registradas, os programas identificados, o histórico de 7 dias, as sessões de observação gravadas e as suas avaliações. Ele volta a aprender do zero. O Diário de alterações é mantido, porque é o que permite reverter.',
       confirmLabel: 'Apagar', tone: 'danger'
     });
     if (!confirmed) return;

@@ -534,3 +534,68 @@ table.exp tbody th { text-align: left; color: var(--moon); font-weight: 600; }
 .delta.melhorou { color: var(--good); font-weight: 700; } .delta.piorou { color: var(--bad); font-weight: 700; } .delta.sem-diferenca { color: var(--mist); }
 .verdict { padding: 12px 14px; border-radius: 12px; background: rgba(150, 175, 255, 0.08); color: var(--moon); }
 .verdict.v-melhorou { background: rgba(110, 242, 194, 0.1); } .verdict.v-piorou { background: rgba(255, 122, 149, 0.1); } .verdict.v-misto { background: rgba(255, 196, 107, 0.1); }
+
+/* ================= Perfis e sessões ================= */
+.chip-button { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; margin-bottom: 10px; border-radius: 999px; border: 1px solid var(--hair); background: rgba(150, 175, 255, 0.1); color: var(--moon); font-size: 12.5px; font-weight: 600; transition: border-color 0.2s, background 0.2s; }
+.chip-button::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.chip-button:hover { border-color: color-mix(in srgb, var(--accent) 65%, transparent); background: rgba(150, 175, 255, 0.18); }
+.page-head .chip-button { margin: 0; }
+.pcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pcard { display: grid; gap: 6px; text-align: left; padding: 16px 18px; border-radius: 16px; border: 1px solid var(--hair); background: rgba(8, 12, 34, 0.45); transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s; }
+.pcard strong { font-size: 16px; font-weight: 600; }
+.pcard span { color: var(--moon); font-size: 13px; }
+.pcard small { color: var(--mist); font-size: 12px; line-height: 1.45; }
+.pcard:hover { transform: translateY(-2px); border-color: rgba(150, 175, 255, 0.4); }
+.pcard[aria-checked="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, rgba(8, 12, 34, 0.5)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent), 0 12px 34px color-mix(in srgb, var(--accent) 18%, transparent); }
+.modal.wide .pcards { grid-template-columns: 1fr; }
+.profile-sheet { margin-bottom: 16px; }
+.tip { color: var(--star); font-size: 12.5px; margin-top: 6px; max-width: 54ch; }
+.modal.wide .dialog-body { max-height: 64vh; overflow-y: auto; padding-right: 6px; scrollbar-width: thin; }
+
+.rec { padding: 24px 26px; }
+.rec-main { display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center; }
+.rec-button { position: relative; width: 70px; height: 70px; border-radius: 50%; display: grid; place-items: center; border: 2px solid rgba(255, 122, 149, 0.65); background: rgba(255, 122, 149, 0.08); transition: transform 0.2s, background 0.2s; }
+.rec-button:hover { transform: scale(1.05); background: rgba(255, 122, 149, 0.16); }
+.rec-button i { width: 28px; height: 28px; border-radius: 50%; background: #ff5b7c; box-shadow: 0 0 18px rgba(255, 91, 124, 0.7); transition: border-radius 0.25s, transform 0.25s; }
+.rec-button.on i { border-radius: 7px; transform: scale(0.78); }
+.rec-button.on { animation: recpulse 1.8s ease-out infinite; }
+@keyframes recpulse { 0% { box-shadow: 0 0 0 0 rgba(255, 91, 124, 0.5); } 100% { box-shadow: 0 0 0 20px rgba(255, 91, 124, 0); } }
+.rec-copy strong { display: block; font-size: 19px; font-weight: 600; }
+.rec-copy span { color: var(--mist); }
+.rec-clock { font-size: 40px; font-weight: 250; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.rec-options { display: grid; grid-template-columns: 1.1fr 1.4fr 1.4fr; gap: 24px; margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--hair); align-items: start; }
+.field { display: grid; gap: 6px; color: var(--mist); font-size: 12.5px; }
+.field input { height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--hair); background: rgba(8, 12, 34, 0.6); color: var(--moon); outline: 0; }
+.field input:focus { border-color: var(--star); }
+.live-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+.live-grid > div { padding: 10px 14px; border-radius: 14px; background: rgba(8, 12, 34, 0.45); border: 1px solid var(--hair); }
+.live-grid span { display: block; color: var(--mist); font-size: 12px; }
+.live-grid strong { font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.live-fg { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 16px 0 6px; }
+.live-chart { height: 170px; }
+.notes-line { color: var(--warn); font-size: 13px; margin-top: 8px; }
+.sess-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+.sess-card { display: grid; gap: 8px; margin: 0 !important; }
+.sess-card header { display: flex; align-items: center; gap: 10px; }
+.sess-card header strong { font-size: 16px; font-weight: 600; }
+.sess-concl { color: var(--moon); font-size: 13.5px; }
+.sess-card .btn { justify-self: start; }
+.empty-art { display: grid; gap: 10px; justify-items: start; color: var(--mist); grid-column: 1 / -1; }
+.components .comp-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 0; border-top: 1px solid var(--hair); }
+.components .comp-row strong { display: block; font-weight: 600; }
+.components .comp-row .muted { display: block; max-width: 62ch; margin-top: 2px; }
+.components .btn-row { margin: 0; justify-content: flex-end; }
+.dialog-body h4 { margin: 18px 0 6px; color: var(--moon); font-size: 14px; }
+.findings { display: grid; gap: 12px; margin: 14px 0; }
+.findings .insight + .insight { margin-top: 0; }
+.insight ul.limits { margin-top: 8px; }
+.insight ul.limits li { color: var(--mist); font-size: 12.5px; }
+.insight ul.limits li::before { background: var(--mist); }
+.rep-chart { height: 190px; }
+.fg-list { display: grid; gap: 6px; }
+.fg-list li { display: flex; align-items: center; gap: 10px; }
+.fg-list li::before { display: none; }
+.fg-list li { padding-left: 0; }
+.fg-list b { font-variant-numeric: tabular-nums; color: var(--moon); margin-left: auto; font-weight: 600; }
+.fg-list span:first-child { color: var(--moon); }
+@media (max-width: 1280px) { .pcards { grid-template-columns: 1fr; } .rec-options { grid-template-columns: 1fr; } .live-grid { grid-template-columns: repeat(3, 1fr); } }

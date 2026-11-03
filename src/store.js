@@ -163,6 +163,7 @@
     lastProcesses: () => lastProcesses,
     eraseLearning() {
       brain.reset();
+      Nexo.sessions?.clear?.();
       history = [];
       live = [];
       lastCommit = 0;
@@ -173,7 +174,7 @@
       return {
         exportedAt: new Date().toISOString(), app: 'Nexo Device Care',
         history: history.map((s) => ({ ...s })), learning: brain.serialize(), feedback: Nexo.store.feedback(),
-        activity: readJSON(Nexo.keys.activity, [])
+        activity: readJSON(Nexo.keys.activity, []), journal: Nexo.journal?.list?.() ?? [], sessions: Nexo.sessions?.list?.() ?? [], profile: Nexo.profile?.id ?? null
       };
     }
   };

@@ -12,8 +12,10 @@ Leia estas informacoes antes de instalar e usar o Nexo Device Care.
 
 5. O historico de desempenho, o aprendizado sobre a sua rotina (medias por hora da semana, lentidoes e nomes dos programas que mais pesaram) e as avaliacoes ficam armazenados localmente neste computador. Voce pode exporta-los ou apaga-los em Ajustes. O aplicativo consulta o GitHub para verificar e baixar atualizacoes.
 
-6. A desinstalacao pelas Configuracoes do Windows, ou pelo botao Desinstalar completamente em Ajustes, remove o programa, os dados e preferencias, os atalhos e as entradas do Registro do Nexo. Atualizacoes preservam os seus dados.
+6. As sessoes de observacao so gravam quando voce inicia uma. Elas registram uso do sistema, nome do programa em primeiro plano e dos que mais pesaram (sem caminhos) e, se voce ativar, o FPS pelo PresentMon (Intel, licenca MIT), que exige que o seu usuario esteja no grupo Performance Log Users ou seja administrador. Os relatorios apontam indicios com evidencia e limites; sem FPS medido, nada afirma queda de quadros.
 
-7. Ao continuar, voce confirma que leu estes avisos e que revisara as confirmacoes apresentadas pelo Windows antes de autorizar operacoes administrativas.
+7. A desinstalacao pelas Configuracoes do Windows, ou pelo botao Desinstalar completamente em Ajustes, remove o programa, os dados e preferencias, os atalhos e as entradas do Registro do Nexo. Atualizacoes preservam os seus dados.
+
+8. Ao continuar, voce confirma que leu estes avisos e que revisara as confirmacoes apresentadas pelo Windows antes de autorizar operacoes administrativas.
 
 Este aviso descreve o funcionamento atual do aplicativo. Ele nao substitui termos de licenca ou documentos legais preparados para a distribuicao do produto.

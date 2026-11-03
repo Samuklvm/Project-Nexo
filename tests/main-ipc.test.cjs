@@ -17,12 +17,12 @@ const handlers = new Map();
 let loadedUrl = null;
 const electronStub = {
   app: {
-    isPackaged: false, getVersion: () => '0.2.0-test', getPath: () => userData, requestSingleInstanceLock: () => true,
+    isPackaged: false, getVersion: () => '0.2.0-test', getAppMetrics: () => [{ cpu: { percentCPUUsage: 2 }, memory: { workingSetSize: 51200 } }], getPath: () => userData, requestSingleInstanceLock: () => true,
     whenReady: () => Promise.resolve(), on() {}, quit() {}, setAppUserModelId() {}
   },
   BrowserWindow: class { constructor() { this.webContents = { on() {}, setWindowOpenHandler() {}, send() {} }; } once() {} on() {} loadURL(url) { loadedUrl = url; } static getAllWindows() { return []; } },
   ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on() {} },
-  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }
+  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }, dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) }
 };
 const updaterStub = { autoUpdater: { on() {}, autoDownload: false, autoInstallOnAppQuit: false, checkForUpdates: async () => null, logger: null } };
 const originalLoad = Module._load;
@@ -129,6 +129,23 @@ test('benchmark de CPU: valida o modo, mede em um e vários núcleos e pode ser 
   await call('bench:cancel');
   await assert.rejects(() => pending, /cancelado/);
   assert.deepEqual(await call('system:power-source'), { onBattery: false });
+});
+
+test('sessão: amostra do sistema por núcleo, sonda e FPS têm retorno seguro fora do Windows', async () => {
+  const first = await call('session:sample');
+  assert.equal(first.cpu, null, 'a primeira leitura só marca o ponto de partida');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  const second = await call('session:sample');
+  assert.ok(Number.isFinite(second.cpu) && second.cpu >= 0 && second.cpu <= 100);
+  assert.ok(second.maxCore >= second.cpu - 1e-9);
+  assert.ok(second.mem > 0 && second.mem < 100);
+  assert.equal(second.appMemMB, 50);
+  assert.equal((await call('session:probe-start')).ok, false);
+  assert.equal((await call('session:probe-test')).ok, false);
+  assert.deepEqual(await call('fps:status'), { available: false, source: null, name: null, platform: 'linux' });
+  assert.equal((await call('fps:choose')).canceled, true);
+  await assert.rejects(() => call('fps:start', { pid: 1234 }), /só existe no Windows/);
+  assert.equal((await call('fps:stop')).frames, 0);
 });
 
 test.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));

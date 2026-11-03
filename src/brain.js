@@ -232,8 +232,9 @@
     const now = ctx.now ?? Date.now();
     const history = ctx.history || [];
     const factors = [];
+    const weights = ctx.weights || {};
     const add = (id, label, points, detail, warnAt = 4, badAt = 10) => {
-      const rounded = Math.round(points);
+      const rounded = Math.round(points * (weights[id] ?? 1));
       factors.push({ id, label, points: rounded, status: rounded >= badAt ? 'bad' : rounded >= warnAt ? 'warn' : 'ok', detail });
     };
     const cpuAvg = average(history, 'cpu', 30 * MIN, now) ?? ctx.cpu;
@@ -273,6 +274,7 @@
 
   const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
   const fmtBytes = (bytes) => {
+    if (!finite(bytes) || bytes < 0) return '--';
     const units = ['B', 'KB', 'MB', 'GB', 'TB']; let v = bytes; let i = 0;
     while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
     return `${v.toFixed(i === 0 ? 0 : 1).replace('.', ',')} ${units[i]}`;
@@ -384,7 +386,24 @@
         evidence: [`Uso médio recente de CPU: ${Math.round(cpuAvg ?? s.cpuUsage)}%.`], actions: [{ type: 'goto-optimize', label: 'Trocar plano' }], confidence: 64
       });
     }
-    return out.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.confidence - a.confidence);
+    // Sessões de observação: o mesmo gargalo em várias sessões vira uma observação própria.
+    const recent = (ctx.sessions || []).slice(0, 4);
+    const SESSION_TEXT = {
+      'gpu-limited': ['A placa de vídeo costuma ser o limite', 'Nas sessões recentes a GPU ficou no limite enquanto a CPU tinha folga: diminuir a qualidade gráfica ou a resolução tende a ajudar mais do que mexer no processador.'],
+      'cpu-thread-limited': ['Um núcleo do processador costuma ser o limite', 'Um único núcleo chegou ao máximo com a GPU sem estar no limite: o programa não está aproveitando todos os núcleos ou depende de uma thread principal.'],
+      'memory-pressure': ['A memória costuma chegar ao limite nas sessões', 'Ficar perto de 100% de RAM obriga o Windows a usar o disco como apoio e causa travadas.'],
+      thermal: ['O calor costuma limitar o desempenho nas sessões', 'Temperaturas altas ou queda de clock por calor apareceram em mais de uma sessão.']
+    };
+    for (const [findingId, [title, summary]] of Object.entries(SESSION_TEXT)) {
+      const hits = recent.filter((session) => (session.findings || []).includes(findingId));
+      if (hits.length >= 2) {
+        push({ id: `session-${findingId}`, category: 'session', severity: 'info', title, summary,
+          evidence: [`${hits.length} das últimas ${recent.length} sessões apontaram isso.`, 'Sessões medem sistema, não frames: sem FPS, não dá para afirmar queda de quadros.'], actions: [], confidence: clamp(48 + hits.length * 9, 48, 80) });
+      }
+    }
+    const boost = ctx.boost || {};
+    const priorityOf = (item) => item.confidence + (boost[item.category] || 0);
+    return out.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || priorityOf(b) - priorityOf(a));
   }
 
   return { create, forecastDisk, healthScore, buildInsights, confidenceWith, WEEKDAYS, METRICS };

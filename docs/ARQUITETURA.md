@@ -1,6 +1,6 @@
 # Nexo Device Care — auditoria, arquitetura-alvo e plano
 
-Resposta aos entregáveis 52.01 a 52.18 do prompt mestre, escrita sobre o código da versão 0.3.0. A regra de leitura é a do próprio prompt: **o que está marcado "validado em dev" passou em testes automatizados no Linux; o que está marcado "aguarda Windows real" ainda não rodou numa máquina de verdade.**
+Resposta aos entregáveis 52.01 a 52.18 do prompt mestre, escrita sobre o código da versão 0.4.0. A regra de leitura é a do próprio prompt: **o que está marcado "validado em dev" passou em testes automatizados no Linux; o que está marcado "aguarda Windows real" ainda não rodou numa máquina de verdade.**
 
 ## 52.01 Resumo da arquitetura atual
 
@@ -13,20 +13,18 @@ Aplicativo desktop Electron com três camadas:
 Módulos de lógica **pura** (rodam e são testados fora do Electron): `brain.js` (análise e aprendizado), `catalog.js` (técnicas), `journal.js` (diário), `experiment.js` (estatística do A/B).
 
 ## 52.02 Inventário de módulos e funcionalidades
-
 | Módulo | Função | Estado |
 |---|---|---|
-| `src/brain.js` | Médias por hora da semana, episódios de lentidão, programas recorrentes, previsão de disco, Índice Nexo, observações com evidência | validado em dev (8 testes) |
-| `src/catalog.js` | 7 técnicas com mecanismo, risco, reversão, fontes, medição e estado de validação | validado em dev (testa campos obrigatórios) |
-| `src/journal.js` | Diário de alterações, detecção de conflito na reversão | validado em dev |
-| `src/experiment.js` | Mediana, ruído, veredito A/B, avisos de contexto | validado em dev; controle A contra A deu "sem diferença" |
-| `main.cjs` → `bench:cpu` | Benchmark de CPU com `worker_threads`, cancelável | validado em dev (Linux) |
-| `main.cjs` → limpeza | 4 categorias, filtro de idade, links ignorados, limite de 5.000 arquivos | validado em dev; Lixeira aguarda Windows real |
-| `main.cjs` → energia/inicialização | `power:list`, `power:set` (valida GUID), `startup:list` | aguarda Windows real |
-| `main.cjs` → desinstalação | Script PowerShell oculto + `NEXO_PURGE` | aguarda Windows real |
-| `sensor-host` | Sensores de CPU, GPU, placa-mãe, memória, disco, rede, bateria | funciona (versões anteriores em uso) |
-| `installer/installer.nsh` | Páginas de privacidade, `NEXO_KEEP`, limpeza total | aguarda compilação do NSIS |
-| `installer-launcher/` | Instalador visual (PT/EN, aceite dos avisos) | UI validada com ponte simulada; empacotamento aguarda Windows |
+| `src/brain.js` | Médias por hora da semana, episódios de lentidão, programas recorrentes, previsão de disco, Índice Nexo (com pesos do perfil), observações com evidência | validado em dev |
+| `src/profiles.js` | Perfis Jogos, Trabalho e criação, Uso geral: pesos do índice, realce das observações, ordem dos achados e dicas | validado em dev |
+| `src/catalog.js`, `src/journal.js`, `src/experiment.js` | Técnicas com ficha, diário reversível, estatística do A/B | validado em dev |
+| `src/session.js` | Análise de sessão: estatísticas, detecção de jogo por pasta, gargalo de GPU, de um núcleo, de memória, térmico, programas em segundo plano, achados com evidência e limites | validado em dev (sessões sintéticas) |
+| `src/fps.js` | Lê o CSV do PresentMon por nome de coluna, FPS médio, 1% e 0,1% baixos, quadros lentos, limitado por CPU ou GPU | validado em dev |
+| `electron/probe.cjs` | Um PowerShell residente: primeiro plano, CPU e GPU por programa, custo da própria sonda. O caminho do executável nunca sai do processo principal | lógica validada com processo simulado; **o script PowerShell aguarda Windows real** |
+| `electron/fps-runner.cjs` | Executa o PresentMon (opt-in), valida o PID, traduz “acesso negado” em instrução clara, encerra a sessão ETW | lógica validada com processo simulado; **o PresentMon real aguarda Windows** |
+| `scripts/fetch-presentmon.cjs` | Baixa a versão fixada e confere o SHA-256; sem hash fixado, não baixa nada | validado em dev; **o hash ainda precisa ser fixado por uma pessoa** |
+| `main.cjs` | IPC, limpeza, energia, benchmark, sessão, desinstalação | validado em dev (exceto o que chama o Windows) |
+| `sensor-host`, `installer/installer.nsh`, `installer-launcher/` | Sensores, instalador NSIS, instalador visual | como na 0.3.0 |
 
 ## 52.03 Mapa de dependências
 
@@ -43,29 +41,31 @@ brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `net10.0` · LibreHardwareMonitorLib 0.9.6 · Node 20+ no CI (os testes foram rodados no Node 22). Windows 10/11 x64.
 
 ## 52.05 Estado dos testes
+`npm test` roda 5 arquivos, 53 testes, todos passando no Linux:
 
-`npm test` roda 3 arquivos, 26 testes, todos passando no Linux:
+- `brain.test.cjs` (8) e `catalog-journal-experiment.test.cjs` (13, incluindo os perfis).
+- `main-ipc.test.cjs` (10): carrega o `main.cjs` real com Electron simulado.
+- `session-fps.test.cjs` (15): sessões sintéticas de cada tipo de gargalo, detecção de jogo, parser de FPS nos formatos novo e antigo.
+- `probe-fps-runner.test.cjs` (7): sonda e executor de FPS com processos filhos simulados; política do hash do PresentMon.
 
-- `brain.test.cjs` (8): episódios, culpados, hábitos, previsão de disco, índice, serialização, feedback.
-- `main-ipc.test.cjs` (9): carrega o `main.cjs` real com Electron simulado; limpeza, papel de parede, segurança de origem, links e documentação, benchmark com cancelamento.
-- `catalog-journal-experiment.test.cjs` (9): completude do catálogo, consentimento por risco, diário e conflito de reversão, estatística do A/B.
-
-**Não existe** teste automatizado de: NSIS, PowerShell, registro, `powercfg`, sensor-host, interface dentro do Electron real. Isso exige Windows (ver 52.15).
+**Não existe** teste automatizado de: NSIS, PowerShell real, registro, `powercfg`, sensor-host, PresentMon real, interface dentro do Electron real. Isso exige Windows (ver 52.15).
 
 ## 52.06 Capacidades atuais de acesso ao sistema
-
 | Dado | Como é lido | Custo |
 |---|---|---|
-| CPU total, RAM, uptime | `os` do Node | desprezível |
+| CPU total e por núcleo, RAM, uptime | `os` do Node | desprezível |
 | Temperaturas ACPI, GPU NVIDIA | PowerShell/CIM e `nvidia-smi`, em cache de 15 s | PowerShell por consulta |
-| Sensores profundos (clock, temperatura, carga de GPU) | sensor-host a cada 15 s | processo residente |
+| Sensores profundos (clock, temperatura, carga de GPU) | sensor-host a cada 15 s (5 s durante uma sessão) | processo residente |
 | Discos | CIM, em cache de 30 s | PowerShell |
-| Top de processos | PowerShell com amostra de 1 s | alto; só sob demanda ou em sobrecarga, no máximo a cada 2 min |
+| Top de processos | PowerShell com amostra de 1 s, só sob demanda ou em sobrecarga | alto |
 | Plano de energia, inicialização | CIM (`Win32_PowerPlan`, `Win32_StartupCommand`) | PowerShell |
+| Programa em primeiro plano | `GetForegroundWindow` por P/Invoke, no PowerShell residente da sonda | uma sonda por sessão |
+| Uso de GPU por programa | CIM `Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine` (contador do Windows, independente de idioma) | na sonda, a cada ~5 s |
+| FPS e tempo de quadro | PresentMon (ETW), processo separado, só com a opção ligada | medido e mostrado na sessão |
+| Custo do próprio Nexo | `app.getAppMetrics` + custo da sonda | desprezível; **não inclui o PresentMon** |
 
 ## 52.07 Lacunas para telemetria profunda
-
-Hoje **não** há: frame time/FPS (precisa de ETW/PresentMon), latência de DPC/ISR, fila e latência de disco por processo, contadores de rede por processo, uso de GPU por processo, causa de picos de frequência, e identificação do processo em primeiro plano. Sem isso, qualquer afirmação sobre "gargalo de jogo" seria suposição, e o Nexo **não faz** essa afirmação.
+Continuam **sem** leitura: latência de DPC/ISR, fila e latência de disco por processo, contadores de rede por processo, causa de picos de frequência (limite de energia contra térmico) e motivos de limitação da GPU (existem no `nvidia-smi`, ainda não integrados). Passaram a ser **possíveis, mas não validados em Windows real**: programa em primeiro plano, GPU por programa e FPS. Mesmo com FPS, o Nexo só aponta indícios: um achado nunca é dado como causa provada.
 
 ## 52.08 Riscos técnicos e de segurança
 
@@ -127,19 +127,19 @@ Tudo em `localStorage` do app (pasta de dados do usuário), exceto o papel de pa
 | A auditoria | feita (este documento) |
 | B arquitetura e contratos | contratos acima; telemetria ainda sem esquema versionado |
 | C inventário de hardware | parcial (sensores); falta inventário de sistema |
-| D observação e sessões | histórico por minuto existe; **sessões com início/fim e relatório: próxima fatia** |
-| E identificação de jogos | pendente (planejada por caminho de instalação, sem ler memória do jogo) |
+| D observação e sessões | **concluída em dev**: grava, analisa, salva, exporta; aguarda validação em Windows real |
+| E identificação de jogos | **parcial**: heurística por pasta de biblioteca + marcação manual; nunca lê a memória do jogo |
 | F diagnóstico explicável | parcial: 9 tipos de observação com evidência |
 | G catálogo seguro e reversível | **iniciada nesta versão** (7 técnicas, 1 reversível) |
 | H experimentos A/B e rollback | **iniciada nesta versão** (plano de energia) |
 | I a R | pendentes |
 
 ## 52.14 Dependências candidatas (a validar antes de adotar)
-
-- **ETW / PresentMon** para frame time: requer revisão de licença, privilégios e impacto; só após a fase D.
+- **PresentMon (adotado como componente opcional)**: licença MIT (Copyright Intel), versão mais recente conferida v2.6.0, flags da 2.x conferidas no README oficial. Exige o grupo “Performance Log Users” ou administrador. Versão e SHA-256 ficam em `third-party/presentmon.lock.json`; **sem hash fixado nada é embutido**. Compatibilidade com anti-cheats: **a validar**, não afirmada.
 - **LibreHardwareMonitorLib** (já em uso): acompanhar suporte a CPUs/GPUs novas.
+- **NVML / `nvidia-smi`** para motivos de limitação da GPU: candidata, ainda não integrada (o nome do campo mudou entre versões do driver).
 - **SQLite** para histórico estruturado: avaliar `better-sqlite3` (módulo nativo, afeta o empacotamento) contra `node:sqlite`.
-- **ADB** para Android: executável de terceiros a ser baixado só com consentimento, com verificação de integridade.
+- **ADB** para Android: executável de terceiros baixado só com consentimento, com verificação de integridade.
 
 ## 52.15 Plano de validação em hardware real
 
@@ -154,11 +154,13 @@ Fases L a N do prompt: conexão por ADB com depuração USB autorizada pelo usu�
 Recurso de risco moderado ou maior só entra em modo beta isolado, desativado por padrão, com aviso, ponto de restauração antes de aplicar, reversão testada e registro no diário. Nunca: desativar Secure Boot, VBS, anti-cheat, assinatura de drivers ou proteções térmicas, nem alterar memória de outro processo.
 
 ## 52.18 Decisões que dependem de você
+**Respondidas por você:** (1) o perfil é uma escolha entre três opções (Jogos, Trabalho e criação, Uso geral), trocável a qualquer momento; (2) PresentMon e outras extensões/APIs liberadas; (3) começar pelas sessões de observação.
 
-1. Qual perfil de usuário priorizar: jogador, trabalho/criação ou geral? Muda quais técnicas entram primeiro.
-2. Aceita ETW/PresentMon (instalar ou embutir um componente de terceiros) para medir FPS?
-3. Retenção padrão dos dados detalhados (hoje 7 dias) e se haverá exportação para análise externa.
-4. Banco local: SQLite ou continuar com `localStorage` por enquanto?
-5. Monitoramento em segundo plano (bandeja) como opção opt-in: aumenta a coleta e a lista de rastros a remover na desinstalação.
-6. Certificado de assinatura de código: já existe um disponível?
-7. Idioma inglês no app principal além do instalador.
+**Em aberto:**
+
+1. **Fixar o hash do PresentMon** (ação sua): rode `npm run presentmon:hash`, compare com o digest que o GitHub mostra na página da release e cole em `third-party/presentmon.lock.json`.
+2. Permissão do PresentMon: o Nexo hoje **explica** como entrar no grupo “Performance Log Users”. Quer um botão que peça elevação (UAC) para fazer isso por você?
+3. Iniciar a sessão automaticamente ao detectar um jogo? Exige manter a sonda ligada fora das sessões (mais coleta, sempre opt-in).
+4. Qual técnica medir no experimento A/B depois do plano de energia (por exemplo, o Modo de Jogo do Windows)?
+5. Banco local: SQLite ou continuar com `localStorage`?
+6. Monitoramento em segundo plano (bandeja), certificado de assinatura de código e idioma inglês no app principal: continuam pendentes.

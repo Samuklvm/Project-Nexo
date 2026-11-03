@@ -1,0 +1,3 @@
+Esta pasta recebe o PresentMon.exe (Intel, licença MIT) quando a versão fixada é baixada e o SHA-256 confere.
+Veja third-party/presentmon.lock.json e scripts/fetch-presentmon.cjs. Sem hash fixado, a pasta fica sem o executável
+e o Nexo oferece "Escolher PresentMon…" para você apontar um arquivo que baixou por conta própria.

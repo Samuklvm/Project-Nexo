@@ -89,3 +89,41 @@ test('experimento: avisos de contexto', () => {
   assert.equal(warnings.length, 3);
   assert.deepEqual(Experiment.contextWarnings({}), []);
 });
+
+const Profiles = require('../src/profiles.js');
+const Brain = require('../src/brain.js');
+
+test('perfis: três opções, padrão válido e fallback seguro', () => {
+  assert.deepEqual(Profiles.list().map((profile) => profile.id).sort(), ['geral', 'jogos', 'trabalho']);
+  assert.equal(Profiles.get('inventado').id, 'geral');
+  assert.equal(Profiles.isValid('jogos'), true);
+  assert.equal(Profiles.isValid('__proto__'), false);
+});
+
+test('perfis: os pesos mudam o índice mas nunca inventam problema onde não há', () => {
+  const base = { now: 1e12, history: [], brain: null, cpu: 10, mem: 92, disk: 50, temp: 60, uptimeSeconds: 100 };
+  const geral = Brain.healthScore({ ...base, weights: Profiles.weights('geral') });
+  const trabalho = Brain.healthScore({ ...base, weights: Profiles.weights('trabalho') });
+  const jogos = Brain.healthScore({ ...base, weights: Profiles.weights('jogos') });
+  assert.ok(trabalho.score < geral.score, 'memória alta pesa mais para trabalho');
+  assert.equal(jogos.score, geral.score, 'memória pesa igual para jogos');
+  const calmo = { ...base, mem: 40 };
+  assert.equal(Brain.healthScore({ ...calmo, weights: Profiles.weights('trabalho') }).score, Brain.healthScore({ ...calmo, weights: Profiles.weights('geral') }).score);
+});
+
+test('perfis: o realce reordena observações sem alterar a confiança', () => {
+  const snapshot = { cpuUsage: 20, memoryPercent: 88, primaryDrive: { usedPercent: 91, driveLetter: 'C', freeBytes: 5e10 }, uptimeSeconds: 20 * 86400 };
+  const sessions = [{ findings: ['thermal'] }, { findings: ['thermal'] }];
+  const run = (id) => Brain.buildInsights({ now: 1e12, snapshot, history: [], sessions, boost: Profiles.boost(id), brain: null });
+  const geral = run('geral'); const jogos = run('jogos');
+  const confidence = (list, id) => list.find((item) => item.id === id).confidence;
+  assert.equal(confidence(geral, 'session-thermal'), confidence(jogos, 'session-thermal'));
+  const position = (list, id) => list.findIndex((item) => item.id === id);
+  assert.ok(position(jogos, 'session-thermal') <= position(geral, 'session-thermal'));
+});
+
+test('perfis: achados de sessão são ordenados pela prioridade do perfil', () => {
+  const findings = [{ id: 'memory-pressure', severity: 'warn', confidence: 70 }, { id: 'gpu-limited', severity: 'warn', confidence: 70 }, { id: 'thermal', severity: 'bad', confidence: 60 }];
+  assert.deepEqual(Profiles.rankFindings('jogos', findings).map((f) => f.id), ['thermal', 'gpu-limited', 'memory-pressure']);
+  assert.deepEqual(Profiles.rankFindings('trabalho', findings).map((f) => f.id), ['thermal', 'memory-pressure', 'gpu-limited']);
+});

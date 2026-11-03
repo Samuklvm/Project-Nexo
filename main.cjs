@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Menu, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, powerMonitor, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { execFile, spawn } = require('child_process');
 const fs = require('fs/promises');
@@ -8,6 +8,8 @@ const { promisify } = require('util');
 const { pathToFileURL } = require('url');
 const readline = require('readline');
 const { Worker } = require('worker_threads');
+const { createProbe } = require('./electron/probe.cjs');
+const { createFpsRunner } = require('./electron/fps-runner.cjs');
 
 const execFileAsync = promisify(execFile);
 const CLEANUP_MAX_FILES = 5000;
@@ -840,6 +842,81 @@ registerIpcHandler('bench:cancel', async () => {
 });
 registerIpcHandler('system:power-source', async () => ({ onBattery: Boolean(powerMonitor?.isOnBatteryPower?.()) }));
 
+// ---- Sessões de observação: amostra do sistema, sonda de programas e medição de FPS ----
+const sendToWindow = (channel, payload) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+};
+const probe = createProbe({ emit: (sample) => sendToWindow('session:probe', sample) });
+const fpsRunner = createFpsRunner({ emit: (channel, payload) => sendToWindow(channel, payload) });
+
+let previousCores = null;
+/** Uso por núcleo desde a chamada anterior; a primeira chamada só marca o ponto de partida. */
+function sampleCores() {
+  const current = os.cpus().map((cpu) => ({ idle: cpu.times.idle, total: Object.values(cpu.times).reduce((sum, value) => sum + value, 0) }));
+  let perCore = [];
+  if (previousCores && previousCores.length === current.length) {
+    perCore = current.map((core, index) => {
+      const total = core.total - previousCores[index].total;
+      const idle = core.idle - previousCores[index].idle;
+      return total > 0 ? Math.min(100, Math.max(0, (1 - idle / total) * 100)) : 0;
+    });
+  }
+  previousCores = current;
+  return perCore;
+}
+
+registerIpcHandler('session:sample', async () => {
+  const perCore = sampleCores();
+  const cores = Math.max(1, os.cpus().length);
+  const metrics = typeof app.getAppMetrics === 'function' ? app.getAppMetrics() : [];
+  const appCpu = metrics.reduce((sum, item) => sum + (item.cpu?.percentCPUUsage || 0), 0) / cores;
+  const appMemMB = metrics.reduce((sum, item) => sum + (item.memory?.workingSetSize || 0), 0) / 1024;
+  return {
+    t: Date.now(),
+    cpu: perCore.length ? perCore.reduce((sum, value) => sum + value, 0) / perCore.length : null,
+    maxCore: perCore.length ? Math.max(...perCore) : null,
+    mem: (1 - os.freemem() / os.totalmem()) * 100,
+    appCpu, appMemMB
+  };
+});
+registerIpcHandler('session:probe-start', async () => probe.start());
+registerIpcHandler('session:probe-stop', async () => probe.stop());
+registerIpcHandler('session:probe-test', async () => probe.test());
+
+const PRESENTMON_PATH_FILE = () => path.join(app.getPath('userData'), 'presentmon.path');
+const isFile = (target) => fs.stat(target).then((stats) => stats.isFile()).catch(() => false);
+
+/** 1) executável escolhido pelo usuário; 2) o que o instalador embutiu (se a versão fixada foi baixada na build). */
+async function presentMonLocation() {
+  try {
+    const chosen = (await fs.readFile(PRESENTMON_PATH_FILE(), 'utf8')).trim();
+    if (chosen && await isFile(chosen)) return { path: chosen, source: 'escolhido' };
+  } catch { /* nada escolhido */ }
+  const bundled = app.isPackaged ? path.join(process.resourcesPath, 'tools', 'PresentMon.exe') : path.join(__dirname, 'third-party', 'bin', 'PresentMon.exe');
+  return (await isFile(bundled)) ? { path: bundled, source: 'embutido' } : null;
+}
+async function fpsStatus() {
+  const location = await presentMonLocation();
+  return { available: Boolean(location), source: location?.source || null, name: location ? path.basename(location.path) : null, platform: process.platform };
+}
+
+registerIpcHandler('fps:status', fpsStatus);
+registerIpcHandler('fps:choose', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, { title: 'Escolha o PresentMon', properties: ['openFile'], filters: [{ name: 'PresentMon', extensions: ['exe'] }] });
+  if (result.canceled || !result.filePaths[0]) return { canceled: true, ...(await fpsStatus()) };
+  const chosen = result.filePaths[0];
+  if (!/^presentmon.*\.exe$/i.test(path.basename(chosen))) throw new Error('Escolha o executável do PresentMon (um arquivo PresentMon….exe).');
+  await fs.writeFile(PRESENTMON_PATH_FILE(), chosen, 'utf8');
+  return fpsStatus();
+});
+registerIpcHandler('fps:clear', async () => { await fs.rm(PRESENTMON_PATH_FILE(), { force: true }); return fpsStatus(); });
+registerIpcHandler('fps:start', async (_event, options) => {
+  const location = await presentMonLocation();
+  return fpsRunner.start({ exe: location?.path, pid: Number(options?.pid) });
+});
+registerIpcHandler('fps:stop', async () => fpsRunner.stop());
+
+
 const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings:powersleep', storage: 'ms-settings:storagesense' };
 registerIpcHandler('system:open-settings', async (_event, page) => {
   const uri = SETTINGS_PAGES[page];
@@ -856,6 +933,7 @@ registerIpcHandler('app:open-doc', async (_event, url) => {
 
 const EXTERNAL_LINKS = {
   repo: 'https://github.com/Samuklvm/Project-Nexo',
+  presentmon: 'https://github.com/GameTechDev/PresentMon/releases',
   privacy: 'https://github.com/Samuklvm/Project-Nexo/blob/main/PRIVACIDADE.md',
   creator: 'https://github.com/Samuklvm',
   issues: 'https://github.com/Samuklvm/Project-Nexo/issues',
@@ -1045,5 +1123,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  probe.stop();
+  fpsRunner.stop();
   sensorHost?.kill();
 });

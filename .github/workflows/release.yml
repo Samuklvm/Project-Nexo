@@ -40,6 +40,11 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      # Opcional: só embute o PresentMon se o hash estiver fixado em third-party/presentmon.lock.json e conferir.
+      - name: Fetch PresentMon (version and SHA-256 pinned)
+        continue-on-error: true
+        run: node scripts/fetch-presentmon.cjs
+
       - name: Build and publish installer
         run: npm run release
         env:

@@ -11,3 +11,4 @@ installer-launcher/dist/
 installer-launcher/payload/
 dev/preview.html
 dev/csp-test.html
+third-party/bin/*.exe

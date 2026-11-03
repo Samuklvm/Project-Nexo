@@ -1,0 +1,12 @@
+{
+  "name": "PresentMon",
+  "version": "2.6.0",
+  "license": "MIT",
+  "copyright": "Copyright (C) 2017-2024 Intel Corporation",
+  "source": "https://github.com/GameTechDev/PresentMon",
+  "asset": "PresentMon-2.6.0-x64.exe",
+  "url": "https://github.com/GameTechDev/PresentMon/releases/download/v2.6.0/PresentMon-2.6.0-x64.exe",
+  "sha256": null,
+  "status": "NÃO FIXADO: a versão 2.6.0 é a mais recente conferida, mas o nome do arquivo e o hash precisam ser confirmados na página da release antes de fixar.",
+  "howToPin": "1) Rode `npm run presentmon:hash` (baixa o arquivo e mostra o SHA-256 calculado). 2) Compare com o digest que o GitHub exibe ao lado do arquivo na página da release. 3) Se baterem, cole o valor em `sha256` e faça o commit. Sem hash, nada é baixado nem embutido."
+}

@@ -30,16 +30,16 @@
       { name: 'CPU Package', type: 'Temperature', value: 61, min: 38, max: 79, unit: '°C', advanced: false },
       { name: 'CPU Total', type: 'Load', value: 18, min: 2, max: 100, unit: '%', advanced: false }] },
     { name: 'NVIDIA GeForce RTX 4060', type: 'GpuNvidia', path: '/gpu-nvidia/0', sensors: [
-      { name: 'GPU Core', type: 'Load', value: 9, min: 0, max: 98, unit: '%', advanced: false },
+      { name: 'GPU Core', type: 'Load', value: window.__mockGameMode ? 97 : 9, min: 0, max: 98, unit: '%', advanced: false },
       { name: 'GPU Core', type: 'Temperature', value: 47, min: 33, max: 71, unit: '°C', advanced: false },
       { name: 'GPU Fan', type: 'Fan', value: 0, min: 0, max: 2100, unit: 'RPM', advanced: true }] }] };
   window.nexoDesktop = {
     getSystemSnapshot: async () => { tick += 1; return {
       hostname: 'DESKTOP-NEXO', operatingSystem: 'Windows_NT 10.0.26100', cpuModel: 'AMD Ryzen 7 5700X', logicalCpuCount: 16,
       cpuUsage: wave(22, 14, 5), memoryTotalBytes: 32e9, memoryUsedBytes: 17.6e9, memoryPercent: Math.round(wave(55, 3, 9)),
-      networkConnected: true, uptimeSeconds: 3 * 86400 + 4 * 3600, drives, primaryDrive: drives[0], version: '0.3.0',
+      networkConnected: true, uptimeSeconds: 3 * 86400 + 4 * 3600, drives, primaryDrive: drives[0], version: '0.4.0',
       temperatureReadings: { acpiSensors: [{ celsius: 41 }], gpuSensors: [{ temperatureCelsius: 47, usagePercent: 9 }] } }; },
-    getHardwareSensors: async () => sensors,
+    getHardwareSensors: async () => { const gpu = sensors.devices[1].sensors[0]; gpu.value = window.__mockGameMode ? 94 + Math.random() * 5 : 9; return { ...sensors, collectedAt: Date.now() }; },
     getTopProcesses: async () => ({ byCpu: [{ processId: 4120, name: 'chrome', cpuPercent: 31, memoryBytes: 2.1e9, memoryPercent: 6 }, { processId: 912, name: 'Code', cpuPercent: 9, memoryBytes: 1.1e9, memoryPercent: 3 }], byMemory: [{ processId: 4120, name: 'chrome', cpuPercent: 31, memoryBytes: 2.1e9, memoryPercent: 6 }, { processId: 77, name: 'dwm', cpuPercent: 3, memoryBytes: 0.4e9, memoryPercent: 1 }] }),
     scanCleanup: async () => ({ categories: [
       { id: 'temp', label: 'Temporários antigos', description: 'Arquivos com mais de 7 dias na pasta temporária do usuário (sem subpastas).', fileCount: 842, bytes: 1.9e9, destructive: false },
@@ -56,10 +56,28 @@
     runCpuBench: async ({ mode, ms }) => { await new Promise((resolve) => setTimeout(resolve, ms > 500 ? 220 : 80)); const boost = plans.find((plan) => plan.active)?.guid === 'b' ? 1.09 : 1; return { mode, threads: mode === 'single' ? 1 : 7, ms, mopsPerSec: (mode === 'single' ? 152 : 880) * boost * (1 + (Math.random() - 0.5) * 0.024) }; },
     openDoc: async () => ({ ok: true }),
     listStartupItems: async () => [{ name: 'Discord', command: 'C:\\Users\\voce\\AppData\\Local\\Discord\\Update.exe --processStart Discord.exe' }, { name: 'SecurityHealth', command: '%windir%\\system32\\SecurityHealthSystray.exe' }, { name: 'Steam', command: '"C:\\Program Files (x86)\\Steam\\steam.exe" -silent' }],
-    openWindowsSettings: async () => ({ ok: true }), getAppInfo: async () => ({ version: '0.3.0', packaged: false, userDataPath: 'C:\\Users\\voce\\AppData\\Roaming\\nexo-device-care', userDataBytes: 1.4e6 }),
+    openWindowsSettings: async () => ({ ok: true }), getAppInfo: async () => ({ version: '0.4.0', packaged: false, userDataPath: 'C:\\Users\\voce\\AppData\\Roaming\\nexo-device-care', userDataBytes: 1.4e6 }),
     getWallpaper: async () => ({ url: null }), getPrivacy: async () => ({ shareWithCreator: false }), setPrivacy: async () => ({}),
     listDrives: async () => drives, optimizeDrive: async () => ({}), repairSystemFiles: async () => ({}), openTaskManager: async () => ({}), openLink: async () => ({}),
     checkForUpdates: async () => ({ state: 'current' }), onUpdateStatus: () => () => {}, getWindowState: async () => ({ maximized: false }), onWindowState: () => () => {},
     minimizeWindow() {}, toggleMaximizeWindow() {}, closeWindow() {}
   };
+  // ---- sessões de observação (simulado)
+  const listeners = { probe: new Set(), fps: new Set(), fpsError: new Set(), fpsEnded: new Set() };
+  let probeTimer = null; let fpsTimer = null; let fpsFrames = [];
+  Object.assign(window.nexoDesktop, {
+    sampleSession: async () => ({ t: Date.now(), cpu: window.__mockGameMode ? 31 + Math.random() * 4 : 18 + Math.random() * 8, maxCore: window.__mockGameMode ? 58 + Math.random() * 12 : 35 + Math.random() * 10, mem: 57 + Math.random() * 2, appCpu: 0.6, appMemMB: 190 }),
+    startProbe: async () => { clearInterval(probeTimer); probeTimer = setInterval(() => { const sample = { t: Date.now(), fg: { pid: 4242, name: window.__mockGameMode ? 'eldenring' : 'Code', isGame: Boolean(window.__mockGameMode) }, cpu: [{ pid: 4242, name: 'eldenring', cpu: 16 }, { pid: 77, name: 'chrome', cpu: 21 }], gpu: [{ pid: 4242, name: 'eldenring', util: 94 }], self: { cpu: 0.7, memMB: 88 } }; listeners.probe.forEach((cb) => cb(sample)); }, 1000); return { ok: true }; },
+    stopProbe: async () => { clearInterval(probeTimer); return { ok: true }; },
+    testProbe: async () => ({ ok: true, sample: { t: Date.now(), fg: { pid: 1, name: 'Code', isGame: false }, cpu: [{ name: 'chrome', cpu: 12 }], gpu: [], self: { cpu: 0.5, memMB: 84 } } }),
+    onProbe: (cb) => { listeners.probe.add(cb); return () => listeners.probe.delete(cb); },
+    getFpsStatus: async () => ({ available: true, source: 'escolhido', name: 'PresentMon-2.6.0-x64.exe', platform: 'win32' }),
+    chooseFps: async () => ({ canceled: false, available: true, source: 'escolhido', name: 'PresentMon-2.6.0-x64.exe', platform: 'win32' }),
+    clearFps: async () => ({ available: false, source: null, name: null, platform: 'win32' }),
+    startFps: async () => { fpsFrames = []; clearInterval(fpsTimer); fpsTimer = setInterval(() => { for (let i = 0; i < 75; i++) fpsFrames.push({ ms: i % 40 === 0 ? 75 : 12.5 + Math.random() }); listeners.fps.forEach((cb) => cb({ fps: 72 + Math.random() * 6, worstMs: 20, frames: fpsFrames.length })); }, 1000); return { ok: true }; },
+    stopFps: async () => { clearInterval(fpsTimer); const frames = fpsFrames.map((frame) => ({ ...frame, cpuBusy: 5, gpuBusy: frame.ms * 0.97 })); return { summary: NexoFps.summarize(frames), series: NexoFps.perSecond(frames), frames: frames.length }; },
+    onFpsUpdate: (cb) => { listeners.fps.add(cb); return () => listeners.fps.delete(cb); },
+    onFpsError: (cb) => { listeners.fpsError.add(cb); return () => listeners.fpsError.delete(cb); },
+    onFpsEnded: (cb) => { listeners.fpsEnded.add(cb); return () => listeners.fpsEnded.delete(cb); }
+  });
 })();

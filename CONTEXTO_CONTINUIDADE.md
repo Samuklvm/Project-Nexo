@@ -123,3 +123,20 @@ Origem: o usuário enviou o `prompt_mestre_otimizador_autonomo.txt` (norte do pr
 ### Próxima fatia sugerida (fase D do prompt)
 Sessões de observação com início/fim, relatório da sessão, detecção de jogo por caminho de instalação (sem ler memória) e medição do próprio overhead do Nexo. FPS/frame time só com ETW/PresentMon, após decisão do usuário (ver 52.18).
 
+## Versão 0.4.0 — perfis, sessões de observação e FPS opcional (03/11/2026)
+
+O usuário respondeu às decisões da 0.3.0: (1) o perfil deve ser **escolha entre três opções**; (2) extensões e APIs estão liberadas; (3) seguir com as sessões (fase D do prompt mestre).
+
+- **Perfis** (`src/profiles.js`, `src/view-profile.js`): Jogos, Trabalho e criação, Uso geral. Mudam pesos do índice, ordem das observações (sem alterar a confiança, que é só da evidência), ordem dos achados e dicas. Diálogo na primeira execução e seletor em Ajustes.
+- **Sessões** (`src/session.js`, `src/view-sessions.js`): sistema a 1 Hz (CPU total e por núcleo, GPU, memória, temperatura, queda de clock), sonda de programas a cada ~5 s, FPS opcional. Relatório com achados (GPU no limite, um núcleo no limite, memória, térmico, programa em segundo plano, GPU compartilhada, variação de quadros), cada um com evidência, confiança e limites. Sem FPS, nenhum achado afirma queda de quadros. 10 sessões guardadas; exportar e excluir.
+- **Detecção de jogo:** só por pasta de biblioteca de jogos (Steam, Epic, GOG, Riot, Xbox etc.) e marcação manual. Nunca lê memória de outro programa. O caminho é usado na hora e não é guardado nem sai do processo principal (testado).
+- **Sonda** (`electron/probe.cjs`): PowerShell residente com `GetForegroundWindow` (P/Invoke), CPU por programa e GPU por programa pelo contador `Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine`. Mede o próprio custo. Botão **Testar sonda** valida no PC do usuário.
+- **PresentMon** (`electron/fps-runner.cjs`, `scripts/fetch-presentmon.cjs`, `third-party/`): licença MIT (Copyright Intel), v2.6.0 conferida, flags 2.x do README oficial (`--process_id`, `--output_stdout`, `--no_console_stats`, `--stop_existing_session`, `--session_name`, `--terminate_on_proc_exit`, `--terminate_existing_session`). Exige grupo “Performance Log Users” ou administrador. **O hash NÃO está fixado**: o script recusa baixar sem ele (cadeia de suprimentos). O usuário pode apontar o próprio `PresentMon.exe`.
+- **Privacidade:** sessões e perfil entraram em `PRIVACIDADE.md`, `installer.nsh` (PT/EN), `AVISOS.txt` e no launcher (PT/EN). Exportação agora inclui diário, sessões e perfil. “Apagar aprendizado” inclui as sessões e mantém o diário.
+
+### Não validado em Windows (testar antes de publicar)
+O script PowerShell da sonda (compila um tipo com `Add-Type` e consulta CIM), o contador de GPU por programa, o PresentMon real (flags, permissão, anti-cheat), a normalização do `percentCPUUsage` do Electron (assumida como percentual de um núcleo, dividida pelo número de núcleos) e todo o restante da lista da 0.3.0.
+
+### Próximos passos sugeridos
+Fixar o hash do PresentMon; rodar “Testar sonda” e uma sessão real num jogo; decidir sobre iniciar sessão automaticamente ao detectar jogo; escolher a próxima técnica para o experimento A/B; integrar os motivos de limitação da GPU do `nvidia-smi`.
+

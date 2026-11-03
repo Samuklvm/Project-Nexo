@@ -19,6 +19,8 @@ A coleta local é parte do funcionamento do Nexo e não depende do consentimento
 - **Sensores detalhados:** valores atuais e mínimos/máximos da sessão ficam em memória para a tela de sensores e não são gravados automaticamente no histórico de sete dias. Se a pessoa escolher **Exportar CSV**, o Nexo cria um arquivo local com nome/categoria do componente, nome e tipo do sensor, valor atual, unidade, mínimo, máximo e indicador de sensor avançado.
 - **Feedback local:** categoria da recomendação, resposta útil/não útil e horário, limitado aos últimos 100 registros.
 - **Atividade local:** título, detalhe e horário das últimas 20 atividades exibidas pelo app.
+- **Sessões de observação (só quando você inicia uma):** a cada segundo, uso total de CPU, do núcleo mais ocupado, memória, GPU, temperatura e queda de clock; a cada poucos segundos, o programa em primeiro plano, os programas que mais usaram CPU e GPU (só o **nome**, nunca o caminho nem a linha de comando) e o custo do próprio Nexo; e, se você ativar, FPS e tempo de quadro do programa escolhido. Para saber se algo é um jogo, o Nexo olha **só a pasta de instalação** do programa em primeiro plano; o caminho é usado nessa hora e não é guardado. Nunca lê a memória de outro programa. Guarda as 10 sessões mais recentes (relatório e linha do tempo reduzida a um ponto a cada 5 s); você pode exportar, excluir cada uma ou apagar todas.
+- **Perfil de uso:** a opção escolhida (Jogos, Trabalho e criação ou Uso geral), só para ajustar pesos e a ordem das observações.
 - **Diário de alterações:** para cada alteração feita pelo Nexo (plano de energia, limpezas, otimização de unidade, verificação do sistema) ficam registrados o nome da operação, o horário, o risco, o valor anterior e o novo (por exemplo, nome e identificador do plano de energia), a quantidade e o tamanho dos itens removidos e a forma de autorização. Guarda até 100 registros e serve para você auditar e reverter.
 - **Benchmark local:** o experimento do plano de energia executa uma carga sintética de CPU por cerca de 20 segundos, sempre iniciada por você. Só os números resultantes (medianas, ruído e veredito) são guardados no Diário.
 - **Preferências locais:** papel de parede escolhido (até 12 MB, guardado como arquivo na pasta de dados do app), modo de efeitos visuais, configuração da limpeza automática e horário da última execução.
@@ -26,10 +28,14 @@ A coleta local é parte do funcionamento do Nexo e não depende do consentimento
 
 Os itens acima ficam no computador da pessoa. O gráfico da sessão mantém amostras em memória por até cinco minutos. Nomes e detalhes locais de atividades podem incluir o resultado de ações iniciadas pela pessoa, como a quantidade de arquivos removidos e o espaço liberado.
 
+## Componente opcional: PresentMon
+
+Para medir FPS, o Nexo pode executar o **PresentMon** (Intel, licença MIT) como um programa separado, só quando você ativa a medição. Ele lê os eventos de apresentação do Windows (ETW) do programa escolhido e entrega ao Nexo os tempos de quadro; nada sai do computador. Exige que o usuário esteja no grupo “Performance Log Users” (ou seja administrador). Sem um hash fixado na build, o instalador **não** embute o executável; você pode apontar um arquivo que baixou do site oficial. Detalhes em `THIRD-PARTY-NOTICES.md`.
+
 ## Exportar, apagar e desinstalar
 
-- **Exportar:** em **Ajustes** é possível salvar um arquivo JSON com o histórico, o aprendizado, o feedback e a atividade.
-- **Apagar o aprendizado:** o botão correspondente apaga o histórico, o aprendizado e o feedback.
+- **Exportar:** em **Ajustes** é possível salvar um arquivo JSON com o histórico, o aprendizado, o feedback, a atividade, o diário, as sessões e o perfil.
+- **Apagar o aprendizado:** o botão correspondente apaga o histórico, o aprendizado, o feedback e as sessões. O diário de alterações é mantido para permitir reverter.
 - **Desinstalar:** a desinstalação pelo Windows ou por **Ajustes** remove o programa, os dados e preferências, os caches, os atalhos e as entradas do Registro do Nexo. Atualizações preservam os dados.
 
 ## Conexões de rede

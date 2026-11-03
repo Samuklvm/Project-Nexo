@@ -5,6 +5,8 @@ Aplicativo desktop para Windows que cuida do computador: mede, explica o que est
 ## O que ele faz
 
 - **Início:** Índice Nexo (0 a 100) explicado fator por fator, medições ao vivo com miniaturas, mapa do sistema em órbitas (cada componente é um planeta), gráficos de 5 minutos a 7 dias com dica ao passar o mouse, e as principais observações do momento.
+- **Sessões de observação:** grave o PC enquanto joga ou trabalha e receba um relatório. Ele diz se o limite foi a GPU, um único núcleo da CPU, a memória, o calor ou um programa em segundo plano, **sempre com a evidência e os limites**. Detecta jogos pela pasta de instalação (nunca lê a memória do jogo), mede o custo do próprio Nexo e, com o PresentMon, mede FPS, 1% baixo e tempo de quadro.
+- **Perfil de uso:** Jogos, Trabalho e criação ou Uso geral, escolhido por você. Muda o peso dos fatores no índice, a ordem das observações e o que as sessões destacam.
 - **Análise inteligente:** compara o presente com a sua rotina e mostra a causa provável **com a evidência**. Inclui lentidões detectadas, programas que mais atrapalham, previsão de quando o disco enche, indício de queda de clock por calor, mapa da rotina por dia e hora e leitura sob demanda dos processos.
 - **Otimizar:** limpeza segura por categorias (temporários antigos, relatórios de falha, relatórios de erro do Windows e, opcionalmente, Lixeira), limpeza automática opcional, troca do plano de energia do Windows e lista dos programas que iniciam com o Windows. Cada operação tem uma ficha (risco, reversão, fonte oficial, como medimos e estado de validação). O plano de energia pode ser **medido antes e depois** com um benchmark de CPU de cerca de 20 segundos e revertido depois.
 - **Atividade:** Diário de alterações com valor anterior, risco, autorização, medição e botão **Reverter** (avisa se o estado mudou desde então).
@@ -39,9 +41,16 @@ npm start
 Outros comandos:
 
 ```powershell
-npm test         # testes do motor de análise (dados sintéticos)
+npm test         # 53 testes: motor de análise, sessões, FPS, IPC do main.cjs e diário/catálogo
 npm run preview  # gera dev/preview.html: abre a interface num navegador, com dados fictícios
 ```
+
+## Medição de FPS (PresentMon)
+
+O FPS vem do **PresentMon** (Intel, licença MIT), executado como programa separado só quando você liga a opção na sessão. Requisitos do próprio PresentMon: o seu usuário precisa estar no grupo **“Performance Log Users”** (ou o Nexo rodar como administrador). Se faltar, o Nexo mostra o passo a passo em vez de falhar em silêncio.
+
+- **Versão e integridade:** `third-party/presentmon.lock.json` guarda a versão (2.6.0) e o SHA-256. **O hash ainda não está fixado**, então a build não embute o executável. Para fixar: `npm run presentmon:hash`, compare o resultado com o digest mostrado pelo GitHub na página da release e cole em `sha256`. Enquanto isso, **Sessões → Componentes → Escolher PresentMon…** aceita um arquivo baixado por você do site oficial.
+- A compatibilidade com jogos que usam anti-cheat **não foi validada**: o Nexo só lê eventos do Windows e não injeta nada no jogo, mas teste antes de confiar.
 
 ## Instalador e desinstalador
 

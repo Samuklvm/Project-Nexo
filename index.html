@@ -24,6 +24,7 @@
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.8 19.5h18.4zM12 10v4.5M12 17v.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3.4" fill="currentColor"/></symbol>
       <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-min" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
       <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
@@ -44,6 +45,7 @@
       <div class="rail-items">
         <button class="rail-item active" type="button" data-view="home" aria-current="page"><svg><use href="#i-home"/></svg><span class="rail-label">Início</span></button>
         <button class="rail-item" type="button" data-view="analysis"><svg><use href="#i-spark"/></svg><span class="rail-label">Análise</span></button>
+        <button class="rail-item" type="button" data-view="sessions"><svg><use href="#i-record"/></svg><span class="rail-label">Sessões</span></button>
         <button class="rail-item" type="button" data-view="optimize"><svg><use href="#i-bolt"/></svg><span class="rail-label">Otimizar</span></button>
         <button class="rail-item" type="button" data-view="hardware"><svg><use href="#i-chip"/></svg><span class="rail-label">Hardware</span></button>
         <button class="rail-item" type="button" data-view="maintenance"><svg><use href="#i-wrench"/></svg><span class="rail-label">Manutenção</span></button>
@@ -83,6 +85,7 @@
             <div class="health-readout" role="img" aria-label="Índice Nexo de saúde do computador"><strong id="health-score">--</strong><span>Índice Nexo</span></div>
           </div>
           <div class="hero-copy">
+            <button class="chip-button" id="hero-profile" type="button" aria-label="Mudar o perfil de uso">Perfil: Uso geral</button>
             <h2 id="health-verdict">Conhecendo o seu PC</h2>
             <p id="health-sub">Em alguns instantes o Nexo mostra como está o desempenho.</p>
             <ul class="factors" id="health-factors"></ul>
@@ -161,6 +164,44 @@
         </section>
       </section>
 
+      <!-- SESSÕES -->
+      <section class="view" data-view-panel="sessions">
+        <header class="page-head"><div><h2>Sessões de observação</h2><p>Grave o que acontece no PC enquanto você joga ou trabalha e receba um relatório com evidências e limites claros. Tudo fica neste computador.</p></div><div class="page-actions"><button class="chip-button" id="sess-profile-chip" type="button">Perfil: Uso geral</button></div></header>
+        <section class="sheet rec" id="rec-panel">
+          <div class="rec-main">
+            <button class="rec-button" id="rec-toggle" type="button" aria-label="Iniciar sessão"><i></i></button>
+            <div class="rec-copy"><strong id="rec-state">Pronto para gravar</strong><span id="rec-sub">Escolha as opções e inicie. Você pode usar o PC normalmente.</span></div>
+            <div class="rec-clock" id="rec-clock">00:00</div>
+          </div>
+          <div class="rec-options" id="rec-options">
+            <label class="field"><span>Nome (opcional)</span><input id="sess-name" type="text" maxlength="60" placeholder="Ex.: Jogo X, render de 1 h" autocomplete="off" /></label>
+            <label class="switch compact"><input id="sess-probe" type="checkbox" checked /><i></i><span>Observação detalhada<small>Programa em primeiro plano, detecção de jogo e uso de CPU e GPU por programa.</small></span></label>
+            <label class="switch compact"><input id="sess-fps" type="checkbox" /><i></i><span>Medir FPS com o PresentMon<small id="fps-note">Verificando o componente…</small></span></label>
+          </div>
+          <div class="rec-live" id="rec-live" hidden>
+            <div class="live-grid">
+              <div><span>Processador</span><strong id="live-cpu">--</strong></div>
+              <div><span>Núcleo mais ocupado</span><strong id="live-core">--</strong></div>
+              <div><span>Vídeo</span><strong id="live-gpu">--</strong></div>
+              <div><span>Memória</span><strong id="live-mem">--</strong></div>
+              <div><span>Temperatura</span><strong id="live-temp">--</strong></div>
+              <div><span>FPS</span><strong id="live-fps">--</strong></div>
+            </div>
+            <div class="live-fg"><span class="chip" id="live-fg">Aguardando o primeiro plano…</span><button class="btn sm ghost" id="live-mark-game" type="button" hidden>Marcar como jogo</button><button class="btn sm ghost" id="live-fps-now" type="button" hidden>Medir FPS deste programa</button></div>
+            <div class="chart-body live-chart"><canvas id="live-chart" role="img" aria-label="Últimos dois minutos da sessão"></canvas></div>
+            <p class="muted" id="live-overhead">Custo do Nexo: medindo…</p>
+            <p class="notes-line" id="live-error" hidden></p>
+          </div>
+        </section>
+        <div class="section-head"><div><h2>Sessões salvas</h2><p>As 10 mais recentes ficam só neste computador.</p></div><button class="link" id="sess-clear" type="button">Apagar todas</button></div>
+        <div class="sess-list" id="sess-list"></div>
+        <section class="sheet components">
+          <div class="sheet-head"><div><h3>Componentes e diagnóstico</h3><p class="muted">O FPS vem do PresentMon (Intel, licença MIT), que o Nexo executa só quando você pede. Ele exige que o seu usuário esteja no grupo “Performance Log Users” (ou seja administrador).</p></div></div>
+          <div class="comp-row"><div><strong>PresentMon</strong><span class="muted" id="fps-status-text">Verificando…</span></div><div class="btn-row"><button class="btn sm" id="fps-choose" type="button">Escolher PresentMon…</button><button class="btn sm ghost" id="fps-clear" type="button" hidden>Usar o embutido</button><button class="btn sm ghost" id="fps-download" type="button">Página oficial de downloads</button></div></div>
+          <div class="comp-row"><div><strong>Sonda de programas</strong><span class="muted" id="probe-result">Lê o programa em primeiro plano e o uso de CPU e GPU por programa. Teste para ver se funciona neste PC.</span></div><div class="btn-row"><button class="btn sm" id="probe-test" type="button">Testar sonda</button></div></div>
+        </section>
+      </section>
+
       <!-- OTIMIZAR -->
       <section class="view" data-view-panel="optimize">
         <header class="page-head"><div><h2>Otimizar</h2><p>Ações reais, com prévia e confirmação. Nada é apagado ou alterado sem você ver antes o que será feito.</p></div></header>
@@ -172,7 +213,7 @@
             <label class="switch auto-clean"><input id="auto-clean-toggle" type="checkbox" /><i></i><span><strong>Limpeza automática dos temporários</strong><small>Age depois de quatro leituras seguidas com o disco acima de 90%, no máximo uma vez por hora. Só remove temporários antigos; não fecha programas nem altera configurações do Windows.</small></span></label>
           </section>
           <div class="stack">
-            <section class="sheet"><div class="sheet-head"><div><h3>Plano de energia <button class="info" type="button" data-op="power-plan-switch" aria-label="Detalhes da operação: plano de energia">i</button></h3><p class="muted">Define o quanto o Windows pode acelerar o processador. Ao escolher um plano, o Nexo pode medir se ele ajuda neste PC.</p></div></div><div id="power-list" aria-live="polite"><p class="empty">Lendo os planos disponíveis…</p></div></section>
+            <section class="sheet"><div class="sheet-head"><div><h3>Plano de energia <button class="info" type="button" data-op="power-plan-switch" aria-label="Detalhes da operação: plano de energia">i</button></h3><p class="muted">Define o quanto o Windows pode acelerar o processador. Ao escolher um plano, o Nexo pode medir se ele ajuda neste PC.</p><p class="tip" id="power-tip"></p></div></div><div id="power-list" aria-live="polite"><p class="empty">Lendo os planos disponíveis…</p></div></section>
             <section class="sheet"><div class="sheet-head"><div><h3>Início com o Windows</h3><p class="muted">Programas que abrem sozinhos ao ligar o PC (somente leitura).</p></div></div><ul class="startup-list" id="startup-list" aria-live="polite"><li class="empty">Lendo a lista…</li></ul><button class="btn sm" id="open-startup-settings" type="button">Gerenciar no Windows</button></section>
           </div>
         </div>
@@ -257,6 +298,10 @@
       <!-- AJUSTES -->
       <section class="view" data-view-panel="settings">
         <header class="page-head"><div><h2>Ajustes</h2><p>Aparência, privacidade e controle dos seus dados.</p></div></header>
+        <section class="sheet profile-sheet">
+          <div class="sheet-head"><div><h3>Perfil de uso</h3><p class="muted">Muda o peso de cada fator no Índice Nexo, a ordem das observações e o que as sessões destacam. Não muda o que é verdade sobre o seu PC, e você pode trocar quando quiser.</p></div></div>
+          <div class="pcards" id="profile-cards" role="radiogroup" aria-label="Perfil de uso"></div>
+        </section>
         <div class="split even">
           <section class="sheet">
             <div class="sheet-head"><h3>Aparência</h3></div>
@@ -292,9 +337,13 @@
   <script src="src/catalog.js"></script>
   <script src="src/journal.js"></script>
   <script src="src/experiment.js"></script>
+  <script src="src/profiles.js"></script>
+  <script src="src/fps.js"></script>
+  <script src="src/session.js"></script>
   <script src="src/core.js"></script>
   <script src="src/ui-kit.js"></script>
   <script src="src/fx.js"></script>
+  <script src="src/view-profile.js"></script>
   <script src="src/charts.js"></script>
   <script src="src/store.js"></script>
   <script src="src/view-home.js"></script>
@@ -303,6 +352,7 @@
   <script src="src/view-optimize.js"></script>
   <script src="src/view-experiment.js"></script>
   <script src="src/view-journal.js"></script>
+  <script src="src/view-sessions.js"></script>
   <script src="src/view-hardware.js"></script>
   <script src="src/view-maintenance.js"></script>
   <script src="src/view-updates.js"></script>

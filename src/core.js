@@ -10,7 +10,9 @@ const Nexo = (window.Nexo = {
     feedback: 'nexo-recommendation-feedback',
     brain: 'nexo-brain-v1',
     effects: 'nexo-effects',
-    journal: 'nexo-journal-v1'
+    journal: 'nexo-journal-v1',
+    profile: 'nexo-profile',
+    sessions: 'nexo-sessions-v1'
   },
   listeners: {},
   on(event, handler) { (this.listeners[event] ||= []).push(handler); },

@@ -29,7 +29,7 @@
     const sample = Nexo.store.live().slice(-1)[0];
     const forecast = NexoBrain.forecastDisk(history);
     const health = NexoBrain.healthScore({
-      brain: Nexo.store.brain, history, forecast, cpu: snapshot.cpuUsage, mem: snapshot.memoryPercent,
+      brain: Nexo.store.brain, weights: NexoProfiles.weights(Nexo.profile?.id), history, forecast, cpu: snapshot.cpuUsage, mem: snapshot.memoryPercent,
       disk: snapshot.primaryDrive?.usedPercent, temp: sample ? Nexo.store.hottest(sample) : null, uptimeSeconds: snapshot.uptimeSeconds
     });
     lastHealth = health;
@@ -137,6 +137,7 @@
     return NexoBrain.buildInsights({
       brain: Nexo.store.brain, snapshot: Nexo.state.snapshot, processes: Nexo.state.processes, cleanup: Nexo.state.cleanupTotals,
       power: Nexo.state.power, history: Nexo.store.brainHistory(), feedback: Nexo.store.feedback(),
+      boost: NexoProfiles.boost(Nexo.profile?.id), sessions: Nexo.sessions?.recent() || [],
       sensors: Nexo.store.deepMetrics(), temp: Nexo.state.snapshot ? Nexo.store.hottest(Nexo.store.live().slice(-1)[0] || {}) : null
     });
   };
