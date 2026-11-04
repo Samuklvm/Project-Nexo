@@ -20,7 +20,7 @@
     "url": "https://github.com/Samuklvm/Project-Nexo.git"
   },
   "devDependencies": {
-    "electron": "37.2.0",
+    "electron": "42.11.16",
     "electron-builder": "26.18.0"
   },
   "dependencies": {
