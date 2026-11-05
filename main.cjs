@@ -16,7 +16,22 @@ const { createLibrary } = require('./electron/games.cjs');
 const { createWatcher } = require('./electron/watcher.cjs');
 const Account = require('./electron/account.cjs');
 const NexoLab = require('./src/lab.js');
+const Steam = require('./electron/steam-account.cjs');
+const Covers = require('./electron/covers.cjs');
+const { createCoverResolver } = Covers;
+const { createSteamDetails } = require('./electron/steam-details.cjs');
+const Xbox = require('./electron/xbox.cjs');
+const DiscordRpc = require('./electron/discord.cjs');
+const { createDiscord } = DiscordRpc;
+const nodeNet = require('net');
 const http = require('http');
+const { createLinux } = require('./electron/linux.cjs');
+const { createLinuxLabSystem } = require('./electron/lab-linux.cjs');
+const { createMangoRunner, launchOption: mangoLaunchOption } = require('./electron/mangohud.cjs');
+const { createLinuxProbe } = require('./electron/probe.cjs');
+const { createLinuxWatcher } = require('./electron/watcher.cjs');
+const { linuxPrivileged } = require('./electron/elevate.cjs');
+const IS_LINUX = process.platform === 'linux';
 
 const execFileAsync = promisify(execFile);
 const CLEANUP_MAX_FILES = 5000;
@@ -73,6 +88,8 @@ function runCode(file, args, timeout = 20000) {
   });
 }
 
+const linux = createLinux({ fs, path, os, run: (file, args) => runCode(file, args) });
+
 function getCpuSample() {
   return os.cpus().reduce((sample, cpu) => {
     sample.total += Object.values(cpu.times).reduce((total, value) => total + value, 0);
@@ -112,6 +129,7 @@ function normalizeDrive(item) {
 }
 
 async function listDrives() {
+  if (IS_LINUX) return linux.drives();
   if (process.platform === 'win32') {
     const script = "$drives = Get-CimInstance Win32_LogicalDisk -Filter \"DriveType=3\" | Select-Object @{Name='letter';Expression={$_.DeviceID.Substring(0,1)}}, @{Name='label';Expression={$_.VolumeName}}, @{Name='fileSystem';Expression={$_.FileSystem}}, @{Name='sizeBytes';Expression={[double]$_.Size}}, @{Name='freeBytes';Expression={[double]$_.FreeSpace}}; $drives | ConvertTo-Json -Compress";
     const { stdout } = await runPowerShell(script);
@@ -147,10 +165,11 @@ async function getCachedDrives() {
 }
 
 async function getTemperatureReadings() {
-  if (process.platform !== 'win32') return { acpiSensors: [], gpuSensors: [] };
+  if (process.platform !== 'win32' && !IS_LINUX) return { acpiSensors: [], gpuSensors: [] };
 
   const [acpiSensors, gpuSensors] = await Promise.all([
     (async () => {
+      if (IS_LINUX) return linux.temperatures();
       const script = String.raw`
 $sensors = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue | ForEach-Object {
   $celsius = [Math]::Round(([double]$_.CurrentTemperature / 10) - 273.15, 1)
@@ -260,6 +279,18 @@ function startSensorHost() {
 }
 
 async function getHardwareSensors() {
+  if (IS_LINUX) {
+    const [readings, temps] = await Promise.all([linux.sensors(), getCachedTemperatureReadings().catch(() => ({ gpuSensors: [] }))]);
+    temps.gpuSensors.forEach((gpu, index) => {
+      const sensors = [];
+      if (Number.isFinite(gpu.temperatureCelsius)) sensors.push({ name: 'GPU Core', type: 'Temperature', value: gpu.temperatureCelsius, min: gpu.temperatureCelsius, max: gpu.temperatureCelsius, unit: '°C', advanced: false });
+      if (Number.isFinite(gpu.usagePercent)) sensors.push({ name: 'GPU Core', type: 'Load', value: gpu.usagePercent, min: gpu.usagePercent, max: gpu.usagePercent, unit: '%', advanced: false });
+      if (sensors.length) readings.devices.push({ name: `NVIDIA GPU ${index + 1}`, type: 'GpuNvidia', path: `/nvidia/${index}`, sensors });
+    });
+    readings.sensorCount = readings.devices.reduce((sum, device) => sum + device.sensors.length, 0);
+    if (readings.sensorCount) { readings.status = 'ready'; readings.issues = []; }
+    return readings;
+  }
   if (process.platform !== 'win32') {
     return { status: 'unsupported', collectedAt: new Date().toISOString(), devices: [], sensorCount: 0, issues: [] };
   }
@@ -325,6 +356,7 @@ async function getSystemSnapshot() {
 }
 
 async function getTopProcesses() {
+  if (IS_LINUX) return linux.topProcesses();
   if (process.platform !== 'win32') return { byCpu: [], byMemory: [] };
 
   const script = String.raw`
@@ -370,7 +402,7 @@ $result | ConvertTo-Json -Depth 3 -Compress
 }
 
 const LOCAL_APPDATA = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-const CLEANUP_CATEGORIES = [
+const CLEANUP_CATEGORIES = IS_LINUX ? linux.cleanupCategories() : [
   { id: 'temp', label: 'Temporários antigos', description: 'Arquivos com mais de 7 dias na pasta temporária do usuário (sem subpastas).', recursive: false, roots: () => [os.tmpdir()] },
   { id: 'crashdumps', label: 'Relatórios de falha de programas', description: 'Despejos de memória (.dmp) de programas que travaram, com mais de 7 dias.', recursive: true, roots: () => [path.join(LOCAL_APPDATA, 'CrashDumps')] },
   { id: 'wer', label: 'Relatórios de erro do Windows', description: 'Relatórios antigos, enviados ou pendentes, do Relatório de Erros do Windows.', recursive: true,
@@ -404,7 +436,11 @@ async function collectCategoryFiles(category) {
     let root;
     try { root = await fs.realpath(path.resolve(candidate)); } catch { continue; }
     const files = await walkFiles(root, category.recursive, cutoff, CLEANUP_MAX_FILES - found.length);
-    for (const file of files) found.push({ ...file, root });
+    for (const file of files) {
+      // Linux: pastas como /tmp e /var/crash são compartilhadas; só entram arquivos do próprio usuário.
+      if (IS_LINUX && typeof process.getuid === 'function') { const stats = await fs.lstat(file.path).catch(() => null); if (!stats || stats.uid !== process.getuid()) continue; }
+      found.push({ ...file, root });
+    }
     if (found.length >= CLEANUP_MAX_FILES) break;
   }
   return found;
@@ -427,6 +463,7 @@ async function pruneEmptyDirectories(root, depth = 0) {
 }
 
 async function scanRecycleBin() {
+  if (IS_LINUX) return linux.scanTrash();
   if (process.platform !== 'win32') return { fileCount: 0, bytes: 0 };
   try {
     const { stdout } = await runPowerShell(String.raw`$ErrorActionPreference='SilentlyContinue'; $items=@((New-Object -ComObject Shell.Application).Namespace(0xA).Items()); $b=[int64]0; foreach($i in $items){ $b += [int64]$i.Size }; '{0};{1}' -f $items.Count, $b`, 12000);
@@ -607,6 +644,15 @@ registerIpcHandler('system:task-manager', async () => {
 registerIpcHandler('drives:list', listDrives);
 
 registerIpcHandler('drives:optimize', async (_event, driveLetter) => {
+  if (IS_LINUX) {
+    const drive = (await linux.drives()).find((item) => item.driveLetter === driveLetter);
+    if (!drive) throw new Error('Unidade inválida.');
+    const [file, args] = linuxPrivileged('fstrim', drive.driveLetter);
+    const result = await runCode(file, args, 60 * 60 * 1000);
+    if (result.code === 126 || result.code === 127) throw new Error('A senha de administrador foi recusada (ou o pkexec não está instalado).');
+    if (result.code !== 0) throw new Error('O sistema não aceitou o TRIM nesta unidade (HD comum ou sistema de arquivos sem suporte).');
+    return { ok: true, driveLetter: drive.driveLetter, detail: result.stdout.trim().slice(0, 200) };
+  }
   if (process.platform !== 'win32') {
     throw new Error('A otimização de unidades está disponível somente no Windows.');
   }
@@ -654,6 +700,7 @@ registerIpcHandler('cleanup:run', async (_event, ids) => {
     let bytesFreed = 0;
     if (category.special) {
       const before = await scanRecycleBin();
+      if (IS_LINUX) await linux.emptyTrash();
       if (process.platform === 'win32') {
         try { await runPowerShell("Clear-RecycleBin -Force -ErrorAction SilentlyContinue", 60000); } catch { /* o Windows pode recusar itens em uso */ }
       }
@@ -687,7 +734,7 @@ registerIpcHandler('cleanup:run', async (_event, ids) => {
 
 registerIpcHandler('system:repair', async () => {
   if (process.platform !== 'win32') {
-    throw new Error('A verificação de arquivos do sistema está disponível somente no Windows.');
+    throw new Error('O SFC é do Windows. No Linux, a verificação do sistema de arquivos é feita pelo próprio sistema na inicialização (fsck).');
   }
 
   await runPowerShell(toolLauncher('sfc'), 60 * 60 * 1000);
@@ -787,10 +834,11 @@ async function listPowerPlans() {
     .map((plan) => ({ guid: plan.guid.toLowerCase(), name: String(plan.name || 'Plano'), active: Boolean(plan.active) }));
 }
 
-registerIpcHandler('power:list', listPowerPlans);
+registerIpcHandler('power:list', async () => (IS_LINUX ? linux.powerProfiles() : listPowerPlans()));
 
 registerIpcHandler('power:set', async (_event, guid) => {
   if (labState.running) throw new Error('O laboratório está usando o plano de energia agora; espere ele terminar.');
+  if (IS_LINUX) { await linux.setPowerProfile(String(guid)); return { ok: true, plans: await linux.powerProfiles() }; }
   const plans = await listPowerPlans();
   const target = plans.find((plan) => plan.guid === String(guid || '').toLowerCase());
   if (!target) throw new Error('Plano de energia não reconhecido.');
@@ -799,6 +847,7 @@ registerIpcHandler('power:set', async (_event, guid) => {
 });
 
 registerIpcHandler('startup:list', async () => {
+  if (IS_LINUX) return linux.startupItems();
   if (process.platform !== 'win32') return [];
   const script = UTF8_PS + String.raw`$s=@(Get-CimInstance Win32_StartupCommand | ForEach-Object { [pscustomobject]@{ name = [string]$_.Name; command = [string]$_.Command; location = [string]$_.Location; user = [string]$_.User } }); ConvertTo-Json -InputObject $s -Compress`;
   const { stdout } = await runPowerShell(script, 12000);
@@ -894,8 +943,9 @@ registerIpcHandler('system:power-source', async () => ({ onBattery: Boolean(powe
 const sendToWindow = (channel, payload) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
 };
-const probe = createProbe({ emit: (sample) => sendToWindow('session:probe', sample), match: (exePath) => library.matchPath(exePath) });
-const fpsRunner = createFpsRunner({ emit: (channel, payload) => sendToWindow(channel, payload) });
+const probe = IS_LINUX ? createLinuxProbe({ linux, emit: (sample) => sendToWindow('session:probe', sample), match: (exePath) => library.matchPath(exePath) }) : createProbe({ emit: (sample) => sendToWindow('session:probe', sample), match: (exePath) => library.matchPath(exePath) });
+const MANGO_DIR = () => path.join(app.getPath('userData'), 'mangohud');
+const fpsRunner = IS_LINUX ? createMangoRunner({ fs, path, dir: MANGO_DIR(), emit: (channel, payload) => sendToWindow(channel, payload) }) : createFpsRunner({ emit: (channel, payload) => sendToWindow(channel, payload) });
 
 let previousCores = null;
 /** Uso por núcleo desde a chamada anterior; a primeira chamada só marca o ponto de partida. */
@@ -948,8 +998,12 @@ async function fpsStatus() {
   return { available: Boolean(location), source: location?.source || null, name: location ? path.basename(location.path) : null, platform: process.platform };
 }
 
-registerIpcHandler('fps:status', fpsStatus);
+registerIpcHandler('fps:status', async () => {
+  if (IS_LINUX) return { available: await linux.which('mangohud'), source: 'mangohud', name: 'MangoHud', platform: 'linux', launchOption: mangoLaunchOption(MANGO_DIR()) };
+  return fpsStatus();
+});
 registerIpcHandler('fps:choose', async () => {
+  if (IS_LINUX) throw new Error('No Linux o FPS vem do MangoHud: instale pelo gerenciador de pacotes e use a opção de inicialização mostrada.');
   const result = await dialog.showOpenDialog(mainWindow, { title: 'Escolha o PresentMon', properties: ['openFile'], filters: [{ name: 'PresentMon', extensions: ['exe'] }] });
   if (result.canceled || !result.filePaths[0]) return { canceled: true, ...(await fpsStatus()) };
   const chosen = result.filePaths[0];
@@ -959,6 +1013,7 @@ registerIpcHandler('fps:choose', async () => {
 });
 registerIpcHandler('fps:clear', async () => { await fs.rm(PRESENTMON_PATH_FILE(), { force: true }); return fpsStatus(); });
 registerIpcHandler('fps:start', async (_event, options) => {
+  if (IS_LINUX) return fpsRunner.start();
   const location = await presentMonLocation();
   return fpsRunner.start({ exe: location?.path, pid: Number(options?.pid) });
 });
@@ -968,6 +1023,7 @@ registerIpcHandler('fps:stop', async () => fpsRunner.stop());
 const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings:powersleep', storage: 'ms-settings:storagesense', graphics: 'ms-settings:display-advancedgraphics',
   gamemode: 'ms-settings:gaming-gamemode', display: 'ms-settings:display-advanced', captures: 'ms-settings:gaming-gamedvr', recovery: 'ms-settings:recovery', coreisolation: 'windowsdefender://coreisolation' };
 registerIpcHandler('system:open-settings', async (_event, page) => {
+  if (IS_LINUX) throw new Error('Esta tela é das Configurações do Windows; no Linux, use as configurações do seu ambiente (GNOME, KDE…).');
   const uri = SETTINGS_PAGES[page];
   if (!uri) throw new Error('Página de configurações não permitida.');
   await shell.openExternal(uri);
@@ -983,6 +1039,8 @@ registerIpcHandler('app:open-doc', async (_event, url) => {
 const EXTERNAL_LINKS = {
   repo: 'https://github.com/Samuklvm/Project-Nexo',
   presentmon: 'https://github.com/GameTechDev/PresentMon/releases',
+  steamkey: 'https://steamcommunity.com/dev/apikey',
+  steamprivacy: 'https://steamcommunity.com/my/edit/settings',
   privacy: 'https://github.com/Samuklvm/Project-Nexo/blob/main/PRIVACIDADE.md',
   creator: 'https://github.com/Samuklvm',
   issues: 'https://github.com/Samuklvm/Project-Nexo/issues',
@@ -1055,7 +1113,9 @@ registerIpcHandler('wallpaper:reset', async () => {
 
 // ---- Preferência de compartilhamento opcional (Registro do Windows, como no instalador) ----
 const PRIVACY_KEY = 'HKCU\\Software\\NexoDeviceCare\\Privacy';
+const PRIVACY_FILE = () => path.join(app.getPath('userData'), 'privacy.json');
 registerIpcHandler('privacy:get', async () => {
+  if (IS_LINUX) { try { return { shareWithCreator: JSON.parse(await fs.readFile(PRIVACY_FILE(), 'utf8')).shareWithCreator === true }; } catch { return { shareWithCreator: false }; } }
   if (process.platform !== 'win32') return { shareWithCreator: false };
   try {
     const { stdout } = await execFileAsync('reg', ['query', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn'], { windowsHide: true, timeout: 5000 });
@@ -1063,6 +1123,7 @@ registerIpcHandler('privacy:get', async () => {
   } catch { return { shareWithCreator: false }; }
 });
 registerIpcHandler('privacy:set', async (_event, enabled) => {
+  if (IS_LINUX) { await fs.writeFile(PRIVACY_FILE(), JSON.stringify({ shareWithCreator: Boolean(enabled) }), 'utf8'); return { shareWithCreator: Boolean(enabled) }; }
   if (process.platform !== 'win32') return { shareWithCreator: false };
   await execFileAsync('reg', ['add', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', enabled ? '1' : '0', '/f'], { windowsHide: true, timeout: 5000 });
   return { shareWithCreator: Boolean(enabled) };
@@ -1112,10 +1173,19 @@ async function applySettings(patch) {
   for (const [key, value] of Object.entries(patch || {})) if (key in SETTINGS_DEFAULTS && typeof value === 'boolean') settings[key] = value;
   await fs.writeFile(SETTINGS_FILE(), JSON.stringify(settings), 'utf8');
   if (process.platform === 'win32' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.openAtLogin, name: 'NexoDeviceCare', args: ['--hidden'] });
+  if (IS_LINUX && app.isPackaged) await setLinuxAutostart(settings.openAtLogin);
   applyTray();
   if (settings.autoSession) { if (!library.list().length) await library.scan().catch(() => []); watcher.start(); } else watcher.stop();
   sendToWindow('settings:changed', { ...settings });
   return { ...settings, packaged: app.isPackaged, platform: process.platform };
+}
+/** Linux: o Electron não cria entrada de inicialização; o Nexo grava o .desktop padrão do freedesktop. */
+const AUTOSTART_FILE = () => path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart', 'nexo-device-care.desktop');
+async function setLinuxAutostart(enabled) {
+  if (!enabled) { await fs.rm(AUTOSTART_FILE(), { force: true }); return; }
+  const exec = process.env.APPIMAGE || process.execPath;
+  await fs.mkdir(path.dirname(AUTOSTART_FILE()), { recursive: true });
+  await fs.writeFile(AUTOSTART_FILE(), `[Desktop Entry]\nType=Application\nName=Nexo Device Care\nExec="${exec.replace(/"/g, '')}" --hidden\nIcon=nexo-device-care\nX-GNOME-Autostart-enabled=true\nComment=Inicia o Nexo escondido na bandeja\n`, 'utf8');
 }
 registerIpcHandler('settings:get', async () => ({ ...settings, packaged: app.isPackaged, platform: process.platform }));
 registerIpcHandler('settings:set', async (_event, patch) => applySettings(patch));
@@ -1126,6 +1196,7 @@ const elevate = createElevator({ runPowerShell: runPowerShellCode, fs, path, dir
 // ---- Acesso ao FPS: grupo "Performance Log Users" (SID S-1-5-32-559), automático com a permissão da pessoa ----
 const ACCESS_SCRIPT = String.raw`$id=[Security.Principal.WindowsIdentity]::GetCurrent(); $pr=New-Object Security.Principal.WindowsPrincipal($id); $in=[bool](@($id.Groups | Where-Object { $_.Value -eq 'S-1-5-32-559' }).Count); $member=$false; try { $member=[bool](@(Get-LocalGroupMember -SID 'S-1-5-32-559' -ErrorAction Stop | Where-Object { $_.SID.Value -eq $id.User.Value }).Count) } catch {}; [pscustomobject]@{ sid=$id.User.Value; inToken=$in; member=$member; admin=$pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) } | ConvertTo-Json -Compress`;
 async function readAccess() {
+  if (IS_LINUX) return { platform: 'linux', inToken: true, member: false, admin: false, sid: null };
   if (process.platform !== 'win32') return { platform: process.platform, inToken: false, member: false, admin: false, sid: null };
   const result = await runPowerShellCode(ACCESS_SCRIPT, 15000);
   try { const parsed = JSON.parse(result.stdout); return { platform: 'win32', inToken: Boolean(parsed.inToken), member: Boolean(parsed.member) || Boolean(parsed.inToken), admin: Boolean(parsed.admin), sid: parsed.sid }; }
@@ -1155,34 +1226,144 @@ $vbs = $null; $hvci = $null
 if ($dg) { $vbs = [int]$dg.VirtualizationBasedSecurityStatus; $hvci = [bool](@($dg.SecurityServicesRunning) -contains 2) }
 [pscustomobject]@{ memory = $mem; displays = $disp; hags = $hags; gameMode = $gm; capture = $cap; vbs = $vbs; hvci = $hvci } | ConvertTo-Json -Depth 4 -Compress`;
 registerIpcHandler('system:facts', async () => {
+  if (IS_LINUX) {
+    const [profiles, mangohud, gamemode, governor] = await Promise.all([linux.powerProfiles(), linux.which('mangohud'), linux.which('gamemoded'), fs.readFile('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor', 'utf8').then((text) => text.trim()).catch(() => null)]);
+    return { platform: 'linux', session: process.env.XDG_SESSION_TYPE || null, kernel: os.release(), powerProfile: profiles.find((profile) => profile.active)?.guid || null, ppd: profiles.length > 0, mangohud, gamemode, governor };
+  }
   if (process.platform !== 'win32') return { platform: process.platform };
   const result = await runPowerShellCode(FACTS_SCRIPT, 20000);
   try { return { platform: 'win32', ...JSON.parse(result.stdout) }; } catch { return { platform: 'win32' }; }
 });
 
+// ---- Conexões (Steam deste PC, Xbox, Discord) e capas oficiais ----
+const CONNECTIONS_FILE = () => path.join(app.getPath('userData'), 'connections.bin');
+let connections = { steam: null, xbox: null, discord: { enabled: false, showGame: true, showNexo: false } };
+async function loadConnections() {
+  try {
+    const raw = await fs.readFile(CONNECTIONS_FILE());
+    const parsed = JSON.parse(safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(raw) : raw.toString('utf8'));
+    connections = { ...connections, ...parsed, discord: { ...connections.discord, ...(parsed.discord || {}) } };
+  } catch { /* nada conectado */ }
+}
+async function saveConnections() {
+  const text = JSON.stringify(connections);
+  await fs.writeFile(CONNECTIONS_FILE(), safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(text) : Buffer.from(text, 'utf8'));
+}
+async function integrationConfig() {
+  const config = { discordAppId: process.env.NEXO_DISCORD_APP_ID || null, xboxClientId: process.env.NEXO_XBOX_CLIENT_ID || null };
+  const files = [path.join(app.getPath('userData'), 'integrations.json'), app.isPackaged ? path.join(process.resourcesPath, 'config', 'integrations.json') : path.join(__dirname, 'config', 'integrations.json')];
+  for (const file of files) {
+    try {
+      const parsed = JSON.parse(await fs.readFile(file, 'utf8'));
+      if (!config.discordAppId && DiscordRpc.APP_ID.test(String(parsed.discordAppId || ''))) config.discordAppId = String(parsed.discordAppId);
+      if (!config.xboxClientId && Xbox.CLIENT_ID.test(String(parsed.xboxClientId || ''))) config.xboxClientId = String(parsed.xboxClientId);
+    } catch { /* próximo */ }
+  }
+  return config;
+}
+const withTimeout = (ms) => (typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(ms) : undefined);
+async function fetchBytes(url) {
+  const response = await net.fetch(url, { signal: withTimeout(15000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+async function fetchJson(url) {
+  const response = await net.fetch(url, { signal: withTimeout(15000), headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+/** Reduz a imagem para a largura exibida (capas 360 px, fundos 1600 px). Menos RAM e decodificação mais rápida. */
+function shrink(image, width, asPng) {
+  if (image.isEmpty()) return null;
+  const size = image.getSize();
+  const out = size.width > width ? image.resize({ width, quality: 'good' }) : image;
+  return asPng ? out.toPNG() : out.toJPEG(86);
+}
+const COVERS_DIR = () => path.join(app.getPath('userData'), 'covers');
+const covers = createCoverResolver({
+  fetchBytes, fetchJson,
+  save: async (id, kind, bytes) => {
+    const png = kind === 'logo';
+    const data = shrink(nativeImage.createFromBuffer(bytes), kind === 'hero' ? 1600 : kind === 'logo' ? 640 : 360, png) || bytes;
+    const file = path.join(COVERS_DIR(), `off-${id}-${kind}.${png ? 'png' : 'jpg'}`);
+    await fs.mkdir(COVERS_DIR(), { recursive: true });
+    await fs.writeFile(file, data);
+    return file;
+  }
+});
+const steamAccount = Steam.createSteamAccount({ fs, path, fetchJson });
+let ownedCache = { at: 0, key: null, games: [] };
+const discord = createDiscord({ connect: (pipe) => nodeNet.createConnection(pipe) });
+
 // ---- Biblioteca de jogos ----
 const library = createLibrary({
   fs, path, runPowerShell: runPowerShellCode,
   getFileIcon: (file) => app.getFileIcon(file, { size: 'large' }).then((image) => image.toDataURL()),
-  coversDir: path.join(app.getPath('userData'), 'covers'),
+  coversDir: COVERS_DIR(),
   manualFile: path.join(app.getPath('userData'), 'games-manual.json'),
-  fetchCover: async (appid) => {
-    if (!/^\d+$/.test(String(appid))) return null;
-    for (const name of ['library_600x900_2x.jpg', 'library_600x900.jpg', 'header.jpg']) {
-      const response = await net.fetch(`https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/${name}`);
-      if (response.ok) return Buffer.from(await response.arrayBuffer());
+  downscale: async (source, target, width) => { const data = shrink(nativeImage.createFromPath(source), width, target.endsWith('.png')); if (!data) return false; await fs.writeFile(target, data); return true; },
+  resolveOnline: (game) => covers.resolve(game),
+  extras: async (steamRoot) => {
+    const out = { xboxTitles: connections.xbox?.titles || [] };
+    const steam = connections.steam;
+    if (steam?.steamId) {
+      out.steamPlaytime = await steamAccount.playtime(steamRoot, steam.steamId);
+      if (steam.apiKey) {
+        const fresh = ownedCache.key === steam.steamId && Date.now() - ownedCache.at < 6 * 3600 * 1000;
+        if (!fresh) ownedCache = { at: Date.now(), key: steam.steamId, games: await steamAccount.ownedGames(steam.apiKey, steam.steamId).catch(() => ownedCache.games) };
+        out.steamOwned = ownedCache.games;
+      }
     }
-    return null;
+    return out;
   }
 });
-const coverUrl = (list) => list.map((game) => ({ ...game, cover: game.cover ? `${pathToFileURL(game.cover).href}?v=${encodeURIComponent(game.coverSource || '')}` : null }));
+const fileUrl = (file, tag = '') => (file ? `${pathToFileURL(file).href}?v=${encodeURIComponent(tag)}` : null);
+const coverUrl = (list) => list.map((game) => ({ ...game, cover: fileUrl(game.cover, game.coverSource || ''), hero: fileUrl(game.hero, 'h'), logo: fileUrl(game.logo, 'l'), header: fileUrl(game.header, 'c') }));
+let artRunning = false;
+async function fetchOfficialArt(force = false) {
+  if (artRunning) return 0;
+  artRunning = true;
+  try {
+    const found = await library.fetchOfficialArt({ force, onProgress: (done, total) => sendToWindow('games:art-progress', { done, total }) });
+    sendToWindow('games:updated', coverUrl(library.list()));
+    return found;
+  } finally { artRunning = false; sendToWindow('games:art-progress', null); }
+}
 registerIpcHandler('games:scan', async () => {
   const list = await library.scan();
-  if (settings.onlineCovers) library.fetchMissingCovers().then((count) => { if (count) sendToWindow('games:updated', coverUrl(library.list())); }).catch(() => {});
+  if (settings.onlineCovers) fetchOfficialArt().catch(() => {});
   return coverUrl(list);
 });
+registerIpcHandler('games:fetch-art', async (_event, options) => {
+  if (!settings.onlineCovers) await applySettings({ onlineCovers: true });
+  return { found: await fetchOfficialArt(Boolean(options?.force)) };
+});
+// Dados completos do jogo (loja, novidades e conquistas da Steam). Só com o conteúdo online permitido.
+const steamDetails = createSteamDetails({ fetchJson, fs, path, cacheDir: path.join(app.getPath('userData'), 'details') });
+registerIpcHandler('games:details', async (_event, id) => {
+  const game = library.get(String(id));
+  if (!game) throw new Error('Jogo não encontrado; atualize a biblioteca.');
+  if (!settings.onlineCovers) return { consent: false };
+  let appid = game.appid || null;
+  let matched = false;
+  if (!appid) { appid = await steamDetails.findAppid(game.name, Covers.exactSteamMatch).catch(() => null); matched = Boolean(appid); }
+  if (!appid) return { consent: true, appid: null };
+  const steam = connections.steam;
+  const [store, news, achievements] = await Promise.all([
+    steamDetails.store(appid).catch(() => null),
+    steamDetails.news(appid).catch(() => []),
+    game.source === 'steam' ? steamDetails.achievements(appid, steam?.steamId, steam?.apiKey).catch(() => ({ state: 'error', unlocked: 0, total: 0, list: [] })) : Promise.resolve({ state: 'other-store', unlocked: 0, total: 0, list: [] })
+  ]);
+  return { consent: true, appid, matched, store, news, achievements };
+});
+const STORE_URL = /^https:\/\/(store\.steampowered\.com|steamcommunity\.com|steamstore-a\.akamaihd\.net)\/[\w\-./?=&%#:]*$/;
+registerIpcHandler('app:open-store-url', async (_event, url) => {
+  if (typeof url !== 'string' || !STORE_URL.test(url)) throw new Error('Link não permitido.');
+  await shell.openExternal(url);
+  return { ok: true };
+});
 registerIpcHandler('games:list', async () => coverUrl(library.list()));
-const LAUNCH_SCHEMES = /^(steam:\/\/rungameid\/\d+|com\.epicgames\.launcher:\/\/apps\/[\w%.-]+\?action=launch&silent=true|uplay:\/\/launch\/\d+\/0)$/;
+const LAUNCH_SCHEMES = /^(steam:\/\/(rungameid|install)\/\d+|com\.epicgames\.launcher:\/\/apps\/[\w%.-]+\?action=launch&silent=true|uplay:\/\/launch\/\d+\/0)$/;
 registerIpcHandler('games:launch', async (_event, id) => {
   const game = library.get(String(id));
   if (!game) throw new Error('Jogo não encontrado; atualize a biblioteca.');
@@ -1233,7 +1414,7 @@ registerIpcHandler('games:remove-manual', async (_event, id) => {
 });
 
 // ---- Observador de jogos (sessão automática; opcional) ----
-const watcher = createWatcher({
+const watcher = (IS_LINUX ? (options) => createLinuxWatcher({ linux, ...options }) : createWatcher)({
   match: (exePath) => library.matchPath(exePath),
   onStart: (game) => {
     sendToWindow('watch:game', { type: 'start', name: game.name, gameId: game.gameId, pid: game.pid });
@@ -1259,13 +1440,13 @@ async function readCpuTemperature() {
   return acpi.length ? Math.max(...acpi) : null;
 }
 const labState = { running: false, signal: null };
-const labSystem = createLabSystem({
+const labSystem = IS_LINUX ? createLinuxLabSystem({ linux, run: runCode, bench: (mode) => runCpuBench(mode, 1200), readTemp: () => readCpuTemperature(), cpuLoad: getCpuUsage, onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()), fs, path, dir: path.join(app.getPath('userData'), 'lab') }) : createLabSystem({
   run: runCode, runPowerShell: runPowerShellCode,
   bench: (mode) => runCpuBench(mode, 1200),
   readTemp: readCpuTemperature, cpuLoad: getCpuUsage, onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()),
   elevate, fs, path, dir: path.join(app.getPath('userData'), 'lab'), exePath: process.execPath, isPackaged: app.isPackaged
 });
-registerIpcHandler('lab:status', async () => ({ running: labState.running, pending: await labSystem.hasPendingLock(), platform: process.platform, space: NexoLab.SPACE.map(({ id, label, values, risk, novelty, hidden, what, unit, names }) => ({ id, label, values, risk, novelty, hidden, what, unit, names })) }));
+registerIpcHandler('lab:status', async () => ({ running: labState.running, pending: await labSystem.hasPendingLock(), platform: process.platform, space: NexoLab.spaceFor(process.platform).map(({ id, label, values, risk, novelty, hidden, what, unit, names }) => ({ id, label, values, risk, novelty, hidden, what, unit, names })) }));
 registerIpcHandler('lab:preflight', async () => {
   if (labState.running) throw new Error('O laboratório já está rodando.');
   const pre = await labSystem.preflight();
@@ -1296,6 +1477,108 @@ registerIpcHandler('lab:adopt', async (_event, config) => {
   const clean = {};
   for (const [id, value] of Object.entries(config && typeof config === 'object' ? config : {})) if (NexoLab.knob(id) && Number.isInteger(value)) clean[id] = value;
   return labSystem.adoptCurrent(clean);
+});
+
+// ---- Conexões: IPC ----
+async function connectionsView() {
+  const config = await integrationConfig();
+  const steamRoot = library.steamRoot();
+  const detected = await steamAccount.detect(steamRoot).catch(() => ({ users: [] }));
+  const steam = connections.steam;
+  const steamUser = steam ? detected.users.find((user) => user.steamId === steam.steamId) : null;
+  return {
+    steam: { installed: Boolean(steamRoot), connected: Boolean(steam), steamId: steam?.steamId || null, personaName: steam?.personaName || null, avatar: fileUrl(steamUser?.avatarFile, 'a'), hasKey: Boolean(steam?.apiKey), owned: ownedCache.key === steam?.steamId ? ownedCache.games.length : null,
+      detected: detected.users.map((user) => ({ steamId: user.steamId, personaName: user.personaName, avatar: fileUrl(user.avatarFile, 'a'), mostRecent: user.mostRecent })) },
+    xbox: { configured: Boolean(config.xboxClientId), connected: Boolean(connections.xbox), gamertag: connections.xbox?.gamertag || null, avatar: fileUrl(connections.xbox?.pictureFile, 'x'), titles: connections.xbox?.titles?.length || 0, at: connections.xbox?.at || null },
+    discord: { configured: Boolean(config.discordAppId), ...connections.discord, ready: discord.isReady() }
+  };
+}
+registerIpcHandler('connections:get', connectionsView);
+registerIpcHandler('steam:connect', async (_event, steamId) => {
+  const detected = await steamAccount.detect(library.steamRoot());
+  const user = detected.users.find((item) => item.steamId === String(steamId));
+  if (!user) throw new Error('Essa conta não entrou na Steam deste PC.');
+  connections.steam = { steamId: user.steamId, personaName: user.personaName, apiKey: connections.steam?.steamId === user.steamId ? connections.steam.apiKey : null, at: Date.now() };
+  await saveConnections();
+  return connectionsView();
+});
+registerIpcHandler('steam:disconnect', async () => { connections.steam = null; ownedCache = { at: 0, key: null, games: [] }; await saveConnections(); return connectionsView(); });
+registerIpcHandler('steam:set-key', async (_event, key) => {
+  if (!connections.steam) throw new Error('Conecte a conta Steam primeiro.');
+  const clean = String(key || '').trim();
+  if (!clean) { connections.steam.apiKey = null; ownedCache = { at: 0, key: null, games: [] }; await saveConnections(); return connectionsView(); }
+  const games = await steamAccount.ownedGames(clean, connections.steam.steamId);
+  connections.steam.apiKey = clean.toUpperCase();
+  ownedCache = { at: Date.now(), key: connections.steam.steamId, games };
+  await saveConnections();
+  return connectionsView();
+});
+let xboxBusy = false;
+registerIpcHandler('xbox:sign-in', async () => {
+  if (xboxBusy) throw new Error('Já existe um login da Microsoft em andamento no navegador.');
+  const config = await integrationConfig();
+  xboxBusy = true;
+  try {
+    const result = await Xbox.signIn({ clientId: config.xboxClientId, createServer: http.createServer, openExternal: (url) => shell.openExternal(url), fetch: (url, init) => net.fetch(url, init) });
+    let pictureFile = null;
+    if (result.profile.picture) {
+      try { const bytes = await fetchBytes(`${result.profile.picture}&w=128`.replace(/\?&/, '?')); if (detectImageExtension(bytes)) { await fs.mkdir(ACCOUNT_DIR(), { recursive: true }); pictureFile = path.join(ACCOUNT_DIR(), `xbox.${detectImageExtension(bytes)}`); await fs.writeFile(pictureFile, bytes); } } catch { /* sem foto */ }
+    }
+    connections.xbox = { gamertag: result.profile.gamertag, pictureFile, titles: result.titles, at: Date.now() };
+    await saveConnections();
+    mainWindow?.show(); mainWindow?.focus();
+    return connectionsView();
+  } finally { xboxBusy = false; }
+});
+registerIpcHandler('xbox:sign-out', async () => {
+  if (connections.xbox?.pictureFile) await fs.rm(connections.xbox.pictureFile, { force: true });
+  connections.xbox = null; await saveConnections(); return connectionsView();
+});
+let presence = null;
+async function pushPresence() {
+  const config = await integrationConfig();
+  if (!config.discordAppId) return;
+  const prefs = connections.discord;
+  if (!prefs.enabled) { await discord.clear(config.discordAppId).catch(() => {}); return; }
+  if (presence?.kind === 'game' && prefs.showGame) await discord.setActivity(config.discordAppId, { details: `Jogando ${presence.name}`, state: 'Desempenho medido pelo Nexo', startedAt: presence.startedAt });
+  else if (prefs.showNexo) await discord.setActivity(config.discordAppId, { details: 'Cuidando do PC com o Nexo', state: presence?.kind === 'lab' ? 'Laboratório em ação' : undefined });
+  else await discord.clear(config.discordAppId);
+}
+registerIpcHandler('discord:set', async (_event, patch) => {
+  for (const key of ['enabled', 'showGame', 'showNexo']) if (typeof patch?.[key] === 'boolean') connections.discord[key] = patch[key];
+  await saveConnections();
+  try { await pushPresence(); } catch (error) { if (connections.discord.enabled) throw error; }
+  return connectionsView();
+});
+registerIpcHandler('presence:update', async (_event, state) => {
+  presence = state && ['game', 'lab'].includes(state.kind) ? { kind: state.kind, name: String(state.name || '').slice(0, 80), startedAt: Number(state.startedAt) || Date.now() } : null;
+  await pushPresence().catch(() => {});
+  return { ok: true };
+});
+registerIpcHandler('integrations:import', async () => {
+  const picked = await dialog.showOpenDialog(mainWindow, { title: 'Configuração das integrações (JSON)', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+  if (picked.canceled || !picked.filePaths[0]) return connectionsView();
+  let parsed;
+  try { parsed = JSON.parse(await fs.readFile(picked.filePaths[0], 'utf8')); } catch { throw new Error('Arquivo JSON inválido.'); }
+  const clean = {};
+  if (DiscordRpc.APP_ID.test(String(parsed.discordAppId || ''))) clean.discordAppId = String(parsed.discordAppId);
+  if (Xbox.CLIENT_ID.test(String(parsed.xboxClientId || ''))) clean.xboxClientId = String(parsed.xboxClientId);
+  if (!Object.keys(clean).length) throw new Error('Esperado: { "discordAppId": "…", "xboxClientId": "…" }.');
+  await fs.writeFile(path.join(app.getPath('userData'), 'integrations.json'), JSON.stringify(clean), 'utf8');
+  return connectionsView();
+});
+
+// ---- Custo do próprio Nexo e nível do hardware (para o modo leve automático) ----
+registerIpcHandler('app:self-metrics', async () => {
+  const metrics = typeof app.getAppMetrics === 'function' ? app.getAppMetrics() : [];
+  const cores = Math.max(1, os.cpus().length);
+  return { cpu: metrics.reduce((sum, item) => sum + (item.cpu?.percentCPUUsage || 0), 0) / cores, memMB: metrics.reduce((sum, item) => sum + (item.memory?.workingSetSize || 0), 0) / 1024, processes: metrics.length };
+});
+registerIpcHandler('system:tier', async () => {
+  const cores = os.cpus().length;
+  const memGB = os.totalmem() / 1024 ** 3;
+  const tier = cores <= 4 || memGB < 7.5 ? 'fraco' : cores <= 8 || memGB < 15 ? 'medio' : 'forte';
+  return { cores, memGB: Math.round(memGB * 10) / 10, tier };
 });
 
 // ---- Conta Google (opcional) ----
@@ -1422,6 +1705,19 @@ if ($left.Count -eq 0) {
 }
 
 registerIpcHandler('app:uninstall', async () => {
+  if (IS_LINUX && app.isPackaged) {
+    // Apaga dados, inicialização, a própria AppImage (se for o caso) ou remove o pacote .deb (pkexec pede a senha).
+    const quote = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
+    const removePackage = !process.env.APPIMAGE && process.execPath.startsWith('/opt/') ? linuxPrivileged('remove-deb') : null;
+    const script = [`while kill -0 ${process.pid} 2>/dev/null; do sleep 0.5; done`,
+      `rm -rf ${quote(app.getPath('userData'))} ${quote(path.join(os.homedir(), '.cache', 'nexo-device-care'))} ${quote(path.join(os.homedir(), '.cache', 'nexo-device-care-updater'))} ${quote(AUTOSTART_FILE())}`,
+      process.env.APPIMAGE ? `rm -f ${quote(process.env.APPIMAGE)}` : '',
+      removePackage ? removePackage.map(quote).join(' ') : ''].filter(Boolean).join('; ');
+    spawn('sh', ['-c', script], { detached: true, stdio: 'ignore' }).unref();
+    await labSystem.recover().catch(() => {});
+    setTimeout(() => app.quit(), 400);
+    return { ok: true };
+  }
   if (process.platform !== 'win32' || !app.isPackaged) {
     throw new Error('A desinstalação completa só está disponível na versão instalada do Nexo.');
   }
@@ -1453,6 +1749,7 @@ if (!app.requestSingleInstanceLock()) {
     const recovered = await labSystem.recover().catch(() => ({ recovered: false }));
     if (process.argv.includes('--lab-recover')) { app.quit(); return; }
     await loadSettings();
+    await loadConnections();
     createWindow();
     if (recovered.recovered) mainWindow.webContents.once('did-finish-load', () => sendToWindow('lab:recovered', recovered));
     applyTray();
@@ -1470,6 +1767,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', (event) => {
   app.isQuitting = true;
+  discord.close();
   if (labState.running) {
     // Nunca sair com o clone do laboratório ativo: cancela, espera a restauração e sai.
     event.preventDefault();

@@ -2,6 +2,14 @@
 
 Notas completas de cada versão em [`docs/releases/`](docs/releases/).
 
+## 0.6.0 — Linux, página completa do jogo e contas conectadas
+- Novo: suporte a Linux (AppImage e .deb) com sensores, sessões, FPS pelo MangoHud, biblioteca Steam/Heroic, perfis de energia e laboratório.
+- Novo: página de cada jogo com visão geral, conquistas (com raridade global), novidades e atualizações oficiais e desempenho.
+- Novo: capas oficiais (Steam, Microsoft Store, Xbox) e contas conectadas (Steam deste PC, Steam Web API, Xbox, Discord Rich Presence).
+- Melhoria: modo leve automático, animações pausadas sem foco, leituras espaçadas em segundo plano, custo do Nexo em Ajustes.
+- Correção: caixa de consentimento do laboratório, YAML do workflow, release do Linux esperando a do Windows, gráfico de FPS, datas quebrando linha, caminhos da Steam.
+- Mudança: removido o cartão da Nintendo.
+
 ## 0.5.0 — Otimização extrema (beta), biblioteca de jogos e Atlas
 - Novo: Otimização extrema (beta) — laboratório autônomo com clone do plano de energia, ponto de restauração, A/B contra o ruído, guardas, recuperação automática e modos assistido/autônomo; sessões de risco marcadas.
 - Novo: biblioteca de jogos (Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, Riot, Rockstar e manuais).

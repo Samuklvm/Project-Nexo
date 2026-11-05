@@ -20,6 +20,10 @@ const Nexo = (window.Nexo = {
   emit(event, payload) { for (const handler of this.listeners[event] || []) { try { handler(payload); } catch (error) { console.error(error); } } }
 });
 
+/* Plataforma: Windows ou Linux. O agente do Electron diz qual; a prévia de desenvolvimento pode forçar. */
+Nexo.platform = window.__nexoPlatform || (/Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent) ? 'linux' : 'win32');
+document.body.dataset.platform = Nexo.platform;
+
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 

@@ -14,8 +14,9 @@
 
   /* ---------- Detecção de jogo (heurística por pasta de biblioteca; nunca lê a memória do jogo) ---------- */
   const GAME_FOLDERS = [/\\steamapps\\common\\/i, /\\epic games\\(?!launcher)/i, /\\gog galaxy\\games\\/i, /\\gog games\\/i, /\\riot games\\/i,
-    /\\ubisoft game launcher\\games\\/i, /\\ea games\\/i, /\\origin games\\/i, /\\xboxgames\\/i, /\\rockstar games\\/i, /\\blizzard\\/i];
-  const NOT_GAMES = /^(steam|steamwebhelper|epicgameslauncher|galaxyclient|riotclientservices|riotclientux|battle\.net|ubisoftconnect|upc|eadesktop|origin|xboxapp|gamingservices|chrome|msedge|firefox|explorer|discord|code|devenv|obs64|launcher)$/i;
+    /\\ubisoft game launcher\\games\\/i, /\\ea games\\/i, /\\origin games\\/i, /\\xboxgames\\/i, /\\rockstar games\\/i, /\\blizzard\\/i,
+    /\/steamapps\/common\//i, /\/games\/heroic\//i, /\/heroic\/(legendary|gog)?/i, /\/lutris\//i, /\/games\/(epic|gog)\//i];
+  const NOT_GAMES = /^(steam|steamwebhelper|heroic|lutris|gamescope|wineserver|explorer\.exe|epicgameslauncher|galaxyclient|riotclientservices|riotclientux|battle\.net|ubisoftconnect|upc|eadesktop|origin|xboxapp|gamingservices|chrome|msedge|firefox|explorer|discord|code|devenv|obs64|launcher)$/i;
 
   function classifyForeground(foreground) {
     if (!foreground || !foreground.name) return { isGame: false, reason: 'sem programa em primeiro plano' };

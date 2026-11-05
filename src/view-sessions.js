@@ -36,6 +36,11 @@
     setText('fps-note', status.available ? `Componente: ${status.name} (${where}). Exige o grupo “Performance Log Users”.` : status.platform && status.platform !== 'win32' ? 'Disponível só no Windows.' : 'Componente não encontrado. Escolha o PresentMon em “Componentes”, mais abaixo.');
     setText('fps-status-text', status.available ? `${status.name} · ${where}` : 'Não encontrado. Baixe na página oficial e aponte o arquivo, ou use o embutido quando o hash estiver fixado na build.');
     document.getElementById('fps-clear').hidden = status.source !== 'escolhido';
+    if (status.platform === 'linux') {
+      setText('fps-note', status.available ? 'MangoHud instalado. Rode o jogo com a opção de inicialização (em Componentes) e o Nexo lê o FPS sozinho.' : 'Instale o MangoHud (pacote "mangohud" da sua distribuição) para medir FPS.');
+      setText('mango-status', status.available ? 'Instalado. Na Steam: Propriedades do jogo → Opções de inicialização → cole a linha abaixo. O MangoHud grava o log numa pasta do Nexo, que só lê enquanto a sessão grava.' : 'Não encontrado. Instale o pacote "mangohud" (Flatpak: org.freedesktop.Platform.VulkanLayer.MangoHud).');
+      setText('mango-launch', status.launchOption || '');
+    }
     await refreshAccess();
   }
 
@@ -191,6 +196,7 @@
     Nexo.refreshSensors?.();
     setAppStatus(auto ? `Gravando ${rec.name || 'a sessão'} (automático)` : 'Gravando sessão');
     if (auto && rec.useFps && rec.watchPid) startFps(rec.watchPid);
+    if (rec.gameId || auto) Promise.resolve(bridge.updatePresence?.({ kind: 'game', name: rec.name, startedAt: rec.startedAt })).catch(() => {});
     Nexo.emit('session-state');
   }
 
@@ -199,6 +205,7 @@
     const finished = rec;
     rec = null;
     timers.forEach(clearInterval); timers = [];
+    Promise.resolve(bridge.updatePresence?.(null)).catch(() => {});
     stopProbeListener?.(); stopProbeListener = null;
     renderRec();
     setAppStatus('Analisando sessão');
@@ -339,6 +346,11 @@
     finally { setButtonBusy(button, false); }
   });
 
+  document.getElementById('mango-copy').addEventListener('click', async () => {
+    const text = document.getElementById('mango-launch').textContent;
+    try { await navigator.clipboard.writeText(text); showToast('Opção de inicialização copiada.'); }
+    catch { const range = document.createRange(); range.selectNodeContents(document.getElementById('mango-launch')); getSelection().removeAllRanges(); getSelection().addRange(range); showToast('Selecionado: use Ctrl+C.'); }
+  });
   document.getElementById('fps-grant').addEventListener('click', () => Nexo.grantFpsAccess());
   document.getElementById('fps-revoke').addEventListener('click', () => Nexo.revokeFpsAccess());
   document.getElementById('sess-fps').addEventListener('change', (event) => { if (event.target.checked && fps.access && fps.access.platform === 'win32' && !fps.access.ready) showToast(fps.access.needsRelogin ? 'Para o FPS: saia e entre de novo no Windows.' : 'O FPS precisa de uma liberação do Windows.', fps.access.needsRelogin ? null : { label: 'Liberar', run: () => Nexo.grantFpsAccess() }); });

@@ -1,6 +1,6 @@
 /* Interface: navegação, confirmação, paleta de comandos, efeitos e céu animado. */
 (function () {
-  const TITLES = { home: 'Início', analysis: 'Análise', sessions: 'Sessões', library: 'Jogos', optimize: 'Otimizar', lab: 'Otimização extrema (beta)', atlas: 'Atlas de opções', hardware: 'Hardware', maintenance: 'Manutenção', activity: 'Atividade', updates: 'Atualizações', settings: 'Ajustes' };
+  const TITLES = { home: 'Início', analysis: 'Análise', sessions: 'Sessões', library: 'Biblioteca de jogos', optimize: 'Otimizar', lab: 'Otimização extrema (beta)', atlas: 'Atlas de opções', hardware: 'Hardware', maintenance: 'Manutenção', activity: 'Atividade', updates: 'Atualizações', settings: 'Ajustes' };
 
   Nexo.go = function go(view) {
     if (!TITLES[view]) view = 'home';
@@ -150,17 +150,27 @@
     let stars = [];
     let nextAt = 2500;
     let last = 0;
-    const resize = () => { const ratio = devicePixelRatio || 1; width = canvas.width = innerWidth * ratio; height = canvas.height = innerHeight * ratio; };
+    const resize = () => { const ratio = Math.min(devicePixelRatio || 1, 1.5); width = canvas.width = innerWidth * ratio; height = canvas.height = innerHeight * ratio; };
     resize();
     addEventListener('resize', resize);
-    (function frame(time) {
-      requestAnimationFrame(frame);
-      if (document.hidden || Nexo.effectsLite) { last = time; return; }
+    // Nada roda entre uma estrela e outra: um timer agenda a próxima e o desenho só existe enquanto ela cruza o céu.
+    let running = false;
+    let timer = null;
+    const quiet = () => document.hidden || Nexo.effectsLite || document.body.classList.contains('idle');
+    function schedule() { clearTimeout(timer); timer = setTimeout(spawn, nextAt); nextAt = 5500 + Math.random() * 7000; }
+    function spawn() {
+      if (!quiet()) {
+        stars.push({ x: width * (0.45 + Math.random() * 0.6), y: -30, progress: 0 });
+        if (!running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
+      }
+      schedule();
+    }
+    function frame(time) {
       const delta = Math.min(time - last, 80);
       last = time;
       context.clearRect(0, 0, width, height);
-      if (time > nextAt) { stars.push({ x: width * (0.45 + Math.random() * 0.6), y: -30, progress: 0 }); nextAt = time + 5500 + Math.random() * 7000; }
       stars = stars.filter((star) => star.progress < 1);
+      if (!stars.length || quiet()) { stars = []; running = false; return; }
       for (const star of stars) {
         star.progress += delta / 1500;
         const k = star.progress;
@@ -176,7 +186,9 @@
         context.lineCap = 'round';
         context.beginPath(); context.moveTo(headX, headY); context.lineTo(headX + length * 0.55, headY - length * 0.83); context.stroke();
       }
-    })(0);
+      requestAnimationFrame(frame);
+    }
+    schedule();
   })();
 
   /* ---------- Controles da janela ---------- */

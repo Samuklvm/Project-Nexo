@@ -75,6 +75,20 @@ function toolLauncher(name, arg) {
   return `$process = Start-Process -FilePath ${psQuote(file)} -ArgumentList @(${args.map(psQuote).join(', ')}) -Verb RunAs -Wait -PassThru; exit $process.ExitCode`;
 }
 
+/** Linux: pkexec (polkit) mostra a janela de senha do próprio sistema. Só comandos fixos. */
+const LINUX_TOOLS = {
+  fstrim: (mount) => {
+    if (typeof mount !== 'string' || !/^\/[\w\-./ @+]*$/.test(mount) || mount.includes('..')) throw new Error('Ponto de montagem inválido.');
+    return ['pkexec', ['fstrim', '-v', mount]];
+  },
+  'remove-deb': () => ['pkexec', ['dpkg', '-r', 'nexo-device-care']]
+};
+function linuxPrivileged(name, arg) {
+  const build = LINUX_TOOLS[name];
+  if (!build) throw new Error('Ferramenta não permitida.');
+  return build(arg);
+}
+
 const encode = (script) => Buffer.from(script, 'utf16le').toString('base64');
 
 function createElevator({ runPowerShell, fs, path, dir, now = Date.now }) {
@@ -93,4 +107,4 @@ function createElevator({ runPowerShell, fs, path, dir, now = Date.now }) {
   };
 }
 
-module.exports = { createElevator, toolLauncher, TOOLS, restorePointBody, perfLogUsersBody, TASKS, SID_PERF_LOG_USERS, USER_SID, psQuote, encode };
+module.exports = { createElevator, toolLauncher, TOOLS, linuxPrivileged, LINUX_TOOLS, restorePointBody, perfLogUsersBody, TASKS, SID_PERF_LOG_USERS, USER_SID, psQuote, encode };

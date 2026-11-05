@@ -1,3 +1,4 @@
+window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
 /* Ponte simulada: permite abrir a interface num navegador comum (dev/preview.html) sem o Electron.
    Gera uma semana de histórico fictício para mostrar gráficos, rotina e análise. Não entra no instalador. */
 (function () {
@@ -154,3 +155,58 @@
     }
   });
 })();
+// ---- 0.6.0 (simulado): artes largas e logos, conta Steam/Xbox/Discord, custo do app. Tudo inventado.
+(function () {
+  const wide = (title, hue) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1920' height='620'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='hsl(${hue},70%,45%)'/><stop offset='1' stop-color='hsl(${hue + 50},60%,10%)'/></linearGradient><radialGradient id='s' cx='.75' cy='.35' r='.5'><stop offset='0' stop-color='hsl(${hue + 180},90%,80%)' stop-opacity='.95'/><stop offset='1' stop-color='hsl(${hue + 180},90%,80%)' stop-opacity='0'/></radialGradient></defs><rect width='1920' height='620' fill='url(#g)'/><circle cx='1400' cy='220' r='260' fill='url(#s)'/><path d='M0 520 L300 380 L620 470 L900 330 L1240 450 L1600 300 L1920 420 L1920 620 L0 620Z' fill='hsl(${hue + 20},50%,7%)' opacity='.9'/></svg>`)}`;
+  const logo = (title) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='900' height='160'><text x='4' y='110' font-family='Segoe UI,Arial' font-weight='900' font-style='italic' font-size='92' fill='white' letter-spacing='-2'>${title.toUpperCase()}</text></svg>`)}`;
+  const original = window.nexoDesktop.scanGames;
+  const extraHero = { 'Aurora Drift': 205, 'Velvet Circuit': 300, 'Cinder Vale': 18, 'Neon Tide': 320 };
+  const playtime = { 'Aurora Drift': 5240, 'Velvet Circuit': 1980, 'Cinder Vale': 640, 'Neon Tide': 3120, 'Pale Harbor': 410, 'Rift Runner': 8200, 'Hollow Signal': 95 };
+  window.nexoDesktop.scanGames = async () => {
+    const games = (await original()).map((game) => ({ ...game, installed: true, playtimeMin: playtime[game.name] ?? null,
+      hero: extraHero[game.name] !== undefined ? wide(game.name, extraHero[game.name]) : null, logo: extraHero[game.name] !== undefined ? logo(game.name) : null }));
+    const cover = games[0].cover;
+    return [...games, { id: 'steam-900', name: 'Glass Orchard', source: 'steam', sourceLabel: 'Steam', hue: 90, installed: false, fromAccount: 'steam', playtimeMin: 2400, lastPlayed: Date.now() - 200 * 864e5, cover: cover.replace(/Aurora%20Drift/g, 'Glass%20Orchard'), canLaunch: true, coverSource: 'capa oficial (cache da Steam)' },
+      { id: 'xboxconta-1', name: 'Tidebreak Legends', source: 'xboxconta', sourceLabel: 'Conta Xbox', hue: 30, installed: false, fromAccount: 'xbox', playtimeMin: null, lastPlayed: Date.now() - 90 * 864e5, cover: null, canLaunch: false }];
+  };
+  let connections = { steam: { installed: true, connected: true, steamId: '76561198000000002', personaName: 'Estrela Cadente', avatar: null, hasKey: true, owned: 214, detected: [] }, xbox: { configured: true, connected: false, titles: 0 }, discord: { configured: true, enabled: true, showGame: true, showNexo: false, ready: true }, nintendo: { available: false } };
+  Object.assign(window.nexoDesktop, {
+    getConnections: async () => connections, connectSteam: async () => connections, disconnectSteam: async () => connections, setSteamKey: async () => connections,
+    signInXbox: async () => { connections = { ...connections, xbox: { configured: true, connected: true, gamertag: 'EstrelaNX', titles: 128 } }; return connections; }, signOutXbox: async () => connections,
+    setDiscord: async (patch) => { connections = { ...connections, discord: { ...connections.discord, ...patch } }; return connections; }, updatePresence: async () => ({ ok: true }), importIntegrations: async () => connections,
+    fetchGameArt: async () => ({ found: 1 }), onArtProgress: () => () => {},
+    getSelfMetrics: async () => ({ cpu: 0.4 + Math.random() * 0.3, memMB: 182 + Math.random() * 6, processes: 5 }), getHardwareTier: async () => ({ cores: 16, memGB: 31.9, tier: 'forte' })
+  });
+})();
+// ---- Revisão 0.6.0 (simulado): página completa do jogo. Textos e imagens inventados.
+(function () {
+  const shot = (hue, k) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='600' height='338'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='hsl(${hue + k * 25},70%,40%)'/><stop offset='1' stop-color='hsl(${hue + k * 25 + 60},60%,10%)'/></linearGradient></defs><rect width='600' height='338' fill='url(#g)'/><circle cx='${120 + k * 70}' cy='${90 + k * 20}' r='${40 + k * 8}' fill='white' opacity='.18'/><path d='M0 280 L140 200 L260 250 L420 160 L600 240 L600 338 L0 338Z' fill='black' opacity='.45'/></svg>`)}`;
+  const icon = (hue, on) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' rx='10' fill='hsl(${hue},${on ? 70 : 5}%,${on ? 45 : 25}%)'/><path d='M32 12l6 14 15 1-12 9 4 15-13-8-13 8 4-15-12-9 15-1z' fill='white' opacity='${on ? 0.95 : 0.35}'/></svg>`)}`;
+  const names = [['Primeiro passo', 'Termine o prólogo.', 92.4], ['Sem olhar para trás', 'Vença o primeiro chefe sem levar dano.', 31.2], ['Colecionador', 'Encontre 50 fragmentos de estrela.', 18.7], ['Maratonista', 'Jogue 50 horas.', 12.1], ['Lenda do céu', 'Termine no modo mais difícil.', 2.3], ['Final verdadeiro', null, 4.8]];
+  Object.assign(window.nexoDesktop, {
+    getGameDetails: async (id) => {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const hue = 205;
+      return { consent: true, appid: '900001', matched: false,
+        store: { appid: '900001', name: 'Aurora Drift', description: 'Pilote uma nave-vela entre as auroras de um planeta em ruínas, desvie de chuvas de meteoros e descubra por que as estrelas pararam de cair.', about: 'Aurora Drift é um jogo de exploração e corrida com física de vento.\n\nRecursos:\nCampanha de 20 horas\nModo foto\nTrilha sonora orquestral', developers: ['Estúdio Exemplo'], publishers: ['Editora Exemplo'], genres: ['Aventura', 'Corrida', 'Indie'], categories: ['Um jogador', 'Conquistas Steam', 'Suporte total a controle', 'Nuvem Steam'], release: '12 mar. 2025', comingSoon: false, price: 'R$ 59,99', metacritic: 87, recommendations: 48210, achievementsTotal: 6, controller: 'full', header: null,
+          screenshots: [0, 1, 2, 3, 4, 5].map((k) => ({ thumb: shot(hue, k), full: shot(hue, k) })),
+          requirements: { minimum: 'Mínimos:\nSO: Windows 10 64 bits\nProcessador: Quad-core 3 GHz\nMemória: 8 GB de RAM\nPlaca de vídeo: GTX 1050 Ti\nArmazenamento: 25 GB', recommended: 'Recomendados:\nSO: Windows 11 64 bits\nProcessador: Ryzen 5 5600\nMemória: 16 GB de RAM\nPlaca de vídeo: RTX 3060\nArmazenamento: 25 GB em SSD' } },
+        news: [{ id: '1', kind: 'atualizacao', title: 'Atualização 1.4.2: menos travadas no capítulo 3', date: Date.now() - 2 * 864e5, source: 'Anúncio oficial', summary: 'Correções\nMenos engasgos ao entrar na tempestade de meteoros.\nCarregamento 30% mais rápido em HDs.', url: null },
+          { id: '2', kind: 'anuncio', title: 'Evento de inverno: céus congelados', date: Date.now() - 12 * 864e5, source: 'Anúncio oficial', summary: 'Até 10 de janeiro, novas rotas e uma vela exclusiva.', url: null },
+          { id: '3', kind: 'atualizacao', title: 'Patch 1.4.0: modo foto e DLSS', date: Date.now() - 30 * 864e5, source: 'Anúncio oficial', summary: 'Modo foto completo.\nSuporte a DLSS 3 e FSR 3.', url: null }],
+        achievements: { state: 'ok', unlocked: 4, total: 6, list: names.map(([name, description, percent], index) => ({ id: String(index), name, description: index === 5 ? null : description, hidden: index === 5, achieved: index < 4, unlockedAt: index < 4 ? Date.now() - (40 - index * 9) * 864e5 : null, icon: icon(hue + index * 30, index < 4), percent })) } };
+    },
+    openStoreUrl: async () => ({ ok: true })
+  });
+})();
+// ---- Linux (simulado): abra dev/preview.html?linux
+if (window.__nexoPlatform === 'linux') {
+  Object.assign(window.nexoDesktop, {
+    getLabStatus: async () => ({ running: false, pending: false, platform: 'linux', space: NexoLab.LINUX_SPACE }),
+    getFpsStatus: async () => ({ available: true, source: 'mangohud', name: 'MangoHud', platform: 'linux', launchOption: 'MANGOHUD_CONFIG="output_folder=/home/voce/.config/Nexo Device Care/mangohud,autostart_log=1,log_interval=0" mangohud %command%' }),
+    getFpsAccess: async () => ({ platform: 'linux', ready: true, inToken: true, member: false, admin: false, needsRelogin: false }),
+    listPowerPlans: async () => [{ guid: 'power-saver', name: 'Economia de energia', active: false }, { guid: 'balanced', name: 'Equilibrado', active: true }, { guid: 'performance', name: 'Desempenho', active: false }],
+    getSystemFacts: async () => ({ platform: 'linux', session: 'wayland', kernel: '6.11.5', powerProfile: 'balanced', ppd: true, mangohud: true, gamemode: false, governor: 'powersave' }),
+    listDrives: async () => [{ driveLetter: '/', name: '/ (sistema)', fileSystem: 'btrfs', sizeBytes: 953e9, usedBytes: 512e9, freeBytes: 441e9, usedPercent: 54 }, { driveLetter: '/mnt/Jogos', name: '/mnt/Jogos', fileSystem: 'ext4', sizeBytes: 2e12, usedBytes: 1.1e12, freeBytes: 0.9e12, usedPercent: 55 }]
+  });
+}

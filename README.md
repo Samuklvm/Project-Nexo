@@ -1,24 +1,26 @@
 # Nexo Device Care
 
-Aplicativo desktop para Windows que cuida do computador: mede, explica o que está pesando, aprende a rotina de uso e oferece ações reais de manutenção, sempre com prévia e confirmação. É gratuito, de código aberto e processa tudo localmente. As recomendações são heurísticas e **não prometem** aumentar o desempenho em todos os PCs.
+Aplicativo desktop para Windows e Linux que cuida do computador: mede, explica o que está pesando, aprende a rotina de uso e oferece ações reais de manutenção, sempre com prévia e confirmação. É gratuito, de código aberto e processa tudo localmente. As recomendações são heurísticas e **não prometem** aumentar o desempenho em todos os PCs.
 
-## Novidades da 0.5.0
+## Novidades da 0.6.0
 
-- **Otimização extrema (beta):** laboratório autônomo que testa ajustes ocultos do processador num clone temporário do plano de energia, com ponto de restauração, medição A/B contra o ruído, guardas de segurança e volta automática ao original.
-- **Biblioteca de jogos** de todos os launchers, **sessão automática** ao abrir um jogo, **bandeja** e **iniciar com o Windows** (opcionais).
-- **FPS liberado automaticamente** (grupo Performance Log Users, com UAC e reversão).
-- **Atlas de opções** com mitos e o que o Nexo se recusa a fazer, e **conta Google** opcional.
+- **Linux:** o Nexo agora roda no Linux (AppImage e `.deb`), com sensores, sessões, FPS pelo MangoHud, biblioteca Steam/Heroic, perfis de energia e laboratório. Veja a seção [Linux](#linux).
+- **Página de cada jogo como numa loja:** visão geral com capturas e requisitos, **suas conquistas** (com raridade global), **novidades e atualizações oficiais** e o desempenho medido neste PC.
+- **Capas oficiais** (Steam, Microsoft Store e Xbox), **contas conectadas** (Steam deste PC, Steam Web API, Xbox, Discord Rich Presence).
+- **Mais leve em PC fraco:** modo leve automático, animações pausadas sem foco, leituras espaçadas em segundo plano e o custo real do Nexo em Ajustes.
 
-Notas completas: [`docs/releases/v0.5.0.md`](docs/releases/v0.5.0.md) · Histórico: [`CHANGELOG.md`](CHANGELOG.md)
+Notas completas: [`docs/releases/v0.6.0.md`](docs/releases/v0.6.0.md) · Histórico: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## O que ele faz
 
 - **Início:** Índice Nexo (0 a 100) explicado fator por fator, medições ao vivo com miniaturas, mapa do sistema em órbitas (cada componente é um planeta), gráficos de 5 minutos a 7 dias com dica ao passar o mouse, e as principais observações do momento.
 - **Sessões de observação:** grave o PC enquanto joga ou trabalha e receba um relatório. Ele diz se o limite foi a GPU, um único núcleo da CPU, a memória, o calor ou um programa em segundo plano, **sempre com a evidência e os limites**. Detecta jogos pela pasta de instalação (nunca lê a memória do jogo), mede o custo do próprio Nexo e, com o PresentMon, mede FPS, 1% baixo e tempo de quadro.
-- **Jogos:** biblioteca no estilo de uma loja com **todos os jogos instalados** (Steam, Epic, GOG, Xbox/Game Pass, EA, Ubisoft, Battle.net, Riot, Rockstar e os que você adicionar), capas do cache local de cada launcher, destaque do último jogado, filtros, “Jogar” e “Jogar e gravar”, e o desempenho de cada jogo nas sessões gravadas. Opcional: gravar a sessão sozinho quando um jogo abre (e guardar o relatório quando fecha), com a bandeja.
+- **Jogos:** biblioteca no estilo de uma loja: destaque com a arte larga e o logo oficiais, prateleiras “Continue jogando” e “Mais jogados”, página de cada jogo como na loja — visão geral (descrição, capturas, gêneros, desenvolvedora, lançamento, Metacritic, requisitos), **suas conquistas** (desbloqueadas com data, raridade global, ocultas sem spoiler), **novidades e atualizações oficiais** e o FPS de cada sessão gravada — e **todos os jogos instalados** (Steam, Epic, GOG, Xbox/Game Pass, EA, Ubisoft, Battle.net, Riot, Rockstar e os que você adicionar), capas do cache local de cada launcher, destaque do último jogado, filtros, “Jogar” e “Jogar e gravar”, e o desempenho de cada jogo nas sessões gravadas. Opcional: gravar a sessão sozinho quando um jogo abre (e guardar o relatório quando fecha), com a bandeja.
 - **Otimização extrema (beta, arriscada):** um laboratório autônomo que testa **na hora, neste PC**, combinações de ajustes ocultos do processador (EPP, modo de turbo, estacionamento de núcleos, política de aumento, resfriamento…) num **clone temporário** do plano de energia, com ponto de restauração antes, medição A/B intercalada contra o ruído e guardas (tomada, temperatura, aquecimento, erros graves do Windows). Aprende entre execuções (o que nunca foi testado aqui vem primeiro; depois, o que mais rendeu) e, no modo autônomo, adota sozinho só o que a medição confirmou. Sessões de risco ficam marcadas no app inteiro e no Diário.
 - **Atlas de opções:** todas as alavancas que valem conhecer — famosas, pouco conhecidas e boatos —, cada uma com o que o Nexo faz (testa, faz, confere, desaconselha ou se recusa) e o que ele conferiu neste PC (XMP desligado, monitor a 60 Hz, memória em um canal, captura em segundo plano…).
 - **Conta Google (opcional):** login pelo navegador, sem guardar senhas nem tokens (`docs/LOGIN_GOOGLE.md`).
+- **Contas de jogos (opcionais):** Steam deste PC (tempo de jogo, sem senha), Steam Web API com a chave da própria pessoa (jogos não instalados), conta Xbox (gamertag e histórico com artes oficiais) e Discord Rich Presence. Capas **oficiais** das lojas (Steam e Microsoft Store), nunca arte de fã. Configuração em `docs/CONEXOES.md`.
+- **Leve em PC fraco:** modo leve automático na primeira abertura (até 4 núcleos ou menos de 8 GB), animações pausadas com a janela sem foco, leituras 6× mais espaçadas em segundo plano, estrelas do fundo desenhadas só enquanto passam, imagens reduzidas ao tamanho exibido e cartões fora da tela sem pintura. O custo real do Nexo aparece em Ajustes.
 - **Perfil de uso:** Jogos, Trabalho e criação ou Uso geral, escolhido por você. Muda o peso dos fatores no índice, a ordem das observações e o que as sessões destacam.
 - **Análise inteligente:** compara o presente com a sua rotina e mostra a causa provável **com a evidência**. Inclui lentidões detectadas, programas que mais atrapalham, previsão de quando o disco enche, indício de queda de clock por calor, mapa da rotina por dia e hora e leitura sob demanda dos processos.
 - **Otimizar:** limpeza segura por categorias (temporários antigos, relatórios de falha, relatórios de erro do Windows e, opcionalmente, Lixeira), limpeza automática opcional, troca do plano de energia do Windows e lista dos programas que iniciam com o Windows. Cada operação tem uma ficha (risco, reversão, fonte oficial, como medimos e estado de validação). O plano de energia pode ser **medido antes e depois** com um benchmark de CPU de cerca de 20 segundos e revertido depois.
@@ -57,6 +59,25 @@ Outros comandos:
 npm test         # 53 testes: motor de análise, sessões, FPS, IPC do main.cjs e diário/catálogo
 npm run preview  # gera dev/preview.html: abre a interface num navegador, com dados fictícios
 ```
+
+## Linux
+
+O Nexo roda no Linux com as mesmas telas. O que muda é de onde vêm os dados e quais ações existem:
+
+| Recurso | Windows | Linux |
+|---|---|---|
+| Sensores | LibreHardwareMonitor (sensor-host .NET) | `/sys/class/hwmon`, `cpufreq`, `gpu_busy_percent` (AMD) e `nvidia-smi` |
+| Programas e sessões | PowerShell + contadores do Windows | `/proc` + `xprop` (X11 e XWayland; no Wayland puro a detecção automática de jogo não funciona) |
+| FPS | PresentMon | MangoHud (o Nexo lê o log; opção de inicialização pronta em Sessões) |
+| Energia | planos do Windows (`powercfg`) | perfis do power-profiles-daemon |
+| Laboratório (beta) | 7 ajustes ocultos do processador, ponto de restauração | perfis de energia (sem root); ajustes finos exigiriam root a cada mudança |
+| Limpeza | temporários, relatórios de falha, WER, Lixeira | `/tmp`, miniaturas, relatórios do apport, Lixeira freedesktop |
+| Otimizar unidade | `defrag` (UAC) | `fstrim` (pkexec) |
+| SFC, grupo Performance Log Users, Xbox instalado | sim | não existem no Linux |
+| Biblioteca | Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, Riot, Rockstar | Steam (nativa, Flatpak, Snap; Proton incluso) e Heroic (Epic e GOG) |
+| Instalação | instalador NSIS + instalador visual | AppImage (qualquer distribuição) e `.deb` |
+
+Gerar: `npm run dist:linux` (no Linux). Pacotes recomendados: `power-profiles-daemon`, `mangohud`, `x11-utils` (xprop), `lm-sensors`, `policykit-1`. No GNOME, o ícone da bandeja precisa da extensão AppIndicator.
 
 ## Medição de FPS (PresentMon)
 

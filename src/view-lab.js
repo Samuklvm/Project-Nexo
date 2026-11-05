@@ -23,6 +23,7 @@
     document.body.classList.toggle('risk-session', on);
     document.getElementById('risk-banner').hidden = !on;
     if (on) setAppStatus('Laboratório medindo');
+    Promise.resolve(bridge?.updatePresence?.(on ? { kind: 'lab' } : null)).catch(() => {});
   }
 
   /* ---------- Espaço de ajustes e histórico ---------- */
@@ -69,7 +70,7 @@
       const pre = await bridge.labPreflight();
       const available = Object.values(pre.knobs || {}).filter((knob) => knob.available).length;
       const lines = [
-        [pre.platform === 'win32', 'Windows', pre.platform === 'win32' ? 'ok' : 'o laboratório só roda no Windows'],
+        [['win32', 'linux'].includes(pre.platform), 'Sistema compatível', pre.platform === 'linux' ? 'Linux (perfis de energia)' : pre.platform === 'win32' ? 'Windows' : 'o laboratório roda no Windows e no Linux'],
         [!pre.onBattery, 'Na tomada', pre.onBattery ? 'ligue o carregador' : 'ok'],
         [Number.isFinite(pre.tempC) && pre.tempC < 80, 'Temperatura do processador', Number.isFinite(pre.tempC) ? `${Math.round(pre.tempC)} °C` : 'sem leitura (sem ela, não roda)'],
         [!(pre.cpuLoad >= 50), 'Processador livre', Number.isFinite(pre.cpuLoad) ? `${Math.round(pre.cpuLoad)}% ocupado` : '?'],

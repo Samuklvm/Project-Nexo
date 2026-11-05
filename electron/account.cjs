@@ -120,4 +120,38 @@ function signIn({ config, createServer, openExternal, fetch, randomBytes = crypt
   });
 }
 
-module.exports = { createPkce, parseClientConfig, buildAuthUrl, parseCallback, decodeJwtPayload, validateIdToken, signIn, SCOPES, AUTH_URL, TOKEN_URL };
+
+/**
+ * Loopback genérico (usado pelo login Microsoft/Xbox): abre o navegador, espera o código no 127.0.0.1/localhost
+ * e devolve { code, redirectUri, verifier }. A troca do código fica com quem chamou.
+ */
+function loopbackAuthorize({ buildUrl, createServer, openExternal, randomBytes = crypto.randomBytes, timeoutMs = 5 * 60 * 1000, host = '127.0.0.1', redirectHost = host, appName = 'Nexo' }) {
+  const pkce = createPkce(randomBytes);
+  const state = base64url(randomBytes(24));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let redirectUri = null;
+    const server = createServer((request, response) => {
+      const result = parseCallback(request.url, state);
+      if (result.ignore) { response.writeHead(404); response.end(); return; }
+      response.writeHead(result.error ? 400 : 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end(DONE_PAGE(!result.error, result.error ? `${result.error}. Pode fechar esta aba.` : `Conta conectada ao ${appName}. Pode fechar esta aba e voltar ao aplicativo.`));
+      if (result.error) done(new Error(result.error)); else done(null, { code: result.code, redirectUri, verifier: pkce.verifier });
+    });
+    const timer = setTimeout(() => done(new Error('o login demorou demais e foi cancelado')), timeoutMs);
+    function done(error, value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { server.close(); } catch { /* já fechado */ }
+      if (error) reject(error); else resolve(value);
+    }
+    server.on('error', (error) => done(error));
+    server.listen(0, host, () => {
+      redirectUri = `http://${redirectHost}:${server.address().port}`;
+      Promise.resolve(openExternal(buildUrl({ redirectUri, challenge: pkce.challenge, state }))).catch((error) => done(error));
+    });
+  });
+}
+
+module.exports = { loopbackAuthorize, createPkce, parseClientConfig, buildAuthUrl, parseCallback, decodeJwtPayload, validateIdToken, signIn, SCOPES, AUTH_URL, TOKEN_URL };

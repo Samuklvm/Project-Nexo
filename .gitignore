@@ -13,3 +13,4 @@ dev/preview.html
 dev/csp-test.html
 third-party/bin/*.exe
 config/google-oauth.json
+config/integrations.json

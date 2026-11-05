@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: blob: https://*.steamstatic.com https://steamcdn-a.akamaihd.net; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="theme-color" content="#060919" />
   <title>Nexo Device Care</title>
   <link rel="stylesheet" href="style.css" />
@@ -187,7 +187,7 @@
           <div class="rec-options" id="rec-options">
             <label class="field"><span>Nome (opcional)</span><input id="sess-name" type="text" maxlength="60" placeholder="Ex.: Jogo X, render de 1 h" autocomplete="off" /></label>
             <label class="switch compact"><input id="sess-probe" type="checkbox" checked /><i></i><span>Observação detalhada<small>Programa em primeiro plano, detecção de jogo e uso de CPU e GPU por programa.</small></span></label>
-            <label class="switch compact"><input id="sess-fps" type="checkbox" /><i></i><span>Medir FPS com o PresentMon<small id="fps-note">Verificando o componente…</small></span></label>
+            <label class="switch compact"><input id="sess-fps" type="checkbox" /><i></i><span><span data-only="win32">Medir FPS com o PresentMon</span><span data-only="linux">Medir FPS com o MangoHud</span><small id="fps-note">Verificando o componente…</small></span></label>
           </div>
           <div class="rec-live" id="rec-live" hidden>
             <div class="live-grid">
@@ -207,35 +207,49 @@
         <div class="section-head"><div><h2>Sessões salvas</h2><p>As 10 mais recentes ficam só neste computador.</p></div><button class="link" id="sess-clear" type="button">Apagar todas</button></div>
         <div class="sess-list" id="sess-list"></div>
         <section class="sheet components">
-          <div class="sheet-head"><div><h3>Componentes e diagnóstico</h3><p class="muted">O FPS vem do PresentMon (Intel, licença MIT), que o Nexo executa só quando você pede. Ele exige que o seu usuário esteja no grupo “Performance Log Users” (ou seja administrador).</p></div></div>
-          <div class="comp-row"><div><strong>PresentMon</strong><span class="muted" id="fps-status-text">Verificando…</span></div><div class="btn-row"><button class="btn sm" id="fps-choose" type="button">Escolher PresentMon…</button><button class="btn sm ghost" id="fps-clear" type="button" hidden>Usar o embutido</button><button class="btn sm ghost" id="fps-download" type="button">Página oficial de downloads</button></div></div>
-          <div class="comp-row"><div><strong>Acesso ao FPS</strong><span class="muted" id="fps-access-text">Verificando o grupo “Performance Log Users”…</span></div><div class="btn-row"><button class="btn sm primary" id="fps-grant" type="button" hidden>Liberar automaticamente</button><button class="btn sm ghost" id="fps-revoke" type="button" hidden>Tirar do grupo</button></div></div>
+          <div class="sheet-head"><div><h3>Componentes e diagnóstico</h3><p class="muted" data-only="linux">No Linux o FPS vem do MangoHud (licença MIT): o jogo grava um log e o Nexo só lê esse arquivo enquanto a sessão grava. A sonda lê o primeiro plano pelo xprop (X11 e XWayland).</p><p class="muted" data-only="win32">O FPS vem do PresentMon (Intel, licença MIT), que o Nexo executa só quando você pede. Ele exige que o seu usuário esteja no grupo “Performance Log Users” (ou seja administrador).</p></div></div>
+          <div class="comp-row" data-only="linux"><div><strong>MangoHud (FPS no Linux)</strong><span class="muted" id="mango-status">Verificando…</span><code class="launch-opt" id="mango-launch"></code></div><div class="btn-row"><button class="btn sm" id="mango-copy" type="button">Copiar opção de inicialização</button></div></div>
+          <div class="comp-row" data-only="win32"><div><strong>PresentMon</strong><span class="muted" id="fps-status-text">Verificando…</span></div><div class="btn-row"><button class="btn sm" id="fps-choose" type="button">Escolher PresentMon…</button><button class="btn sm ghost" id="fps-clear" type="button" hidden>Usar o embutido</button><button class="btn sm ghost" id="fps-download" type="button">Página oficial de downloads</button></div></div>
+          <div class="comp-row" data-only="win32"><div><strong>Acesso ao FPS</strong><span class="muted" id="fps-access-text">Verificando o grupo “Performance Log Users”…</span></div><div class="btn-row"><button class="btn sm primary" id="fps-grant" type="button" hidden>Liberar automaticamente</button><button class="btn sm ghost" id="fps-revoke" type="button" hidden>Tirar do grupo</button></div></div>
           <div class="comp-row"><div><strong>Sonda de programas</strong><span class="muted" id="probe-result">Lê o programa em primeiro plano e o uso de CPU e GPU por programa. Teste para ver se funciona neste PC.</span></div><div class="btn-row"><button class="btn sm" id="probe-test" type="button">Testar sonda</button></div></div>
         </section>
       </section>
 
       <!-- JOGOS -->
-      <section class="view" data-view-panel="library">
-        <div class="lib-hero" id="lib-hero">
-          <div class="lib-hero-art" id="lib-hero-art" aria-hidden="true"></div>
-          <div class="lib-hero-copy">
-            <span class="eyebrow" id="lib-hero-eyebrow">Sua biblioteca</span>
-            <h2 id="lib-hero-title">Procurando seus jogos…</h2>
-            <p id="lib-hero-sub">Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, Riot, Rockstar e os que você adicionar.</p>
-            <div class="btn-row" id="lib-hero-actions"></div>
+      <section class="view lib-view" data-view-panel="library">
+        <div id="lib-home">
+          <div class="lib-hero" id="lib-hero">
+            <div class="lib-hero-art" id="lib-hero-art" aria-hidden="true"></div>
+            <div class="lib-hero-copy">
+              <span class="eyebrow" id="lib-hero-eyebrow">Sua biblioteca</span>
+              <div class="lib-hero-title" id="lib-hero-title"><h2>Procurando seus jogos…</h2></div>
+              <p id="lib-hero-sub">Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, Riot, Rockstar e os que você adicionar.</p>
+              <div class="hero-stats" id="lib-hero-stats"></div>
+              <div class="btn-row" id="lib-hero-actions"></div>
+            </div>
           </div>
+          <div class="lib-accounts" id="lib-accounts"></div>
+          <div class="art-banner" id="art-banner" hidden>
+            <div class="art-banner-copy"><strong id="art-banner-title">Capas oficiais</strong><span id="art-banner-text"></span></div>
+            <div class="progress-track" id="art-progress-wrap" hidden><span id="art-progress"></span></div>
+            <button class="btn primary sm" id="art-fetch" type="button">Buscar capas oficiais</button>
+          </div>
+          <section class="shelf" id="shelf-recent" hidden><header><h3>Continue jogando</h3><span class="muted" id="shelf-recent-note"></span></header><div class="shelf-row" id="shelf-recent-row"></div></section>
+          <section class="shelf" id="shelf-top" hidden><header><h3>Mais jogados</h3><span class="muted">pelo tempo de jogo da sua conta</span></header><div class="shelf-row" id="shelf-top-row"></div></section>
+          <div class="lib-toolbar">
+            <h3 class="lib-count" id="lib-count">Biblioteca</h3>
+            <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="lib-search" type="search" placeholder="Buscar na biblioteca" autocomplete="off" /></label>
+            <div class="segmented sm" role="group" aria-label="Ordenar"><button type="button" data-lib-sort="recent" aria-pressed="true">Recentes</button><button type="button" data-lib-sort="playtime" aria-pressed="false">Mais jogados</button><button type="button" data-lib-sort="name" aria-pressed="false">A–Z</button><button type="button" data-lib-sort="size" aria-pressed="false">Tamanho</button></div>
+            <div class="bar-spacer"></div>
+            <button class="btn sm" id="lib-add" type="button"><svg><use href="#i-plus"/></svg>Adicionar jogo</button>
+            <button class="btn sm" id="lib-rescan" type="button"><svg><use href="#i-refresh"/></svg>Atualizar</button>
+          </div>
+          <div class="chips lib-filters" id="lib-sources" role="group" aria-label="Filtrar"></div>
+          <div class="lib-grid" id="lib-grid" aria-live="polite"></div>
+          <label class="switch lib-auto"><input id="lib-auto" type="checkbox" /><i></i><span><strong>Gravar uma sessão sozinho quando eu abrir um jogo</strong><small>O Nexo observa só o programa em primeiro plano (a cada 3 s). Quando um jogo da biblioteca abre, grava a sessão; quando fecha, guarda o relatório. Combine com “Ficar na bandeja” em Ajustes para funcionar com a janela fechada.</small></span></label>
+          <p class="muted footnote">O Nexo lê os manifestos dos launchers, o Registro e as pastas dos jogos. Capas: primeiro o cache que cada loja já guardou no PC; as que faltam vêm das lojas oficiais (Steam e Microsoft Store), só se você permitir. Nunca arte de fã.</p>
         </div>
-        <div class="lib-toolbar">
-          <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="lib-search" type="search" placeholder="Buscar na biblioteca" autocomplete="off" /></label>
-          <div class="chips" id="lib-sources" role="group" aria-label="Filtrar por loja"></div>
-          <div class="segmented sm" role="group" aria-label="Ordenar"><button type="button" data-lib-sort="recent" aria-pressed="true">Recentes</button><button type="button" data-lib-sort="name" aria-pressed="false">A–Z</button><button type="button" data-lib-sort="size" aria-pressed="false">Tamanho</button></div>
-          <div class="bar-spacer"></div>
-          <button class="btn sm" id="lib-add" type="button"><svg><use href="#i-plus"/></svg>Adicionar jogo</button>
-          <button class="btn sm" id="lib-rescan" type="button"><svg><use href="#i-refresh"/></svg>Atualizar</button>
-        </div>
-        <label class="switch lib-auto"><input id="lib-auto" type="checkbox" /><i></i><span><strong>Gravar uma sessão sozinho quando eu abrir um jogo</strong><small>O Nexo observa só o programa em primeiro plano (a cada 3 s). Quando um jogo da biblioteca abre, grava a sessão; quando fecha, guarda o relatório. Combine com “Ficar na bandeja” em Ajustes para funcionar com a janela fechada.</small></span></label>
-        <div class="lib-grid" id="lib-grid" aria-live="polite"></div>
-        <p class="muted footnote" id="lib-foot">O Nexo só lê os manifestos dos launchers, o Registro e as pastas dos jogos. As capas vêm do cache local de cada launcher; baixar as que faltam da CDN da Steam é opcional (Ajustes).</p>
+        <article class="game-page" id="game-page" hidden></article>
       </section>
 
       <!-- OTIMIZAR -->
@@ -250,7 +264,7 @@
           </section>
           <div class="stack">
             <section class="sheet"><div class="sheet-head"><div><h3>Plano de energia <button class="info" type="button" data-op="power-plan-switch" aria-label="Detalhes da operação: plano de energia">i</button></h3><p class="muted">Define o quanto o Windows pode acelerar o processador. Ao escolher um plano, o Nexo pode medir se ele ajuda neste PC.</p><p class="tip" id="power-tip"></p></div></div><div id="power-list" aria-live="polite"><p class="empty">Lendo os planos disponíveis…</p></div></section>
-            <section class="sheet"><div class="sheet-head"><div><h3>Início com o Windows</h3><p class="muted">Programas que abrem sozinhos ao ligar o PC (somente leitura).</p></div></div><ul class="startup-list" id="startup-list" aria-live="polite"><li class="empty">Lendo a lista…</li></ul><button class="btn sm" id="open-startup-settings" type="button">Gerenciar no Windows</button></section>
+            <section class="sheet"><div class="sheet-head"><div><h3>Início com o sistema</h3><p class="muted">Programas que abrem sozinhos ao ligar o PC (somente leitura).</p></div></div><ul class="startup-list" id="startup-list" aria-live="polite"><li class="empty">Lendo a lista…</li></ul><button class="btn sm" id="open-startup-settings" type="button" data-only="win32">Gerenciar no Windows</button></section>
           </div>
         </div>
       </section>
@@ -264,8 +278,8 @@
             <h2>Otimização extrema</h2>
             <p>O Nexo vira um laboratório: inventa combinações de ajustes ocultos do processador que quase ninguém mexe, testa cada uma <strong>na hora, neste PC</strong>, e mede contra o ruído. Nada de receita da internet: só fica o que a medição provar.</p>
             <div class="hazard-cols">
-              <div><h4>O que pode acontecer</h4><ul><li>O PC esquenta e as ventoinhas aceleram por alguns minutos.</li><li>Uma pausa curta ou engasgo enquanto um ajuste é aplicado.</li><li>Num caso raro de instabilidade, o Windows pode precisar reiniciar.</li><li>É beta: ainda não foi validado em muitos PCs reais.</li></ul></div>
-              <div><h4>O que protege você</h4><ul><li>Ponto de restauração do Windows antes de começar.</li><li>Testes só num <strong>clone</strong> do seu plano de energia; o original nunca é editado.</li><li>Guardas: tomada, temperatura, aquecimento e erros graves do Windows param tudo na hora.</li><li>Volta automática ao original no fim, e na próxima abertura se o PC travar.</li></ul></div>
+              <div><h4>O que pode acontecer</h4><ul><li>O PC esquenta e as ventoinhas aceleram por alguns minutos.</li><li>Uma pausa curta ou engasgo enquanto um ajuste é aplicado.</li><li>Num caso raro de instabilidade, o sistema pode precisar reiniciar.</li><li>É beta: ainda não foi validado em muitos PCs reais.</li></ul></div>
+              <div><h4>O que protege você</h4><ul><li data-only="win32">Ponto de restauração do Windows antes de começar.</li><li data-only="win32">Testes só num <strong>clone</strong> do seu plano de energia; o original nunca é editado.</li><li data-only="linux">No Linux, só o perfil de energia muda (power-profiles-daemon, sem root); o original é guardado e volta no fim.</li><li>Guardas: tomada, temperatura, aquecimento e erros graves do sistema param tudo na hora.</li><li>Volta automática ao original no fim, e na próxima abertura se o PC travar.</li></ul></div>
             </div>
           </div>
         </div>
@@ -276,9 +290,9 @@
               <div class="lab-field"><span>Autonomia</span><div class="segmented" role="group" aria-label="Autonomia"><button type="button" data-lab-autonomy="assistido" aria-pressed="true">Assistida</button><button type="button" data-lab-autonomy="autonomo" aria-pressed="false">Autônoma</button></div><small id="lab-autonomy-note">Testa e recomenda. Você decide o que adotar.</small></div>
               <div class="lab-field"><span>Risco permitido</span><div class="segmented" role="group" aria-label="Risco permitido"><button type="button" data-lab-risk="baixo" aria-pressed="false">Só baixo</button><button type="button" data-lab-risk="moderado" aria-pressed="true">Até moderado</button></div></div>
               <div class="lab-field"><span>Ideias por sessão</span><div class="segmented" role="group" aria-label="Ideias por sessão"><button type="button" data-lab-arms="2" aria-pressed="false">2</button><button type="button" data-lab-arms="4" aria-pressed="true">4</button><button type="button" data-lab-arms="6" aria-pressed="false">6</button></div></div>
-              <label class="switch compact"><input id="lab-restore" type="checkbox" checked /><i></i><span>Exigir ponto de restauração <small>Recomendado. O Windows pede permissão de administrador (UAC) para criar.</small></span></label>
+              <label class="switch compact" data-only="win32"><input id="lab-restore" type="checkbox" checked /><i></i><span>Exigir ponto de restauração <small>Recomendado. O Windows pede permissão de administrador (UAC) para criar.</small></span></label>
               <div class="consent">
-                <label class="check"><input id="lab-ack" type="checkbox" /><span>Li o aviso. Entendo que é uma opção arriscada, em beta, e que o Nexo vai testar ajustes sozinho neste PC.</span></label>
+                <label class="consent-check"><span class="check"><input id="lab-ack" type="checkbox" /><i></i></span><span>Li o aviso. Entendo que é uma opção arriscada, em beta, e que o Nexo vai testar ajustes sozinho neste PC.</span></label>
                 <label class="field"><span>Para liberar, digite <strong>ENTENDO O RISCO</strong></span><input id="lab-phrase" type="text" maxlength="30" autocomplete="off" spellcheck="false" /></label>
               </div>
               <div class="btn-row"><button class="btn danger" id="lab-start" type="button" disabled><svg><use href="#i-flask"/></svg>Iniciar sessão de risco</button><button class="btn ghost sm" id="lab-check" type="button">Só conferir se dá para rodar</button></div>
@@ -330,13 +344,13 @@
       <section class="view" data-view-panel="maintenance">
         <header class="page-head"><div><h2>Manutenção</h2><p>Ferramentas nativas do Windows, chamadas com a sua confirmação.</p></div></header>
         <div class="split even">
-          <section class="sheet">
+          <section class="sheet" data-only="win32">
             <div class="sheet-head"><div><h3>Verificar arquivos do sistema <button class="info" type="button" data-op="sfc-scan" aria-label="Detalhes da operação: SFC">i</button></h3><p class="muted">Executa o SFC do Windows, que confere e repara arquivos protegidos.</p></div></div>
             <dl class="facts"><div><dt>Ferramenta</dt><dd>SFC do Windows</dd></div><div><dt>Permissão</dt><dd>Administrador</dd></div><div><dt>Situação</dt><dd id="repair-status">Sob demanda</dd></div></dl>
             <button class="btn primary" id="run-repair" type="button">Verificar e reparar</button>
           </section>
           <section class="sheet drive-panel">
-            <div class="sheet-head"><div><h3>Unidades de armazenamento <button class="info" type="button" data-op="drive-optimize" aria-label="Detalhes da operação: otimizar unidade">i</button></h3><p class="muted">Otimização feita pelo Windows (TRIM em SSD, desfragmentação em HD).</p></div><label class="select"><span class="sr-only">Unidade</span><select id="drive-select"><option value="">Carregando unidades…</option></select></label></div>
+            <div class="sheet-head"><div><h3>Unidades de armazenamento <button class="info" type="button" data-op="drive-optimize" aria-label="Detalhes da operação: otimizar unidade">i</button></h3><p class="muted"><span data-only="win32">Otimização feita pelo Windows (TRIM em SSD, desfragmentação em HD).</span><span data-only="linux">TRIM pelo fstrim do sistema; pede a sua senha (pkexec).</span></p></div><label class="select"><span class="sr-only">Unidade</span><select id="drive-select"><option value="">Carregando unidades…</option></select></label></div>
             <div class="drive-head"><span class="drive-type" id="drive-type">Unidade local</span><strong id="drive-model">Carregando…</strong></div>
             <div class="capacity"><div class="capacity-labels"><span>Espaço usado</span><strong><span id="drive-used-capacity">--</span> <small>de <span id="drive-total-capacity">--</span></small></strong></div><div class="capacity-track"><span id="drive-capacity-bar" style="width:0%"></span></div><div class="capacity-legend"><span id="drive-used-label">-- usados</span><span id="drive-free-label">-- livres</span></div></div>
             <dl class="facts"><div><dt>Formato</dt><dd id="drive-format">--</dd></div><div><dt>Temperatura</dt><dd id="drive-temp">Não medida</dd></div><div><dt>Estado</dt><dd id="drive-state">Aguardando leitura</dd></div></dl>
@@ -391,6 +405,10 @@
           <div class="account-row"><span class="avatar lg" id="account-avatar-lg"><svg><use href="#i-user"/></svg></span><div class="account-copy"><h3 id="account-name">Conta</h3><p class="muted" id="account-detail">Entre com a sua conta Google para ter o seu perfil no Nexo.</p></div><div class="btn-row" id="account-actions"></div></div>
           <p class="muted footnote" id="account-note">Opcional. O login acontece no seu navegador; o Nexo guarda só nome, e-mail e foto neste PC (cifrados pelo Windows) e não guarda senhas nem tokens do Google.</p>
         </section>
+        <section class="sheet connections-sheet" id="connections-sheet">
+          <div class="sheet-head"><div><h3>Contas e conexões</h3><p class="muted">Ligue o Nexo às suas plataformas para completar a biblioteca, trazer tempo de jogo e capas oficiais e mostrar no Discord o que você está jogando. Tudo opcional e desconectável.</p></div><button class="btn sm ghost" id="integrations-import" type="button">Importar configuração (desenvolvedor)</button></div>
+          <div class="conn-grid" id="conn-grid"></div>
+        </section>
         <section class="sheet profile-sheet">
           <div class="sheet-head"><div><h3>Perfil de uso</h3><p class="muted">Muda o peso de cada fator no Índice Nexo, a ordem das observações e o que as sessões destacam. Não muda o que é verdade sobre o seu PC, e você pode trocar quando quiser.</p></div></div>
           <div class="pcards" id="profile-cards" role="radiogroup" aria-label="Perfil de uso"></div>
@@ -399,6 +417,7 @@
           <section class="sheet">
             <div class="sheet-head"><h3>Aparência</h3></div>
             <div class="wall-row"><div class="wall-preview" id="wall-preview" aria-hidden="true"></div><div><strong>Papel de parede</strong><p class="muted">Imagens PNG, JPEG ou WebP. O Nexo reduz o tamanho antes de guardar.</p><div class="btn-row"><button class="btn sm" id="choose-wallpaper" type="button">Escolher imagem</button><button class="btn sm ghost" id="reset-wallpaper" type="button" hidden>Restaurar padrão</button></div><input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" hidden /></div></div>
+            <div class="self-meter"><div><strong>Custo do Nexo agora</strong><p class="muted">Medido pelo próprio Electron. Com a janela sem foco, animações param e as leituras ficam 6× mais espaçadas.</p></div><dl><div><dt>CPU</dt><dd id="self-cpu">--</dd></div><div><dt>Memória</dt><dd id="self-mem">--</dd></div><div><dt>Processos</dt><dd id="self-proc">--</dd></div></dl><div class="progress-track slim"><span id="self-bar"></span></div></div>
             <div class="setting-row"><div><strong>Efeitos visuais</strong><p class="muted">O modo leve desliga o desfoque de vidro e as animações de fundo para poupar GPU e bateria.</p></div><div class="segmented sm" role="group" aria-label="Efeitos visuais"><button type="button" data-effects="full" aria-pressed="true">Completo</button><button type="button" data-effects="lite" aria-pressed="false">Leve</button></div></div>
           </section>
           <section class="sheet">
@@ -414,12 +433,12 @@
           <div class="bg-grid">
             <label class="switch"><input id="set-tray" type="checkbox" /><i></i><span><strong>Ficar na bandeja ao fechar</strong><small>O botão fechar esconde a janela; o Nexo continua perto do relógio. Para sair de verdade, use o menu do ícone.</small></span></label>
             <label class="switch"><input id="set-auto" type="checkbox" /><i></i><span><strong>Gravar sessões de jogo sozinho</strong><small>Quando um jogo da biblioteca abre, o Nexo grava; quando fecha, guarda o relatório.</small></span></label>
-            <label class="switch"><input id="set-login" type="checkbox" /><i></i><span><strong>Iniciar com o Windows (escondido)</strong><small>Abre direto na bandeja. Só na versão instalada.</small></span></label>
-            <label class="switch"><input id="set-covers" type="checkbox" /><i></i><span><strong>Baixar capas que faltam da CDN da Steam</strong><small>Desligado: só capas locais. Ligado: o Nexo pede à Valve as imagens dos jogos Steam sem capa no cache, o que revela à Valve quais jogos você tem.</small></span></label>
+            <label class="switch"><input id="set-login" type="checkbox" /><i></i><span><strong>Iniciar com o sistema (escondido)</strong><small>Abre direto na bandeja. Só na versão instalada.</small></span></label>
+            <label class="switch"><input id="set-covers" type="checkbox" /><i></i><span><strong>Buscar capas oficiais na internet</strong><small>Desligado: só as capas que as lojas já guardaram no PC. Ligado: as que faltam vêm da Steam e da Microsoft Store (só arte oficial); essas lojas recebem o nome ou o número de cada jogo pesquisado.</small></span></label>
           </div>
         </section>
         <section class="sheet danger-zone">
-          <div class="sheet-head"><div><h3>Desinstalar completamente</h3><p class="muted">Remove o programa, os dados e as preferências, os atalhos e as entradas do Registro, e limpa os rastros que o próprio Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes). Ao final, mostra o que não conseguiu apagar, se houver.</p></div><button class="btn danger" id="uninstall-app" type="button">Desinstalar o Nexo</button></div>
+          <div class="sheet-head"><div><h3>Desinstalar completamente</h3><p class="muted" data-only="win32">Remove o programa, os dados e as preferências, os atalhos e as entradas do Registro, e limpa os rastros que o próprio Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes). Ao final, mostra o que não conseguiu apagar, se houver.</p><p class="muted" data-only="linux">Apaga os dados e preferências (~/.config e ~/.cache do Nexo) e a entrada de inicialização; depois remove a própria AppImage ou, se instalado pelo pacote .deb, desinstala o pacote (o sistema pede a sua senha).</p></div><button class="btn danger" id="uninstall-app" type="button">Desinstalar o Nexo</button></div>
         </section>
         <section class="sheet about"><div><strong>Nexo Device Care</strong><span class="muted">Versão <span id="about-version">--</span> · gratuito e de código aberto</span></div><div class="btn-row"><button class="btn sm ghost" data-link="repo" type="button">Projeto no GitHub</button><button class="btn sm ghost" data-link="issues" type="button">Relatar um problema</button><button class="btn sm ghost" data-link="creator" type="button">Criador</button></div></section>
       </section>
@@ -446,6 +465,7 @@
   <script src="src/atlas.js"></script>
   <script src="src/core.js"></script>
   <script src="src/ui-kit.js"></script>
+  <script src="src/perf.js"></script>
   <script src="src/fx.js"></script>
   <script src="src/view-profile.js"></script>
   <script src="src/charts.js"></script>

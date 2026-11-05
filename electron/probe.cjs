@@ -158,4 +158,46 @@ function createProbe({ spawnFn = spawn, emit = () => {}, platform = process.plat
   return { start, stop, test, isRunning: () => child !== null };
 }
 
-module.exports = { createProbe, normalizeProbe, PROBE_SCRIPT };
+/** Sonda do Linux, toda em Node: primeiro plano (xprop), CPU por programa (/proc) e o custo do próprio Nexo. GPU por programa não tem fonte padrão no Linux. */
+function createLinuxProbe({ linux, emit = () => {}, match = () => null, interval = 4000, now = Date.now }) {
+  let timer = null;
+  let previous = null;
+  let previousAt = 0;
+  const waiters = new Set();
+  async function tick() {
+    const [fg, snapshot] = await Promise.all([linux.foreground().catch(() => null), linux.processSample()]);
+    const at = now();
+    const cores = Math.max(1, require('os').cpus().length);
+    const cpu = [];
+    if (previous) {
+      const seconds = Math.max(0.5, (at - previousAt) / 1000);
+      for (const proc of snapshot.values()) {
+        const prev = previous.get(proc.pid);
+        if (!prev) continue;
+        const pct = ((proc.ticks - prev.ticks) / 100 / seconds / cores) * 100;
+        if (pct > 0.5) cpu.push({ pid: proc.pid, name: proc.name, cpu: Math.round(pct * 10) / 10 });
+      }
+    }
+    previous = snapshot; previousAt = at;
+    const memory = process.memoryUsage().rss / 1048576;
+    const sample = normalizeProbe({ t: at, fg, cpu: cpu.sort((a, b) => b.cpu - a.cpu).slice(0, 5), gpu: [], self: { cpu: 0, memMB: Math.round(memory) } }, match);
+    if (!sample) return;
+    emit(sample);
+    for (const waiter of [...waiters]) waiter(sample);
+  }
+  function start() { if (!timer) { timer = setInterval(() => { tick().catch(() => {}); }, interval); tick().catch(() => {}); } return { ok: true }; }
+  function stop() { clearInterval(timer); timer = null; previous = null; return { ok: true }; }
+  function test(timeoutMs = 12000) {
+    const startedHere = !timer;
+    start();
+    return new Promise((resolve) => {
+      const finish = (result) => { clearTimeout(limit); waiters.delete(onSample); if (startedHere) stop(); resolve(result); };
+      const onSample = (sample) => { if (sample.cpu.length || sample.fg || previous) finish({ ok: true, sample }); };
+      const limit = setTimeout(() => finish({ ok: false, reason: 'A sonda não respondeu a tempo.' }), timeoutMs);
+      waiters.add(onSample);
+    });
+  }
+  return { start, stop, test, isRunning: () => Boolean(timer) };
+}
+
+module.exports = { createProbe, createLinuxProbe, normalizeProbe, PROBE_SCRIPT };

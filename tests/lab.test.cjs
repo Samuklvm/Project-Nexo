@@ -94,7 +94,8 @@ test('assertRunnable: consentimento reforçado, tomada, temperatura e carga', ()
   assert.deepEqual(Lab.assertRunnable(pre, CONSENT), ['perfepp']);
   const code = (fn) => { try { fn(); return 'ok'; } catch (error) { return error.code; } };
   assert.equal(code(() => Lab.assertRunnable(pre, { acknowledged: true, phrase: 'sim' })), 'consentimento');
-  assert.equal(code(() => Lab.assertRunnable({ ...pre, platform: 'linux' }, CONSENT)), 'plataforma');
+  assert.equal(code(() => Lab.assertRunnable({ ...pre, platform: 'darwin' }, CONSENT)), 'plataforma');
+  assert.deepEqual(Lab.assertRunnable({ ...pre, platform: 'linux', knobs: { ppd: { available: true } } }, CONSENT), ['ppd']);
   assert.equal(code(() => Lab.assertRunnable({ ...pre, onBattery: true }, CONSENT)), 'bateria');
   assert.equal(code(() => Lab.assertRunnable({ ...pre, tempC: null }, CONSENT)), 'sem-temperatura');
   assert.equal(code(() => Lab.assertRunnable({ ...pre, tempC: 83 }, CONSENT)), 'quente');

@@ -53,6 +53,14 @@ jobs:
         env:
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
 
+      # Opcional: Discord (Application ID) e Xbox (ID do app no Azure). Segredo NEXO_INTEGRATIONS_JSON = {"discordAppId":"…","xboxClientId":"…"}
+      - name: Write integrations config (optional)
+        shell: pwsh
+        run: |
+          if ($env:NEXO_INTEGRATIONS_JSON) { Set-Content -LiteralPath config/integrations.json -Value $env:NEXO_INTEGRATIONS_JSON -Encoding utf8 } else { Write-Host 'Sem NEXO_INTEGRATIONS_JSON: Discord e Xbox ficam desativados nesta build.' }
+        env:
+          NEXO_INTEGRATIONS_JSON: ${{ secrets.NEXO_INTEGRATIONS_JSON }}
+
       - name: Build and publish installer
         run: npm run release
         env:
@@ -86,5 +94,43 @@ jobs:
         run: |
           $file = Get-ChildItem installer-launcher/dist/Nexo-Instalador-*.exe | Select-Object -First 1
           gh release upload "$env:GITHUB_REF_NAME" $file.FullName --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Linux: AppImage (roda em qualquer distribuição) e .deb (Debian/Ubuntu/Mint/Pop!_OS). Publica na mesma release.
+  release-linux:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Verify tag matches package version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then echo "Tag $GITHUB_REF_NAME must match v$version"; exit 1; fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Write optional configs (Google, Discord, Xbox)
+        run: |
+          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > config/google-oauth.json; fi
+          if [ -n "$NEXO_INTEGRATIONS_JSON" ]; then printf '%s' "$NEXO_INTEGRATIONS_JSON" > config/integrations.json; fi
+        env:
+          GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
+          NEXO_INTEGRATIONS_JSON: ${{ secrets.NEXO_INTEGRATIONS_JSON }}
+
+      - name: Build and publish AppImage and .deb
+        run: npm run release:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

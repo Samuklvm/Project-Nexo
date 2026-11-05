@@ -39,7 +39,15 @@
       names: { 0: 'Passiva (reduz a velocidade antes)', 1: 'Ativa (acelera ventoinhas antes)' },
       what: 'Ao esquentar, o Windows primeiro reduz a velocidade (passiva) ou primeiro aumenta a ventilação (ativa).' }
   ];
-  const KNOB = new Map(SPACE.map((knob) => [knob.id, knob]));
+  /* No Linux o laboratório testa os perfis do power-profiles-daemon (sem root). Ajustes finos do processador no Linux
+     (EPP, governador) exigem root a cada mudança, e o Nexo não roda como root. */
+  const LINUX_SPACE = [
+    { id: 'ppd', sub: 'PPD', setting: 'PROFILE', label: 'Perfil de energia do sistema', values: [0, 1, 2], risk: 'baixo', novelty: 'conhecido', hidden: false, platform: 'linux',
+      names: { 0: 'Economia de energia', 1: 'Equilibrado', 2: 'Desempenho' },
+      what: 'O perfil do power-profiles-daemon muda limites de frequência, EPP e plataforma de uma vez, do jeito que o fabricante e o kernel definiram.' }
+  ];
+  const ALL = [...SPACE, ...LINUX_SPACE];
+  const KNOB = new Map(ALL.map((knob) => [knob.id, knob]));
   const RISK_RANK = { baixo: 1, moderado: 2 };
 
   const BENCHES = ['single', 'multi', 'burst'];
@@ -72,7 +80,7 @@
     const maxRisk = RISK_RANK[allowRisk] || 1;
     const total = Object.values(evidence).reduce((sum, item) => sum + (item?.n || 0), 0);
     const arms = [];
-    for (const knob of SPACE) {
+    for (const knob of ALL) {
       if (!finite(baseline[knob.id])) continue;
       if ((RISK_RANK[knob.risk] || 9) > maxRisk) continue;
       for (const value of knob.values) {
@@ -119,13 +127,13 @@
   /** Pré-condições. Consentimento reforçado: a pessoa digita a frase. */
   function assertRunnable(pre, consent) {
     if (!consent || consent.acknowledged !== true || String(consent.phrase || '').trim().toUpperCase() !== CONSENT_PHRASE) throw new GuardError('consentimento', `Para iniciar, marque o aviso e digite "${CONSENT_PHRASE}".`);
-    if (!pre || pre.platform !== 'win32') throw new GuardError('plataforma', 'O laboratório só funciona no Windows.');
+    if (!pre || !['win32', 'linux'].includes(pre.platform)) throw new GuardError('plataforma', 'O laboratório funciona no Windows e no Linux.');
     if (pre.pending) throw new GuardError('pendente', 'Existe um teste anterior que não terminou. Use "Recuperar" antes de começar outro.');
     if (pre.onBattery) throw new GuardError('bateria', 'Ligue o PC na tomada: o laboratório não roda na bateria.');
     if (!finite(pre.tempC)) throw new GuardError('sem-temperatura', 'Sem leitura de temperatura do processador o laboratório não roda (é uma das guardas).');
     if (pre.tempC >= 80) throw new GuardError('quente', `O processador já está a ${Math.round(pre.tempC)} °C. Espere esfriar.`);
     if (finite(pre.cpuLoad) && pre.cpuLoad >= 50) throw new GuardError('ocupado', `O processador está ${Math.round(pre.cpuLoad)}% ocupado. Feche programas pesados para a medição ser justa.`);
-    const available = SPACE.filter((knob) => pre.knobs?.[knob.id]?.available);
+    const available = ALL.filter((knob) => pre.knobs?.[knob.id]?.available);
     if (!available.length) throw new GuardError('sem-ajustes', 'Este PC não expõe nenhum dos ajustes do laboratório.');
     return available.map((knob) => knob.id);
   }
@@ -336,5 +344,6 @@
     return { evidence: clean, tabu: (Array.isArray(tabu) ? tabu : []).filter(valid).slice(0, 64) };
   }
 
-  return { SPACE, BENCHES, BENCH_LABEL, DEFAULT_LIMITS, CONSENT_PHRASE, GuardError, validateStep, chooseCandidates, updateEvidence, evaluateGuards, assertRunnable, judge, combine, run, armKey, valueLabel, sanitizeMemory, knob: (id) => KNOB.get(id) || null };
+  const spaceFor = (platform) => (platform === 'linux' ? LINUX_SPACE : SPACE);
+  return { SPACE, LINUX_SPACE, spaceFor, BENCHES, BENCH_LABEL, DEFAULT_LIMITS, CONSENT_PHRASE, GuardError, validateStep, chooseCandidates, updateEvidence, evaluateGuards, assertRunnable, judge, combine, run, armKey, valueLabel, sanitizeMemory, knob: (id) => KNOB.get(id) || null };
 });

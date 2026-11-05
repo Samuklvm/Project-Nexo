@@ -11,6 +11,8 @@ const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-ipc-'));
 const tmp = path.join(sandbox, 'tmp'); const local = path.join(sandbox, 'local'); const userData = path.join(sandbox, 'userData');
 for (const dir of [tmp, local, userData]) fs.mkdirSync(dir, { recursive: true });
 process.env.TMPDIR = tmp; process.env.TEMP = tmp; process.env.TMP = tmp; process.env.LOCALAPPDATA = local;
+const cache = path.join(sandbox, 'cache'); const data = path.join(sandbox, 'data'); const config = path.join(sandbox, 'config');
+process.env.XDG_CACHE_HOME = cache; process.env.XDG_DATA_HOME = data; process.env.XDG_CONFIG_HOME = config; process.env.HOME = sandbox;
 Object.defineProperty(process, 'platform', { value: 'linux' });
 
 const handlers = new Map();
@@ -54,29 +56,35 @@ test('rejeita chamadas vindas de outra origem', async () => {
   await assert.rejects(async () => handlers.get('cleanup:scan')({ senderFrame: { url: 'https://exemplo.com' } }), /Origem não autorizada/);
 });
 
-test('limpeza: remove só arquivos antigos, ignora recentes e links, poda pastas vazias', async () => {
+test('limpeza (Linux): só arquivos antigos do usuário, miniaturas recursivas, Lixeira freedesktop', async () => {
   touch(path.join(tmp, 'velho.tmp'), 10, 1000);
   touch(path.join(tmp, 'recente.tmp'), 1, 500);
-  touch(path.join(tmp, 'subpasta', 'fundo-velho.tmp'), 30);            // temp não é recursivo: deve ficar
-  touch(path.join(local, 'CrashDumps', 'a', 'crash.dmp'), 20, 4000);   // categoria recursiva: remove
-  touch(path.join(local, 'CrashDumps', 'novo.dmp'), 0, 4000);
+  touch(path.join(tmp, 'subpasta', 'fundo-velho.tmp'), 30);                 // temp não é recursivo: deve ficar
+  touch(path.join(cache, 'thumbnails', 'large', 'a.png'), 20, 4000);         // miniaturas: recursivo
+  touch(path.join(cache, 'thumbnails', 'normal', 'novo.png'), 0, 4000);
+  touch(path.join(data, 'Trash', 'files', 'apagado.txt'), 3, 700);
+  touch(path.join(data, 'Trash', 'info', 'apagado.txt.trashinfo'), 3, 60);
   try { fs.symlinkSync(path.join(tmp, 'velho.tmp'), path.join(tmp, 'link.tmp')); } catch { /* sem permissão para symlink */ }
 
   const scan = await call('cleanup:scan');
   const byId = Object.fromEntries(scan.categories.map((c) => [c.id, c]));
+  assert.deepEqual(Object.keys(byId), ['temp', 'thumbnails', 'crash', 'recycle']);
   assert.equal(byId.temp.fileCount, 1);
   assert.equal(byId.temp.bytes, 1000);
-  assert.equal(byId.crashdumps.fileCount, 1);
+  assert.equal(byId.thumbnails.fileCount, 1);
   assert.equal(byId.recycle.destructive, true);
+  assert.equal(byId.recycle.fileCount, 1);
+  assert.equal(byId.recycle.bytes, 700);
 
-  const result = await call('cleanup:run', ['temp', 'crashdumps', 'categoria-inventada']);
-  assert.equal(result.removedCount, 2);
-  assert.equal(result.bytesFreed, 5000);
+  const result = await call('cleanup:run', ['temp', 'thumbnails', 'recycle', 'categoria-inventada']);
+  assert.equal(result.removedCount, 3);
+  assert.equal(result.bytesFreed, 5700);
   assert.ok(!fs.existsSync(path.join(tmp, 'velho.tmp')));
   assert.ok(fs.existsSync(path.join(tmp, 'recente.tmp')));
   assert.ok(fs.existsSync(path.join(tmp, 'subpasta', 'fundo-velho.tmp')));
-  assert.ok(fs.existsSync(path.join(local, 'CrashDumps', 'novo.dmp')));
-  assert.ok(!fs.existsSync(path.join(local, 'CrashDumps', 'a')), 'pasta vazia deveria ser podada');
+  assert.ok(fs.existsSync(path.join(cache, 'thumbnails', 'normal', 'novo.png')));
+  assert.ok(!fs.existsSync(path.join(cache, 'thumbnails', 'large')), 'pasta vazia deveria ser podada');
+  assert.equal(fs.readdirSync(path.join(data, 'Trash', 'info')).length, 0);
 });
 
 test('papel de parede: valida o tipo real, grava, lê e restaura', async () => {
@@ -91,15 +99,20 @@ test('papel de parede: valida o tipo real, grava, lê e restaura', async () => {
 });
 
 test('energia, inicialização e privacidade têm retorno seguro fora do Windows', async () => {
-  assert.deepEqual(await call('power:list'), []);
+  assert.ok(Array.isArray(await call('power:list')));
   await assert.rejects(() => call('power:set', '00000000-0000-0000-0000-000000000000'), /não reconhecido/);
-  assert.deepEqual(await call('startup:list'), []);
+  fs.mkdirSync(path.join(config, 'autostart'), { recursive: true });
+  fs.writeFileSync(path.join(config, 'autostart', 'chat.desktop'), '[Desktop Entry]\nName=Chat\nExec=/usr/bin/chat --tray\n');
+  fs.writeFileSync(path.join(config, 'autostart', 'oculto.desktop'), '[Desktop Entry]\nName=Oculto\nExec=x\nHidden=true\n');
+  const startup = await call('startup:list');
+  assert.ok(startup.some((item) => item.name === 'Chat' && item.location === 'Usuário'));
+  assert.ok(!startup.some((item) => item.name === 'Oculto'));
   assert.deepEqual(await call('privacy:get'), { shareWithCreator: false });
 });
 
 test('links e páginas do Windows só aceitam o que está na lista', async () => {
   await assert.rejects(() => call('app:open-link', 'https://malicioso.exemplo'), /não permitido/);
-  await assert.rejects(() => call('system:open-settings', 'cmd'), /não permitida/);
+  await assert.rejects(() => call('system:open-settings', 'startup'), /Windows/);
   assert.deepEqual(await call('app:open-link', 'repo'), { ok: true });
 });
 
@@ -142,11 +155,13 @@ test('sessão: amostra do sistema por núcleo, sonda e FPS têm retorno seguro f
   assert.ok(second.maxCore >= second.cpu - 1e-9);
   assert.ok(second.mem > 0 && second.mem < 100);
   assert.equal(second.appMemMB, 50);
-  assert.equal((await call('session:probe-start')).ok, false);
-  assert.equal((await call('session:probe-test')).ok, false);
-  assert.deepEqual(await call('fps:status'), { available: false, source: null, name: null, platform: 'linux' });
-  assert.equal((await call('fps:choose')).canceled, true);
-  await assert.rejects(() => call('fps:start', { pid: 1234 }), /só existe no Windows/);
+  assert.equal((await call('session:probe-start')).ok, true, 'no Linux a sonda roda em Node');
+  assert.equal((await call('session:probe-stop')).ok, true);
+  const fps = await call('fps:status');
+  assert.equal(fps.source, 'mangohud');
+  assert.match(fps.launchOption, /^MANGOHUD_CONFIG="output_folder=.*mangohud,autostart_log=1,log_interval=0" mangohud %command%$/);
+  await assert.rejects(() => call('fps:choose'), /MangoHud/);
+  assert.equal((await call('fps:start', { pid: 1234 })).ok, true);
   assert.equal((await call('fps:stop')).frames, 0);
 });
 
@@ -158,12 +173,12 @@ test('0.5.0: canais novos de laboratório, biblioteca, conta, acesso ao FPS e pr
   }
   const status = await call('lab:status');
   assert.equal(status.running, false);
-  assert.ok(status.space.length >= 5);
+  assert.deepEqual(status.space.map((knob) => knob.id), ['ppd'], 'no Linux o laboratório testa os perfis de energia');
   const pre = await call('lab:preflight');
   assert.equal(pre.platform, 'linux');
   const run = await call('lab:run', { consent: { acknowledged: true, phrase: 'ENTENDO O RISCO' } });
-  assert.equal(run.status, 'aborted');
-  assert.equal(run.guard, 'plataforma');
+  assert.equal(run.status, 'aborted', 'sem power-profiles-daemon e sem sensor, não roda');
+  assert.ok(['sem-temperatura', 'sem-ajustes', 'bateria', 'quente', 'ocupado'].includes(run.guard), run.guard);
   assert.deepEqual(await call('games:scan'), []);
   const account = await call('account:get');
   assert.equal(account.configured, false);
@@ -172,8 +187,22 @@ test('0.5.0: canais novos de laboratório, biblioteca, conta, acesso ao FPS e pr
   const settings = await call('settings:set', { tray: false, autoSession: false, bogus: true, openAtLogin: 'sim' });
   assert.equal(settings.openAtLogin, false);
   assert.equal('bogus' in settings, false);
-  assert.equal((await call('fps:access')).ready, false);
+  assert.equal((await call('fps:access')).ready, true, 'no Linux o MangoHud não precisa de grupo');
   await assert.rejects(call('bench:cpu', { mode: 'turbo' }), /inválido/);
-  await assert.rejects(call('system:open-settings', 'cmd'), /não permitida/);
-  assert.equal((await call('system:open-settings', 'graphics')).ok, true);
+  await assert.rejects(call('system:open-settings', 'graphics'), /Windows/);
+});
+
+test('0.6.0: conexões, capas oficiais e leveza', async () => {
+  for (const channel of ['connections:get', 'steam:connect', 'steam:disconnect', 'steam:set-key', 'xbox:sign-in', 'xbox:sign-out', 'discord:set', 'presence:update', 'integrations:import', 'games:fetch-art', 'games:details', 'app:open-store-url', 'app:self-metrics', 'system:tier']) assert.ok(handlers.has(channel), `faltou ${channel}`);
+  const view = await call('connections:get');
+  assert.equal('nintendo' in view, false);
+  assert.equal(view.xbox.configured, false);
+  assert.equal(view.discord.configured, false);
+  await assert.rejects(call('xbox:sign-in'), /não foi configurada/);
+  await assert.rejects(call('steam:connect', '76561198000000002'), /não entrou/);
+  assert.ok(['fraco', 'medio', 'forte'].includes((await call('system:tier')).tier));
+  assert.ok(Number.isFinite((await call('app:self-metrics')).memMB));
+  assert.deepEqual(await call('presence:update', { kind: 'game', name: 'X' }), { ok: true });
+  await assert.rejects(call('app:open-store-url', 'https://evil.example/x'), /não permitido/);
+  await assert.rejects(call('games:details', 'steam-1'), /não encontrado/);
 });

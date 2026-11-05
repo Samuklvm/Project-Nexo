@@ -41,7 +41,9 @@ brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `net10.0` · LibreHardwareMonitorLib 0.9.6 · Node 20+ no CI (os testes foram rodados no Node 22). Windows 10/11 x64.
 
 ## 52.05 Estado dos testes
-`npm test` roda 8 arquivos, 99 testes, todos passando no Linux:
+`npm test` roda 10 arquivos, 120 testes, todos passando no Linux:
+
+- `linux.test.cjs` (9): montagens, `/proc/<pid>/stat`, powerprofilesctl, `.desktop`, xprop, detecção de jogos via Proton/Heroic, MangoHud em pedaços, laboratório com perfis de energia, biblioteca Steam+Heroic num HOME temporário, pkexec validado e leitura real do `/proc` e `/sys` desta máquina.
 
 - `brain.test.cjs` (8) e `catalog-journal-experiment.test.cjs` (13, incluindo os perfis).
 - `main-ipc.test.cjs` (11): carrega o `main.cjs` real com Electron simulado.
@@ -49,6 +51,7 @@ Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `n
 - `probe-fps-runner.test.cjs` (7): sonda e executor de FPS com processos filhos simulados; política do hash do PresentMon.
 - `lab.test.cjs` (17): motor do laboratório contra um PC simulado — espaço fechado, escolha (inédito → UCB, tabu), juiz A/B com ruído e consistência, guardas, cancelamento, restauração que falha, orçamento de tempo, consentimento.
 - `lab-system.test.cjs` (12): adaptador real contra um `powercfg` simulado em português — clone sem tocar o original, trava + RunOnce, recuperação, queda no Equilibrado, adoção, UAC recusado, ponta a ponta e análise estática (nada de bcdedit/Defender/VBS/leitura de memória; **uma única** elevação no código: `electron/elevate.cjs`).
+- `connections.test.cjs` (11): página do jogo (loja em texto puro, novidades classificadas, conquistas com ocultas e cache), Steam local (loginusers/localconfig), Steam Web API, resolvedor de capas oficiais (só domínios das lojas, nome exato), Xbox de ponta a ponta com loopback real e tokens descartados, protocolo do Discord, biblioteca completa num disco temporário.
 - `library-account.test.cjs` (16): manifestos Steam/Epic/Xbox, desinstalações de editoras, deduplicação, visão pública sem caminhos, observador de jogos, PKCE, `state`, validação do `id_token`, login de ponta a ponta com loopback real, Atlas.
 
 **Não existe** teste automatizado de: NSIS, PowerShell real, registro, `powercfg`, sensor-host, PresentMon real, interface dentro do Electron real. Isso exige Windows (ver 52.15).

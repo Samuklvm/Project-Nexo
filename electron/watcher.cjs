@@ -91,4 +91,16 @@ function createWatcher({ spawnFn = spawn, platform = process.platform, match, al
   return { start, stop, isRunning: () => Boolean(child), current: () => logic.current() };
 }
 
-module.exports = { createWatcher, createWatchLogic, WATCH_SCRIPT };
+/** Linux: mesma lógica, lendo o primeiro plano pelo xprop a cada 3 s (X11/XWayland). */
+function createLinuxWatcher({ linux, match, alive, onStart, onEnd, interval = 3000 }) {
+  let timer = null;
+  const logic = createWatchLogic({ match, alive, onStart, onEnd });
+  const tick = async () => { logic.tick(); const fg = await linux.foreground().catch(() => null); if (fg) logic.feed(fg); };
+  return {
+    start() { if (!timer) timer = setInterval(() => { tick().catch(() => {}); }, interval); return { ok: true }; },
+    stop() { clearInterval(timer); timer = null; logic.reset(); },
+    isRunning: () => Boolean(timer), current: () => logic.current()
+  };
+}
+
+module.exports = { createWatcher, createLinuxWatcher, createWatchLogic, WATCH_SCRIPT };

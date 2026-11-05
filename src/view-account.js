@@ -60,5 +60,70 @@
   }
   bridge?.onSettingsChanged?.((settings) => applySettings({ ...settings, packaged: !document.getElementById('set-login').disabled }));
   Nexo.on('view', (view) => { if (view === 'settings') { refresh(); bridge?.getSettings?.().then(applySettings).catch(() => {}); } });
+
+  /* ---------- Contas e conexões (Steam deste PC, Xbox, Discord) ---------- */
+  let connections = null;
+  const avatar = (url) => `<span class="avatar md">${url ? `<img src="${escapeHtml(url)}" alt="" />` : '<svg><use href="#i-user"/></svg>'}</span>`;
+  const status = (on, label) => `<span class="conn-status${on ? ' on' : ''}"><i></i>${escapeHtml(label)}</span>`;
+  function renderConnections() {
+    const c = connections;
+    const grid = document.getElementById('conn-grid');
+    if (!c) { grid.innerHTML = '<p class="muted">Disponível no aplicativo desktop.</p>'; return; }
+    const steam = c.steam;
+    const steamBody = !steam.installed ? '<p class="muted">A Steam não foi encontrada neste PC.</p>'
+      : steam.connected ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Lida da Steam deste PC, sem senha. Traz tempo de jogo e última vez jogado.</small></div></div>
+        <label class="field"><span>Chave da Steam Web API (opcional): inclui os jogos da conta que não estão instalados</span><div class="key-row"><input id="steam-key" type="password" placeholder="${steam.hasKey ? 'Chave salva (cifrada)' : '32 caracteres'}" autocomplete="off" spellcheck="false" /><button class="btn sm" type="button" data-conn="steam-key">${steam.hasKey ? 'Trocar' : 'Salvar'}</button></div></label>
+        <div class="btn-row"><button class="link" type="button" data-conn="steam-keypage">Onde pego a minha chave?</button>${steam.hasKey ? '<button class="link" type="button" data-conn="steam-clearkey">Apagar chave</button>' : ''}<button class="btn sm ghost" type="button" data-conn="steam-off">Desconectar</button></div>`
+      : steam.detected.length ? `<p class="muted">Contas que já entraram na Steam deste PC:</p><div class="conn-pick">${steam.detected.map((user) => `<button type="button" data-steam="${escapeHtml(user.steamId)}">${avatar(user.avatar)}<span><b>${escapeHtml(user.personaName)}</b><small>${user.mostRecent ? 'conta atual' : 'outra conta'}</small></span></button>`).join('')}</div>`
+      : '<p class="muted">Entre na Steam pelo menos uma vez neste PC para o Nexo encontrar a conta.</p>';
+    const xbox = c.xbox;
+    const xboxBody = !xbox.configured ? '<p class="muted">Ainda não configurado nesta build: falta o ID do app no Azure (veja docs/CONEXOES.md).</p>'
+      : xbox.connected ? `<div class="conn-who">${avatar(xbox.avatar)}<div><b>${escapeHtml(xbox.gamertag)}</b><small>${xbox.titles} títulos no histórico · artes oficiais do Xbox nas capas</small></div></div><div class="btn-row"><button class="btn sm" type="button" data-conn="xbox-in">Atualizar</button><button class="btn sm ghost" type="button" data-conn="xbox-off">Desconectar</button></div>`
+      : '<p class="muted">Gamertag, foto e o histórico de jogos com as artes oficiais de cada título. O login acontece no navegador; o Nexo não guarda tokens.</p><button class="btn primary sm" type="button" data-conn="xbox-in">Entrar com a conta Microsoft</button>';
+    const d = c.discord;
+    const discordBody = !d.configured ? '<p class="muted">Ainda não configurado nesta build: falta o Application ID do Discord (veja docs/CONEXOES.md).</p>'
+      : `<label class="switch compact"><input type="checkbox" data-discord="enabled" ${d.enabled ? 'checked' : ''}/><i></i><span>Mostrar no meu perfil do Discord</span></label>
+        <label class="switch compact"><input type="checkbox" data-discord="showGame" ${d.showGame ? 'checked' : ''} ${d.enabled ? '' : 'disabled'}/><i></i><span>O jogo que o Nexo está gravando</span></label>
+        <label class="switch compact"><input type="checkbox" data-discord="showNexo" ${d.showNexo ? 'checked' : ''} ${d.enabled ? '' : 'disabled'}/><i></i><span>“Cuidando do PC com o Nexo” quando não houver jogo</span></label>
+        <small class="muted">Fala com o Discord aberto no PC; seus amigos veem o status. Nada passa por servidor do Nexo.</small>`;
+    grid.innerHTML = `
+      <article class="conn-card" data-brand="steam"><header><h4>Steam</h4>${status(steam.connected, steam.connected ? 'conectada' : 'desconectada')}</header>${steamBody}</article>
+      <article class="conn-card" data-brand="xbox"><header><h4>Xbox</h4>${status(xbox.connected, xbox.connected ? 'conectada' : xbox.configured ? 'desconectada' : 'não configurada')}</header>${xboxBody}</article>
+      <article class="conn-card" data-brand="discord"><header><h4>Discord</h4>${status(d.enabled && d.configured, d.enabled ? 'ligado' : d.configured ? 'desligado' : 'não configurado')}</header>${discordBody}</article>`;
+  }
+  async function refreshConnections() {
+    if (!bridge?.getConnections) { renderConnections(); return; }
+    try { connections = await bridge.getConnections(); } catch { connections = null; }
+    renderConnections();
+  }
+  const changed = (value) => { connections = value; renderConnections(); Nexo.emit('connections', value); };
+  document.getElementById('conn-grid').addEventListener('click', async (event) => {
+    const pick = event.target.closest('[data-steam]');
+    const action = event.target.closest('[data-conn]')?.dataset.conn;
+    try {
+      if (pick) { changed(await bridge.connectSteam(pick.dataset.steam)); showToast('Steam conectada.'); }
+      if (action === 'steam-off') changed(await bridge.disconnectSteam());
+      if (action === 'steam-keypage') bridge.openLink('steamkey');
+      if (action === 'steam-clearkey') changed(await bridge.setSteamKey(''));
+      if (action === 'steam-key') {
+        const input = document.getElementById('steam-key');
+        const button = event.target.closest('button');
+        setButtonBusy(button, true, 'Conferindo…');
+        try { changed(await bridge.setSteamKey(input.value)); showToast(`Chave aceita: ${connections.steam.owned ?? 0} jogos na conta.`); }
+        finally { setButtonBusy(button, false); }
+      }
+      if (action === 'xbox-in') { showToast('Continue no navegador. O Nexo espera até 5 minutos.'); changed(await bridge.signInXbox()); showToast(`Xbox conectado: ${connections.xbox.gamertag}.`); }
+      if (action === 'xbox-off') changed(await bridge.signOutXbox());
+    } catch (error) { showToast(error.message || 'Não foi possível concluir.'); if (/perfil|privad|público|lista/i.test(error.message || '')) bridge.openLink('steamprivacy'); }
+  });
+  document.getElementById('conn-grid').addEventListener('change', async (event) => {
+    const key = event.target.dataset.discord;
+    if (!key) return;
+    try { changed(await bridge.setDiscord({ [key]: event.target.checked })); }
+    catch (error) { event.target.checked = !event.target.checked; showToast(error.message || 'O Discord não respondeu.'); refreshConnections(); }
+  });
+  document.getElementById('integrations-import').addEventListener('click', async () => { try { changed(await bridge.importIntegrations()); } catch (error) { showToast(error.message); } });
+  Nexo.openConnections = () => { Nexo.go('settings'); requestAnimationFrame(() => document.getElementById('connections-sheet').scrollIntoView({ behavior: 'smooth', block: 'start' })); };
+  Nexo.on('view', (view) => { if (view === 'settings') refreshConnections(); });
   refresh();
 })();

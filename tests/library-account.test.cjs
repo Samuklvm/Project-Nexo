@@ -180,5 +180,9 @@ test('Atlas: fatos do sistema viram achados honestos', () => {
   assert.equal(fine.xmp.state, 'info');
   assert.equal(fine.channels.state, 'ok');
   assert.equal(fine.refresh.state, 'info');
-  assert.deepEqual(Atlas.evaluateFacts({ platform: 'linux' }), {});
+  assert.deepEqual(Atlas.evaluateFacts({ platform: 'darwin' }), {});
+  const linux = Atlas.evaluateFacts({ platform: 'linux', ppd: false, mangohud: true, gamemode: false, governor: 'schedutil', session: 'wayland' });
+  assert.equal(linux.ppd.state, 'atencao');
+  assert.equal(linux.mangohud.state, 'ok');
+  assert.match(linux.session.text, /XWayland/);
 });

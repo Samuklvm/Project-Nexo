@@ -162,3 +162,35 @@ Tudo do laboratório no Windows real (`powercfg` com aliases nos verbos `/qh` e 
 
 ### Próximos passos sugeridos
 Rodar o laboratório num PC real em modo assistido primeiro; criar o cliente OAuth; fixar o hash do PresentMon; ampliar o espaço do laboratório com medições que não são de CPU (latência de disco com ASPM, testes de GPU) antes de incluir ajustes dessas áreas.
+
+## Versão 0.6.0 — biblioteca completa, contas de jogos, capas oficiais e leveza (05/11/2026)
+
+Pedido: interface ainda mais detalhada e bonita; biblioteca completa com base no PC; conectar Steam, Discord, Xbox e Nintendo; capa REAL de cada jogo; app leve até em PC fraco.
+
+- **Biblioteca** (`src/view-library.js`, `electron/games.cjs`): destaque com `library_hero.jpg` e `logo.png` do cache da Steam (layouts antigo e novo), prateleiras, filtros Instalados / Na conta / Tudo / por loja, página do jogo (tempo de jogo, última vez, tamanho, sessões, gráfico de FPS por sessão). Jogos da conta não instalados aparecem esmaecidos e abrem a instalação na loja (`steam://install/<id>`).
+- **Steam** (`electron/steam-account.cjs`): conta deste PC por `loginusers.vdf`, foto do `avatarcache`, tempo de jogo do `localconfig.vdf`. Opcional: chave da Steam Web API (GetOwnedGames) cifrada em `connections.bin`.
+- **Capas oficiais** (`electron/covers.cjs`): Steam CDN (capa, arte larga, logo), Microsoft Store `displaycatalog` (Poster/BoxArt pelo StoreId do `MicrosoftGame.config`), arte do titlehub do Xbox, e para outras lojas a busca da Steam com nome **exato**. Sem SteamGridDB (é arte de comunidade). Imagens reduzidas com `nativeImage` (capa 360 px, fundo 1600 px). Sem correspondência = lembrado por 7 dias.
+- **Xbox** (`electron/xbox.cjs`): Microsoft identity (consumers, PKCE, `XboxLive.signin`) → XBL → XSTS → perfil + titlehub. Tokens descartados. Exige ID do app no Azure. **Não validado com app real.**
+- **Discord** (`electron/discord.cjs`): Rich Presence pelo named pipe local, sem dependência. Exige Application ID + asset `nexo`. Presença muda com sessões (jogo) e laboratório.
+- **Nintendo:** sem API oficial; o usuário pediu para tirar o cartão (removido na revisão da 0.6.0).
+- **Leveza** (`src/perf.js` e ajustes): `body.idle` pausa animações sem foco; polling 30 s em segundo plano (exceto durante sessão); estrelas cadentes por timer em vez de rAF contínuo; DPR do canvas limitado a 1,5; modo leve automático por `system:tier`; `content-visibility` nos cartões; medidor do custo do Nexo em Ajustes.
+- **Configuração:** `config/integrations.json` ou segredo `NEXO_INTEGRATIONS_JSON` (ver `docs/CONEXOES.md`).
+- **Testes:** 111 passando (9 arquivos).
+
+### Não validado em Windows
+Endpoints reais (Steam CDN novo `shared.cloudflare.steamstatic.com/store_item_assets`, storesearch, displaycatalog, fluxo Xbox), named pipe do Discord, `nativeImage.resize` com as capas reais, leitura do `localconfig.vdf` em contas grandes.
+
+### Revisão da 0.6.0 — página do jogo completa, estilo Steam (05/11/2026)
+- `electron/steam-details.cjs`: loja (`appdetails`, pt-BR), novidades e atualizações (`GetNewsForApp`, classifica atualização/anúncio/notícia), conquistas do jogador (`GetSchemaForGame` + `GetPlayerAchievements` + raridade global) com a chave da própria pessoa. Texto da Steam convertido para texto puro; só imagens de `*.steamstatic.com`/`akamaihd.net`. Cache em `userData/details`.
+- Página do jogo com abas: Visão geral (descrição, capturas com visualizador, gêneros, desenvolvedora, lançamento, Metacritic, recomendações, requisitos mínimo/recomendado), Conquistas (progresso, desbloqueadas com data, bloqueadas com raridade global, ocultas escondidas), Novidades (atualizações oficiais marcadas), Desempenho.
+- CSP: `img-src` passou a aceitar `https://*.steamstatic.com` e `https://steamcdn-a.akamaihd.net` (só imagens; JSON continua só no processo principal).
+- Removido o cartão da Nintendo.
+
+### Revisão da 0.6.0 — Linux (05/11/2026)
+- `electron/linux.cjs`: unidades (`/proc/mounts` + statfs), sensores (hwmon, thermal, cpufreq, amdgpu) no mesmo formato do sensor-host, processos (`/proc/<pid>/stat`), primeiro plano (`xprop`, com a pasta de trabalho para jogos via Proton), perfis (`powerprofilesctl`), inicialização (`.desktop`), Lixeira freedesktop, limpeza só de arquivos do próprio usuário.
+- `electron/lab-linux.cjs` + `LINUX_SPACE` em `src/lab.js`: laboratório com os perfis do power-profiles-daemon (sem root). `electron/mangohud.cjs`: FPS lendo o CSV do MangoHud. Sonda e observador do Linux em Node (`createLinuxProbe`, `createLinuxWatcher`). Discord por socket Unix. `linuxPrivileged` (pkexec) em `electron/elevate.cjs` só para `fstrim` e remover o `.deb`.
+- Biblioteca: Steam nativa/Flatpak/Snap e Heroic (Epic/GOG). Atlas com itens por plataforma (`os`). UI com `data-only="win32|linux"` e `Nexo.platform` pelo user agent.
+- Empacotamento: AppImage + `.deb` (`build.linux`, `build.deb`), job `release-linux` no CI. Corrigido um YAML inválido no workflow (linhas `run:` com `: ` sem bloco).
+- Desinstalação no Linux: apaga dados, caches, autostart e a AppImage, ou `pkexec dpkg -r nexo-device-care`.
+- Testes: 120 (10 arquivos), incluindo leitura real de `/proc` e `/sys` nesta máquina Linux de testes.
+- Não validado: AppImage/.deb gerados de verdade, bandeja no GNOME, `xprop` com jogos reais, MangoHud real (`log_interval=0`), `journalctl` sem permissão, Heroic com instalações reais.

@@ -1,19 +1,21 @@
 {
   "name": "nexo-device-care",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
-  "description": "Nexo Device Care: cuidado e otimização do seu PC, com análise local que aprende a sua rotina",
+  "description": "Nexo Device Care: cuidado e otimização do seu PC (Windows e Linux), com análise local que aprende a sua rotina",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
     "build:sensors": "dotnet publish sensor-host/Nexo.SensorHost.csproj -c Release -r win-x64 --self-contained true -o sensor-host/publish",
     "dist": "npm run build:sensors && electron-builder --win nsis",
     "release": "npm run build:sensors && electron-builder --win nsis --publish always",
-    "test": "node --test tests/brain.test.cjs tests/main-ipc.test.cjs tests/catalog-journal-experiment.test.cjs tests/session-fps.test.cjs tests/probe-fps-runner.test.cjs tests/lab.test.cjs tests/lab-system.test.cjs tests/library-account.test.cjs",
+    "test": "node --test tests/brain.test.cjs tests/main-ipc.test.cjs tests/catalog-journal-experiment.test.cjs tests/session-fps.test.cjs tests/probe-fps-runner.test.cjs tests/lab.test.cjs tests/lab-system.test.cjs tests/library-account.test.cjs tests/connections.test.cjs tests/linux.test.cjs",
     "preview": "node dev/build-preview.cjs",
     "build:launcher": "npm --prefix installer-launcher install && npm --prefix installer-launcher run dist",
     "presentmon:hash": "node scripts/fetch-presentmon.cjs --print-hash",
-    "presentmon:fetch": "node scripts/fetch-presentmon.cjs"
+    "presentmon:fetch": "node scripts/fetch-presentmon.cjs",
+    "dist:linux": "electron-builder --linux AppImage deb",
+    "release:linux": "electron-builder --linux AppImage deb --publish always"
   },
   "repository": {
     "type": "git",
@@ -55,7 +57,8 @@
         "from": "config",
         "to": "config",
         "filter": [
-          "google-oauth.json"
+          "google-oauth.json",
+          "integrations.json"
         ]
       }
     ],
@@ -95,6 +98,41 @@
       "owner": "Samuklvm",
       "repo": "Project-Nexo",
       "releaseType": "release"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility",
+      "synopsis": "Cuidado e otimização do PC, com análise local",
+      "artifactName": "Nexo-${version}-${arch}.${ext}",
+      "executableName": "nexo-device-care",
+      "maintainer": "Samuklvm (https://github.com/Samuklvm)",
+      "desktop": {
+        "entry": {
+          "Name": "Nexo Device Care",
+          "Comment": "Cuidado e otimização do PC",
+          "Keywords": "otimização;desempenho;jogos;sensores;"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "libnotify4",
+        "libxtst6",
+        "libnss3",
+        "x11-utils"
+      ],
+      "recommends": [
+        "power-profiles-daemon",
+        "mangohud",
+        "policykit-1",
+        "lm-sensors"
+      ]
     }
-  }
+  },
+  "author": "Samuklvm",
+  "homepage": "https://github.com/Samuklvm/Project-Nexo"
 }
