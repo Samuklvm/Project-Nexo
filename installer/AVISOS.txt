@@ -14,8 +14,14 @@ Leia estas informacoes antes de instalar e usar o Nexo Device Care.
 
 6. As sessoes de observacao so gravam quando voce inicia uma. Elas registram uso do sistema, nome do programa em primeiro plano e dos que mais pesaram (sem caminhos) e, se voce ativar, o FPS pelo PresentMon (Intel, licenca MIT), que exige que o seu usuario esteja no grupo Performance Log Users ou seja administrador. Os relatorios apontam indicios com evidencia e limites; sem FPS medido, nada afirma queda de quadros.
 
-7. A desinstalacao pelas Configuracoes do Windows, ou pelo botao Desinstalar completamente em Ajustes, remove o programa, os dados e preferencias, os atalhos e as entradas do Registro do Nexo. Atualizacoes preservam os seus dados.
+7. A desinstalacao pelas Configuracoes do Windows, ou pelo botao Desinstalar completamente em Ajustes, remove o programa, os dados e preferencias, os atalhos, as entradas do Registro do Nexo (inclusive as de inicializacao) e os planos de energia criados pelo laboratorio. Pontos de restauracao ficam com o Windows, que os gerencia. Atualizacoes preservam os seus dados.
 
-8. Ao continuar, voce confirma que leu estes avisos e que revisara as confirmacoes apresentadas pelo Windows antes de autorizar operacoes administrativas.
+8. Recursos opcionais, desligados ate voce usar: a biblioteca de jogos le manifestos dos launchers, o Registro e as pastas dos jogos e copia as capas do cache local (baixar capas da CDN da Steam e opcional); a sessao automatica e a bandeja observam o programa em primeiro plano a cada 3 s; iniciar com o Windows cria uma entrada de inicializacao; liberar o FPS coloca o seu usuario no grupo Performance Log Users com a sua permissao (UAC). Tudo pode ser desligado ou desfeito.
+
+9. OTIMIZACAO EXTREMA (BETA) E UMA OPCAO ARRISCADA. Com o seu consentimento reforcado, o Nexo testa sozinho ajustes ocultos do processador num plano de energia temporario, mede cada um e volta ao original no fim. Ele cria um ponto de restauracao do Windows antes (pede permissao de administrador), para na hora se o PC sair da tomada, esquentar demais ou registrar erros graves, e, se o PC travar no meio, restaura o plano original na proxima abertura. Mesmo assim podem ocorrer aquecimento, ventoinhas altas, engasgos e, em casos raros, a necessidade de reiniciar. No modo autonomo, uma combinacao confirmada por medicao vira um plano novo, reversivel pelo Diario. Sessoes de risco ficam marcadas no app e no Diario.
+
+10. A conta Google e opcional. O login acontece no seu navegador; o Nexo guarda neste PC, cifrados pelo Windows, apenas nome, e-mail, identificador da conta e foto, e nao guarda senhas nem tokens. Nada e enviado ao criador.
+
+11. Ao continuar, voce confirma que leu estes avisos e que revisara as confirmacoes apresentadas pelo Windows antes de autorizar operacoes administrativas.
 
 Este aviso descreve o funcionamento atual do aplicativo. Ele nao substitui termos de licenca ou documentos legais preparados para a distribuicao do produto.

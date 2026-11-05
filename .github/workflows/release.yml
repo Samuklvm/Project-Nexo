@@ -45,12 +45,29 @@ jobs:
         continue-on-error: true
         run: node scripts/fetch-presentmon.cjs
 
+      # Opcional: login com Google. Guarde o JSON do cliente OAuth ("App para computador") no segredo GOOGLE_OAUTH_JSON.
+      - name: Write Google OAuth client (optional)
+        shell: pwsh
+        run: |
+          if ($env:GOOGLE_OAUTH_JSON) { Set-Content -LiteralPath config/google-oauth.json -Value $env:GOOGLE_OAUTH_JSON -Encoding utf8 } else { Write-Host 'Sem GOOGLE_OAUTH_JSON: o login com Google fica desativado nesta build.' }
+        env:
+          GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
+
       - name: Build and publish installer
         run: npm run release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      # Notas da release: o texto de docs/releases/<tag>.md vira a descrição da release no GitHub.
+      - name: Set release notes
+        shell: pwsh
+        run: |
+          $notes = "docs/releases/$env:GITHUB_REF_NAME.md"
+          if (Test-Path $notes) { gh release edit "$env:GITHUB_REF_NAME" --title "Nexo Device Care $env:GITHUB_REF_NAME" --notes-file $notes }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # O instalador visual embute o Nexo-Setup gerado acima. Se falhar, a release principal já está publicada.
       - name: Build visual installer

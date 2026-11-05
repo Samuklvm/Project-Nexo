@@ -6,7 +6,7 @@
 
   async function refreshSnapshot() {
     if (!desktopBridge?.getSystemSnapshot) { setAppStatus('Abra o app desktop para monitorar'); return; }
-    if (snapshotBusy) return;
+    if (snapshotBusy || Nexo.state.labRunning) return; // durante o laboratório, nada de carga extra atrapalhando a medição
     snapshotBusy = true;
     try {
       const snapshot = await desktopBridge.getSystemSnapshot();
@@ -20,7 +20,7 @@
     } finally { snapshotBusy = false; }
   }
 
-  const pages = [['home', 'Início'], ['analysis', 'Análise'], ['sessions', 'Sessões'], ['optimize', 'Otimizar'], ['hardware', 'Hardware'], ['maintenance', 'Manutenção'], ['activity', 'Atividade'], ['updates', 'Atualizações'], ['settings', 'Ajustes']];
+  const pages = [['home', 'Início'], ['analysis', 'Análise'], ['sessions', 'Sessões'], ['library', 'Jogos'], ['optimize', 'Otimizar'], ['lab', 'Otimização extrema (beta)'], ['atlas', 'Atlas de opções'], ['hardware', 'Hardware'], ['maintenance', 'Manutenção'], ['activity', 'Atividade'], ['updates', 'Atualizações'], ['settings', 'Ajustes']];
   Nexo.commands.unshift(
     ...pages.map(([view, label]) => ({ label: `Ir para ${label}`, hint: 'Página', run: () => Nexo.go(view) })),
     { label: 'Analisar agora', hint: 'Análise inteligente', run: () => { Nexo.go('analysis'); Nexo.runAnalysis(); } },
@@ -37,6 +37,6 @@
   refreshSnapshot().then(() => Nexo.refreshHome());
   Nexo.refreshSensors?.();
   setInterval(refreshSnapshot, SNAPSHOT_MS);
-  setInterval(() => Nexo.refreshSensors?.(), SENSORS_MS);
+  setInterval(() => { if (!Nexo.state.labRunning) Nexo.refreshSensors?.(); }, SENSORS_MS);
   Nexo.on('learned', () => Nexo.refreshHome());
 })();

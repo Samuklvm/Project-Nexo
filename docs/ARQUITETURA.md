@@ -41,12 +41,15 @@ brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `net10.0` · LibreHardwareMonitorLib 0.9.6 · Node 20+ no CI (os testes foram rodados no Node 22). Windows 10/11 x64.
 
 ## 52.05 Estado dos testes
-`npm test` roda 5 arquivos, 53 testes, todos passando no Linux:
+`npm test` roda 8 arquivos, 99 testes, todos passando no Linux:
 
 - `brain.test.cjs` (8) e `catalog-journal-experiment.test.cjs` (13, incluindo os perfis).
-- `main-ipc.test.cjs` (10): carrega o `main.cjs` real com Electron simulado.
+- `main-ipc.test.cjs` (11): carrega o `main.cjs` real com Electron simulado.
 - `session-fps.test.cjs` (15): sessões sintéticas de cada tipo de gargalo, detecção de jogo, parser de FPS nos formatos novo e antigo.
 - `probe-fps-runner.test.cjs` (7): sonda e executor de FPS com processos filhos simulados; política do hash do PresentMon.
+- `lab.test.cjs` (17): motor do laboratório contra um PC simulado — espaço fechado, escolha (inédito → UCB, tabu), juiz A/B com ruído e consistência, guardas, cancelamento, restauração que falha, orçamento de tempo, consentimento.
+- `lab-system.test.cjs` (12): adaptador real contra um `powercfg` simulado em português — clone sem tocar o original, trava + RunOnce, recuperação, queda no Equilibrado, adoção, UAC recusado, ponta a ponta e análise estática (nada de bcdedit/Defender/VBS/leitura de memória; **uma única** elevação no código: `electron/elevate.cjs`).
+- `library-account.test.cjs` (16): manifestos Steam/Epic/Xbox, desinstalações de editoras, deduplicação, visão pública sem caminhos, observador de jogos, PKCE, `state`, validação do `id_token`, login de ponta a ponta com loopback real, Atlas.
 
 **Não existe** teste automatizado de: NSIS, PowerShell real, registro, `powercfg`, sensor-host, PresentMon real, interface dentro do Electron real. Isso exige Windows (ver 52.15).
 
@@ -149,9 +152,15 @@ Matriz mínima antes de qualquer release com a flag de ações: (1) Windows 10 e
 
 Fases L a N do prompt: conexão por ADB com depuração USB autorizada pelo usuário, inventário somente leitura, diagnóstico de bateria e consumo, e só depois otimizações compatíveis e reversíveis. Limites desde já: nada de root, nada que contorne a autorização do aparelho, comandos de uma lista fechada, dados que ficam no PC.
 
-## 52.17 Critérios para o laboratório beta (fase K)
+## 52.17 Critérios para o laboratório beta (fase K) — implementado na 0.5.0
 
 Recurso de risco moderado ou maior só entra em modo beta isolado, desativado por padrão, com aviso, ponto de restauração antes de aplicar, reversão testada e registro no diário. Nunca: desativar Secure Boot, VBS, anti-cheat, assinatura de drivers ou proteções térmicas, nem alterar memória de outro processo.
+
+**Como ficou (Otimização extrema, beta):**
+- `src/lab.js` (motor puro): espaço fechado de 7 configurações de `SUB_PROCESSOR` (PERFEPP, PERFBOOSTMODE, PROCTHROTTLEMIN, CPMINCORES, PERFINCPOL, PERFBOOSTPOL, SYSCOOLPOL) com valores revisados; `validateStep` recusa qualquer outra coisa. Escolha: nunca testado aqui primeiro (menor risco antes), depois UCB; o que dispara guarda vira tabu. Juiz: pares intercalados, mediana das razões, ruído = meia amplitude da base, limiar max(3%, 1,5× ruído), ≥ 2/3 dos pares concordando; melhora num teste com piora noutro = “misto”. Combinação dos vencedores reconfirmada com 5 pares; o modo autônomo só adota isso. `finally` sempre restaura; `finish` só se a restauração deu certo.
+- `electron/lab-system.cjs` (adaptador): clona o plano ativo, ajusta só o clone e só na tomada, trava + RunOnce `--lab-recover`, conta erros graves de provedores fixos no log de Sistema, volta ao original (ou ao Equilibrado se o original sumiu). `powercfg` só com verbos de uma lista.
+- `electron/elevate.cjs`: único ponto de UAC; tarefas nomeadas (ponto de restauração, grupo Performance Log Users) e ferramentas fixas (defrag, sfc); corpo por `-EncodedCommand`.
+- Interface: aviso de risco com fita, consentimento reforçado (frase digitada), modo assistido/autônomo, risco permitido, ideias por sessão; durante a execução a janela inteira ganha moldura vermelha e a barra mostra “Sessão de risco em andamento”; Diário marca “sessão de risco”.
 
 ## 52.18 Decisões que dependem de você
 **Respondidas por você:** (1) o perfil é uma escolha entre três opções (Jogos, Trabalho e criação, Uso geral), trocável a qualquer momento; (2) PresentMon e outras extensões/APIs liberadas; (3) começar pelas sessões de observação.
@@ -159,8 +168,9 @@ Recurso de risco moderado ou maior só entra em modo beta isolado, desativado po
 **Em aberto:**
 
 1. **Fixar o hash do PresentMon** (ação sua): rode `npm run presentmon:hash`, compare com o digest que o GitHub mostra na página da release e cole em `third-party/presentmon.lock.json`.
-2. Permissão do PresentMon: o Nexo hoje **explica** como entrar no grupo “Performance Log Users”. Quer um botão que peça elevação (UAC) para fazer isso por você?
-3. Iniciar a sessão automaticamente ao detectar um jogo? Exige manter a sonda ligada fora das sessões (mais coleta, sempre opt-in).
+2. ~~Permissão do PresentMon~~ — feito na 0.5.0: automático com UAC, no Diário e reversível.
+3. ~~Sessão automática ao detectar jogo~~ — feito na 0.5.0 (opt-in), com bandeja e início com o Windows.
+7. **Login com Google:** criar o cliente OAuth no Google Cloud e colocar o JSON no segredo `GOOGLE_OAUTH_JSON` (ver `docs/LOGIN_GOOGLE.md`). O que a conta deve habilitar depois (sincronizar sessões? exige servidor)?
 4. Qual técnica medir no experimento A/B depois do plano de energia (por exemplo, o Modo de Jogo do Windows)?
 5. Banco local: SQLite ou continuar com `localStorage`?
-6. Monitoramento em segundo plano (bandeja), certificado de assinatura de código e idioma inglês no app principal: continuam pendentes.
+6. Certificado de assinatura de código e idioma inglês no app principal: continuam pendentes.

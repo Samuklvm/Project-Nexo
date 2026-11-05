@@ -1,6 +1,6 @@
 /* Interface: navegação, confirmação, paleta de comandos, efeitos e céu animado. */
 (function () {
-  const TITLES = { home: 'Início', analysis: 'Análise', sessions: 'Sessões', optimize: 'Otimizar', hardware: 'Hardware', maintenance: 'Manutenção', activity: 'Atividade', updates: 'Atualizações', settings: 'Ajustes' };
+  const TITLES = { home: 'Início', analysis: 'Análise', sessions: 'Sessões', library: 'Jogos', optimize: 'Otimizar', lab: 'Otimização extrema (beta)', atlas: 'Atlas de opções', hardware: 'Hardware', maintenance: 'Manutenção', activity: 'Atividade', updates: 'Atualizações', settings: 'Ajustes' };
 
   Nexo.go = function go(view) {
     if (!TITLES[view]) view = 'home';

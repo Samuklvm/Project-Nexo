@@ -20,9 +20,11 @@ const electronStub = {
     isPackaged: false, getVersion: () => '0.2.0-test', getAppMetrics: () => [{ cpu: { percentCPUUsage: 2 }, memory: { workingSetSize: 51200 } }], getPath: () => userData, requestSingleInstanceLock: () => true,
     whenReady: () => Promise.resolve(), on() {}, quit() {}, setAppUserModelId() {}
   },
-  BrowserWindow: class { constructor() { this.webContents = { on() {}, setWindowOpenHandler() {}, send() {} }; } once() {} on() {} loadURL(url) { loadedUrl = url; } static getAllWindows() { return []; } },
+  BrowserWindow: class { constructor() { this.webContents = { on() {}, setWindowOpenHandler() {}, send() {} }; } once() {} on() {} isDestroyed() { return false; } isVisible() { return true; } loadURL(url) { loadedUrl = url; } static getAllWindows() { return []; } },
   ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on() {} },
-  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }, dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) }
+  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }, dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+  Tray: class { setToolTip() {} on() {} setContextMenu() {} destroy() {} }, Notification: class { static isSupported() { return false; } show() {} },
+  nativeImage: { createFromPath: () => ({ resize: () => ({}) }) }, net: { fetch: async () => ({ ok: false }) }, safeStorage: { isEncryptionAvailable: () => false }
 };
 const updaterStub = { autoUpdater: { on() {}, autoDownload: false, autoInstallOnAppQuit: false, checkForUpdates: async () => null, logger: null } };
 const originalLoad = Module._load;
@@ -149,3 +151,29 @@ test('sessão: amostra do sistema por núcleo, sonda e FPS têm retorno seguro f
 });
 
 test.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));
+
+test('0.5.0: canais novos de laboratório, biblioteca, conta, acesso ao FPS e preferências', async () => {
+  for (const channel of ['lab:status', 'lab:preflight', 'lab:run', 'lab:cancel', 'lab:recover', 'games:scan', 'games:list', 'games:launch', 'games:set-cover', 'games:add', 'account:get', 'account:sign-in', 'account:sign-out', 'account:import-config', 'fps:access', 'fps:grant', 'fps:revoke', 'settings:get', 'settings:set', 'system:facts', 'watch:current']) {
+    assert.ok(handlers.has(channel), `faltou ${channel}`);
+  }
+  const status = await call('lab:status');
+  assert.equal(status.running, false);
+  assert.ok(status.space.length >= 5);
+  const pre = await call('lab:preflight');
+  assert.equal(pre.platform, 'linux');
+  const run = await call('lab:run', { consent: { acknowledged: true, phrase: 'ENTENDO O RISCO' } });
+  assert.equal(run.status, 'aborted');
+  assert.equal(run.guard, 'plataforma');
+  assert.deepEqual(await call('games:scan'), []);
+  const account = await call('account:get');
+  assert.equal(account.configured, false);
+  assert.equal(account.profile, null);
+  await assert.rejects(call('account:sign-in'), /não foi configurado/);
+  const settings = await call('settings:set', { tray: false, autoSession: false, bogus: true, openAtLogin: 'sim' });
+  assert.equal(settings.openAtLogin, false);
+  assert.equal('bogus' in settings, false);
+  assert.equal((await call('fps:access')).ready, false);
+  await assert.rejects(call('bench:cpu', { mode: 'turbo' }), /inválido/);
+  await assert.rejects(call('system:open-settings', 'cmd'), /não permitida/);
+  assert.equal((await call('system:open-settings', 'graphics')).ok, true);
+});

@@ -112,6 +112,35 @@
       fontes: [MS('Use the System File Checker tool to repair missing or corrupted system files (Microsoft Support)', 'https://support.microsoft.com/kb/929833')],
       medicao: 'Mensagem de resultado do Windows. Nenhum ganho de desempenho é prometido.',
       estado: 'Aguarda validação em Windows real.'
+    },
+    {
+      id: 'lab-session', titulo: 'Otimização extrema (beta): sessão de risco do laboratório', categoria: 'laboratorio',
+      mecanismo: 'Clona o plano de energia ativo (powercfg /duplicatescheme) para "Nexo Lab (temporário)", ativa o clone e testa, um de cada vez, valores de um espaço fechado de 7 configurações do processador (/setacvalueindex só na tomada). Cada ideia passa por medição A/B intercalada (base, candidato, base, candidato…) em três testes: um núcleo, todos os núcleos e rajadas curtas. No fim volta ao plano original e apaga o clone.',
+      oQueAltera: 'Durante o teste: só o clone temporário do plano de energia. Depois: nada, a não ser que o modo autônomo adote uma combinação confirmada, que vira um plano novo "Nexo — Ajustado".',
+      porQuePodeAjudar: 'Configurações ocultas do processador (EPP, modo de turbo, estacionamento de núcleos, política de aumento) mudam o quanto ele acelera e o quanto demora para acelerar. O efeito varia muito entre PCs, por isso o Nexo mede aqui em vez de seguir receita.',
+      quandoNaoAjuda: 'Quando o gargalo é a placa de vídeo, o disco, a rede ou a temperatura. Em muitos PCs o resultado é "sem diferença", e o laboratório diz isso.',
+      oQuePodeMudar: 'Durante o teste o PC esquenta e as ventoinhas aceleram por alguns minutos. Um ajuste adotado pode aumentar consumo e temperatura no dia a dia.',
+      risco: 'moderado', reversivel: true, reversao: 'Automática ao terminar (sucesso, erro ou cancelamento). Se o PC travar no meio, uma trava e uma entrada RunOnce fazem o Nexo voltar ao plano original na próxima abertura ou entrada no Windows. Ponto de restauração do Windows antes de começar.',
+      persistente: false, exigeReinicio: false, exigeAdmin: 'só para o ponto de restauração (UAC)',
+      compat: { windows: 'Windows 10 e 11 (a validar em máquina real)', hardware: 'Ajustes que o firmware não expõe aparecem como indisponíveis e são pulados' },
+      fontes: [MS('Opções de gerenciamento de energia do processador (Microsoft Learn)', 'https://learn.microsoft.com/windows-hardware/customize/power-settings/configure-processor-power-management-options'),
+        MS('Checkpoint-Computer (Microsoft Learn)', 'https://learn.microsoft.com/powershell/module/microsoft.powershell.management/checkpoint-computer')],
+      medicao: 'Pares intercalados; ganho = mediana das razões por par; ruído = meia amplitude da base; só conta acima de 3% e de 1,5× o ruído, com pelo menos 2/3 dos pares concordando. A combinação vencedora é reconfirmada com 5 pares.',
+      estado: 'Motor e adaptador validados em dev contra um Windows simulado (testes). Aguarda validação em Windows real.'
+    },
+    {
+      id: 'perf-log-users', titulo: 'Liberar a medição de FPS (grupo "Performance Log Users")', categoria: 'acesso',
+      mecanismo: 'Add-LocalGroupMember -SID S-1-5-32-559 com o SID do seu usuário, executado com elevação (UAC). Usa o SID do grupo, que é igual em qualquer idioma do Windows.',
+      oQueAltera: 'Coloca o seu usuário no grupo local que pode ler os eventos de desempenho usados pelo PresentMon.',
+      porQuePodeAjudar: 'Sem o grupo (ou sem rodar como administrador), o PresentMon não consegue ler os quadros do jogo.',
+      quandoNaoAjuda: 'Se você já roda o Nexo como administrador. O efeito só vale depois de sair e entrar de novo no Windows.',
+      oQuePodeMudar: 'Programas que rodam com o seu usuário também passam a poder ler esses eventos de desempenho.',
+      risco: 'baixo', reversivel: true, reversao: 'Remove-LocalGroupMember pelo Diário ou em Sessões > Componentes (pede UAC de novo).',
+      persistente: true, exigeReinicio: true, exigeAdmin: true,
+      compat: { windows: 'Windows 10 e 11 (módulo LocalAccounts do PowerShell 5.1)', hardware: 'Qualquer' },
+      fontes: [MS('Add-LocalGroupMember (Microsoft Learn)', 'https://learn.microsoft.com/powershell/module/microsoft.powershell.localaccounts/add-localgroupmember'), MS('PresentMon: requisitos de acesso descritos no README do projeto (Intel, GitHub)', null, 'observada')],
+      medicao: 'O Nexo confere o grupo antes e depois (whoami/token e Get-LocalGroupMember).',
+      estado: 'Validado em dev (script e validação do SID). Aguarda validação em Windows real.'
     }
   ];
 

@@ -15,9 +15,9 @@
     const save = (entries) => storage.set(entries.slice(-MAX_ENTRIES));
 
     /** status: applied | reverted | failed. `authorization` descreve como o usuário autorizou. */
-    function record({ actionId, title, risk = 'baixo', reversible = false, before = null, after = null, detail = '', status = 'applied', authorization = 'confirmação na interface', now = Date.now() }) {
+    function record({ actionId, title, risk = 'baixo', reversible = false, before = null, after = null, detail = '', status = 'applied', authorization = 'confirmação na interface', riskSession = false, now = Date.now() }) {
       const entries = load();
-      const entry = { id: newId(), at: now, actionId, title, risk, reversible: reversible === true || reversible === 'parcial' ? reversible : false, before, after, detail, status, authorization, measure: null, revertedAt: null, revertNote: '' };
+      const entry = { id: newId(), at: now, actionId, title, risk, reversible: reversible === true || reversible === 'parcial' ? reversible : false, before, after, detail, status, authorization, riskSession: riskSession === true, measure: null, revertedAt: null, revertNote: '' };
       entries.push(entry);
       save(entries);
       return entry;
@@ -44,6 +44,11 @@
         if (current?.activeGuid && current.activeGuid !== entry.after?.guid) {
           return { ok: true, conflict: true, reason: `O plano ativo mudou depois da alteração do Nexo (agora é ${current.activeName || 'outro'}). Reverter vai sobrescrever essa mudança.` };
         }
+        return { ok: true, conflict: false, reason: '' };
+      }
+      if (entry.actionId === 'perf-log-users') {
+        if (entry.after?.member !== true) return { ok: false, conflict: false, reason: 'O Nexo não chegou a alterar o grupo.' };
+        if (current && current.member === false) return { ok: false, conflict: false, reason: 'O seu usuário já não está no grupo.' };
         return { ok: true, conflict: false, reason: '' };
       }
       return { ok: false, conflict: false, reason: 'Não há reversão automática para esta operação.' };

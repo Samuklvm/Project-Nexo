@@ -6,7 +6,7 @@
   let rec = null;
   let timers = [];
   let stopProbeListener = null;
-  const fps = { status: null, active: false };
+  const fps = { status: null, active: false, access: null };
 
   const load = () => { const stored = readJSON(Nexo.keys.sessions, []); return Array.isArray(stored) ? stored : []; };
   const persist = (list) => { if (!writeJSON(Nexo.keys.sessions, list.slice(0, MAX_SESSIONS))) showToast('Não foi possível guardar a sessão neste computador.'); };
@@ -20,6 +20,11 @@
     list: load,
     recent: () => load().slice(0, 4).map((session) => ({ at: session.startedAt, findings: (session.report?.findings || []).filter((finding) => finding.severity !== 'info').map((finding) => finding.id) })),
     isRecording: () => Boolean(rec),
+    current: () => (rec ? { name: rec.name, gameId: rec.gameId, auto: rec.auto, startedAt: rec.startedAt } : null),
+    forGame: (gameId, name) => load().filter((session) => (gameId && session.gameId === gameId) || (name && session.report?.game?.name && session.report.game.name.toLowerCase() === String(name).toLowerCase())),
+    open: (id) => openReport(id),
+    start: (options) => start(options),
+    stop: () => stop(),
     clear() { persist([]); renderList(); Nexo.emit('learned'); }
   };
 
@@ -31,7 +36,48 @@
     setText('fps-note', status.available ? `Componente: ${status.name} (${where}). Exige o grupo “Performance Log Users”.` : status.platform && status.platform !== 'win32' ? 'Disponível só no Windows.' : 'Componente não encontrado. Escolha o PresentMon em “Componentes”, mais abaixo.');
     setText('fps-status-text', status.available ? `${status.name} · ${where}` : 'Não encontrado. Baixe na página oficial e aponte o arquivo, ou use o embutido quando o hash estiver fixado na build.');
     document.getElementById('fps-clear').hidden = status.source !== 'escolhido';
+    await refreshAccess();
   }
+
+  /* ---------- Acesso ao FPS: grupo "Performance Log Users", liberado automaticamente com o UAC ---------- */
+  async function refreshAccess() {
+    try { fps.access = await bridge.getFpsAccess(); } catch { fps.access = null; }
+    const access = fps.access;
+    const text = !access || access.platform !== 'win32' ? 'Disponível só no Windows.'
+      : access.admin ? 'O Nexo está rodando como administrador: o FPS funciona sem o grupo.'
+      : access.inToken ? 'Liberado: o seu usuário está no grupo “Performance Log Users”.'
+      : access.needsRelogin ? 'Quase lá: você já está no grupo. Saia e entre de novo no Windows (ou reinicie) para valer.'
+      : 'Bloqueado: o seu usuário não está no grupo. O Nexo pode liberar sozinho (o Windows pede a sua permissão).';
+    setText('fps-access-text', text);
+    document.getElementById('fps-grant').hidden = !access || access.platform !== 'win32' || access.ready || access.needsRelogin;
+    document.getElementById('fps-revoke').hidden = !access || !(access.member || access.inToken);
+  }
+
+  Nexo.grantFpsAccess = async function grantFpsAccess() {
+    setAppStatus('Aguardando a permissão do Windows');
+    try {
+      const result = await bridge.grantFpsAccess();
+      if (result.declined) { showToast('Você recusou a permissão no Windows; nada mudou.'); return false; }
+      if (!result.ok) { showToast(`O Windows não aceitou: ${result.note || 'motivo desconhecido'}.`); return false; }
+      if (result.changed) {
+        Nexo.journal.record({ actionId: 'perf-log-users', title: 'Liberar a medição de FPS', risk: 'baixo', reversible: true, before: { member: false }, after: { member: true }, authorization: 'permissão de administrador (UAC) do Windows', detail: 'Usuário adicionado ao grupo Performance Log Users (S-1-5-32-559).' });
+        Nexo.emit('journal');
+        recordActivity('Acesso ao FPS liberado', 'Grupo Performance Log Users');
+      }
+      if (result.access?.needsRelogin) await Nexo.confirm({ title: 'Falta só um passo', body: 'O Windows só aplica a mudança de grupo depois que você sai e entra de novo (ou reinicia o PC). Até lá, o FPS só funciona com o Nexo aberto como administrador.', confirmLabel: 'Entendi', cancelLabel: 'Fechar' });
+      else showToast('Medição de FPS liberada.');
+      return true;
+    } catch (error) { showToast(error.message || 'Não foi possível liberar o acesso.'); return false; }
+    finally { setAppStatus('Monitoramento ativo'); refreshAccess(); }
+  };
+  Nexo.revokeFpsAccess = async function revokeFpsAccess() {
+    const result = await bridge.revokeFpsAccess();
+    if (result.declined) { showToast('Você recusou a permissão no Windows; nada mudou.'); return false; }
+    if (!result.ok) { showToast(`O Windows não aceitou: ${result.note || 'motivo desconhecido'}.`); return false; }
+    refreshAccess();
+    showToast('O seu usuário saiu do grupo. Vale a partir da próxima entrada no Windows.');
+    return true;
+  };
 
   /* ---------- Gravação ---------- */
   function showLiveError(message) {
@@ -107,17 +153,31 @@
     Nexo.charts.render(document.getElementById('live-chart'), { from: tail[0].t, to: tail[tail.length - 1].t, yMin: 0, yMax: 100, unit: '%', fill: false, series: lines, bands: [{ from: 95, to: 100, color: 'rgba(255, 122, 149, 0.08)' }] }, null);
   }
 
-  async function start() {
+  async function start(options = {}) {
     if (rec) return;
     if (!bridge?.sampleSession) { showToast('As sessões estão disponíveis no aplicativo desktop.'); return; }
-    let useFps = document.getElementById('sess-fps').checked;
-    if (useFps && !fps.status?.available) {
+    if (Nexo.state.labRunning) { showToast('O laboratório está medindo agora; a sessão fica para depois.'); return; }
+    const auto = options.auto === true;
+    if (!fps.status) await refreshFps();
+    let useFps = auto ? Boolean(fps.status?.available && fps.access?.ready) : document.getElementById('sess-fps').checked;
+    if (!auto && useFps && fps.status?.available && fps.access && fps.access.platform === 'win32' && !fps.access.ready) {
+      const choice = await new Promise((resolve) => {
+        const dialog = Nexo.dialog({ title: 'Liberar a medição de FPS?', html: `<p>O PresentMon só lê os quadros se o seu usuário estiver no grupo “Performance Log Users”. O Nexo pode fazer isso agora, sozinho: o Windows vai pedir a sua permissão (UAC). ${fps.access.needsRelogin ? 'Você já está no grupo, mas precisa sair e entrar de novo no Windows para valer.' : 'Depois é preciso sair e entrar de novo no Windows.'}</p>`,
+          actions: [{ id: 'nofps', label: 'Gravar sem FPS', onClick: () => resolve('nofps') }, ...(fps.access.needsRelogin ? [] : [{ id: 'grant', label: 'Liberar automaticamente', tone: 'primary', onClick: () => resolve('grant') }])] });
+        dialog.done.then((answer) => resolve(answer === 'dismiss' ? 'cancel' : answer));
+      });
+      if (choice === 'cancel') return;
+      if (choice === 'grant') await Nexo.grantFpsAccess();
+      useFps = Boolean(fps.access?.ready);
+    }
+    if (!auto && useFps && !fps.status?.available) {
       const proceed = await Nexo.confirm({ title: 'PresentMon não encontrado', body: 'Sem o componente, a sessão grava o sistema e os programas, mas não o FPS. Você pode escolher o arquivo em “Componentes”.', confirmLabel: 'Gravar sem FPS' });
       if (!proceed) return;
       useFps = false;
     }
-    rec = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, name: document.getElementById('sess-name').value.trim().slice(0, 60), startedAt: Date.now(), profile: Nexo.profile.id || NexoProfiles.DEFAULT,
-      samples: [], probes: [], overheadCpu: [], overheadMem: [], useProbe: document.getElementById('sess-probe').checked, useFps, lastFps: null, fpsResult: null, forcedGame: null, fg: null, probeSelf: null, busy: false };
+    rec = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, name: String(options.name ?? document.getElementById('sess-name').value).trim().slice(0, 60), startedAt: Date.now(), profile: Nexo.profile.id || NexoProfiles.DEFAULT,
+      samples: [], probes: [], overheadCpu: [], overheadMem: [], useProbe: auto ? true : document.getElementById('sess-probe').checked, useFps, lastFps: null, fpsResult: null, forcedGame: null, fg: null, probeSelf: null, busy: false,
+      auto, gameId: options.gameId || null, watchPid: options.pid || null };
     showLiveError('');
     renderRec();
     setText('live-fg', rec.useProbe ? 'Aguardando o primeiro plano…' : 'Observação detalhada desligada');
@@ -129,7 +189,9 @@
     }
     timers = [setInterval(tick, 1000), setInterval(() => Nexo.refreshSensors?.(), 5000)];
     Nexo.refreshSensors?.();
-    setAppStatus('Gravando sessão');
+    setAppStatus(auto ? `Gravando ${rec.name || 'a sessão'} (automático)` : 'Gravando sessão');
+    if (auto && rec.useFps && rec.watchPid) startFps(rec.watchPid);
+    Nexo.emit('session-state');
   }
 
   async function stop() {
@@ -150,14 +212,17 @@
     const report = NexoSession.analyze({ name: finished.name, profile: finished.profile, startedAt: finished.startedAt, endedAt, samples: finished.samples, probes: finished.probes, fps: fpsResult?.summary || null,
       overhead, hasGpuSensor: finished.samples.some((sample) => Number.isFinite(sample.gpu)), forcedGame: finished.forcedGame });
     const label = finished.name || (report.game ? `${report.game.name}` : `Sessão de ${when(finished.startedAt)}`);
-    const record = { id: finished.id, name: label, startedAt: finished.startedAt, endedAt, profile: finished.profile, report,
+    const probeGame = (() => { const counts = new Map(); for (const probe of finished.probes) if (probe.fg?.gameId) counts.set(probe.fg.gameId, (counts.get(probe.fg.gameId) || 0) + 1); return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || null; })();
+    const record = { id: finished.id, name: label, startedAt: finished.startedAt, endedAt, profile: finished.profile, report, auto: finished.auto, gameId: finished.gameId || probeGame,
       timeline: NexoSession.compactTimeline(finished.samples, finished.startedAt, 5), fpsSeries: fpsResult?.series?.slice(0, 2000) || null };
     const list = load(); list.unshift(record); persist(list);
     renderList();
     recordActivity('Sessão de observação', `${label} · ${clock(report.meta.durationS)}`);
     setAppStatus('Monitoramento ativo');
     Nexo.emit('learned');
-    openReport(record.id);
+    Nexo.emit('session-state');
+    if (finished.auto) showToast(`Relatório da sessão de ${label} pronto.`, { label: 'Ver', run: () => { Nexo.go('sessions'); openReport(record.id); } });
+    else openReport(record.id);
   }
 
   /* ---------- Relatório ---------- */
@@ -242,7 +307,7 @@
     document.getElementById('sess-clear').hidden = list.length === 0;
     box.innerHTML = list.length ? list.map((record) => {
       const findings = record.report.findings.filter((finding) => finding.severity !== 'info').slice(0, 3);
-      return `<article class="sheet sess-card" data-id="${escapeHtml(record.id)}"><header><strong>${escapeHtml(record.name)}</strong>${record.report.game ? chip('jogo', 'risk-baixo') : ''}</header>
+      return `<article class="sheet sess-card" data-id="${escapeHtml(record.id)}"><header><strong>${escapeHtml(record.name)}</strong>${record.report.game ? chip('jogo', 'risk-baixo') : ''}${record.auto ? chip('automática') : ''}</header>
         <div class="j-meta">${when(record.startedAt)} · ${clock(record.report.meta.durationS)} · ${escapeHtml(NexoProfiles.get(record.profile).nome)}${record.report.fps ? ` · ${dec(record.report.fps.avgFps, 0)} FPS médios` : ''}</div>
         <p class="sess-concl">${escapeHtml(record.report.conclusion)}</p>
         <div class="chips-row">${findings.map((finding) => chip(finding.title, finding.severity === 'bad' ? 'risk-alto' : 'risk-moderado')).join('')}</div>
@@ -274,6 +339,14 @@
     finally { setButtonBusy(button, false); }
   });
 
+  document.getElementById('fps-grant').addEventListener('click', () => Nexo.grantFpsAccess());
+  document.getElementById('fps-revoke').addEventListener('click', () => Nexo.revokeFpsAccess());
+  document.getElementById('sess-fps').addEventListener('change', (event) => { if (event.target.checked && fps.access && fps.access.platform === 'win32' && !fps.access.ready) showToast(fps.access.needsRelogin ? 'Para o FPS: saia e entre de novo no Windows.' : 'O FPS precisa de uma liberação do Windows.', fps.access.needsRelogin ? null : { label: 'Liberar', run: () => Nexo.grantFpsAccess() }); });
+  // Sessão automática: o observador do processo principal avisa quando um jogo abre e fecha.
+  bridge?.onWatchGame?.((event) => {
+    if (event.type === 'start' && !rec) start({ auto: true, name: event.name, gameId: event.gameId, pid: event.pid });
+    if (event.type === 'end' && rec?.auto && (!rec.watchPid || rec.watchPid === event.pid)) stop();
+  });
   bridge?.onFpsUpdate?.((update) => { if (rec) rec.lastFps = update.fps; });
   bridge?.onFpsError?.((error) => { fps.active = false; if (rec) { rec.useFps = false; } showLiveError(error.message); showToast('A medição de FPS não pôde ser feita. Veja a explicação na sessão.'); });
   bridge?.onFpsEnded?.(async () => { fps.active = false; if (rec && !rec.fpsResult) { try { rec.fpsResult = await bridge.stopFps(); } catch { /* o resumo final tenta de novo */ } } });

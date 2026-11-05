@@ -12,7 +12,8 @@ const Nexo = (window.Nexo = {
     effects: 'nexo-effects',
     journal: 'nexo-journal-v1',
     profile: 'nexo-profile',
-    sessions: 'nexo-sessions-v1'
+    sessions: 'nexo-sessions-v1',
+    lab: 'nexo-lab-v1'
   },
   listeners: {},
   on(event, handler) { (this.listeners[event] ||= []).push(handler); },

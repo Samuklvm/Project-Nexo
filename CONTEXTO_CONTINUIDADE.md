@@ -140,3 +140,25 @@ O script PowerShell da sonda (compila um tipo com `Add-Type` e consulta CIM), o 
 ### Próximos passos sugeridos
 Fixar o hash do PresentMon; rodar “Testar sonda” e uma sessão real num jogo; decidir sobre iniciar sessão automaticamente ao detectar jogo; escolher a próxima técnica para o experimento A/B; integrar os motivos de limitação da GPU do `nvidia-smi`.
 
+
+## Versão 0.5.0 — Otimização extrema (beta), biblioteca de jogos, Atlas e conta Google (05/11/2026)
+
+Pedidos do usuário: (1) liberar o FPS de forma automática; (2) sessão automática ao detectar jogo + segundo plano, e uma biblioteca estilo Steam com **todos** os jogos e capas; (3) “todas as opções, inclusive as que ninguém usa e as que ninguém tentou”; (4) seção **Otimização extrema (beta)** com aviso claro de risco, autônoma, com pontos de restauração e **ambiente de testes dentro do PC** para testar na hora (“sem presunção ou boatos”); sessões de risco marcadas e avisadas; o app como ecossistema autônomo; (5) **login com Google**.
+
+Combinado com o usuário (honestidade): “inédito” = **nunca testado neste PC**; o motor autônomo só age num **espaço fechado e revisado** de ajustes reversíveis e mede cada ideia; o UAC nunca é contornado; nada de desligar Defender, VBS, Secure Boot, anticheat, proteções térmicas, overclock/undervolt ou ler memória de outro processo (estão no Atlas como “o Nexo não mexe”).
+
+- **Laboratório:** `src/lab.js`, `electron/lab-system.cjs`, `electron/elevate.cjs`, `src/view-lab.js`. Detalhes em ARQUITETURA 52.17. Recuperação na abertura e por `--lab-recover` (RunOnce). `before-quit` cancela e espera a restauração. Durante o laboratório o app pausa as leituras periódicas para não sujar a medição, e `bench:cpu`/`power:set` ficam bloqueados. Novo modo de benchmark `burst` (rajadas de 30 ms após 70 ms parado) mede a resposta do processador.
+- **Biblioteca:** `electron/games.cjs` (Steam VDF/ACF + capas em `appcache/librarycache` nos layouts antigo e novo; Epic `.item`; Xbox `MicrosoftGame.config`; GOG/Ubisoft/desinstalações via Registro; jogos manuais), `src/view-library.js`. Caminhos ficam no processo principal (testado). Capas copiadas para `userData/covers`; capas da CDN da Steam são opt-in. A sonda e o observador reconhecem jogos da biblioteca.
+- **Segundo plano:** `electron/watcher.cjs` (primeiro plano a cada 3 s, 2 leituras para iniciar, `process.kill(pid, 0)` para detectar o fim), bandeja (`Tray`), iniciar com o Windows (`setLoginItemSettings`, valor `NexoDeviceCare`, `--hidden`), `backgroundThrottling: false` (sessões continuam a 1 Hz com jogo em tela cheia). Preferências em `userData/nexo-settings.json`.
+- **FPS automático:** botão e oferta automática ao gravar com FPS; `Add-LocalGroupMember -SID S-1-5-32-559` com o SID do usuário (lido no processo principal); avisa que vale após sair/entrar; Diário com reversão; a desinstalação pelo app oferece desfazer.
+- **Atlas:** `src/atlas.js`, `src/view-atlas.js`: 41 itens (7 testados pelo laboratório, 5 ações, 13 guias, 10 mitos, 6 bloqueados) + leitura somente-leitura de XMP, canais de memória, Hz, HAGS, Modo de Jogo, captura e VBS.
+- **Conta Google:** `electron/account.cjs`, `src/view-account.js`, `docs/LOGIN_GOOGLE.md`. Loopback + PKCE, escopos mínimos, token revogado, perfil cifrado com `safeStorage`. **Falta o usuário criar o cliente OAuth** (segredo `GOOGLE_OAUTH_JSON` no GitHub). Sem sincronização (exigiria servidor).
+- **Desinstalação:** agora remove `Run`, `StartupApproved\Run`, `RunOnce` e os planos “Nexo Lab”/“Nexo — Ajustado” (volta ao Equilibrado se um deles estiver ativo), no NSIS e no script do app.
+- **Privacidade:** sincronizada nas quatro fontes (PRIVACIDADE.md, installer.nsh PT/EN, AVISOS.txt, launcher PT/EN).
+- **Testes:** 99 passando (8 arquivos).
+
+### Não validado em Windows (testar antes de publicar)
+Tudo do laboratório no Windows real (`powercfg` com aliases nos verbos `/qh` e `/setacvalueindex`, saída localizada, ponto de restauração elevado com `-EncodedCommand`, RunOnce, `Get-WinEvent`), o tamanho do texto de privacidade do NSIS (passou de 4 mil caracteres; se a build do NSIS limitar strings em 1024/8192, o texto pode ser cortado — conferir na tela do instalador), `Add-LocalGroupMember` por SID, `app.getFileIcon`, layouts reais do cache de capas da Steam, a bandeja e o início escondido, o login com Google com um cliente real.
+
+### Próximos passos sugeridos
+Rodar o laboratório num PC real em modo assistido primeiro; criar o cliente OAuth; fixar o hash do PresentMon; ampliar o espaço do laboratório com medições que não são de CPU (latência de disco com ASPM, testes de GPU) antes de incluir ajustes dessas áreas.

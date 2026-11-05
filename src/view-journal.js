@@ -6,6 +6,7 @@
 
   function summaryOf(entry) {
     if (entry.actionId === 'power-plan-switch') return `${entry.before?.name || '?'} → ${entry.after?.name || '?'}`;
+    if (entry.actionId === 'lab-session' || entry.actionId === 'perf-log-users') return entry.detail || '';
     if (Number.isFinite(entry.after?.removedCount)) return `${entry.after.removedCount.toLocaleString('pt-BR')} itens · ${formatBytes(entry.after.bytesFreed || 0)}`;
     return entry.detail || '';
   }
@@ -32,7 +33,7 @@
       return `<li class="j-item" data-id="${escapeHtml(entry.id)}" data-status="${entry.status}">
         <div class="j-head"><strong>${escapeHtml(entry.title)}</strong>
           <span class="chip risk-${escapeHtml(entry.risk)}">${escapeHtml(NexoCatalog.RISK_LABEL[entry.risk] || entry.risk)}</span>
-          <span class="chip status-${entry.status}">${STATUS[entry.status] || entry.status}</span></div>
+          <span class="chip status-${entry.status}">${STATUS[entry.status] || entry.status}</span>${entry.riskSession ? '<span class="chip risk-alto">sessão de risco</span>' : ''}</div>
         <div class="j-meta">${when(entry.at)} · ${escapeHtml(summaryOf(entry))}${entry.revertedAt ? ` · revertida em ${when(entry.revertedAt)}` : ''}</div>
         ${measured ? `<div class="j-measure">Medição: ${escapeHtml(measured)}</div>` : ''}
         ${entry.revertNote && entry.status !== 'reverted' ? `<div class="j-meta">${escapeHtml(entry.revertNote)}</div>` : ''}
@@ -71,6 +72,14 @@
   Nexo.revertJournal = async function revertJournal(id) {
     const entry = Nexo.journal.get(id);
     if (!entry) return false;
+    if (entry.actionId === 'perf-log-users') {
+      const access = await desktopBridge.getFpsAccess().catch(() => null);
+      const check = Nexo.journal.canRevert(entry, access ? { member: access.member } : null);
+      if (!check.ok) { showToast(check.reason); return false; }
+      const done = await Nexo.revokeFpsAccess();
+      if (done) { Nexo.journal.markReverted(id, 'usuário removido do grupo'); Nexo.emit('journal'); }
+      return done;
+    }
     await Nexo.loadPower?.();
     const active = Nexo.state.power?.active;
     const check = Nexo.journal.canRevert(entry, { activeGuid: active?.guid, activeName: active?.name });

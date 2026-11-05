@@ -164,6 +164,7 @@
     eraseLearning() {
       brain.reset();
       Nexo.sessions?.clear?.();
+      try { localStorage.removeItem(Nexo.keys.lab); } catch { /* armazenamento indisponível */ }
       history = [];
       live = [];
       lastCommit = 0;
@@ -174,7 +175,7 @@
       return {
         exportedAt: new Date().toISOString(), app: 'Nexo Device Care',
         history: history.map((s) => ({ ...s })), learning: brain.serialize(), feedback: Nexo.store.feedback(),
-        activity: readJSON(Nexo.keys.activity, []), journal: Nexo.journal?.list?.() ?? [], sessions: Nexo.sessions?.list?.() ?? [], profile: Nexo.profile?.id ?? null
+        activity: readJSON(Nexo.keys.activity, []), journal: Nexo.journal?.list?.() ?? [], sessions: Nexo.sessions?.list?.() ?? [], lab: readJSON(Nexo.keys.lab, null), profile: Nexo.profile?.id ?? null
       };
     }
   };

@@ -96,20 +96,21 @@ const text = (value, limit = 60) => String(value ?? '').slice(0, limit);
 const asList = (value) => (Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : []);
 
 /** Sanitiza a leitura bruta e acrescenta a classificação de jogo. Remove o caminho do executável. */
-function normalizeProbe(raw) {
+function normalizeProbe(raw, match = () => null) {
   if (!raw || typeof raw !== 'object' || raw.error) return null;
   const foreground = raw.fg && raw.fg.name ? raw.fg : null;
-  const classification = foreground ? Session.classifyForeground({ name: foreground.name, path: foreground.path }) : null;
+  const libraryGame = foreground ? match(foreground.path) : null;
+  const classification = libraryGame ? { isGame: true, reason: 'é um jogo da sua biblioteca' } : foreground ? Session.classifyForeground({ name: foreground.name, path: foreground.path }) : null;
   return {
     t: Number.isFinite(raw.t) ? raw.t : Date.now(),
-    fg: foreground ? { pid: Number(foreground.pid) || 0, name: text(foreground.name), isGame: classification.isGame, reason: classification.reason } : null,
+    fg: foreground ? { pid: Number(foreground.pid) || 0, name: text(foreground.name), isGame: classification.isGame, reason: classification.reason, gameId: libraryGame?.id || null, gameName: libraryGame ? text(libraryGame.name, 80) : null } : null,
     cpu: asList(raw.cpu).slice(0, 5).map((item) => ({ pid: Number(item.pid) || 0, name: text(item.name), cpu: clamp(Number(item.cpu) || 0, 0, 100) })),
     gpu: asList(raw.gpu).slice(0, 5).map((item) => ({ pid: Number(item.pid) || 0, name: text(item.name), util: clamp(Number(item.util) || 0, 0, 100) })),
     self: raw.self ? { cpu: clamp(Number(raw.self.cpu) || 0, 0, 100), memMB: clamp(Number(raw.self.memMB) || 0, 0, 4096) } : null
   };
 }
 
-function createProbe({ spawnFn = spawn, emit = () => {}, platform = process.platform } = {}) {
+function createProbe({ spawnFn = spawn, emit = () => {}, platform = process.platform, match = () => null } = {}) {
   let child = null;
   let reader = null;
   const waiters = new Set();
@@ -131,7 +132,7 @@ function createProbe({ spawnFn = spawn, emit = () => {}, platform = process.plat
     reader.on('line', (line) => {
       let parsed;
       try { parsed = JSON.parse(line); } catch { return; }
-      const sample = normalizeProbe(parsed);
+      const sample = normalizeProbe(parsed, match);
       if (!sample) return;
       emit(sample);
       for (const waiter of [...waiters]) waiter(sample);

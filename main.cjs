@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Menu, powerMonitor, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, powerMonitor, dialog, Tray, Notification, nativeImage, net, safeStorage } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { execFile, spawn } = require('child_process');
 const fs = require('fs/promises');
@@ -10,6 +10,13 @@ const readline = require('readline');
 const { Worker } = require('worker_threads');
 const { createProbe } = require('./electron/probe.cjs');
 const { createFpsRunner } = require('./electron/fps-runner.cjs');
+const { createElevator, toolLauncher } = require('./electron/elevate.cjs');
+const { createLabSystem } = require('./electron/lab-system.cjs');
+const { createLibrary } = require('./electron/games.cjs');
+const { createWatcher } = require('./electron/watcher.cjs');
+const Account = require('./electron/account.cjs');
+const NexoLab = require('./src/lab.js');
+const http = require('http');
 
 const execFileAsync = promisify(execFile);
 const CLEANUP_MAX_FILES = 5000;
@@ -46,6 +53,23 @@ function runPowerShell(script, timeout = 15000) {
     windowsHide: true,
     timeout,
     maxBuffer: 2 * 1024 * 1024
+  });
+}
+
+/** Igual ao runPowerShell, mas nunca lança: devolve { code, stdout } (o laboratório decide o que fazer com o código). */
+function runPowerShellCode(script, timeout = 15000) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') { resolve({ code: -1, stdout: '' }); return; }
+    execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
+      resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || '') });
+    });
+  });
+}
+function runCode(file, args, timeout = 20000) {
+  return new Promise((resolve) => {
+    execFile(file, args, { windowsHide: true, timeout, maxBuffer: 2 * 1024 * 1024 }, (error, stdout) => {
+      resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || '') });
+    });
   });
 }
 
@@ -515,11 +539,13 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      // Sessões e laboratório medem a 1 Hz mesmo com um jogo em tela cheia por cima da janela.
+      backgroundThrottling: false
     }
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  mainWindow.once('ready-to-show', () => { if (!startHidden) mainWindow?.show(); });
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== trustedDocumentUrl) event.preventDefault();
   });
@@ -549,7 +575,8 @@ registerIpcHandler('window:toggle-maximize', () => {
 });
 
 registerIpcHandler('window:close', () => {
-  mainWindow?.close();
+  if (settings.tray && tray) { mainWindow?.hide(); notifyOnce('tray', 'O Nexo continua na bandeja', 'Ele segue observando seus jogos. Clique no ícone perto do relógio para abrir ou sair.'); }
+  else mainWindow?.close();
   return { ok: true };
 });
 
@@ -588,8 +615,7 @@ registerIpcHandler('drives:optimize', async (_event, driveLetter) => {
   }
 
   const letter = driveLetter.toUpperCase();
-  const script = `$process = Start-Process -FilePath 'defrag.exe' -ArgumentList @('${letter}:', '/O', '/U', '/V') -Verb RunAs -Wait -PassThru; exit $process.ExitCode`;
-  await runPowerShell(script, 60 * 60 * 1000);
+  await runPowerShell(toolLauncher('defrag', letter), 60 * 60 * 1000);
   return { ok: true, driveLetter: letter };
 });
 
@@ -664,7 +690,7 @@ registerIpcHandler('system:repair', async () => {
     throw new Error('A verificação de arquivos do sistema está disponível somente no Windows.');
   }
 
-  await runPowerShell("$process = Start-Process -FilePath 'sfc.exe' -ArgumentList '/scannow' -Verb RunAs -Wait -PassThru; exit $process.ExitCode", 60 * 60 * 1000);
+  await runPowerShell(toolLauncher('sfc'), 60 * 60 * 1000);
   return { ok: true };
 });
 
@@ -764,6 +790,7 @@ async function listPowerPlans() {
 registerIpcHandler('power:list', listPowerPlans);
 
 registerIpcHandler('power:set', async (_event, guid) => {
+  if (labState.running) throw new Error('O laboratório está usando o plano de energia agora; espere ele terminar.');
   const plans = await listPowerPlans();
   const target = plans.find((plan) => plan.guid === String(guid || '').toLowerCase());
   if (!target) throw new Error('Plano de energia não reconhecido.');
@@ -804,16 +831,36 @@ while (performance.now() < end) {
 }
 parentPort.postMessage({ iterations, seconds: (performance.now() - started) / 1000, checksum: x >>> 0 });
 `;
+// Rajadas: 30 ms de trabalho depois de 70 ms parado, repetido. Mede o quão rápido o processador "acorda" e acelera,
+// que é o que planos e políticas de energia mais mudam (resposta a cliques, carregamentos curtos, quadros irregulares).
+const BURST_WORKER = String.raw`
+const { parentPort, workerData } = require('worker_threads');
+const pause = new Int32Array(new SharedArrayBuffer(4));
+let x = 0x9e3779b9 | 0;
+let iterations = 0;
+let busy = 0;
+const end = performance.now() + workerData.ms;
+while (performance.now() < end) {
+  Atomics.wait(pause, 0, 0, 70);
+  const start = performance.now();
+  while (performance.now() - start < 30) {
+    for (let i = 0; i < 20000; i += 1) { x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d); x ^= x >>> 12; }
+    iterations += 20000;
+  }
+  busy += performance.now() - start;
+}
+parentPort.postMessage({ iterations, seconds: busy / 1000, checksum: x >>> 0 });
+`;
 let activeBench = null;
 
 async function runCpuBench(mode, ms) {
   if (activeBench) throw new Error('Já existe um teste em andamento.');
-  const threads = mode === 'single' ? 1 : Math.max(1, os.cpus().length - 1);
+  const threads = mode === 'multi' ? Math.max(1, os.cpus().length - 1) : 1;
   const state = { workers: [], cancelled: false };
   activeBench = state;
   try {
     const results = await Promise.all(Array.from({ length: threads }, () => new Promise((resolve, reject) => {
-      const worker = new Worker(BENCH_WORKER, { eval: true, workerData: { ms } });
+      const worker = new Worker(mode === 'burst' ? BURST_WORKER : BENCH_WORKER, { eval: true, workerData: { ms } });
       state.workers.push(worker);
       worker.once('message', resolve);
       worker.once('error', reject);
@@ -829,7 +876,8 @@ async function runCpuBench(mode, ms) {
 
 registerIpcHandler('bench:cpu', async (_event, options) => {
   const mode = options?.mode;
-  if (mode !== 'single' && mode !== 'multi') throw new Error('Modo de teste inválido.');
+  if (!['single', 'multi', 'burst'].includes(mode)) throw new Error('Modo de teste inválido.');
+  if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
   const ms = Math.min(3000, Math.max(200, Math.round(Number(options.ms) || 1200)));
   return runCpuBench(mode, ms);
 });
@@ -846,7 +894,7 @@ registerIpcHandler('system:power-source', async () => ({ onBattery: Boolean(powe
 const sendToWindow = (channel, payload) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
 };
-const probe = createProbe({ emit: (sample) => sendToWindow('session:probe', sample) });
+const probe = createProbe({ emit: (sample) => sendToWindow('session:probe', sample), match: (exePath) => library.matchPath(exePath) });
 const fpsRunner = createFpsRunner({ emit: (channel, payload) => sendToWindow(channel, payload) });
 
 let previousCores = null;
@@ -917,7 +965,8 @@ registerIpcHandler('fps:start', async (_event, options) => {
 registerIpcHandler('fps:stop', async () => fpsRunner.stop());
 
 
-const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings:powersleep', storage: 'ms-settings:storagesense' };
+const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings:powersleep', storage: 'ms-settings:storagesense', graphics: 'ms-settings:display-advancedgraphics',
+  gamemode: 'ms-settings:gaming-gamemode', display: 'ms-settings:display-advanced', captures: 'ms-settings:gaming-gamedvr', recovery: 'ms-settings:recovery', coreisolation: 'windowsdefender://coreisolation' };
 registerIpcHandler('system:open-settings', async (_event, page) => {
   const uri = SETTINGS_PAGES[page];
   if (!uri) throw new Error('Página de configurações não permitida.');
@@ -1019,6 +1068,291 @@ registerIpcHandler('privacy:set', async (_event, enabled) => {
   return { shareWithCreator: Boolean(enabled) };
 });
 
+// ---- Preferências do processo principal (bandeja, início com o Windows, observador, capas online) ----
+const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'nexo-settings.json');
+const SETTINGS_DEFAULTS = { autoSession: false, tray: false, openAtLogin: false, onlineCovers: false };
+let settings = { ...SETTINGS_DEFAULTS };
+let tray = null;
+const startHidden = process.argv.includes('--hidden');
+const shownOnce = new Set();
+function notifyOnce(key, title, body) {
+  if (shownOnce.has(key) || !Notification.isSupported()) return;
+  shownOnce.add(key);
+  new Notification({ title, body, icon: path.join(__dirname, 'assets', 'icon.png') }).show();
+}
+async function loadSettings() {
+  try { settings = { ...SETTINGS_DEFAULTS, ...JSON.parse(await fs.readFile(SETTINGS_FILE(), 'utf8')) }; } catch { settings = { ...SETTINGS_DEFAULTS }; }
+  for (const key of Object.keys(settings)) if (!(key in SETTINGS_DEFAULTS) || typeof settings[key] !== 'boolean') delete settings[key];
+  settings = { ...SETTINGS_DEFAULTS, ...settings };
+}
+function showWindow() {
+  if (!mainWindow) { createWindow(); return; }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Abrir o Nexo', click: showWindow },
+    { label: 'Gravar sessões de jogo sozinho', type: 'checkbox', checked: settings.autoSession, click: (item) => applySettings({ autoSession: item.checked }) },
+    { type: 'separator' },
+    { label: 'Sair do Nexo', click: () => { app.isQuitting = true; app.quit(); } }
+  ]);
+}
+function applyTray() {
+  if (settings.tray && !tray) {
+    tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'assets', 'icon.png')).resize({ width: 16, height: 16 }));
+    tray.setToolTip('Nexo Device Care');
+    tray.on('click', showWindow);
+  }
+  if (!settings.tray && tray) { tray.destroy(); tray = null; }
+  tray?.setContextMenu(buildTrayMenu());
+}
+async function applySettings(patch) {
+  for (const [key, value] of Object.entries(patch || {})) if (key in SETTINGS_DEFAULTS && typeof value === 'boolean') settings[key] = value;
+  await fs.writeFile(SETTINGS_FILE(), JSON.stringify(settings), 'utf8');
+  if (process.platform === 'win32' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.openAtLogin, name: 'NexoDeviceCare', args: ['--hidden'] });
+  applyTray();
+  if (settings.autoSession) { if (!library.list().length) await library.scan().catch(() => []); watcher.start(); } else watcher.stop();
+  sendToWindow('settings:changed', { ...settings });
+  return { ...settings, packaged: app.isPackaged, platform: process.platform };
+}
+registerIpcHandler('settings:get', async () => ({ ...settings, packaged: app.isPackaged, platform: process.platform }));
+registerIpcHandler('settings:set', async (_event, patch) => applySettings(patch));
+
+// ---- Elevação centralizada (UAC) ----
+const elevate = createElevator({ runPowerShell: runPowerShellCode, fs, path, dir: path.join(app.getPath('userData'), 'elevate') });
+
+// ---- Acesso ao FPS: grupo "Performance Log Users" (SID S-1-5-32-559), automático com a permissão da pessoa ----
+const ACCESS_SCRIPT = String.raw`$id=[Security.Principal.WindowsIdentity]::GetCurrent(); $pr=New-Object Security.Principal.WindowsPrincipal($id); $in=[bool](@($id.Groups | Where-Object { $_.Value -eq 'S-1-5-32-559' }).Count); $member=$false; try { $member=[bool](@(Get-LocalGroupMember -SID 'S-1-5-32-559' -ErrorAction Stop | Where-Object { $_.SID.Value -eq $id.User.Value }).Count) } catch {}; [pscustomobject]@{ sid=$id.User.Value; inToken=$in; member=$member; admin=$pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) } | ConvertTo-Json -Compress`;
+async function readAccess() {
+  if (process.platform !== 'win32') return { platform: process.platform, inToken: false, member: false, admin: false, sid: null };
+  const result = await runPowerShellCode(ACCESS_SCRIPT, 15000);
+  try { const parsed = JSON.parse(result.stdout); return { platform: 'win32', inToken: Boolean(parsed.inToken), member: Boolean(parsed.member) || Boolean(parsed.inToken), admin: Boolean(parsed.admin), sid: parsed.sid }; }
+  catch { return { platform: 'win32', inToken: false, member: false, admin: false, sid: null }; }
+}
+const publicAccess = ({ sid, ...rest }) => ({ ...rest, ready: rest.inToken || rest.admin, needsRelogin: rest.member && !rest.inToken && !rest.admin });
+registerIpcHandler('fps:access', async () => publicAccess(await readAccess()));
+for (const [channel, action] of [['fps:grant', 'add'], ['fps:revoke', 'remove']]) {
+  registerIpcHandler(channel, async () => {
+    const before = await readAccess();
+    if (!before.sid) throw new Error('Não consegui identificar o seu usuário do Windows.');
+    const elevated = await elevate('perf-log-users', { action, sid: before.sid });
+    const after = await readAccess();
+    return { declined: elevated.declined, ok: Boolean(elevated.result?.ok), changed: Boolean(elevated.result?.changed), note: String(elevated.result?.note || '').slice(0, 200), access: publicAccess(after) };
+  });
+}
+
+// ---- Fatos do sistema (somente leitura) para o Atlas de opções ----
+const FACTS_SCRIPT = UTF8_PS + String.raw`
+$mem = @(Get-CimInstance Win32_PhysicalMemory | ForEach-Object { [pscustomobject]@{ speed = [int]$_.Speed; configured = [int]$_.ConfiguredClockSpeed; capacity = [double]$_.Capacity } })
+$disp = @(Get-CimInstance Win32_VideoController | ForEach-Object { [pscustomobject]@{ name = [string]$_.Name; current = [int]$_.CurrentRefreshRate; max = [int]$_.MaxRefreshRate } })
+$hags = (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name HwSchMode).HwSchMode
+$gm = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\GameBar' -Name AutoGameModeEnabled).AutoGameModeEnabled
+$cap = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name AppCaptureEnabled).AppCaptureEnabled
+$dg = Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName Win32_DeviceGuard
+$vbs = $null; $hvci = $null
+if ($dg) { $vbs = [int]$dg.VirtualizationBasedSecurityStatus; $hvci = [bool](@($dg.SecurityServicesRunning) -contains 2) }
+[pscustomobject]@{ memory = $mem; displays = $disp; hags = $hags; gameMode = $gm; capture = $cap; vbs = $vbs; hvci = $hvci } | ConvertTo-Json -Depth 4 -Compress`;
+registerIpcHandler('system:facts', async () => {
+  if (process.platform !== 'win32') return { platform: process.platform };
+  const result = await runPowerShellCode(FACTS_SCRIPT, 20000);
+  try { return { platform: 'win32', ...JSON.parse(result.stdout) }; } catch { return { platform: 'win32' }; }
+});
+
+// ---- Biblioteca de jogos ----
+const library = createLibrary({
+  fs, path, runPowerShell: runPowerShellCode,
+  getFileIcon: (file) => app.getFileIcon(file, { size: 'large' }).then((image) => image.toDataURL()),
+  coversDir: path.join(app.getPath('userData'), 'covers'),
+  manualFile: path.join(app.getPath('userData'), 'games-manual.json'),
+  fetchCover: async (appid) => {
+    if (!/^\d+$/.test(String(appid))) return null;
+    for (const name of ['library_600x900_2x.jpg', 'library_600x900.jpg', 'header.jpg']) {
+      const response = await net.fetch(`https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/${name}`);
+      if (response.ok) return Buffer.from(await response.arrayBuffer());
+    }
+    return null;
+  }
+});
+const coverUrl = (list) => list.map((game) => ({ ...game, cover: game.cover ? `${pathToFileURL(game.cover).href}?v=${encodeURIComponent(game.coverSource || '')}` : null }));
+registerIpcHandler('games:scan', async () => {
+  const list = await library.scan();
+  if (settings.onlineCovers) library.fetchMissingCovers().then((count) => { if (count) sendToWindow('games:updated', coverUrl(library.list())); }).catch(() => {});
+  return coverUrl(list);
+});
+registerIpcHandler('games:list', async () => coverUrl(library.list()));
+const LAUNCH_SCHEMES = /^(steam:\/\/rungameid\/\d+|com\.epicgames\.launcher:\/\/apps\/[\w%.-]+\?action=launch&silent=true|uplay:\/\/launch\/\d+\/0)$/;
+registerIpcHandler('games:launch', async (_event, id) => {
+  const game = library.get(String(id));
+  if (!game) throw new Error('Jogo não encontrado; atualize a biblioteca.');
+  if (game.launchUri && LAUNCH_SCHEMES.test(game.launchUri)) { await shell.openExternal(game.launchUri); return { ok: true, via: 'launcher' }; }
+  if (game.exe && /\.exe$/i.test(game.exe) && await isFile(game.exe)) { const error = await shell.openPath(game.exe); if (error) throw new Error(error); return { ok: true, via: 'executável' }; }
+  throw new Error('Este jogo precisa ser aberto pelo próprio launcher.');
+});
+registerIpcHandler('games:reveal', async (_event, id) => {
+  const game = library.get(String(id));
+  if (!game?.installDir) throw new Error('Pasta do jogo desconhecida.');
+  const error = await shell.openPath(game.installDir);
+  if (error) throw new Error(error);
+  return { ok: true };
+});
+registerIpcHandler('games:set-cover', async (_event, id) => {
+  const game = library.get(String(id));
+  if (!game) throw new Error('Jogo não encontrado.');
+  const picked = await dialog.showOpenDialog(mainWindow, { title: `Capa de ${game.name}`, properties: ['openFile'], filters: [{ name: 'Imagens', extensions: ['jpg', 'jpeg', 'png', 'webp'] }] });
+  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  const bytes = await fs.readFile(picked.filePaths[0]);
+  if (bytes.length > 8 * 1024 * 1024) throw new Error('Use uma imagem de até 8 MB.');
+  const extension = detectImageExtension(bytes);
+  if (!extension) throw new Error('Use uma imagem PNG, JPEG ou WebP.');
+  const dir = path.join(app.getPath('userData'), 'covers');
+  await fs.mkdir(dir, { recursive: true });
+  for (const name of await fs.readdir(dir)) if (name.startsWith(`custom-${game.id}.`)) await fs.rm(path.join(dir, name), { force: true });
+  await fs.writeFile(path.join(dir, `custom-${game.id}.${extension}`), bytes);
+  return { games: coverUrl(await library.scan()) };
+});
+const MANUAL_FILE = () => path.join(app.getPath('userData'), 'games-manual.json');
+registerIpcHandler('games:add', async () => {
+  const picked = await dialog.showOpenDialog(mainWindow, { title: 'Escolha o executável do jogo', properties: ['openFile'], filters: [{ name: 'Programas', extensions: ['exe'] }] });
+  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  let list = [];
+  try { list = JSON.parse(await fs.readFile(MANUAL_FILE(), 'utf8')); } catch { list = []; }
+  const exe = picked.filePaths[0];
+  if (!list.some((item) => item.exe === exe)) list.push({ name: path.basename(exe, path.extname(exe)), exe });
+  await fs.writeFile(MANUAL_FILE(), JSON.stringify(list.slice(-200)), 'utf8');
+  return { games: coverUrl(await library.scan()) };
+});
+registerIpcHandler('games:remove-manual', async (_event, id) => {
+  const game = library.get(String(id));
+  if (!game || game.source !== 'manual') throw new Error('Só jogos adicionados por você podem ser removidos daqui.');
+  let list = [];
+  try { list = JSON.parse(await fs.readFile(MANUAL_FILE(), 'utf8')); } catch { list = []; }
+  await fs.writeFile(MANUAL_FILE(), JSON.stringify(list.filter((item) => item.exe !== game.exe)), 'utf8');
+  return { games: coverUrl(await library.scan()) };
+});
+
+// ---- Observador de jogos (sessão automática; opcional) ----
+const watcher = createWatcher({
+  match: (exePath) => library.matchPath(exePath),
+  onStart: (game) => {
+    sendToWindow('watch:game', { type: 'start', name: game.name, gameId: game.gameId, pid: game.pid });
+    if (!mainWindow?.isVisible()) new Notification({ title: `Gravando a sessão de ${game.name}`, body: 'O Nexo começou a observar o desempenho. O relatório fica pronto quando o jogo fechar.', icon: path.join(__dirname, 'assets', 'icon.png') }).show();
+  },
+  onEnd: (game) => sendToWindow('watch:game', { type: 'end', name: game.name, gameId: game.gameId, pid: game.pid })
+});
+registerIpcHandler('watch:current', async () => watcher.current());
+
+// ---- Laboratório (Otimização extrema, beta) ----
+function maxTemperature(readings) {
+  const values = [];
+  for (const device of readings?.devices || []) {
+    if (!/cpu/i.test(String(device.type))) continue;
+    for (const sensor of device.sensors || []) if (sensor.type === 'Temperature' && Number.isFinite(sensor.value) && sensor.value > 0 && sensor.value < 125) values.push(sensor.value);
+  }
+  return values.length ? Math.max(...values) : null;
+}
+async function readCpuTemperature() {
+  const detailed = maxTemperature(await getHardwareSensors().catch(() => null));
+  if (Number.isFinite(detailed)) return detailed;
+  const acpi = (await getTemperatureReadings().catch(() => ({ acpiSensors: [] }))).acpiSensors.map((sensor) => sensor.celsius).filter(Number.isFinite);
+  return acpi.length ? Math.max(...acpi) : null;
+}
+const labState = { running: false, signal: null };
+const labSystem = createLabSystem({
+  run: runCode, runPowerShell: runPowerShellCode,
+  bench: (mode) => runCpuBench(mode, 1200),
+  readTemp: readCpuTemperature, cpuLoad: getCpuUsage, onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()),
+  elevate, fs, path, dir: path.join(app.getPath('userData'), 'lab'), exePath: process.execPath, isPackaged: app.isPackaged
+});
+registerIpcHandler('lab:status', async () => ({ running: labState.running, pending: await labSystem.hasPendingLock(), platform: process.platform, space: NexoLab.SPACE.map(({ id, label, values, risk, novelty, hidden, what, unit, names }) => ({ id, label, values, risk, novelty, hidden, what, unit, names })) }));
+registerIpcHandler('lab:preflight', async () => {
+  if (labState.running) throw new Error('O laboratório já está rodando.');
+  const pre = await labSystem.preflight();
+  return { ...pre, activeGuid: undefined };
+});
+registerIpcHandler('lab:run', async (_event, options) => {
+  if (labState.running) throw new Error('O laboratório já está rodando.');
+  if (activeBench) throw new Error('Há um teste de desempenho em andamento.');
+  const memory = NexoLab.sanitizeMemory(options?.evidence, options?.tabu);
+  labState.running = true;
+  labState.signal = { cancelled: false };
+  try {
+    return await NexoLab.run(labSystem, {
+      consent: { acknowledged: options?.consent?.acknowledged === true, phrase: String(options?.consent?.phrase || '').slice(0, 40) },
+      autonomy: options?.autonomy === 'autonomo' ? 'autonomo' : 'assistido',
+      allowRisk: options?.allowRisk === 'baixo' ? 'baixo' : 'moderado',
+      maxArms: Math.max(1, Math.min(8, Math.round(Number(options?.maxArms) || 4))),
+      requireRestorePoint: options?.requireRestorePoint !== false,
+      evidence: memory.evidence, tabu: memory.tabu, signal: labState.signal,
+      emit: (event) => sendToWindow('lab:event', event.type === 'done' ? { type: 'done' } : event)
+    });
+  } finally { labState.running = false; labState.signal = null; }
+});
+registerIpcHandler('lab:cancel', async () => { if (labState.signal) labState.signal.cancelled = true; return { ok: true }; });
+registerIpcHandler('lab:recover', async () => labSystem.recover());
+registerIpcHandler('lab:adopt', async (_event, config) => {
+  if (labState.running) throw new Error('O laboratório está rodando.');
+  const clean = {};
+  for (const [id, value] of Object.entries(config && typeof config === 'object' ? config : {})) if (NexoLab.knob(id) && Number.isInteger(value)) clean[id] = value;
+  return labSystem.adoptCurrent(clean);
+});
+
+// ---- Conta Google (opcional) ----
+const ACCOUNT_DIR = () => path.join(app.getPath('userData'), 'account');
+async function googleConfig() {
+  if (process.env.NEXO_GOOGLE_CLIENT_ID) return Account.parseClientConfig({ clientId: process.env.NEXO_GOOGLE_CLIENT_ID, clientSecret: process.env.NEXO_GOOGLE_CLIENT_SECRET });
+  const candidates = [path.join(app.getPath('userData'), 'google-oauth.json'), app.isPackaged ? path.join(process.resourcesPath, 'config', 'google-oauth.json') : path.join(__dirname, 'config', 'google-oauth.json')];
+  for (const file of candidates) {
+    try { const parsed = Account.parseClientConfig(JSON.parse(await fs.readFile(file, 'utf8'))); if (parsed) return { ...parsed, source: file.startsWith(app.getPath('userData')) ? 'importado' : 'build' }; } catch { /* próximo */ }
+  }
+  return null;
+}
+async function readProfile() {
+  const dir = ACCOUNT_DIR();
+  try {
+    const raw = await fs.readFile(path.join(dir, 'profile.bin'));
+    const text = safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(raw) : raw.toString('utf8');
+    return JSON.parse(text);
+  } catch { return null; }
+}
+async function accountView() {
+  const [config, profile] = await Promise.all([googleConfig(), readProfile()]);
+  let avatar = null;
+  if (profile?.avatarFile) { try { const stats = await fs.stat(profile.avatarFile); avatar = `${pathToFileURL(profile.avatarFile).href}?v=${Math.round(stats.mtimeMs)}`; } catch { /* sem foto */ } }
+  return { configured: Boolean(config), configSource: config?.source || null, encrypted: safeStorage.isEncryptionAvailable(), profile: profile ? { name: profile.name, email: profile.email, signedInAt: profile.signedInAt } : null, avatar };
+}
+registerIpcHandler('account:get', accountView);
+let signingIn = false;
+registerIpcHandler('account:sign-in', async () => {
+  if (signingIn) throw new Error('Já existe um login em andamento no navegador.');
+  const config = await googleConfig();
+  if (!config) throw new Error('O login com Google ainda não foi configurado nesta build.');
+  signingIn = true;
+  try {
+    const { profile, avatar } = await Account.signIn({ config, createServer: http.createServer, openExternal: (url) => shell.openExternal(url), fetch: (url, init) => net.fetch(url, init) });
+    const dir = ACCOUNT_DIR();
+    await fs.mkdir(dir, { recursive: true });
+    let avatarFile = null;
+    const extension = avatar ? detectImageExtension(avatar) : null;
+    if (extension && avatar.length < 2 * 1024 * 1024) { avatarFile = path.join(dir, `avatar.${extension}`); await fs.writeFile(avatarFile, avatar); }
+    const record = JSON.stringify({ sub: profile.sub, name: profile.name, email: profile.email, avatarFile, signedInAt: Date.now() });
+    await fs.writeFile(path.join(dir, 'profile.bin'), safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(record) : Buffer.from(record, 'utf8'));
+    mainWindow?.show(); mainWindow?.focus();
+    return accountView();
+  } finally { signingIn = false; }
+});
+registerIpcHandler('account:sign-out', async () => { await fs.rm(ACCOUNT_DIR(), { recursive: true, force: true }); return accountView(); });
+registerIpcHandler('account:import-config', async () => {
+  const picked = await dialog.showOpenDialog(mainWindow, { title: 'Credenciais OAuth do Google Cloud (JSON)', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+  if (picked.canceled || !picked.filePaths[0]) return accountView();
+  let parsed = null;
+  try { parsed = Account.parseClientConfig(JSON.parse(await fs.readFile(picked.filePaths[0], 'utf8'))); } catch { parsed = null; }
+  if (!parsed) throw new Error('Esse arquivo não parece o JSON de um cliente OAuth "App para computador" do Google Cloud.');
+  await fs.writeFile(path.join(app.getPath('userData'), 'google-oauth.json'), JSON.stringify({ installed: { client_id: parsed.clientId, client_secret: parsed.clientSecret } }), 'utf8');
+  return accountView();
+});
+
 // ---- Desinstalação completa ----
 // A lista de alvos abaixo precisa ficar alinhada com `customUnInstall` em installer/installer.nsh.
 const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
@@ -1048,6 +1382,12 @@ $targets = @(
 foreach ($t in $targets) { Remove-Item -LiteralPath $t -Recurse -Force }
 Get-ChildItem -LiteralPath (Join-Path $roaming 'Microsoft\Windows\Recent') -Filter 'Nexo*' | Remove-Item -Force
 Remove-Item -LiteralPath 'HKCU:\Software\NexoDeviceCare' -Recurse -Force
+Remove-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'NexoDeviceCare' -Force
+Remove-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run' -Name 'NexoDeviceCare' -Force
+Remove-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'NexoLabRecovery' -Force
+# Planos de energia criados pelo laboratório: volta ao Equilibrado se um deles estiver ativo e apaga todos
+$active = (powercfg /getactivescheme | Out-String)
+foreach ($line in (powercfg /list)) { if ($line -match 'Nexo (Lab|.{1,3}Ajustado)' -and $line -match '([0-9a-fA-F]{8}-[0-9a-fA-F-]{27})') { $g = $Matches[1]; if ($active -match $g) { powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e | Out-Null }; powercfg /delete $g | Out-Null } }
 
 # Caches do próprio Windows que guardam o caminho do programa
 $caches = @(
@@ -1101,16 +1441,22 @@ registerIpcHandler('app:uninstall', async () => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+  app.on('second-instance', (_event, argv) => {
+    if (argv.includes('--lab-recover')) { labSystem.recover().catch(() => {}); return; }
+    showWindow();
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     if (process.platform === 'win32') app.setAppUserModelId('com.samuklvm.nexo');
     Menu.setApplicationMenu(null);
+    // Se um teste do laboratório ficou pela metade (queda de energia, travamento), volta ao plano original antes de tudo.
+    const recovered = await labSystem.recover().catch(() => ({ recovered: false }));
+    if (process.argv.includes('--lab-recover')) { app.quit(); return; }
+    await loadSettings();
     createWindow();
+    if (recovered.recovered) mainWindow.webContents.once('did-finish-load', () => sendToWindow('lab:recovered', recovered));
+    applyTray();
+    if (settings.autoSession) library.scan().catch(() => []).finally(() => watcher.start());
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1122,7 +1468,16 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  app.isQuitting = true;
+  if (labState.running) {
+    // Nunca sair com o clone do laboratório ativo: cancela, espera a restauração e sai.
+    event.preventDefault();
+    labState.signal.cancelled = true;
+    const wait = setInterval(() => { if (!labState.running) { clearInterval(wait); app.quit(); } }, 300);
+    return;
+  }
+  watcher.stop();
   probe.stop();
   fpsRunner.stop();
   sensorHost?.kill();

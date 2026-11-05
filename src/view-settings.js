@@ -80,10 +80,13 @@
     const confirmed = await Nexo.confirm({
       title: 'Desinstalar o Nexo completamente?',
       body: 'O Nexo vai fechar e remover tudo em poucos segundos. Uma mensagem final mostrará se algo não pôde ser apagado.',
-      items: ['O programa e todos os arquivos da instalação.', 'Seus dados e preferências: histórico, aprendizado, papel de parede.', 'Atalhos, entradas do Registro e o cache de atualizações.', 'Rastros que o Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes).', 'Nada além disso: outros programas e arquivos pessoais não são tocados.'],
+      items: ['O programa e todos os arquivos da instalação.', 'Seus dados e preferências: histórico, aprendizado, sessões, capas de jogos, conta, papel de parede.', 'Atalhos, entradas do Registro (inclusive iniciar com o Windows) e o cache de atualizações.', 'Planos de energia criados pelo laboratório (o Windows volta ao Equilibrado se um deles estiver ativo).', 'Rastros que o Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes).', 'Nada além disso: outros programas, arquivos pessoais e pontos de restauração do Windows não são tocados.'],
       confirmLabel: 'Desinstalar', tone: 'danger'
     });
     if (!confirmed) return;
+    // O grupo "Performance Log Users" é uma permissão do Windows; tirar exige UAC, então perguntamos antes.
+    const granted = Nexo.journal.list().some((entry) => entry.actionId === 'perf-log-users' && entry.status === 'applied');
+    if (granted && await Nexo.confirm({ title: 'Tirar também a liberação do FPS?', body: 'O Nexo colocou o seu usuário no grupo “Performance Log Users”. Para não deixar rastro, dá para tirar agora (o Windows pede permissão).', confirmLabel: 'Tirar do grupo', cancelLabel: 'Manter' })) await Nexo.revokeFpsAccess?.();
     try { await desktopBridge.uninstallApp(); }
     catch (error) { showToast(error.message || 'Não foi possível iniciar a desinstalação.'); }
   });

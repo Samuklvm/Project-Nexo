@@ -28,19 +28,43 @@ A coleta local é parte do funcionamento do Nexo e não depende do consentimento
 
 Os itens acima ficam no computador da pessoa. O gráfico da sessão mantém amostras em memória por até cinco minutos. Nomes e detalhes locais de atividades podem incluir o resultado de ações iniciadas pela pessoa, como a quantidade de arquivos removidos e o espaço liberado.
 
+## Recursos opcionais (desligados até você usar)
+
+- **Biblioteca de jogos:** para listar o que está instalado, o Nexo lê os manifestos da Steam (`libraryfolders.vdf`, `appmanifest_*.acf`) e da Epic (`*.item`), o arquivo `MicrosoftGame.config` dos jogos em `X:\XboxGames`, as chaves do Registro da GOG, da Ubisoft e de desinstalação de programas de editoras de jogos, e as pastas de instalação. Fica no processo principal (não vai para a interface nem para arquivos) o caminho de cada jogo; a interface recebe nome, loja, tamanho e última vez jogado. O Nexo **copia** as capas do cache local de cada launcher para `covers` na pasta de dados do app e guarda em `games-manual.json` os jogos que você adicionar (nome e caminho do executável). Capas que você escolher ficam na mesma pasta.
+- **Capas da CDN da Steam:** desligado por padrão. Se você ligar, o Nexo pede a `cdn.cloudflare.steamstatic.com` as capas dos jogos da Steam que não estão no cache local; a Valve recebe o número do jogo e os dados normais da conexão (como o IP), o que revela quais jogos você tem.
+- **Sessão automática:** desligada por padrão. Se você ligar, um PowerShell leve lê a cada 3 s o programa em primeiro plano (PID, nome e caminho). O caminho só é comparado com as pastas da biblioteca, na hora, e não é guardado. A sessão gravada guarda também o identificador do jogo da biblioteca.
+- **Bandeja e iniciar com o Windows:** desligados por padrão. As escolhas ficam em `nexo-settings.json`. Iniciar com o Windows cria o valor `NexoDeviceCare` em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+- **Liberar a medição de FPS:** se você pedir, o Nexo adiciona o seu usuário (pelo SID) ao grupo local “Performance Log Users” (SID `S-1-5-32-559`), com a permissão de administrador do Windows (UAC). O SID do usuário é lido só no processo principal. A alteração fica no Diário e pode ser revertida; ao desinstalar pelo app, o Nexo oferece desfazer.
+- **Atlas de opções:** lê, sem alterar, a velocidade configurada da memória e a informada pelos módulos, a quantidade de módulos, a taxa de atualização atual e máxima informada pela placa de vídeo, e o estado do agendamento de GPU por hardware, do Modo de Jogo, da captura de jogos e da segurança baseada em virtualização (VBS). Não guarda essas leituras.
+
+## Otimização extrema (beta) — sessões de risco
+
+É uma opção **arriscada e em beta**, que só roda depois de você marcar o aviso e digitar a frase de confirmação. Durante uma sessão de risco o Nexo:
+
+- cria um **ponto de restauração** do Windows (com UAC). Para isso, ajusta por alguns segundos o valor `SystemRestorePointCreationFrequency` (documentado pela Microsoft) e devolve o valor anterior;
+- **clona** o plano de energia ativo para “Nexo Lab (temporário)”, exporta uma cópia de segurança do plano original para a pasta `lab` dos dados do app, grava uma **trava** (`lab-lock.json`, com os identificadores dos dois planos) e, na versão instalada, uma entrada **RunOnce** (`NexoLabRecovery`) para restaurar o plano original se o PC travar;
+- muda só configurações do processador do plano temporário, roda testes sintéticos de CPU e lê a temperatura do processador, a fonte de energia e a **contagem** de erros graves (níveis crítico e erro) de alguns provedores do log de Sistema do Windows (hardware, energia e vídeo). Não lê o conteúdo de outros eventos;
+- no fim, volta ao plano original, apaga o temporário, a trava e o RunOnce. No modo autônomo, uma combinação confirmada vira um plano novo “Nexo — Ajustado (data)”.
+
+Guarda no navegador interno do app (`nexo-lab-v1`): a evidência por ajuste (quantas vezes foi testado, ganho médio, vitórias, pioras, guardas), a lista de ajustes bloqueados por guarda e um resumo das últimas 15 sessões de risco. No Diário, cada sessão fica marcada como **sessão de risco**, com os valores originais e o que foi testado.
+
+## Conta Google (opcional)
+
+Se você escolher **Entrar com o Google**, o login acontece no seu navegador padrão, com OAuth 2.0 para aplicativos instalados (PKCE e retorno para `127.0.0.1` numa porta temporária). O Nexo se conecta a `accounts.google.com` e `oauth2.googleapis.com` e, para a foto, ao endereço `googleusercontent.com` que o Google informar. Pede só os escopos `openid`, `email` e `profile`, **sem acesso offline**: depois de ler o perfil, revoga o token de acesso e não guarda tokens nem senhas. Fica neste computador, cifrado com a proteção de dados do Windows quando disponível (`account/profile.bin`), apenas: identificador da conta Google, nome, e-mail e horário do login; a foto fica em `account/avatar.*`. Nada disso é enviado ao criador. Sair da conta apaga esses arquivos. Ainda não existe sincronização entre computadores.
+
 ## Componente opcional: PresentMon
 
 Para medir FPS, o Nexo pode executar o **PresentMon** (Intel, licença MIT) como um programa separado, só quando você ativa a medição. Ele lê os eventos de apresentação do Windows (ETW) do programa escolhido e entrega ao Nexo os tempos de quadro; nada sai do computador. Exige que o usuário esteja no grupo “Performance Log Users” (ou seja administrador). Sem um hash fixado na build, o instalador **não** embute o executável; você pode apontar um arquivo que baixou do site oficial. Detalhes em `THIRD-PARTY-NOTICES.md`.
 
 ## Exportar, apagar e desinstalar
 
-- **Exportar:** em **Ajustes** é possível salvar um arquivo JSON com o histórico, o aprendizado, o feedback, a atividade, o diário, as sessões e o perfil.
-- **Apagar o aprendizado:** o botão correspondente apaga o histórico, o aprendizado, o feedback e as sessões. O diário de alterações é mantido para permitir reverter.
-- **Desinstalar:** a desinstalação pelo Windows ou por **Ajustes** remove o programa, os dados e preferências, os caches, os atalhos e as entradas do Registro do Nexo. Atualizações preservam os dados.
+- **Exportar:** em **Ajustes** é possível salvar um arquivo JSON com o histórico, o aprendizado, o feedback, a atividade, o diário, as sessões, o aprendizado do laboratório e o perfil.
+- **Apagar o aprendizado:** o botão correspondente apaga o histórico, o aprendizado, o feedback, as sessões e o aprendizado do laboratório. O diário de alterações é mantido para permitir reverter.
+- **Desinstalar:** a desinstalação pelo Windows ou por **Ajustes** remove o programa, os dados e preferências (inclusive capas, conta e laboratório), os caches, os atalhos, as entradas do Registro do Nexo (inclusive `Run` e `RunOnce`) e os planos de energia criados pelo laboratório. Pontos de restauração continuam sendo gerenciados pelo Windows. Atualizações preservam os dados.
 
 ## Conexões de rede
 
-Ao iniciar, a versão empacotada consulta as releases públicas do GitHub para verificar se existe uma atualização. Como qualquer conexão HTTP, o GitHub pode receber metadados técnicos da solicitação, incluindo endereço IP, horário, URL consultada e identificação do cliente. O Nexo não anexa a essa consulta inventário do computador, nomes de processos, arquivos, histórico, papel de parede ou feedback. Nenhuma atualização é baixada até a pessoa escolher **Baixar e atualizar**.
+Ao iniciar, a versão empacotada consulta as releases públicas do GitHub para verificar se existe uma atualização. Como qualquer conexão HTTP, o GitHub pode receber metadados técnicos da solicitação, incluindo endereço IP, horário, URL consultada e identificação do cliente. O Nexo não anexa a essa consulta inventário do computador, nomes de processos, arquivos, histórico, papel de parede ou feedback. Nenhuma atualização é baixada até a pessoa escolher **Baixar e atualizar**. As outras conexões só acontecem se você usar os recursos opcionais acima: abrir um jogo pelo launcher dele, capas da CDN da Steam e login com o Google.
 
 ## Compartilhamento opcional com o criador
 

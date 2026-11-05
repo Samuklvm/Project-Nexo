@@ -2,10 +2,23 @@
 
 Aplicativo desktop para Windows que cuida do computador: mede, explica o que está pesando, aprende a rotina de uso e oferece ações reais de manutenção, sempre com prévia e confirmação. É gratuito, de código aberto e processa tudo localmente. As recomendações são heurísticas e **não prometem** aumentar o desempenho em todos os PCs.
 
+## Novidades da 0.5.0
+
+- **Otimização extrema (beta):** laboratório autônomo que testa ajustes ocultos do processador num clone temporário do plano de energia, com ponto de restauração, medição A/B contra o ruído, guardas de segurança e volta automática ao original.
+- **Biblioteca de jogos** de todos os launchers, **sessão automática** ao abrir um jogo, **bandeja** e **iniciar com o Windows** (opcionais).
+- **FPS liberado automaticamente** (grupo Performance Log Users, com UAC e reversão).
+- **Atlas de opções** com mitos e o que o Nexo se recusa a fazer, e **conta Google** opcional.
+
+Notas completas: [`docs/releases/v0.5.0.md`](docs/releases/v0.5.0.md) · Histórico: [`CHANGELOG.md`](CHANGELOG.md)
+
 ## O que ele faz
 
 - **Início:** Índice Nexo (0 a 100) explicado fator por fator, medições ao vivo com miniaturas, mapa do sistema em órbitas (cada componente é um planeta), gráficos de 5 minutos a 7 dias com dica ao passar o mouse, e as principais observações do momento.
 - **Sessões de observação:** grave o PC enquanto joga ou trabalha e receba um relatório. Ele diz se o limite foi a GPU, um único núcleo da CPU, a memória, o calor ou um programa em segundo plano, **sempre com a evidência e os limites**. Detecta jogos pela pasta de instalação (nunca lê a memória do jogo), mede o custo do próprio Nexo e, com o PresentMon, mede FPS, 1% baixo e tempo de quadro.
+- **Jogos:** biblioteca no estilo de uma loja com **todos os jogos instalados** (Steam, Epic, GOG, Xbox/Game Pass, EA, Ubisoft, Battle.net, Riot, Rockstar e os que você adicionar), capas do cache local de cada launcher, destaque do último jogado, filtros, “Jogar” e “Jogar e gravar”, e o desempenho de cada jogo nas sessões gravadas. Opcional: gravar a sessão sozinho quando um jogo abre (e guardar o relatório quando fecha), com a bandeja.
+- **Otimização extrema (beta, arriscada):** um laboratório autônomo que testa **na hora, neste PC**, combinações de ajustes ocultos do processador (EPP, modo de turbo, estacionamento de núcleos, política de aumento, resfriamento…) num **clone temporário** do plano de energia, com ponto de restauração antes, medição A/B intercalada contra o ruído e guardas (tomada, temperatura, aquecimento, erros graves do Windows). Aprende entre execuções (o que nunca foi testado aqui vem primeiro; depois, o que mais rendeu) e, no modo autônomo, adota sozinho só o que a medição confirmou. Sessões de risco ficam marcadas no app inteiro e no Diário.
+- **Atlas de opções:** todas as alavancas que valem conhecer — famosas, pouco conhecidas e boatos —, cada uma com o que o Nexo faz (testa, faz, confere, desaconselha ou se recusa) e o que ele conferiu neste PC (XMP desligado, monitor a 60 Hz, memória em um canal, captura em segundo plano…).
+- **Conta Google (opcional):** login pelo navegador, sem guardar senhas nem tokens (`docs/LOGIN_GOOGLE.md`).
 - **Perfil de uso:** Jogos, Trabalho e criação ou Uso geral, escolhido por você. Muda o peso dos fatores no índice, a ordem das observações e o que as sessões destacam.
 - **Análise inteligente:** compara o presente com a sua rotina e mostra a causa provável **com a evidência**. Inclui lentidões detectadas, programas que mais atrapalham, previsão de quando o disco enche, indício de queda de clock por calor, mapa da rotina por dia e hora e leitura sob demanda dos processos.
 - **Otimizar:** limpeza segura por categorias (temporários antigos, relatórios de falha, relatórios de erro do Windows e, opcionalmente, Lixeira), limpeza automática opcional, troca do plano de energia do Windows e lista dos programas que iniciam com o Windows. Cada operação tem uma ficha (risco, reversão, fonte oficial, como medimos e estado de validação). O plano de energia pode ser **medido antes e depois** com um benchmark de CPU de cerca de 20 segundos e revertido depois.
@@ -47,7 +60,7 @@ npm run preview  # gera dev/preview.html: abre a interface num navegador, com da
 
 ## Medição de FPS (PresentMon)
 
-O FPS vem do **PresentMon** (Intel, licença MIT), executado como programa separado só quando você liga a opção na sessão. Requisitos do próprio PresentMon: o seu usuário precisa estar no grupo **“Performance Log Users”** (ou o Nexo rodar como administrador). Se faltar, o Nexo mostra o passo a passo em vez de falhar em silêncio.
+O FPS vem do **PresentMon** (Intel, licença MIT), executado como programa separado só quando você liga a opção na sessão. Requisitos do próprio PresentMon: o seu usuário precisa estar no grupo **“Performance Log Users”** (ou o Nexo rodar como administrador). O Nexo **libera isso sozinho** quando você pede (o Windows mostra o UAC; vale depois de sair e entrar de novo no Windows) e registra no Diário, com reversão.
 
 - **Versão e integridade:** `third-party/presentmon.lock.json` guarda a versão (2.6.0) e o SHA-256. **O hash ainda não está fixado**, então a build não embute o executável. Para fixar: `npm run presentmon:hash`, compare o resultado com o digest mostrado pelo GitHub na página da release e cole em `sha256`. Enquanto isso, **Sessões → Componentes → Escolher PresentMon…** aceita um arquivo baixado por você do site oficial.
 - A compatibilidade com jogos que usam anti-cheat **não foi validada**: o Nexo só lê eventos do Windows e não injeta nada no jogo, mas teste antes de confiar.
@@ -60,9 +73,9 @@ O FPS vem do **PresentMon** (Intel, licença MIT), executado como programa separ
 
 ### Desinstalação completa
 
-Pelas Configurações do Windows ou por **Ajustes → Desinstalar o Nexo**, são removidos: o programa, os dados e preferências (`%APPDATA%\nexo-device-care`), os caches e o cache do atualizador (`%LOCALAPPDATA%`), atalhos, a chave `HKCU\Software\NexoDeviceCare` e a entrada de desinstalação. O caminho por **Ajustes** também apaga os rastros que o próprio Windows guarda sobre o Nexo (MuiCache, UserAssist e itens Recentes) e mostra ao final o que não conseguiu apagar. Atualizações **não** apagam os seus dados.
+Pelas Configurações do Windows ou por **Ajustes → Desinstalar o Nexo**, são removidos: o programa, os dados e preferências (`%APPDATA%\nexo-device-care`, inclusive capas, conta e laboratório), os caches e o cache do atualizador (`%LOCALAPPDATA%`), atalhos, a chave `HKCU\Software\NexoDeviceCare`, as entradas `Run`/`RunOnce` do Nexo, os planos de energia criados pelo laboratório e a entrada de desinstalação. Pelo app, ele ainda oferece tirar o seu usuário do grupo “Performance Log Users”. O caminho por **Ajustes** também apaga os rastros que o próprio Windows guarda sobre o Nexo (MuiCache, UserAssist e itens Recentes) e mostra ao final o que não conseguiu apagar. Atualizações **não** apagam os seus dados.
 
-Fora do alcance de um programa sem administrador: logs de eventos do Windows, Prefetch e histórico do antivírus.
+Fora do alcance de um programa sem administrador: logs de eventos do Windows, Prefetch e histórico do antivírus. Pontos de restauração criados antes do laboratório continuam com o Windows (são proteção sua; apague em Proteção do Sistema, se quiser).
 
 ## Publicar uma versão
 

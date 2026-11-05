@@ -26,6 +26,12 @@
       <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3.4" fill="currentColor"/></symbol>
       <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-game" viewBox="0 0 24 24"><path d="M7.5 8h9a4.5 4.5 0 0 1 4.4 5.4l-.7 3.3a2.3 2.3 0 0 1-3.9 1.1L14.4 15.9H9.6l-1.9 1.9a2.3 2.3 0 0 1-3.9-1.1l-.7-3.3A4.5 4.5 0 0 1 7.5 8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 10.5v3M6.5 12h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="15.5" cy="11" r="1" fill="currentColor"/><circle cx="17" cy="13" r="1" fill="currentColor"/></symbol>
+      <symbol id="i-flask" viewBox="0 0 24 24"><path d="M9.5 3.5h5M10.5 3.5v5.2L5 18.2A1.6 1.6 0 0 0 6.4 20.5h11.2a1.6 1.6 0 0 0 1.4-2.3l-5.5-9.5V3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.6 14.5h8.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+      <symbol id="i-map" viewBox="0 0 24 24"><path d="m3.5 6.5 5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2zM9 4.5v13M15 6.5v13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
       <symbol id="i-min" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
       <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
       <symbol id="i-restore" viewBox="0 0 12 12"><path d="M4 2.2h5.8v5.8M2.2 4h5.8v5.8H2.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
@@ -46,7 +52,10 @@
         <button class="rail-item active" type="button" data-view="home" aria-current="page"><svg><use href="#i-home"/></svg><span class="rail-label">Início</span></button>
         <button class="rail-item" type="button" data-view="analysis"><svg><use href="#i-spark"/></svg><span class="rail-label">Análise</span></button>
         <button class="rail-item" type="button" data-view="sessions"><svg><use href="#i-record"/></svg><span class="rail-label">Sessões</span></button>
+        <button class="rail-item" type="button" data-view="library"><svg><use href="#i-game"/></svg><span class="rail-label">Jogos</span></button>
         <button class="rail-item" type="button" data-view="optimize"><svg><use href="#i-bolt"/></svg><span class="rail-label">Otimizar</span></button>
+        <button class="rail-item rail-risk" type="button" data-view="lab"><svg><use href="#i-flask"/></svg><span class="rail-label">Extremo <em>beta</em></span></button>
+        <button class="rail-item" type="button" data-view="atlas"><svg><use href="#i-map"/></svg><span class="rail-label">Atlas</span></button>
         <button class="rail-item" type="button" data-view="hardware"><svg><use href="#i-chip"/></svg><span class="rail-label">Hardware</span></button>
         <button class="rail-item" type="button" data-view="maintenance"><svg><use href="#i-wrench"/></svg><span class="rail-label">Manutenção</span></button>
       </div>
@@ -60,8 +69,10 @@
     <header class="titlebar">
       <h1 class="page-title" id="page-title">Início</h1>
       <div class="bar-spacer"></div>
+      <button class="risk-banner" id="risk-banner" type="button" data-goto="lab" hidden><i></i>Sessão de risco em andamento</button>
       <span class="status-pill"><i class="pulse"></i><span id="app-status-label">Iniciando</span></span>
       <button class="bar-button" id="open-palette" type="button" aria-label="Buscar comandos (Ctrl+K)"><svg><use href="#i-search"/></svg><span>Buscar</span><kbd>Ctrl K</kbd></button>
+      <button class="account-chip" id="account-chip" type="button" aria-label="Conta"><span class="avatar" id="account-avatar"><svg><use href="#i-user"/></svg></span><span id="account-chip-label">Entrar</span></button>
       <button class="btn primary sm" id="update-app" type="button" hidden><svg><use href="#i-down"/></svg><span>Instalar atualização</span></button>
       <div class="window-controls" aria-label="Controles da janela">
         <button id="window-minimize" type="button" aria-label="Minimizar" title="Minimizar"><svg><use href="#i-min"/></svg></button>
@@ -198,8 +209,33 @@
         <section class="sheet components">
           <div class="sheet-head"><div><h3>Componentes e diagnóstico</h3><p class="muted">O FPS vem do PresentMon (Intel, licença MIT), que o Nexo executa só quando você pede. Ele exige que o seu usuário esteja no grupo “Performance Log Users” (ou seja administrador).</p></div></div>
           <div class="comp-row"><div><strong>PresentMon</strong><span class="muted" id="fps-status-text">Verificando…</span></div><div class="btn-row"><button class="btn sm" id="fps-choose" type="button">Escolher PresentMon…</button><button class="btn sm ghost" id="fps-clear" type="button" hidden>Usar o embutido</button><button class="btn sm ghost" id="fps-download" type="button">Página oficial de downloads</button></div></div>
+          <div class="comp-row"><div><strong>Acesso ao FPS</strong><span class="muted" id="fps-access-text">Verificando o grupo “Performance Log Users”…</span></div><div class="btn-row"><button class="btn sm primary" id="fps-grant" type="button" hidden>Liberar automaticamente</button><button class="btn sm ghost" id="fps-revoke" type="button" hidden>Tirar do grupo</button></div></div>
           <div class="comp-row"><div><strong>Sonda de programas</strong><span class="muted" id="probe-result">Lê o programa em primeiro plano e o uso de CPU e GPU por programa. Teste para ver se funciona neste PC.</span></div><div class="btn-row"><button class="btn sm" id="probe-test" type="button">Testar sonda</button></div></div>
         </section>
+      </section>
+
+      <!-- JOGOS -->
+      <section class="view" data-view-panel="library">
+        <div class="lib-hero" id="lib-hero">
+          <div class="lib-hero-art" id="lib-hero-art" aria-hidden="true"></div>
+          <div class="lib-hero-copy">
+            <span class="eyebrow" id="lib-hero-eyebrow">Sua biblioteca</span>
+            <h2 id="lib-hero-title">Procurando seus jogos…</h2>
+            <p id="lib-hero-sub">Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, Riot, Rockstar e os que você adicionar.</p>
+            <div class="btn-row" id="lib-hero-actions"></div>
+          </div>
+        </div>
+        <div class="lib-toolbar">
+          <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="lib-search" type="search" placeholder="Buscar na biblioteca" autocomplete="off" /></label>
+          <div class="chips" id="lib-sources" role="group" aria-label="Filtrar por loja"></div>
+          <div class="segmented sm" role="group" aria-label="Ordenar"><button type="button" data-lib-sort="recent" aria-pressed="true">Recentes</button><button type="button" data-lib-sort="name" aria-pressed="false">A–Z</button><button type="button" data-lib-sort="size" aria-pressed="false">Tamanho</button></div>
+          <div class="bar-spacer"></div>
+          <button class="btn sm" id="lib-add" type="button"><svg><use href="#i-plus"/></svg>Adicionar jogo</button>
+          <button class="btn sm" id="lib-rescan" type="button"><svg><use href="#i-refresh"/></svg>Atualizar</button>
+        </div>
+        <label class="switch lib-auto"><input id="lib-auto" type="checkbox" /><i></i><span><strong>Gravar uma sessão sozinho quando eu abrir um jogo</strong><small>O Nexo observa só o programa em primeiro plano (a cada 3 s). Quando um jogo da biblioteca abre, grava a sessão; quando fecha, guarda o relatório. Combine com “Ficar na bandeja” em Ajustes para funcionar com a janela fechada.</small></span></label>
+        <div class="lib-grid" id="lib-grid" aria-live="polite"></div>
+        <p class="muted footnote" id="lib-foot">O Nexo só lê os manifestos dos launchers, o Registro e as pastas dos jogos. As capas vêm do cache local de cada launcher; baixar as que faltam da CDN da Steam é opcional (Ajustes).</p>
       </section>
 
       <!-- OTIMIZAR -->
@@ -217,6 +253,59 @@
             <section class="sheet"><div class="sheet-head"><div><h3>Início com o Windows</h3><p class="muted">Programas que abrem sozinhos ao ligar o PC (somente leitura).</p></div></div><ul class="startup-list" id="startup-list" aria-live="polite"><li class="empty">Lendo a lista…</li></ul><button class="btn sm" id="open-startup-settings" type="button">Gerenciar no Windows</button></section>
           </div>
         </div>
+      </section>
+
+      <!-- OTIMIZAÇÃO EXTREMA (BETA) -->
+      <section class="view lab-view" data-view-panel="lab">
+        <div class="hazard" role="note" aria-label="Aviso de risco">
+          <div class="hazard-tape" aria-hidden="true"></div>
+          <div class="hazard-body">
+            <div class="hazard-badges"><span class="badge beta">BETA</span><span class="badge risk">OPÇÃO ARRISCADA</span></div>
+            <h2>Otimização extrema</h2>
+            <p>O Nexo vira um laboratório: inventa combinações de ajustes ocultos do processador que quase ninguém mexe, testa cada uma <strong>na hora, neste PC</strong>, e mede contra o ruído. Nada de receita da internet: só fica o que a medição provar.</p>
+            <div class="hazard-cols">
+              <div><h4>O que pode acontecer</h4><ul><li>O PC esquenta e as ventoinhas aceleram por alguns minutos.</li><li>Uma pausa curta ou engasgo enquanto um ajuste é aplicado.</li><li>Num caso raro de instabilidade, o Windows pode precisar reiniciar.</li><li>É beta: ainda não foi validado em muitos PCs reais.</li></ul></div>
+              <div><h4>O que protege você</h4><ul><li>Ponto de restauração do Windows antes de começar.</li><li>Testes só num <strong>clone</strong> do seu plano de energia; o original nunca é editado.</li><li>Guardas: tomada, temperatura, aquecimento e erros graves do Windows param tudo na hora.</li><li>Volta automática ao original no fim, e na próxima abertura se o PC travar.</li></ul></div>
+            </div>
+          </div>
+        </div>
+        <div class="split lab-split">
+          <section class="sheet lab-console" id="lab-console">
+            <div id="lab-form">
+              <div class="sheet-head"><div><h3>Nova sessão de risco</h3><p class="muted">Leva de 3 a 10 minutos. Feche jogos e programas pesados e deixe o notebook na tomada.</p></div></div>
+              <div class="lab-field"><span>Autonomia</span><div class="segmented" role="group" aria-label="Autonomia"><button type="button" data-lab-autonomy="assistido" aria-pressed="true">Assistida</button><button type="button" data-lab-autonomy="autonomo" aria-pressed="false">Autônoma</button></div><small id="lab-autonomy-note">Testa e recomenda. Você decide o que adotar.</small></div>
+              <div class="lab-field"><span>Risco permitido</span><div class="segmented" role="group" aria-label="Risco permitido"><button type="button" data-lab-risk="baixo" aria-pressed="false">Só baixo</button><button type="button" data-lab-risk="moderado" aria-pressed="true">Até moderado</button></div></div>
+              <div class="lab-field"><span>Ideias por sessão</span><div class="segmented" role="group" aria-label="Ideias por sessão"><button type="button" data-lab-arms="2" aria-pressed="false">2</button><button type="button" data-lab-arms="4" aria-pressed="true">4</button><button type="button" data-lab-arms="6" aria-pressed="false">6</button></div></div>
+              <label class="switch compact"><input id="lab-restore" type="checkbox" checked /><i></i><span>Exigir ponto de restauração <small>Recomendado. O Windows pede permissão de administrador (UAC) para criar.</small></span></label>
+              <div class="consent">
+                <label class="check"><input id="lab-ack" type="checkbox" /><span>Li o aviso. Entendo que é uma opção arriscada, em beta, e que o Nexo vai testar ajustes sozinho neste PC.</span></label>
+                <label class="field"><span>Para liberar, digite <strong>ENTENDO O RISCO</strong></span><input id="lab-phrase" type="text" maxlength="30" autocomplete="off" spellcheck="false" /></label>
+              </div>
+              <div class="btn-row"><button class="btn danger" id="lab-start" type="button" disabled><svg><use href="#i-flask"/></svg>Iniciar sessão de risco</button><button class="btn ghost sm" id="lab-check" type="button">Só conferir se dá para rodar</button></div>
+              <p class="notes-line" id="lab-form-error" hidden></p>
+            </div>
+            <div id="lab-run" hidden>
+              <div class="sheet-head"><div><span class="badge risk">SESSÃO DE RISCO</span><h3 id="lab-run-title">Preparando</h3><p class="muted" id="lab-run-detail">—</p></div><button class="btn danger sm" id="lab-cancel" type="button">Cancelar e restaurar</button></div>
+              <ol class="lab-steps" id="lab-steps"></ol>
+              <div class="progress-track"><span id="lab-progress"></span></div>
+              <div class="lab-arms" id="lab-arms"></div>
+              <ol class="lab-log" id="lab-log" aria-live="polite"></ol>
+            </div>
+            <div id="lab-result" hidden></div>
+          </section>
+          <div class="stack">
+            <section class="sheet"><div class="sheet-head"><div><h3>Espaço de ajustes</h3><p class="muted">O laboratório só mexe nisto. Tudo reversível, revisado e aplicado num plano temporário.</p></div></div><ul class="knobs" id="lab-knobs"></ul></section>
+            <section class="sheet"><div class="sheet-head"><div><h3>Sessões de risco</h3><p class="muted">Cada execução fica marcada como sessão de risco, com o que foi testado e o resultado.</p></div><button class="link" id="lab-forget" type="button">Esquecer o aprendizado</button></div><ul class="lab-history" id="lab-history"></ul></section>
+          </div>
+        </div>
+      </section>
+
+      <!-- ATLAS -->
+      <section class="view" data-view-panel="atlas">
+        <header class="page-head"><div><h2>Atlas de opções</h2><p>Todas as alavancas de desempenho que valem conhecer: as famosas, as que quase ninguém mexe e os boatos. Para cada uma, o que o Nexo faz e por quê, e o que ele já conferiu neste PC.</p></div><div class="page-actions"><button class="btn" id="atlas-refresh" type="button">Conferir este PC</button></div></header>
+        <div class="atlas-stats" id="atlas-stats"></div>
+        <div class="atlas-filters"><label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="atlas-search" type="search" placeholder="Buscar opção" autocomplete="off" /></label><div class="chips" id="atlas-status" role="group" aria-label="Filtrar"></div></div>
+        <div class="atlas-grid" id="atlas-grid"></div>
       </section>
 
       <!-- HARDWARE -->
@@ -298,6 +387,10 @@
       <!-- AJUSTES -->
       <section class="view" data-view-panel="settings">
         <header class="page-head"><div><h2>Ajustes</h2><p>Aparência, privacidade e controle dos seus dados.</p></div></header>
+        <section class="sheet account-sheet" id="account-sheet">
+          <div class="account-row"><span class="avatar lg" id="account-avatar-lg"><svg><use href="#i-user"/></svg></span><div class="account-copy"><h3 id="account-name">Conta</h3><p class="muted" id="account-detail">Entre com a sua conta Google para ter o seu perfil no Nexo.</p></div><div class="btn-row" id="account-actions"></div></div>
+          <p class="muted footnote" id="account-note">Opcional. O login acontece no seu navegador; o Nexo guarda só nome, e-mail e foto neste PC (cifrados pelo Windows) e não guarda senhas nem tokens do Google.</p>
+        </section>
         <section class="sheet profile-sheet">
           <div class="sheet-head"><div><h3>Perfil de uso</h3><p class="muted">Muda o peso de cada fator no Índice Nexo, a ordem das observações e o que as sessões destacam. Não muda o que é verdade sobre o seu PC, e você pode trocar quando quiser.</p></div></div>
           <div class="pcards" id="profile-cards" role="radiogroup" aria-label="Perfil de uso"></div>
@@ -310,12 +403,21 @@
           </section>
           <section class="sheet">
             <div class="sheet-head"><h3>Privacidade e dados</h3></div>
-            <p class="muted">Tudo o que o Nexo aprende fica neste computador. Nada é enviado, exceto a consulta pública de atualizações ao GitHub.</p>
+            <p class="muted">Tudo o que o Nexo aprende fica neste computador. Nada é enviado, exceto a consulta pública de atualizações ao GitHub e o que você ligar: login com o Google e capas da CDN da Steam.</p>
             <dl class="facts"><div><dt>Dados locais</dt><dd id="data-size">--</dd></div><div><dt>Pasta</dt><dd class="path" id="data-path">--</dd></div></dl>
             <label class="switch"><input id="share-toggle" type="checkbox" /><i></i><span><strong>Compartilhamento opcional com o criador</strong><small>Desativado por padrão. Nesta versão a escolha só é guardada aqui; o Nexo não envia telemetria.</small></span></label>
             <div class="btn-row"><button class="btn sm" id="export-data" type="button">Exportar meus dados</button><button class="btn sm" id="erase-learning" type="button">Apagar aprendizado e histórico</button><button class="btn sm ghost" id="open-privacy" type="button">Política completa</button></div>
           </section>
         </div>
+        <section class="sheet">
+          <div class="sheet-head"><div><h3>Em segundo plano</h3><p class="muted">Tudo desligado por padrão. Ligue só o que você quer.</p></div></div>
+          <div class="bg-grid">
+            <label class="switch"><input id="set-tray" type="checkbox" /><i></i><span><strong>Ficar na bandeja ao fechar</strong><small>O botão fechar esconde a janela; o Nexo continua perto do relógio. Para sair de verdade, use o menu do ícone.</small></span></label>
+            <label class="switch"><input id="set-auto" type="checkbox" /><i></i><span><strong>Gravar sessões de jogo sozinho</strong><small>Quando um jogo da biblioteca abre, o Nexo grava; quando fecha, guarda o relatório.</small></span></label>
+            <label class="switch"><input id="set-login" type="checkbox" /><i></i><span><strong>Iniciar com o Windows (escondido)</strong><small>Abre direto na bandeja. Só na versão instalada.</small></span></label>
+            <label class="switch"><input id="set-covers" type="checkbox" /><i></i><span><strong>Baixar capas que faltam da CDN da Steam</strong><small>Desligado: só capas locais. Ligado: o Nexo pede à Valve as imagens dos jogos Steam sem capa no cache, o que revela à Valve quais jogos você tem.</small></span></label>
+          </div>
+        </section>
         <section class="sheet danger-zone">
           <div class="sheet-head"><div><h3>Desinstalar completamente</h3><p class="muted">Remove o programa, os dados e as preferências, os atalhos e as entradas do Registro, e limpa os rastros que o próprio Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes). Ao final, mostra o que não conseguiu apagar, se houver.</p></div><button class="btn danger" id="uninstall-app" type="button">Desinstalar o Nexo</button></div>
         </section>
@@ -340,6 +442,8 @@
   <script src="src/profiles.js"></script>
   <script src="src/fps.js"></script>
   <script src="src/session.js"></script>
+  <script src="src/lab.js"></script>
+  <script src="src/atlas.js"></script>
   <script src="src/core.js"></script>
   <script src="src/ui-kit.js"></script>
   <script src="src/fx.js"></script>
@@ -357,6 +461,10 @@
   <script src="src/view-maintenance.js"></script>
   <script src="src/view-updates.js"></script>
   <script src="src/view-settings.js"></script>
+  <script src="src/view-library.js"></script>
+  <script src="src/view-lab.js"></script>
+  <script src="src/view-atlas.js"></script>
+  <script src="src/view-account.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
