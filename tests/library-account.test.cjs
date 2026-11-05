@@ -141,7 +141,7 @@ test('login de ponta a ponta com loopback real e Google simulado', async () => {
   };
   const result = await Account.signIn({ config: { clientId, clientSecret: 's' }, createServer: http.createServer, openExternal, fetch, timeoutMs: 5000 });
   assert.equal(result.profile.name, 'Bia');
-  assert.ok(calls.includes('https://oauth2.googleapis.com/revoke'), 'token de acesso revogado');
+  assert.ok(calls.some((call) => { const url = new URL(call); return url.origin === 'https://oauth2.googleapis.com' && url.pathname === '/revoke'; }), 'token de acesso revogado');
 });
 
 test('login sem configuração falha com mensagem clara', async () => {

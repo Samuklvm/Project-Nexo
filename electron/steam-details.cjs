@@ -12,11 +12,15 @@ const STEAM_IMAGE = /^https:\/\/([\w-]+\.)*(steamstatic\.com|akamaihd\.net)\//;
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
 /** HTML/BBCode da Steam → texto puro, com quebras de linha nos lugares certos. */
 function toText(value, max = 2000) {
-  return String(value || '')
+  let text = String(value || '')
     .replace(/<br\s*\/?>|<\/(p|li|h\d|div)>|\[\/?(p|h\d|list|olist)\]|\[\*\]/gi, '\n')
     .replace(/\{STEAM_CLAN_IMAGE\}[^\s\]]*/g, '')
-    .replace(/\[img\][\s\S]*?\[\/img\]|\[previewyoutube[^\]]*\][\s\S]*?\[\/previewyoutube\]/gi, '')
-    .replace(/<[^>]+>|\[\/?[a-z]+[^\]]*\]/gi, '')
+    .replace(/\[img\][\s\S]*?\[\/img\]|\[previewyoutube[^\]]*\][\s\S]*?\[\/previewyoutube\]/gi, '');
+  // Remove marcações até não sobrar nenhuma (uma passada só deixaria restos como "<scr<b>ipt>").
+  let previous;
+  do { previous = text; text = text.replace(/<[^<>]*>|\[\/?[a-z]+[^\]]*\]/gi, ''); } while (text !== previous);
+  return text
+    .replace(/[<>]/g, '')
     .replace(/&(#?\w+);/g, (match, code) => ENTITIES[code] ?? match)
     .replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*\n+/g, '\n\n').trim().slice(0, max);
 }

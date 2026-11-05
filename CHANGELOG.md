@@ -7,7 +7,7 @@ Notas completas de cada versão em [`docs/releases/`](docs/releases/).
 - Novo: página de cada jogo com visão geral, conquistas (com raridade global), novidades e atualizações oficiais e desempenho.
 - Novo: capas oficiais (Steam, Microsoft Store, Xbox) e contas conectadas (Steam deste PC, Steam Web API, Xbox, Discord Rich Presence).
 - Melhoria: modo leve automático, animações pausadas sem foco, leituras espaçadas em segundo plano, custo do Nexo em Ajustes.
-- Correção: caixa de consentimento do laboratório, YAML do workflow, release do Linux esperando a do Windows, gráfico de FPS, datas quebrando linha, caminhos da Steam.
+- Correção: caixa de consentimento do laboratório, YAML do workflow, release do Linux esperando a do Windows, gráfico de FPS, datas quebrando linha, caminhos da Steam; limpeza completa de HTML nos textos da Steam (alertas do CodeQL).
 - Mudança: removido o cartão da Nintendo.
 
 ## 0.5.0 — Otimização extrema (beta), biblioteca de jogos e Atlas

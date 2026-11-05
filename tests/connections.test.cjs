@@ -215,3 +215,10 @@ test('conquistas: desbloqueadas primeiro com data, ocultas sem spoiler, raridade
   await details.achievements('10', '76561198000000002', 'K');
   assert.equal(calls.length, 2, 'a segunda leitura sai do cache');
 });
+
+test('textos da Steam: marcações aninhadas não deixam restos de HTML', () => {
+  const { toText } = require('../electron/steam-details.cjs');
+  assert.equal(toText('<scr<b>ipt>alert(1)</script>oi'), 'alert(1)oi');
+  assert.equal(toText('Precisa de &lt; 4 GB<br>e <b>DirectX</b> 12'), 'Precisa de < 4 GB\ne DirectX 12');
+  assert.doesNotMatch(toText('<<img src=x onerror=1>>texto'), /[<>]/);
+});
