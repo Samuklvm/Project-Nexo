@@ -112,6 +112,9 @@ test('Discord: quadros do protocolo local, handshake e atividade limitada', asyn
   const activity = Discord.buildActivity({ details: 'x'.repeat(300), startedAt: 1700000000123 });
   assert.equal(activity.details.length, 128);
   assert.equal(activity.timestamps.start, 1700000000);
+  assert.equal(activity.assets.large_image, 'nexo');
+  assert.deepEqual(activity.buttons, [{ label: 'Conhecer o Nexo', url: 'https://github.com/Samuklvm/Project-Nexo/releases/latest' }]);
+  assert.ok(Discord.APP_ID.test(Discord.OFFICIAL_APP_ID), 'ID oficial do app do Discord é válido');
 
   const written = [];
   const connect = (pipe) => {

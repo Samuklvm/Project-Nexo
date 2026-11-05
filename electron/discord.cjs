@@ -6,6 +6,9 @@
  */
 const OP = { HANDSHAKE: 0, FRAME: 1, CLOSE: 2 };
 const APP_ID = /^\d{17,20}$/;
+/** App oficial "Nexo Device Care" no Discord (o Application ID é público; ícone e arte "nexo" ficam no portal do Discord). */
+const OFFICIAL_APP_ID = '1568049794834898954';
+const DOWNLOAD_URL = 'https://github.com/Samuklvm/Project-Nexo/releases/latest';
 
 function encode(op, payload) {
   const json = Buffer.from(JSON.stringify(payload), 'utf8');
@@ -35,7 +38,7 @@ function decode(buffer) {
 /** Atividade limitada aos campos e tamanhos que o Discord aceita. */
 function buildActivity({ details, state, startedAt, image = 'nexo', imageText = 'Nexo Device Care' }) {
   const clip = (value, max) => String(value || '').slice(0, max) || undefined;
-  return { details: clip(details, 128), state: clip(state, 128), timestamps: Number.isFinite(startedAt) ? { start: Math.floor(startedAt / 1000) } : undefined, assets: { large_image: clip(image, 256), large_text: clip(imageText, 128) }, instance: false };
+  return { details: clip(details, 128), state: clip(state, 128), timestamps: Number.isFinite(startedAt) ? { start: Math.floor(startedAt / 1000) } : undefined, assets: { large_image: clip(image, 256), large_text: clip(imageText, 128) }, buttons: [{ label: 'Conhecer o Nexo', url: DOWNLOAD_URL }], instance: false };
 }
 
 /** Onde o Discord escuta: named pipe no Windows; socket Unix no Linux (nativo, Flatpak ou Snap). */
@@ -101,4 +104,4 @@ function createDiscord({ connect, pid = process.pid, platform = process.platform
   return { setActivity, clear: (clientId) => (ready ? setActivity(clientId, null) : Promise.resolve({ ok: true })), close, isReady: () => ready };
 }
 
-module.exports = { ipcPaths, createDiscord, encode, decode, buildActivity, OP, APP_ID };
+module.exports = { ipcPaths, createDiscord, encode, decode, buildActivity, OP, APP_ID, OFFICIAL_APP_ID, DOWNLOAD_URL };

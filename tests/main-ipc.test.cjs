@@ -197,7 +197,7 @@ test('0.6.0: conexões, capas oficiais e leveza', async () => {
   const view = await call('connections:get');
   assert.equal('nintendo' in view, false);
   assert.equal(view.xbox.configured, false);
-  assert.equal(view.discord.configured, false);
+  assert.equal(view.discord.configured, true, 'o app oficial do Discord vem embutido');
   await assert.rejects(call('xbox:sign-in'), /não foi configurada/);
   await assert.rejects(call('steam:connect', '76561198000000002'), /não entrou/);
   assert.ok(['fraco', 'medio', 'forte'].includes((await call('system:tier')).tier));

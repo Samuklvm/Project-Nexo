@@ -1259,6 +1259,7 @@ async function integrationConfig() {
       if (!config.xboxClientId && Xbox.CLIENT_ID.test(String(parsed.xboxClientId || ''))) config.xboxClientId = String(parsed.xboxClientId);
     } catch { /* próximo */ }
   }
+  if (!config.discordAppId) config.discordAppId = DiscordRpc.OFFICIAL_APP_ID;
   return config;
 }
 const withTimeout = (ms) => (typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(ms) : undefined);
