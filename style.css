@@ -248,6 +248,7 @@ body.lite .sheet, body.lite .rail, body.lite .status-pill, body.lite .modal, bod
 .timeline strong { font-weight: 600; font-size: 13.5px; }
 .timeline small { display: block; color: var(--mist); font-size: 12px; }
 .timeline time { color: var(--mist); font-size: 12px; white-space: nowrap; }
+.timeline li.empty-art { grid-template-columns: minmax(0, 1fr); border-bottom: 0; } /* estado vazio: desenho em cima do texto, não espremido na coluna do ponto */
 .ledger { display: grid; gap: 12px; }
 .ledger li { display: grid; gap: 5px; }
 .ledger .row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }

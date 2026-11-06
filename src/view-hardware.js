@@ -144,7 +144,14 @@
   });
   desktopBridge?.onSensorSetup?.((event) => {
     if (event.phase === 'start') showToast('Ativando a leitura de temperatura: o Windows vai pedir permissão.');
-    else if (event.ok) showToast('Leitura completa ativa: temperatura do processador liberada.');
+    else if (event.ok) {
+      showToast('Leitura completa ativa: temperatura do processador liberada.');
+      // Instalar driver e serviço é uma mudança no sistema: fica no Diário, como tudo o que o Nexo altera.
+      Nexo.journal.record({ actionId: 'sensor-service', title: 'Ativar a leitura completa de sensores', risk: 'baixo', reversible: false,
+        authorization: 'permissão de administrador (UAC) do Windows', detail: `Serviço “Nexo Device Care: sensores”${event.pawnio === 'instalado' ? ' e driver PawnIO instalados' : event.pawnio === 'já instalado' ? ' instalado (o PawnIO já estava no PC)' : ' instalado'}. Saem ao desinstalar o Nexo.` });
+      Nexo.emit('journal');
+      recordActivity('Leitura completa de sensores', 'serviço ativo');
+    }
     else if (event.declined) showToast('Tudo bem: a leitura completa fica desligada. Dá para ativar em Hardware quando quiser.');
     else showToast(`Não foi possível ativar a leitura completa${event.note ? `: ${event.note}` : '.'}`);
     renderSensorService();

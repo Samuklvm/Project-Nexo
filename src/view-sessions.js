@@ -8,6 +8,7 @@
   let timers = [];
   let stopProbeListener = null;
   const fps = { status: null, active: false, access: null };
+  const FPS_PREF = 'nexo-sess-fps';
 
   const load = () => { const stored = readJSON(Nexo.keys.sessions, []); return Array.isArray(stored) ? stored : []; };
   const persist = (list) => { if (!writeJSON(Nexo.keys.sessions, list.slice(0, MAX_SESSIONS))) showToast('Não foi possível guardar a sessão neste computador.'); };
@@ -43,6 +44,12 @@
       setText('mango-launch', status.launchOption || '');
     }
     await refreshAccess();
+    // Primeira vez: com o FPS pronto para medir, a opção já vem ligada. Depois vale a última escolha da pessoa.
+    const toggle = document.getElementById('sess-fps');
+    let stored = null;
+    try { stored = localStorage.getItem(FPS_PREF); } catch { /* sem armazenamento */ }
+    if (stored === null && !rec) toggle.checked = Boolean(status.available && (fps.access?.ready || status.platform === 'linux'));
+    else if (stored !== null && !rec) toggle.checked = stored === '1';
   }
 
   /* ---------- Acesso ao FPS: grupo "Performance Log Users", liberado automaticamente com o UAC ---------- */
@@ -360,7 +367,7 @@
   });
   document.getElementById('fps-grant').addEventListener('click', () => Nexo.grantFpsAccess());
   document.getElementById('fps-revoke').addEventListener('click', () => Nexo.revokeFpsAccess());
-  document.getElementById('sess-fps').addEventListener('change', (event) => { if (event.target.checked && fps.access && fps.access.platform === 'win32' && !fps.access.ready) showToast(fps.access.needsRelogin ? 'Para o FPS: saia e entre de novo no Windows.' : 'O FPS precisa de uma liberação do Windows.', fps.access.needsRelogin ? null : { label: 'Liberar', run: () => Nexo.grantFpsAccess() }); });
+  document.getElementById('sess-fps').addEventListener('change', (event) => { try { localStorage.setItem(FPS_PREF, event.target.checked ? '1' : '0'); } catch { /* só nesta sessão */ } if (event.target.checked && fps.access && fps.access.platform === 'win32' && !fps.access.ready) showToast(fps.access.needsRelogin ? 'Para o FPS: saia e entre de novo no Windows.' : 'O FPS precisa de uma liberação do Windows.', fps.access.needsRelogin ? null : { label: 'Liberar', run: () => Nexo.grantFpsAccess() }); });
   // Sessão automática: o observador do processo principal avisa quando um jogo abre e fecha.
   bridge?.onWatchGame?.((event) => {
     if (event.type === 'start' && !rec) start({ auto: true, name: event.name, gameId: event.gameId, pid: event.pid });
