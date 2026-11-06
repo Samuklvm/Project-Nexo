@@ -166,7 +166,8 @@ function toolLauncher(name, arg) {
   const build = TOOLS[name];
   if (!build) throw new Error('Ferramenta não permitida.');
   const [file, args] = build(arg);
-  return `$process = Start-Process -FilePath ${psQuote(file)} -ArgumentList @(${args.map(psQuote).join(', ')}) -Verb RunAs -Wait -PassThru; exit $process.ExitCode`;
+  // Recusar o UAC faz o Start-Process lançar: vira o código 1223 (ERROR_CANCELLED), igual ao resto do Nexo.
+  return `try { $process = Start-Process -FilePath ${psQuote(file)} -ArgumentList @(${args.map(psQuote).join(', ')}) -Verb RunAs -Wait -PassThru } catch { exit 1223 }; exit $process.ExitCode`;
 }
 
 /** Linux: pkexec (polkit) mostra a janela de senha do próprio sistema. Só comandos fixos. */

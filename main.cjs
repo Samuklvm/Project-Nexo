@@ -681,7 +681,10 @@ registerIpcHandler('drives:optimize', async (_event, driveLetter) => {
   }
 
   const letter = driveLetter.toUpperCase();
-  await runPowerShell(toolLauncher('defrag', letter), 60 * 60 * 1000);
+  // runPowerShell lançaria "Command failed: powershell.exe …" (o script inteiro) como mensagem para a pessoa.
+  const result = await runPowerShellCode(toolLauncher('defrag', letter), 60 * 60 * 1000);
+  if (result.code === 1223) throw new Error('Você recusou a permissão do Windows; nada foi feito.');
+  if (result.code !== 0) throw new Error(`O Windows não concluiu a otimização de ${letter}: (código ${result.code}). A unidade pode não aceitar otimização.`);
   return { ok: true, driveLetter: letter };
 });
 
@@ -757,8 +760,10 @@ registerIpcHandler('system:repair', async () => {
     throw new Error('O SFC é do Windows. No Linux, a verificação do sistema de arquivos é feita pelo próprio sistema na inicialização (fsck).');
   }
 
-  await runPowerShell(toolLauncher('sfc'), 60 * 60 * 1000);
-  return { ok: true };
+  const result = await runPowerShellCode(toolLauncher('sfc'), 60 * 60 * 1000);
+  if (result.code === 1223) throw new Error('Você recusou a permissão do Windows; nada foi feito.');
+  // O SFC devolve código diferente de 0 quando encontra (e às vezes corrige) problemas: não é falha do Nexo.
+  return { ok: true, code: result.code };
 });
 
 const downloadedStatus = () => ({ state: 'downloaded', version: updateAvailableVersion, currentVersion: app.getVersion(), releaseName: updateReleaseInfo?.releaseName, releaseDate: updateReleaseInfo?.releaseDate, releaseNotes: updateReleaseInfo?.releaseNotes });

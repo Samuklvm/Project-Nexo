@@ -81,11 +81,12 @@
     setText('repair-status', 'Verificação em andamento');
     setAppStatus('Verificando arquivos do Windows');
     try {
-      await desktopBridge.repairSystemFiles();
-      setText('repair-status', 'Verificação concluída');
-      showToast('O Windows concluiu a verificação SFC.');
-      recordActivity('Verificação SFC', 'concluída');
-      Nexo.journal.record({ actionId: 'sfc-scan', title: 'Verificar arquivos do sistema (SFC)', risk: 'baixo', reversible: false, detail: 'concluída pelo Windows' });
+      const result = await desktopBridge.repairSystemFiles();
+      const clean = !result?.code;
+      setText('repair-status', clean ? 'Verificação concluída' : 'Concluída com avisos');
+      showToast(clean ? 'O Windows concluiu a verificação SFC sem problemas.' : 'O Windows terminou a verificação e encontrou algo. O detalhe fica em C:\\Windows\\Logs\\CBS\\CBS.log; rodar de novo depois de reiniciar costuma resolver o que ficou pendente.');
+      recordActivity('Verificação SFC', clean ? 'concluída' : `concluída com avisos (código ${result.code})`);
+      Nexo.journal.record({ actionId: 'sfc-scan', title: 'Verificar arquivos do sistema (SFC)', risk: 'baixo', reversible: false, detail: clean ? 'concluída pelo Windows' : `concluída pelo Windows com avisos (código ${result.code})` });
       Nexo.emit('journal');
     } catch (error) {
       setText('repair-status', 'Não concluída');

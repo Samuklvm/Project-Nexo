@@ -118,7 +118,9 @@
   }
 
   function persist() {
-    const compact = history.map((s) => [s.timestamp, s.cpu, s.memory, s.disk, s.gpu, s.acpiTemperature, s.gpuTemperature, s.cpuSensorTemperature]);
+    // Uma casa decimal basta para o histórico: o arquivo cai pela metade e a gravação (a cada minuto) fica mais leve.
+    const r = (value) => (Number.isFinite(value) ? Math.round(value * 10) / 10 : null);
+    const compact = history.map((s) => [s.timestamp, r(s.cpu), r(s.memory), r(s.disk), r(s.gpu), r(s.acpiTemperature), r(s.gpuTemperature), r(s.cpuSensorTemperature)]);
     const ok = writeJSON(Nexo.keys.history, compact) && writeJSON(Nexo.keys.brain, brain.serialize());
     if (!ok) setText('diagnosis-learning-status', 'O histórico local não pôde ser salvo; a análise atual continua disponível.');
   }

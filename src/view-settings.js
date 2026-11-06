@@ -80,7 +80,7 @@
     const confirmed = await Nexo.confirm({
       title: 'Desinstalar o Nexo completamente?',
       body: 'O Nexo vai fechar e remover tudo em poucos segundos. Uma mensagem final mostrará se algo não pôde ser apagado.',
-      items: ['O programa e todos os arquivos da instalação.', 'Seus dados e preferências: histórico, aprendizado, sessões, capas de jogos, conta, papel de parede.', 'Atalhos, entradas do Registro (inclusive iniciar com o Windows) e o cache de atualizações.', 'Planos de energia criados pelo laboratório (o Windows volta ao Equilibrado se um deles estiver ativo).', 'Rastros que o Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes).', 'Nada além disso: outros programas, arquivos pessoais e pontos de restauração do Windows não são tocados.'],
+      items: ['O programa e todos os arquivos da instalação.', 'Seus dados e preferências: histórico, aprendizado, sessões, capas de jogos, conta, papel de parede.', 'Atalhos, entradas do Registro (inclusive iniciar com o Windows) e o cache de atualizações.', 'Planos de energia criados pelo laboratório (o Windows volta ao Equilibrado se um deles estiver ativo).', 'O serviço de sensores e o driver PawnIO, se foi o Nexo que instalou (o Windows pede permissão para remover).', 'Rastros que o Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes).', 'Nada além disso: outros programas, arquivos pessoais e pontos de restauração do Windows não são tocados.'],
       confirmLabel: 'Desinstalar', tone: 'danger'
     });
     if (!confirmed) return;

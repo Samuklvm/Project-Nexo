@@ -180,5 +180,10 @@
   Nexo.on('processes', renderHomeInsights);
   Nexo.on('view', (view) => { if (view === 'home') { drawCharts(); renderLive(); } });
   Nexo.refreshHome = () => { renderHealth(); renderLive(); drawCharts(); renderHomeInsights(); };
-  addEventListener('resize', () => { if (Nexo.state.view === 'home') { drawCharts(); renderLive(); } });
+  // Redimensionar dispara dezenas de eventos por segundo: redesenha no máximo uma vez por quadro.
+  let resizeFrame = 0;
+  addEventListener('resize', () => {
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; if (Nexo.state.view === 'home') { drawCharts(); renderLive(); } });
+  });
 })();
