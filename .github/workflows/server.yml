@@ -1,0 +1,86 @@
+# Publica o servidor do Nexo (Cloudflare Workers + D1) quando algo em server/ muda na main.
+# Segredos do repositório que este fluxo usa (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN   token da Cloudflare com permissão de editar Workers e D1
+#   CLOUDFLARE_ACCOUNT_ID  ID da conta da Cloudflare
+#   NEXO_ADMIN_EMAILS      e-mail(s) que entram no painel do criador (vírgula separa vários)
+#   GOOGLE_OAUTH_JSON      o mesmo das builds do app (daqui sai só o ID do cliente, que é público)
+# Os segredos do próprio servidor (SESSION_SECRET e DATA_KEY) são criados aqui na primeira vez e nunca aparecem no log.
+# NUNCA apague o DATA_KEY na Cloudflare: sem ele, os dados sincronizados não abrem mais.
+name: Publicar servidor
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', 'tests/server.test.cjs', '.github/workflows/server.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: server-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER: npx --yes wrangler@4
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Testes do servidor
+        run: node --test tests/server.test.cjs
+      - name: Conferir os segredos
+        id: check
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Sem CLOUDFLARE_API_TOKEN ou CLOUDFLARE_ACCOUNT_ID: o servidor não foi publicado."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Banco D1 (cria se não existir) e migrações
+        if: steps.check.outputs.ready == 'true'
+        working-directory: server
+        run: |
+          set -euo pipefail
+          find_db() { $WRANGLER d1 list --json | node -e "let s='';process.stdin.on('data',(d)=>s+=d).on('end',()=>{const list=JSON.parse(s);const db=(Array.isArray(list)?list:[]).find((x)=>x.name==='nexo');process.stdout.write(db?(db.uuid||db.id||''):'')})"; }
+          ID="$(find_db)"
+          if [ -z "$ID" ]; then $WRANGLER d1 create nexo > /dev/null; ID="$(find_db)"; fi
+          if [ -z "$ID" ]; then echo "Não consegui criar nem achar o banco D1 'nexo'."; exit 1; fi
+          sed -i "s/COLOCADO_PELO_DEPLOY/$ID/" wrangler.toml
+          $WRANGLER d1 migrations apply nexo --remote
+      - name: Publicar o Worker
+        if: steps.check.outputs.ready == 'true'
+        id: deploy
+        working-directory: server
+        env:
+          GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
+          NEXO_ADMIN_EMAILS: ${{ secrets.NEXO_ADMIN_EMAILS }}
+        run: |
+          set -euo pipefail
+          CLIENT_ID="$(printf '%s' "${GOOGLE_OAUTH_JSON:-}" | node -e "let s='';process.stdin.on('data',(d)=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const i=j.installed||j.web||j;process.stdout.write(String(i.client_id||i.clientId||''))}catch{}})")"
+          if [ -z "$CLIENT_ID" ]; then echo "Sem GOOGLE_OAUTH_JSON: o login (e a sincronização) não vai funcionar."; fi
+          $WRANGLER deploy --var "GOOGLE_CLIENT_IDS:${CLIENT_ID}" --var "ADMIN_EMAILS:${NEXO_ADMIN_EMAILS:-}" | tee deploy.log
+          URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | head -n 1 || true)"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - name: Segredos do servidor (cria os que faltam)
+        if: steps.check.outputs.ready == 'true'
+        working-directory: server
+        run: |
+          set -uo pipefail
+          LIST="$($WRANGLER secret list --format json 2>/dev/null || $WRANGLER secret list 2>/dev/null || echo '[]')"
+          for NAME in SESSION_SECRET DATA_KEY; do
+            if printf '%s' "$LIST" | grep -q "\"$NAME\""; then echo "$NAME já existe."; continue; fi
+            openssl rand -base64 48 | tr -d '\n' | $WRANGLER secret put "$NAME" > /dev/null
+            echo "$NAME criado."
+          done
+      - name: Conferir no ar
+        if: steps.check.outputs.ready == 'true' && steps.deploy.outputs.url != ''
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "${{ steps.deploy.outputs.url }}/health"; then echo; echo "Servidor no ar: ${{ steps.deploy.outputs.url }}"; exit 0; fi
+            sleep 5
+          done
+          echo "O servidor não respondeu em ${{ steps.deploy.outputs.url }}/health"; exit 1

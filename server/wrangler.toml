@@ -1,0 +1,19 @@
+# Servidor do Nexo (Cloudflare Workers, plano grátis). O deploy roda pelo GitHub Actions (.github/workflows/server.yml):
+# ele cria o banco D1 se não existir, aplica as migrações, publica e cria os segredos que faltarem.
+name = "nexo-api"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nexo"
+database_id = "COLOCADO_PELO_DEPLOY"
+migrations_dir = "migrations"
+
+# Limpeza diária: relatórios e telemetria antigos, sessões vencidas e links do painel usados.
+[triggers]
+crons = ["17 6 * * *"]
+
+[observability]
+enabled = true

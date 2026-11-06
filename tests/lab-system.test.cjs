@@ -180,7 +180,7 @@ test('elevação: só tarefas da lista, SID validado, corpo codificado e uma ún
   assert.match(Elevate.restorePointBody('Nexo'), /SystemRestorePointCreationFrequency/);
 
   const root = path.join(__dirname, '..');
-  const sources = ['main.cjs', 'electron/lab-system.cjs', 'electron/elevate.cjs', 'electron/games.cjs', 'electron/watcher.cjs', 'electron/account.cjs', 'electron/system-scan.cjs', 'electron/reboot-test.cjs', 'electron/disk-models.cjs', 'electron/error-log.cjs', 'src/lab.js', 'src/lab-space.js', 'src/reboot-test.js', 'src/view-reboot.js', 'src/view-scan.js']
+  const sources = ['main.cjs', 'electron/lab-system.cjs', 'electron/elevate.cjs', 'electron/games.cjs', 'electron/watcher.cjs', 'electron/account.cjs', 'electron/system-scan.cjs', 'electron/reboot-test.cjs', 'electron/disk-models.cjs', 'electron/error-log.cjs', 'server/src/app.js', 'server/src/google.js', 'server/src/crypto.js', 'server/src/validate.js', 'server/src/panel.js', 'src/lab.js', 'src/lab-space.js', 'src/reboot-test.js', 'src/view-reboot.js', 'src/view-scan.js']
     .filter((file) => fsReal.existsSync(path.join(root, file)))
     .map((file) => [file, fsReal.readFileSync(path.join(root, file), 'utf8')]);
   const forbidden = /bcdedit|Set-MpPreference|DisableAntiSpyware|HypervisorEnforcedCodeIntegrity|SecureBoot|testsigning|nointegritychecks|Invoke-Expression|\biex\b|DownloadString|ReadProcessMemory|OpenProcess|WriteProcessMemory/i;

@@ -1,0 +1,11 @@
+{
+  "name": "nexo-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Servidor do Nexo Device Care: sincronização de contas, relatórios de erro, telemetria opcional e painel do criador (Cloudflare Workers + D1).",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply nexo --remote"
+  }
+}
