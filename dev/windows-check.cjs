@@ -64,7 +64,7 @@ async function parses(name, script) {
   console.log(available.slice(0, 200).map((item) => `     ${item.id.padEnd(22)} ${item.current}`).join('\n'));
 
   // 3. Aplica de verdade, confere, reverte e confere.
-  const want = ['priosep', 'sysresp', 'netthumbs', 'menudelay', 'directx', 'stickykeys', 'svc-fax', 'svc-retaildemo', 'usbsuspend', 'waketimers', 'diskidle', 'tcpwait']
+  const want = ['priosep', 'sysresp', 'netthumbs', 'menudelay', 'directx', 'stickykeys', 'svc-fax', 'svc-retaildemo', 'svc-wisvc', 'svc-wecsvc', 'usbsuspend', 'waketimers', 'diskidle', 'tcpwait', 'edgebg', 'websearch']
     .map((id) => available.find((item) => item.id === id)).filter(Boolean)
     .map((item) => ({ item, option: item.options.find((option) => JSON.stringify(option.values) !== JSON.stringify(item.values)) })).filter(({ option }) => option);
   const applied = await scanner.apply(want.map(({ item, option }) => ({ id: item.id, values: option.values })));
