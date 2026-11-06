@@ -14,7 +14,9 @@ const { createElevator, toolLauncher, PAWNIO } = require('./electron/elevate.cjs
 const { decodeConsole } = require('./electron/console-text.cjs');
 const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
-const { createSystemScan } = require('./electron/system-scan.cjs');
+const { createSystemScan, validateChange: validateScanChange } = require('./electron/system-scan.cjs');
+const { createRebootTest } = require('./electron/reboot-test.cjs');
+const APP_LAUNCHED_AT = Date.now();
 const LabParsers = { parseList: parseLabPlanList };
 const { createLibrary } = require('./electron/games.cjs');
 const { createWatcher } = require('./electron/watcher.cjs');
@@ -1773,6 +1775,7 @@ registerIpcHandler('lab:preflight', async () => {
 });
 registerIpcHandler('lab:run', async (_event, options) => {
   if (labState.running) throw new Error('O laboratório já está rodando.');
+  if (await rebootTest.active()) throw new Error('Há um teste com reinício em andamento; termine ou cancele ele antes (as medidas se misturariam).');
   if (activeBench) throw new Error('Há um teste de desempenho em andamento.');
   const memory = NexoLab.sanitizeMemory(options?.evidence, options?.tabu);
   labState.running = true;
@@ -1798,6 +1801,7 @@ const systemScan = createSystemScan({ runPowerShell: runPowerShellCode, run: run
 registerIpcHandler('scan:run', async () => systemScan.scan());
 registerIpcHandler('scan:apply', async (_event, changes) => {
   if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
+  if (await rebootTest.active()) throw new Error('Há um teste com reinício em andamento; termine ou cancele ele antes de mudar outros ajustes.');
   const clean = (Array.isArray(changes) ? changes : []).slice(0, 160).map((change) => ({
     id: String(change?.id || '').slice(0, 48),
     values: Array.isArray(change?.values) ? change.values.slice(0, 8).map((value) => (value === null || typeof value === 'number' || typeof value === 'string' ? value : undefined)) : [],
@@ -1805,6 +1809,39 @@ registerIpcHandler('scan:apply', async (_event, changes) => {
   }));
   return systemScan.apply(clean);
 });
+// ---- Teste com reinício (mede A/B atravessando reinícios; troca os valores pelo Raio-X) ----
+const rebootTest = createRebootTest({
+  fs, path, dir: path.join(app.getPath('userData'), 'reboot-test'),
+  run: runCode, runPowerShell: runPowerShellCode, apply: (changes) => systemScan.apply(changes), validate: validateScanChange,
+  bench: labBench, cpuLoad: getCpuUsage, memory: () => ({ total: os.totalmem(), free: os.freemem() }), onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()),
+  uptime: () => os.uptime(), exePath: process.execPath, isPackaged: app.isPackaged, emit: (channel, payload) => sendToWindow(channel, payload)
+});
+const cleanRebootValue = (value) => (value === null || (typeof value === 'number' && Number.isFinite(value)) || (typeof value === 'string' && value.length <= 200) ? value : undefined);
+registerIpcHandler('reboot:status', async () => rebootTest.status());
+registerIpcHandler('reboot:start', async (_event, options) => {
+  if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
+  const changes = (Array.isArray(options?.changes) ? options.changes : []).slice(0, 160).map((change) => ({
+    id: String(change?.id || '').slice(0, 48), label: String(change?.label || '').slice(0, 120), beforeLabel: String(change?.beforeLabel || '').slice(0, 80), afterLabel: String(change?.afterLabel || '').slice(0, 80),
+    before: Array.isArray(change?.before) ? change.before.slice(0, 8).map(cleanRebootValue) : [], after: Array.isArray(change?.after) ? change.after.slice(0, 8).map(cleanRebootValue) : [],
+    reboot: ['nao', 'sessao', 'reiniciar'].includes(change?.reboot) ? change.reboot : 'reiniciar', admin: change?.admin === true
+  }));
+  return rebootTest.start({ changes, protocol: String(options?.protocol || 'completo'), goal: String(options?.goal || 'jogos'), auto: options?.auto === true });
+});
+registerIpcHandler('reboot:continue', async () => rebootTest.tick({}));
+registerIpcHandler('reboot:restart', async () => rebootTest.restart(15));
+registerIpcHandler('reboot:abort-restart', async () => rebootTest.abortRestart());
+registerIpcHandler('reboot:cancel', async () => rebootTest.cancel());
+registerIpcHandler('reboot:ack', async (_event, id) => rebootTest.ack(String(id || '').slice(0, 40)));
+/** Ao abrir (inclusive pelo RunOnce depois de reiniciar): se há teste rodando, mostra a janela e continua. */
+async function resumeRebootTest(viaRunOnce, launchedAt) {
+  if (process.platform !== 'win32') return;
+  const current = await rebootTest.status().catch(() => null);
+  if (current?.state?.status !== 'running') return;
+  showWindow();
+  sendToWindow('reboot:show', {});
+  const result = await rebootTest.tick({ viaRunOnce, launchedAt }).catch(() => null);
+  if (result) sendToWindow('reboot:status', result);
+}
 registerIpcHandler('lab:cancel', async () => { if (labState.signal) labState.signal.cancelled = true; return { ok: true }; });
 registerIpcHandler('lab:recover', async () => labSystem.recover());
 registerIpcHandler('lab:adopt', async (_event, config) => {
@@ -2075,6 +2112,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', (_event, argv) => {
     if (argv.includes('--lab-recover')) { labSystem.recover().catch(() => {}); return; }
     showWindow();
+    if (argv.includes('--reboot-test')) resumeRebootTest(true, Date.now()).catch(() => {});
   });
 
   app.whenReady().then(async () => {
@@ -2083,10 +2121,13 @@ if (!app.requestSingleInstanceLock()) {
     // Se um teste do laboratório ficou pela metade (queda de energia, travamento), volta ao plano original antes de tudo.
     const recovered = await labSystem.recover().catch(() => ({ recovered: false }));
     if (process.argv.includes('--lab-recover')) { app.quit(); return; }
+    // Aberto pelo RunOnce de um teste que já terminou ou foi cancelado: não há o que fazer, fecha quieto.
+    if (process.argv.includes('--reboot-test') && (await rebootTest.status().catch(() => null))?.state?.status !== 'running') { app.quit(); return; }
     await loadSettings();
     await loadConnections();
     createWindow();
     if (recovered.recovered) mainWindow.webContents.once('did-finish-load', () => sendToWindow('lab:recovered', recovered));
+    if (process.platform === 'win32') mainWindow.webContents.once('did-finish-load', () => { setTimeout(() => resumeRebootTest(process.argv.includes('--reboot-test'), APP_LAUNCHED_AT).catch(() => {}), 1500); });
     applyTray();
     if (process.platform === 'win32' && app.isPackaged) setTimeout(() => autoSensorSetup().catch(() => {}), 5000);
     if (settings.autoSession) library.scan().catch(() => []).finally(() => watcher.start());

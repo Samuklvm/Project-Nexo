@@ -40,7 +40,7 @@
       ${shown.length ? '' : '<p class="muted">Nada com esse filtro.</p>'}
       ${[...groups].map(([group, items], index) => `<details class="scan-group"${index === 0 || state.filter ? ' open' : ''}><summary><strong>${escapeHtml(names[group] || GROUPS[group] || group)}</strong><span class="muted">${items.length} ajustes · ${items.reduce((total, item) => total + item.options.length, 0)} opções</span></summary><ul class="scan-list">${items.map(row).join('')}</ul></details>`).join('')}
       <details class="scan-group refused"><summary><strong>O que o Nexo encontra e se recusa a mudar</strong><span class="muted">${scan.refused.length} itens</span></summary><ul class="scan-list">${scan.refused.map((item) => `<li><div class="scan-main"><strong>${escapeHtml(item.label)}</strong><span class="muted">${escapeHtml(item.reason)}</span></div><span class="chip risk-alto">recusado</span></li>`).join('')}</ul></details>
-      <div class="scan-foot"><button class="btn ghost sm" type="button" id="scan-recommended">Marcar os recomendados</button><span class="muted" id="scan-count">Nada marcado.</span><button class="btn danger" type="button" id="scan-apply" disabled>Aplicar marcados</button></div>`;
+      <div class="scan-foot"><button class="btn ghost sm" type="button" id="scan-recommended">Marcar os recomendados</button><span class="muted" id="scan-count">Nada marcado.</span>${Nexo.composeRebootTest ? '<button class="btn ghost" type="button" id="scan-reboot-test" disabled title="Reinicia o PC algumas vezes e mede com e sem os ajustes marcados">Testar com reinício</button>' : ''}<button class="btn danger" type="button" id="scan-apply" disabled>Aplicar marcados</button></div>`;
     updateCount();
   }
 
@@ -66,6 +66,8 @@
     const list = picked();
     const button = document.getElementById('scan-apply');
     if (button) button.disabled = !list.length || state.busy;
+    const test = document.getElementById('scan-reboot-test');
+    if (test) test.disabled = !list.length || state.busy;
     setText('scan-count', list.length ? `${list.length} ajuste(s) marcado(s)${list.some(({ item }) => item.admin) ? ' · o Windows vai pedir permissão uma vez' : ''}${list.some(({ item }) => item.reboot === 'reiniciar') ? ' · alguns valem depois de reiniciar' : ''}.` : 'Nada marcado (ou a opção escolhida já é a atual).');
   }
 
@@ -143,6 +145,7 @@
   });
   body()?.addEventListener('click', (event) => {
     if (event.target.id === 'scan-apply') applyPicked();
+    if (event.target.id === 'scan-reboot-test') { const list = picked(); if (list.length) Nexo.composeRebootTest?.(list); }
     if (event.target.id === 'scan-recommended') {
       for (const item of state.scan.items) {
         if (!item.available) continue;

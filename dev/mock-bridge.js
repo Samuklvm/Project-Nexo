@@ -103,6 +103,35 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
   let account = { configured: true, configSource: 'build', encrypted: true, profile: null, avatar: null };
   let cancelled = false;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const reboot = { state: null, history: [], listeners: new Set(), busy: false };
+  const rebootView = () => {
+    const state = reboot.state;
+    const action = state && state.status === 'running' ? NexoRebootTest.nextAction(state, { bootAt: state.armedAt - 1, now: Date.now() }).type : 'idle';
+    return { supported: true, state, action, busy: reboot.busy, restartAt: null, permissions: state ? NexoRebootTest.permissionCount(state.order, state.admin) : 0, preview: state && state.boots.length >= 2 ? NexoRebootTest.verdict(state) : null, history: reboot.history };
+  };
+  async function simulateBoot() {
+    let state = reboot.state;
+    if (!state || state.status !== 'running') return;
+    reboot.busy = true;
+    const config = state.order[state.step];
+    const steps = ['Esperando o Windows terminar de ligar (120 s)', 'Esperando o processador sossegar (12%)', 'Medindo o processador em repouso', 'Teste ritmo de quadros (rodada 2 de 3)', 'Teste disco (rodada 3 de 3)'];
+    for (const [index, text] of steps.entries()) { reboot.listeners.forEach((cb) => cb({ stage: 'medindo', text, pct: Math.round((index / steps.length) * 100), step: state.step, steps: state.order.length, config })); await wait(500); }
+    const gain = config === 'B' ? 1.06 : 1;
+    const jitter = () => 1 + (Math.random() - 0.5) * 0.02;
+    const metrics = { desktop: 9.4 / gain * jitter(), boot: 21 * jitter(), idleCpu: 2.4 / gain * jitter(), memUsed: 4.1 / (config === 'B' ? 1.04 : 1) * jitter(), processes: Math.round((config === 'B' ? 196 : 214) * jitter()), services: Math.round((config === 'B' ? 92 : 104) * jitter()) };
+    for (const mode of NexoRebootTest.BENCHES) metrics[mode] = (mode === 'frames' || mode === 'latency' ? 1000 * gain : 1000) * jitter();
+    state = NexoRebootTest.recordBoot(state, { bootAt: Date.now() - 200000, metrics, rounds: {}, quiet: true, viaRunOnce: true }, Date.now());
+    const next = NexoRebootTest.nextAction(state, { bootAt: 0, now: Date.now() });
+    if (next.type === 'switch') state = NexoRebootTest.markSwitched(state, next.config, Date.now());
+    if (next.type === 'finish') {
+      const result = NexoRebootTest.verdict(state);
+      state = { ...state, status: 'done', phase: 'done', result, kept: result.keep, applied: result.keep, finishedAt: Date.now() };
+      reboot.history.unshift(state);
+    }
+    reboot.state = { ...state, armedAt: Date.now() };
+    reboot.busy = false;
+    reboot.listeners.forEach((cb) => cb({ stage: next.type === 'finish' ? 'pronto' : 'aguardando', text: '', pct: 100 }));
+  }
   Object.assign(window.nexoDesktop, {
     scanGames: async () => { await wait(500); return games; }, listGames: async () => games, launchGame: async () => ({ ok: true }), revealGame: async () => ({ ok: true }),
     setGameCover: async () => ({ canceled: true }), addGame: async () => ({ canceled: true }), removeManualGame: async () => ({ games }), onGamesUpdated: () => () => {},
@@ -116,6 +145,16 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     getLabStatus: async () => ({ running: false, pending: false, platform: 'win32', space: NexoLab.SPACE }),
     scanSystem: async () => { await wait(500); return { supported: true, scannedAt: Date.now(), ...window.__scanPreview }; },
     applyTweaks: async () => { await wait(600); return { ok: true, failed: [], after: null }; },
+    // Teste com reinício na prévia: o motor de verdade (src/reboot-test.js); "reiniciar" simula um boot medido.
+    rebootStatus: async () => rebootView(),
+    rebootStart: async (options) => { reboot.state = NexoRebootTest.createPlan({ ...options, now: Date.now() - 10 }); return rebootView(); },
+    rebootRestart: async () => { simulateBoot(); return { ok: true }; },
+    rebootAbortRestart: async () => ({ ok: true }),
+    rebootContinue: async () => rebootView(),
+    rebootCancel: async () => { if (reboot.state) { reboot.state = { ...reboot.state, status: 'cancelled', kept: 'A', applied: 'A', finishedAt: Date.now(), result: reboot.state.boots.length >= 2 ? NexoRebootTest.verdict(reboot.state) : null }; reboot.history.unshift(reboot.state); } return rebootView(); },
+    rebootAck: async () => { if (reboot.state) reboot.state.journaled = true; return { ok: true }; },
+    onRebootProgress: (cb) => { reboot.listeners.add(cb); return () => reboot.listeners.delete(cb); },
+    onRebootStatus: () => () => {}, onRebootShow: () => () => {},
     labPreflight: async () => ({ platform: 'win32', onBattery: false, tempC: 47, cpuLoad: 9, pending: false, knobs: Object.fromEntries(NexoLab.SPACE.map((knob) => [knob.id, { available: knob.id !== 'boostpol', current: knob.values[0] }])) }),
     cancelLab: async () => { cancelled = true; return { ok: true }; }, recoverLab: async () => ({ recovered: false }), onLabRecovered: () => () => {},
     onLabEvent: (cb) => { listeners.lab.add(cb); return () => listeners.lab.delete(cb); },

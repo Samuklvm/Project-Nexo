@@ -206,3 +206,18 @@ test('0.6.0: conexões, capas oficiais e leveza', async () => {
   await assert.rejects(call('app:open-store-url', 'https://evil.example/x'), /não permitido/);
   await assert.rejects(call('games:details', 'steam-1'), /não encontrado/);
 });
+
+test('0.8.0: Raio-X e teste com reinício registrados e seguros fora do Windows', async () => {
+  for (const channel of ['scan:run', 'scan:apply', 'reboot:status', 'reboot:start', 'reboot:continue', 'reboot:restart', 'reboot:abort-restart', 'reboot:cancel', 'reboot:ack']) {
+    assert.ok(handlers.has(channel), `faltou ${channel}`);
+  }
+  const scan = await call('scan:run');
+  assert.equal(scan.supported, false);
+  assert.ok(scan.stats.catalog.options >= 280);
+  await assert.rejects(call('scan:apply', [{ id: 'priosep', values: [38] }]), /Windows/);
+  const status = await call('reboot:status');
+  assert.equal(status.supported, false);
+  assert.equal(status.state, null);
+  await assert.rejects(call('reboot:start', { changes: [{ id: 'priosep', before: [2], after: [38] }] }), /Windows/);
+  assert.equal((await call('reboot:continue')).supported, false);
+});

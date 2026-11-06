@@ -12,6 +12,15 @@ const scripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((match) => 
 test('index.html carrega scripts que existem', () => {
   assert.ok(scripts.length > 10);
   for (const src of scripts) assert.ok(fs.existsSync(path.join(root, src)), `${src} não existe`);
+  const repeated = scripts.filter((src, index) => scripts.indexOf(src) !== index);
+  assert.deepEqual(repeated, [], 'script carregado duas vezes');
+});
+
+test('módulos da interface vêm antes de quem usa', () => {
+  const order = (name) => scripts.indexOf(`src/${name}`);
+  assert.ok(order('lab-space.js') < order('lab.js'));
+  assert.ok(order('reboot-test.js') < order('view-reboot.js'));
+  assert.ok(order('view-reboot.js') < order('view-scan.js'), 'o Raio-X só mostra "Testar com reinício" se a tela do teste já existir');
 });
 
 test('todo script da interface compila', () => {
