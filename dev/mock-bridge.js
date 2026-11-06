@@ -115,7 +115,7 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     signOut: async () => { account = { ...account, profile: null }; return account; }, importOAuthConfig: async () => account,
     getLabStatus: async () => ({ running: false, pending: false, platform: 'win32', space: NexoLab.SPACE }),
     scanSystem: async () => { await wait(500); return { supported: true, scannedAt: Date.now(), ...window.__scanPreview }; },
-    applyTweaks: async () => { await wait(600); return { ok: true, after: null }; },
+    applyTweaks: async () => { await wait(600); return { ok: true, failed: [], after: null }; },
     labPreflight: async () => ({ platform: 'win32', onBattery: false, tempC: 47, cpuLoad: 9, pending: false, knobs: Object.fromEntries(NexoLab.SPACE.map((knob) => [knob.id, { available: knob.id !== 'boostpol', current: knob.values[0] }])) }),
     cancelLab: async () => { cancelled = true; return { ok: true }; }, recoverLab: async () => ({ recovered: false }), onLabRecovered: () => () => {},
     onLabEvent: (cb) => { listeners.lab.add(cb); return () => listeners.lab.delete(cb); },

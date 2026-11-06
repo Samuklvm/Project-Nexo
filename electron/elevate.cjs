@@ -150,13 +150,15 @@ ${WRITE_RESULT}`;
 
 /** Raio-X: grava (ou volta) valores do registro em HKLM. Só chaves do catálogo fechado (electron/system-scan.cjs). */
 function registryTweaksBody(args) {
-  const { elevatedBody } = require('./system-scan.cjs');
-  const steps = elevatedBody(Array.isArray(args?.changes) ? args.changes.slice(0, 40) : []);
+  const { elevatedBody, MAX_CHANGES } = require('./system-scan.cjs');
+  const { prelude, steps } = elevatedBody(Array.isArray(args?.changes) ? args.changes.slice(0, MAX_CHANGES) : []);
   if (!steps.length) throw new Error('Nada para gravar no sistema.');
+  // Cada passo tem o próprio try/catch (um valor recusado não impede os outros); o que falhou volta em "failed".
   return String.raw`
-$r = @{ ok = $false; note = ''; steps = 0 }
+$r = @{ ok = $false; note = ''; steps = 0; failed = @() }
 try {
-${steps.map((step) => `  ${step}; $r.steps++`).join('\n')}
+${prelude.map((line) => `  ${line}`).join('\n')}
+${steps.map((step) => `  ${step}`).join('\n')}
   $r.ok = $true
 } catch { $r.note = $_.Exception.Message }
 ${WRITE_RESULT}`;

@@ -1798,8 +1798,8 @@ const systemScan = createSystemScan({ runPowerShell: runPowerShellCode, run: run
 registerIpcHandler('scan:run', async () => systemScan.scan());
 registerIpcHandler('scan:apply', async (_event, changes) => {
   if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
-  const clean = (Array.isArray(changes) ? changes : []).slice(0, 40).map((change) => ({
-    id: String(change?.id || '').slice(0, 40),
+  const clean = (Array.isArray(changes) ? changes : []).slice(0, 160).map((change) => ({
+    id: String(change?.id || '').slice(0, 48),
     values: Array.isArray(change?.values) ? change.values.slice(0, 8).map((value) => (value === null || typeof value === 'number' || typeof value === 'string' ? value : undefined)) : [],
     revert: change?.revert === true
   }));
