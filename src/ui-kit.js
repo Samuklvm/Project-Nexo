@@ -152,6 +152,17 @@
     Nexo.effectsLite = lite;
   };
 
+  /* ---------- Velocidade das leituras ao vivo ---------- */
+  const LIVE_RATE_KEY = 'nexo-live-rate';
+  Nexo.liveRate = (() => { try { return localStorage.getItem(LIVE_RATE_KEY) || 'realtime'; } catch { return 'realtime'; } })();
+  Nexo.setLiveRate = function setLiveRate(mode, { save = true } = {}) {
+    Nexo.liveRate = ['realtime', 'balanced', 'eco'].includes(mode) ? mode : 'realtime';
+    $$('[data-live-rate]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.liveRate === Nexo.liveRate)));
+    if (save) { try { localStorage.setItem(LIVE_RATE_KEY, Nexo.liveRate); } catch { /* só nesta sessão */ } }
+    Nexo.emit('live-rate', Nexo.liveRate);
+  };
+  Nexo.liveRateStored = () => { try { return localStorage.getItem(LIVE_RATE_KEY) !== null; } catch { return true; } };
+
   /* ---------- Céu: estrelas cadentes discretas ---------- */
   (function ambient() {
     const canvas = document.getElementById('ambient');

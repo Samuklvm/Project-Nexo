@@ -43,7 +43,9 @@
     const includeAdvanced = Boolean(sensorAdvancedToggle?.checked);
     const categories = [...new Set(devices.map((device) => device.type))];
     const filterLabels = ['all', ...categories];
-    if (sensorCategoryFilters) {
+    const filterKey = `${filterLabels.join('|')}#${selectedSensorCategory}`;
+    if (sensorCategoryFilters && sensorCategoryFilters.dataset.key !== filterKey) {
+      sensorCategoryFilters.dataset.key = filterKey;
       sensorCategoryFilters.innerHTML = filterLabels.map((category) => {
         const label = category === 'all' ? 'Tudo' : (sensorTypeLabels[category] || category);
         const active = selectedSensorCategory === category;
@@ -67,21 +69,43 @@
 
     if (snapshot.status !== 'ready') {
       const message = snapshot.issues?.[0]?.message || 'O coletor detalhado ainda não está disponível.';
+      sensorDeviceList.dataset.structure = "";
       sensorDeviceList.innerHTML = `<article class="sheet sensor-empty"><strong>Não foi possível ler os sensores</strong><span>${escapeHtml(message)}</span><small>As leituras básicas do painel continuam funcionando.</small></article>`;
       return;
     }
     if (!visibleDevices.length) {
+      sensorDeviceList.dataset.structure = "";
       sensorDeviceList.innerHTML = `<article class="sheet sensor-empty"><strong>${devices.length ? 'Nenhum sensor corresponde ao filtro' : 'Nenhum sensor foi exposto'}</strong><span>${devices.length ? 'Tente outra busca ou categoria, ou inclua sensores avançados.' : 'O Windows, firmware ou os componentes deste PC não disponibilizaram leituras ao Nexo nesta sessão.'}</span></article>`;
       return;
     }
 
+    const cells = (sensor) => {
+      const noAccess = sensor.type === 'Temperature' && sensor.value !== null && sensor.value <= 0;
+      return [sensor.value === null ? 'Indisponível' : noAccess ? 'Sem acesso ao sensor' : formatSensorValue(sensor.value, sensor.unit),
+        sensor.min === null ? '—' : formatSensorValue(sensor.min, sensor.unit), sensor.max === null ? '—' : formatSensorValue(sensor.max, sensor.unit)];
+    };
+    // Com leituras a cada 2 s, reconstruir centenas de linhas travaria a rolagem: se a estrutura é a mesma,
+    // só os números mudam (o resto da tabela, a rolagem e a seleção ficam intactos).
+    const structure = visibleDevices.map((device) => `${device.path}|${device.name}:${device.visibleSensors.map((sensor) => `${sensor.name}/${sensor.type}`).join(',')}`).join(';');
+    if (sensorDeviceList.dataset.structure === structure) {
+      const valueCells = sensorDeviceList.querySelectorAll('tr[data-sensor-row]');
+      const flat = visibleDevices.flatMap((device) => device.visibleSensors);
+      if (valueCells.length === flat.length) {
+        flat.forEach((sensor, index) => {
+          const [now, min, max] = cells(sensor);
+          const row = valueCells[index].children;
+          if (row[2].textContent !== now) row[2].textContent = now;
+          if (row[3].textContent !== min) row[3].textContent = min;
+          if (row[4].textContent !== max) row[4].textContent = max;
+        });
+        return;
+      }
+    }
+    sensorDeviceList.dataset.structure = structure;
     sensorDeviceList.innerHTML = visibleDevices.map((device) => {
       const sensorRows = device.visibleSensors.map((sensor) => {
-        const noAccess = sensor.type === 'Temperature' && sensor.value !== null && sensor.value <= 0;
-        const state = sensor.value === null ? 'Indisponível' : noAccess ? 'Sem acesso ao sensor' : formatSensorValue(sensor.value, sensor.unit);
-        const maximum = sensor.max === null ? '—' : formatSensorValue(sensor.max, sensor.unit);
-        const minimum = sensor.min === null ? '—' : formatSensorValue(sensor.min, sensor.unit);
-        return `<tr class="${sensor.advanced ? 'is-advanced' : ''}"><td><span>${escapeHtml(sensor.name)}</span>${sensor.advanced ? '<small>Avançado</small>' : ''}</td><td>${escapeHtml(sensorMetricLabels[sensor.type] || sensor.type)}</td><td class="sensor-current-value">${escapeHtml(state)}</td><td>${escapeHtml(minimum)}</td><td>${escapeHtml(maximum)}</td></tr>`;
+        const [state, minimum, maximum] = cells(sensor);
+        return `<tr data-sensor-row class="${sensor.advanced ? 'is-advanced' : ''}"><td><span>${escapeHtml(sensor.name)}</span>${sensor.advanced ? '<small>Avançado</small>' : ''}</td><td>${escapeHtml(sensorMetricLabels[sensor.type] || sensor.type)}</td><td class="sensor-current-value">${escapeHtml(state)}</td><td>${escapeHtml(minimum)}</td><td>${escapeHtml(maximum)}</td></tr>`;
       }).join('');
       const deviceCategory = sensorTypeLabels[device.type] || device.type;
       const noSensor = !device.visibleSensors.length;
@@ -89,17 +113,21 @@
     }).join('');
   }
 
-  async function refreshHardwareSensors() {
+  async function refreshHardwareSensors({ silent = false } = {}) {
     if (sensorRefreshInProgress) return Nexo.state.sensors;
+    // Atualização automática (a cada 2 s): sem piscar o título nem desabilitar o botão; só os números mudam.
+    const quiet = silent && Nexo.state.sensors?.status === 'ready';
     if (!desktopBridge?.getHardwareSensors) {
       Nexo.state.sensors = { status: 'unavailable', devices: [], sensorCount: 0, issues: [{ message: 'Abra o Nexo para computador para acessar os sensores.' }] };
       renderSensorExplorer();
       return Nexo.state.sensors;
     }
     sensorRefreshInProgress = true;
-    if (sensorRefreshButton) sensorRefreshButton.disabled = true;
-    setText('sensor-status-title', 'Lendo hardware localmente');
-    setText('sensor-status-detail', 'Atualizando os sensores disponíveis; essa leitura fica neste computador.');
+    if (!quiet) {
+      if (sensorRefreshButton) sensorRefreshButton.disabled = true;
+      setText('sensor-status-title', 'Lendo hardware localmente');
+      setText('sensor-status-detail', 'Atualizando os sensores disponíveis; essa leitura fica neste computador.');
+    }
     try {
       Nexo.state.sensors = await desktopBridge.getHardwareSensors();
       const snapshot = Nexo.state.sensors;
@@ -115,11 +143,12 @@
         setText('sensor-status-title', 'Leitura detalhada indisponível');
         setText('sensor-status-detail', snapshot.issues?.[0]?.message || 'Este sistema não disponibilizou o coletor de hardware.');
       }
-      renderSensorExplorer();
+      if (!quiet || Nexo.state.view === 'hardware') renderSensorExplorer();
+      Nexo.emit('sensors', snapshot);
       return snapshot;
     } finally {
       sensorRefreshInProgress = false;
-      if (sensorRefreshButton) sensorRefreshButton.disabled = false;
+      if (sensorRefreshButton && !quiet) sensorRefreshButton.disabled = false;
     }
   }
 
@@ -194,7 +223,7 @@
   });
 
 
-  Nexo.refreshSensors = () => refreshHardwareSensors().catch(() => {});
-  Nexo.on('view', (view) => { if (view === 'hardware') Nexo.refreshSensors(); });
+  Nexo.refreshSensors = () => refreshHardwareSensors({ silent: true }).catch(() => {});
+  Nexo.on('view', (view) => { if (view === 'hardware') refreshHardwareSensors().catch(() => {}); });
   Nexo.commands.push({ label: 'Exportar sensores em CSV', hint: 'Hardware', run: () => { Nexo.go('hardware'); sensorExportButton.click(); } });
 })();

@@ -103,10 +103,15 @@ function getCpuSample() {
   }, { total: 0, idle: 0 });
 }
 
+// Leitura contínua: compara com a amostra anterior em vez de esperar 250 ms a cada chamada. Assim o painel pode ler
+// a cada segundo sem custo extra (só a primeira chamada, ou uma depois de muito tempo parado, espera um pouco).
+let lastCpuSample = null;
 async function getCpuUsage() {
-  const before = getCpuSample();
-  await new Promise((resolve) => setTimeout(resolve, 250));
-  const after = getCpuSample();
+  const reusable = lastCpuSample && Date.now() - lastCpuSample.at >= 400 && Date.now() - lastCpuSample.at < 10000;
+  const before = reusable ? lastCpuSample : { ...getCpuSample(), at: Date.now() };
+  if (!reusable) await new Promise((resolve) => setTimeout(resolve, 250));
+  const after = { ...getCpuSample(), at: Date.now() };
+  lastCpuSample = after;
   const totalDelta = after.total - before.total;
 
   if (totalDelta <= 0) return 0;

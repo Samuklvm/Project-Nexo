@@ -3,7 +3,7 @@
   const MIN = 60 * 1000;
   const RETENTION = 7 * 24 * 60 * MIN;
   const MAX_SAMPLES = RETENTION / MIN;
-  const LIVE_LIMIT = 60; // 5 minutos a cada 5 s
+  const LIVE_LIMIT = 360; // 6 minutos de leituras a cada 1 s (no ritmo "Tempo real")
   const RANGES = { '5m': 5 * MIN, '30m': 30 * MIN, '24h': 24 * 60 * MIN, '7d': 7 * 24 * 60 * MIN };
   const IGNORED = /^(idle|system|powershell|pwsh|nexo.*|conhost|registry|memory compression|secure system)$/i;
 

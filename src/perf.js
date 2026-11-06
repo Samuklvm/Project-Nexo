@@ -28,6 +28,7 @@
       const tier = await bridge.getHardwareTier();
       if (tier.tier === 'fraco') {
         Nexo.setEffects('lite');
+        if (!Nexo.liveRateStored?.()) Nexo.setLiveRate?.('balanced');
         showToast(`Modo leve ligado: este PC tem ${tier.cores} núcleos e ${String(tier.memGB).replace('.', ',')} GB. Dá para trocar em Ajustes.`);
       }
     } catch { /* mantém o padrão */ }

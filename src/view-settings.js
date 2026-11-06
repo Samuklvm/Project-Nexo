@@ -43,6 +43,7 @@
   });
 
   $$('[data-effects]').forEach((button) => button.addEventListener('click', () => Nexo.setEffects(button.dataset.effects)));
+  $$('[data-live-rate]').forEach((button) => button.addEventListener('click', () => Nexo.setLiveRate(button.dataset.liveRate)));
 
   const shareToggle = document.getElementById('share-toggle');
   shareToggle.addEventListener('change', async () => {
@@ -106,6 +107,7 @@
 
   Nexo.initSettings = async function initSettings() {
     Nexo.setEffects(localStorage.getItem(Nexo.keys.effects) === 'lite' ? 'lite' : 'full');
+    Nexo.setLiveRate(Nexo.liveRate, { save: false });
     try { applyWallpaper((await desktopBridge?.getWallpaper?.())?.url || null); } catch { applyWallpaper(null); }
     try { shareToggle.checked = Boolean((await desktopBridge?.getPrivacy?.())?.shareWithCreator); } catch { /* padrão desativado */ }
     refreshInfo();
