@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   cancelLab: () => call('lab:cancel'),
   recoverLab: () => call('lab:recover'),
   adoptLab: (config) => call('lab:adopt', config),
+  scanSystem: () => call('scan:run'),
+  applyTweaks: (changes) => call('scan:apply', changes),
   onLabEvent: subscribe('lab:event'),
   onLabRecovered: subscribe('lab:recovered'),
   // Biblioteca de jogos

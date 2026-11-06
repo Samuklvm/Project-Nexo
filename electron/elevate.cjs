@@ -148,10 +148,25 @@ try {
 ${WRITE_RESULT}`;
 }
 
+/** Raio-X: grava (ou volta) valores do registro em HKLM. Só chaves do catálogo fechado (electron/system-scan.cjs). */
+function registryTweaksBody(args) {
+  const { elevatedBody } = require('./system-scan.cjs');
+  const steps = elevatedBody(Array.isArray(args?.changes) ? args.changes.slice(0, 40) : []);
+  if (!steps.length) throw new Error('Nada para gravar no sistema.');
+  return String.raw`
+$r = @{ ok = $false; note = ''; steps = 0 }
+try {
+${steps.map((step) => `  ${step}; $r.steps++`).join('\n')}
+  $r.ok = $true
+} catch { $r.note = $_.Exception.Message }
+${WRITE_RESULT}`;
+}
+
 const TASKS = {
   'restore-point': (args) => restorePointBody(String(args?.description || 'Nexo').slice(0, 64)),
   'perf-log-users': (args) => perfLogUsersBody(args?.action, args?.sid),
-  'sensor-service': (args) => sensorServiceBody(args)
+  'sensor-service': (args) => sensorServiceBody(args),
+  'registry-tweaks': (args) => registryTweaksBody(args)
 };
 
 /** Ferramentas nativas do Windows chamadas com elevação (sem PowerShell no meio do caminho elevado). */

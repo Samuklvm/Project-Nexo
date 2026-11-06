@@ -51,6 +51,11 @@
         if (current && current.member === false) return { ok: false, conflict: false, reason: 'O seu usuário já não está no grupo.' };
         return { ok: true, conflict: false, reason: '' };
       }
+      if (entry.actionId === 'registry-tweak') {
+        if (!entry.before?.id || !Array.isArray(entry.before.values)) return { ok: false, conflict: false, reason: 'O valor anterior não foi guardado.' };
+        const changed = Array.isArray(current?.values) && JSON.stringify(current.values) !== JSON.stringify(entry.after?.values);
+        return { ok: true, conflict: changed, reason: changed ? 'Esse ajuste mudou de novo depois do Nexo. Reverter volta ao valor que existia antes da alteração do Nexo.' : '' };
+      }
       return { ok: false, conflict: false, reason: 'Não há reversão automática para esta operação.' };
     }
 

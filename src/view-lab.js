@@ -2,10 +2,12 @@
 (function () {
   const bridge = desktopBridge;
   const KEY = 'nexo-lab-v1';
-  const STAGES = [['preflight', 'Pré-checagem'], ['ponto', 'Ponto de restauração'], ['preparar', 'Ambiente de testes'], ['aquecer', 'Aquecimento'], ['testar', 'Testando ideias'], ['confirmar', 'Confirmação'], ['restaurar', 'Restauração']];
+  const STAGES = [['preflight', 'Pré-checagem'], ['ponto', 'Ponto de restauração'], ['preparar', 'Ambiente de testes'], ['aquecer', 'Aquecimento'], ['testar', 'Testando ideias'], ['combinar', 'Combinações inéditas'], ['confirmar', 'Confirmação'], ['restaurar', 'Restauração']];
+  const BENCH_SHORT = { single: '1 núcleo', multi: 'Todos', burst: 'Rajadas', latency: 'Latência', disk: 'Disco' };
+  const GOAL_NOTE = { jogos: 'Pesa mais um núcleo, rajadas e latência.', geral: 'Todos os testes com peso parecido.', pesado: 'Pesa mais todos os núcleos (render, compilação, compressão).', resposta: 'Pesa mais latência e rajadas: cliques e carregamentos curtos.' };
   const VERDICT = { melhorou: ['melhorou', 'risk-baixo'], piorou: ['piorou', 'risk-alto'], misto: ['troca (melhora e piora)', 'risk-moderado'], 'sem-diferenca': ['sem diferença', ''], inconclusivo: ['inconclusivo', ''] };
   const NOVELTY = { 'inedito-aqui': 'inédito neste PC', 'pouco-conhecido': 'pouco conhecido', conhecido: 'conhecido', raro: 'quase ninguém mexe' };
-  const options = { autonomy: 'assistido', allowRisk: 'moderado', maxArms: 4 };
+  const options = { autonomy: 'assistido', allowRisk: 'moderado', maxArms: 8, goal: 'jogos', combos: 2, budgetMin: 30 };
   let space = [];
   let live = null;
 
@@ -29,21 +31,35 @@
   /* ---------- Espaço de ajustes e histórico ---------- */
   function renderKnobs() {
     const { evidence, tabu } = memory();
-    const list = space.length ? space : NexoLab.SPACE;
-    document.getElementById('lab-knobs').innerHTML = list.map((knob) => {
-      const tested = Object.entries(evidence).filter(([key]) => key.startsWith(`${knob.id}=`));
-      const blocked = tabu.filter((key) => key.startsWith(`${knob.id}=`));
-      const best = tested.filter(([, item]) => item.wins).sort((a, b) => b[1].mean - a[1].mean)[0];
-      return `<li><div><strong>${escapeHtml(knob.label)}</strong><span class="muted">${escapeHtml(knob.what)}</span></div>
-        <div class="chips-row"><span class="chip ${knob.risk === 'moderado' ? 'risk-moderado' : 'risk-baixo'}">risco ${knob.risk}</span><span class="chip">${NOVELTY[knob.novelty] || knob.novelty}</span>${knob.hidden ? '<span class="chip">oculto no Windows</span>' : ''}
-        <span class="chip">${tested.length}/${knob.values.length} valores testados</span>${best ? `<span class="chip risk-baixo">melhor: ${escapeHtml(valueText(knob.id, Number(best[0].split('=')[1])))} (${signed(best[1].mean)})</span>` : ''}${blocked.length ? `<span class="chip risk-alto">${blocked.length} bloqueado(s) por guarda</span>` : ''}</div></li>`;
+    const list = space.length ? space : NexoLab.spaceFor(Nexo.platform === 'linux' ? 'linux' : 'win32');
+    const stats = NexoLab.spaceStats({ allowRisk: 'alto', platform: Nexo.platform === 'linux' ? 'linux' : 'win32' });
+    const testedArms = Object.entries(evidence).filter(([key, item]) => !key.startsWith('combo:') && item?.n).length;
+    const testedCombos = Object.entries(evidence).filter(([key, item]) => key.startsWith('combo:') && item?.n).length;
+    const statsBox = document.getElementById('lab-space-stats');
+    if (statsBox) statsBox.innerHTML = `<div><strong>${stats.knobs}</strong><span>ajustes</span></div><div><strong>${stats.options}</strong><span>opções</span></div><div><strong>10<sup>${String(Math.floor(stats.log10))}</sup></strong><span>combinações possíveis</span></div><div><strong>${testedArms + testedCombos}</strong><span>testadas neste PC</span></div>`;
+    const groups = new Map();
+    for (const knob of list) { const id = knob.group || 'desempenho'; if (!groups.has(id)) groups.set(id, []); groups.get(id).push(knob); }
+    document.getElementById('lab-knobs').innerHTML = [...groups].map(([groupId, knobs]) => {
+      const info = NexoLab.GROUPS?.[groupId] || { label: groupId, hint: '' };
+      const optionCount = knobs.reduce((sum, knob) => sum + knob.values.length, 0);
+      const tested = knobs.reduce((sum, knob) => sum + Object.keys(evidence).filter((key) => key.startsWith(`${knob.id}=`)).length, 0);
+      return `<details class="knob-group"><summary><strong>${escapeHtml(info.label)}</strong><span class="muted">${knobs.length} ajustes · ${optionCount} opções${tested ? ` · ${tested} testadas` : ''}</span></summary><p class="muted">${escapeHtml(info.hint || '')}</p><ul class="knobs">${knobs.map((knob) => {
+        const testedValues = Object.entries(evidence).filter(([key]) => key.startsWith(`${knob.id}=`));
+        const blocked = tabu.filter((key) => key.startsWith(`${knob.id}=`));
+        const best = testedValues.filter(([, item]) => item.wins).sort((x, y) => y[1].mean - x[1].mean)[0];
+        const riskTone = knob.risk === 'alto' ? 'risk-alto' : knob.risk === 'moderado' ? 'risk-moderado' : 'risk-baixo';
+        const benches = (knob.affects || []).map((bench) => BENCH_SHORT[bench]).filter(Boolean).join(', ');
+        return `<li><div><strong>${escapeHtml(knob.label)}</strong><span class="muted">${escapeHtml(knob.what)}</span></div>
+          <div class="chips-row"><span class="chip ${riskTone}">risco ${knob.risk}</span><span class="chip">${NOVELTY[knob.novelty] || knob.novelty}</span>${knob.hidden ? '<span class="chip">oculto no Windows</span>' : ''}${knob.hybrid ? '<span class="chip">só processadores P/E</span>' : ''}${benches ? `<span class="chip">medido por: ${escapeHtml(benches)}</span>` : ''}
+          <span class="chip">${testedValues.length}/${knob.values.length} valores testados</span>${best ? `<span class="chip risk-baixo">melhor: ${escapeHtml(valueText(knob.id, Number(best[0].split('=')[1])))} (${signed(best[1].mean)})</span>` : ''}${blocked.length ? `<span class="chip risk-alto">${blocked.length} bloqueado(s) por guarda</span>` : ''}</div></li>`;
+      }).join('')}</ul></details>`;
     }).join('');
   }
 
   function renderHistory() {
     const { runs } = memory();
     const box = document.getElementById('lab-history');
-    box.innerHTML = runs.length ? runs.map((run) => `<li class="risk-run"><span class="badge risk sm">RISCO</span><div><strong>${escapeHtml(run.headline)}</strong><span class="muted">${when(run.at)} · ${run.arms} ideia(s) testada(s) · modo ${run.autonomy === 'autonomo' ? 'autônomo' : 'assistido'}${run.adopted ? ' · adotado' : ''}</span></div>${verdictChip(run.verdict)}</li>`).join('')
+    box.innerHTML = runs.length ? runs.map((run) => `<li class="risk-run"><span class="badge risk sm">RISCO</span><div><strong>${escapeHtml(run.headline)}</strong><span class="muted">${when(run.at)} · ${run.arms} ideia(s)${run.combos ? ` e ${run.combos} combinação(ões) inédita(s)` : ''} testada(s) · modo ${run.autonomy === 'autonomo' ? 'autônomo' : 'assistido'}${run.adopted ? ' · adotado' : ''}</span></div>${verdictChip(run.verdict)}</li>`).join('')
       : '<li class="empty">Nenhuma sessão de risco ainda.</li>';
   }
 
@@ -53,6 +69,15 @@
     const phrase = document.getElementById('lab-phrase').value.trim().toUpperCase() === NexoLab.CONSENT_PHRASE;
     document.getElementById('lab-start').disabled = !(ack && phrase) || Nexo.state.labRunning;
     setText('lab-autonomy-note', options.autonomy === 'autonomo' ? 'Testa, confirma e ADOTA sozinho a combinação que provar ganho (vira um plano novo, reversível pelo Diário).' : 'Testa e recomenda. Você decide o que adotar.');
+    setText('lab-goal-note', GOAL_NOTE[options.goal] || '');
+    setText('lab-risk-note', options.allowRisk === 'alto' ? 'Inclui o processador que nunca dorme: bem mais calor e consumo. As guardas de temperatura continuam valendo.' : options.allowRisk === 'baixo' ? 'Só ajustes de risco baixo.' : '');
+    setText('lab-estimate', `Leva cerca de ${estimateMinutes()} minutos (limite: ${options.budgetMin >= 120 ? '2 h' : `${options.budgetMin} min`}).`);
+  }
+  /** Estimativa: triagem de 2 pares por ideia (um terço ganha mais pares), combinações com 3 e a confirmação com 5. */
+  function estimateMinutes() {
+    const side = (benches) => 1.5 + benches * 1.4;
+    const seconds = 40 + options.maxArms * (2 * 2 * side(2.4)) * 1.3 + options.combos * (3 * 2 * side(3)) + 5 * 2 * side(3);
+    return Math.max(3, Math.min(options.budgetMin, Math.round(seconds / 60)));
   }
   function formError(message) { const box = document.getElementById('lab-form-error'); box.textContent = message || ''; box.hidden = !message; }
 
@@ -104,22 +129,26 @@
       const match = /Ideias escolhidas para hoje: (.*)\./.exec(event.message);
       if (match) live.totalArms = match[1].split(';').length;
     }
+    if (event.type === 'stage' && event.stage === 'combinar') live.comboIndex += 1;
+    if (event.type === 'stage' && event.stage === 'confirmar') live.confirmIndex += 1;
     if (event.type === 'trial') {
-      const total = Math.max(1, live.totalArms + 1);
-      const done = event.arm === 'combinacao' ? live.totalArms + event.pair / event.pairs : Math.max(0, live.armIndex - 1) + event.pair / event.pairs;
+      const total = Math.max(1, live.totalArms + options.combos + 1);
+      const step = event.pair / event.pairs;
+      const done = live.confirmIndex ? live.totalArms + options.combos + Math.min(1, step) : live.comboIndex ? live.totalArms + live.comboIndex - 1 + step : Math.max(0, live.armIndex - 1) + step;
       document.getElementById('lab-progress').style.width = `${Math.min(100, (done / total) * 100).toFixed(1)}%`;
     }
     if (event.type === 'arm') { live.arms.push(event.arm); renderArms(); }
+    if (event.type === 'combo') { live.arms.push({ label: 'Combinação inédita', fromLabel: 'original', valueLabel: event.combo.label, novelty: 'inedito-aqui', compositeDelta: event.combo.compositeDelta, tempDelta: event.combo.tempDelta, verdict: event.combo.verdict }); renderArms(); }
   }
 
   async function startRun() {
     formError('');
     const consent = { acknowledged: document.getElementById('lab-ack').checked, phrase: document.getElementById('lab-phrase').value };
     if (Nexo.sessions?.isRecording?.()) { formError('Pare a sessão de observação antes: as duas medições se atrapalhariam.'); return; }
-    const final = await Nexo.confirm({ title: 'Começar a sessão de risco?', body: 'O Nexo vai testar ajustes sozinho por alguns minutos. Não use o PC pesado enquanto isso. Você pode cancelar a qualquer momento e tudo volta ao original.', items: [`Autonomia: ${options.autonomy === 'autonomo' ? 'autônoma (adota sozinho o que for confirmado)' : 'assistida (só recomenda)'}`, `Risco permitido: ${options.allowRisk === 'baixo' ? 'só baixo' : 'até moderado'}`, `Ideias nesta sessão: ${options.maxArms}`, document.getElementById('lab-restore').checked ? 'Ponto de restauração: exigido (o Windows vai pedir permissão)' : 'Ponto de restauração: dispensado por você'], confirmLabel: 'Começar', tone: 'danger' });
+    const final = await Nexo.confirm({ title: 'Começar a sessão de risco?', body: 'O Nexo vai testar ajustes sozinho por alguns minutos. Não use o PC pesado enquanto isso. Você pode cancelar a qualquer momento e tudo volta ao original.', items: [`Autonomia: ${options.autonomy === 'autonomo' ? 'autônoma (adota sozinho o que for confirmado)' : 'assistida (só recomenda)'}`, `Objetivo: ${NexoLab.GOALS?.[options.goal]?.label || options.goal}`, `Risco permitido: ${options.allowRisk === 'baixo' ? 'só baixo' : options.allowRisk === 'alto' ? 'TUDO, inclusive alto' : 'até moderado'}`, `Ideias: ${options.maxArms} · combinações inéditas: ${options.combos}${document.getElementById('lab-wild').checked ? ' (exploração radical)' : ''} · limite de ${options.budgetMin >= 120 ? '2 h' : `${options.budgetMin} min`}`, document.getElementById('lab-restore').checked ? 'Ponto de restauração: exigido (o Windows vai pedir permissão)' : 'Ponto de restauração: dispensado por você'], confirmLabel: 'Começar', tone: 'danger' });
     if (!final) return;
     const mem = memory();
-    live = { arms: [], armIndex: 0, totalArms: options.maxArms };
+    live = { arms: [], armIndex: 0, comboIndex: 0, confirmIndex: 0, totalArms: options.maxArms };
     setRisk(true);
     document.getElementById('lab-form').hidden = true;
     document.getElementById('lab-result').hidden = true;
@@ -130,9 +159,9 @@
     renderSteps('preflight');
     let result = null;
     try {
-      result = await bridge.runLab({ ...options, consent, requireRestorePoint: document.getElementById('lab-restore').checked, evidence: mem.evidence, tabu: mem.tabu });
+      result = await bridge.runLab({ ...options, wild: document.getElementById('lab-wild').checked, consent, requireRestorePoint: document.getElementById('lab-restore').checked, evidence: mem.evidence, tabu: mem.tabu });
     } catch (error) {
-      result = { status: 'aborted', reason: error.message || 'Falha inesperada.', arms: [], log: [], riskSession: true, startedAt: Date.now(), evidence: mem.evidence, tabu: mem.tabu };
+      result = { status: 'aborted', reason: error.message || 'Falha inesperada.', arms: [], combos: [], log: [], riskSession: true, startedAt: Date.now(), evidence: mem.evidence, tabu: mem.tabu };
     } finally { setRisk(false); setAppStatus('Monitoramento ativo'); }
     finishRun(result, mem);
   }
@@ -148,9 +177,11 @@
 
   function finishRun(result, mem) {
     live = null;
-    const runs = [{ at: result.startedAt || Date.now(), headline: headlineOf(result), verdict: result.combination?.verdict || (result.status === 'completed' ? 'sem-diferenca' : 'inconclusivo'), arms: result.arms.length, autonomy: result.autonomy, adopted: Boolean(result.adopted) }, ...mem.runs];
+    result.combos = Array.isArray(result.combos) ? result.combos : [];
+    const runs = [{ at: result.startedAt || Date.now(), headline: headlineOf(result), verdict: result.combination?.verdict || (result.status === 'completed' ? 'sem-diferenca' : 'inconclusivo'), arms: result.arms.length, combos: result.combos.length, autonomy: result.autonomy, adopted: Boolean(result.adopted) }, ...mem.runs];
     saveMemory({ evidence: result.evidence || mem.evidence, tabu: result.tabu || mem.tabu, runs });
-    const tested = result.arms.map((arm) => `${arm.label}: ${arm.fromLabel} → ${arm.valueLabel} (${VERDICT[arm.verdict]?.[0] || arm.verdict}${Number.isFinite(arm.compositeDelta) ? `, ${signed(arm.compositeDelta)}` : ''})`);
+    const tested = [...result.arms.map((arm) => `${arm.label}: ${arm.fromLabel} → ${arm.valueLabel} (${VERDICT[arm.verdict]?.[0] || arm.verdict}${Number.isFinite(arm.compositeDelta) ? `, ${signed(arm.compositeDelta)}` : ''})`),
+      ...result.combos.map((combo) => `combinação inédita ${combo.label} (${VERDICT[combo.verdict]?.[0] || combo.verdict}${Number.isFinite(combo.compositeDelta) ? `, ${signed(combo.compositeDelta)}` : ''})`)];
     if (result.status !== 'aborted' || result.arms.length || result.restorePoint) {
       Nexo.journal.record({ actionId: 'lab-session', title: 'Sessão de risco do laboratório', risk: 'moderado', reversible: false, riskSession: true, status: result.restoreFailed ? 'failed' : 'applied',
         authorization: 'consentimento reforçado (frase digitada) na Otimização extrema', before: result.baseline, after: result.adopted ? result.adopted.config : null,
@@ -168,12 +199,14 @@
     const canAdopt = result.status === 'completed' && !result.adopted && combo?.verdict === 'melhorou';
     box.innerHTML = `<div class="sheet-head"><div><span class="badge risk">SESSÃO DE RISCO · ${when(result.startedAt || Date.now())}</span><h3>${escapeHtml(headlineOf(result))}</h3>
         <p class="muted">${result.restoreFailed ? 'ATENÇÃO: use "Recuperar agora". Se não der, o Nexo tenta de novo ao abrir, e há um ponto de restauração do Windows.' : result.adopted ? `Adotado como o plano “${escapeHtml(result.adopted.name)}”. Para desfazer, use “Reverter” no Diário (Atividade).` : 'O seu plano original está ativo de novo.'}</p></div></div>
-      ${result.arms.length ? `<table class="exp"><thead><tr><th>Ideia</th><th>De → para</th><th>1 núcleo</th><th>Todos</th><th>Rajadas</th><th>Temp.</th><th>Veredito</th></tr></thead><tbody>${result.arms.map((arm) => `<tr><td>${escapeHtml(arm.label)}</td><td>${escapeHtml(arm.fromLabel)} → ${escapeHtml(arm.valueLabel)}</td>${['single', 'multi', 'burst'].map((bench) => `<td>${arm.results?.[bench] ? `${signed(arm.results[bench].deltaPct)}<small> ±${(arm.results[bench].noisePct ?? 0).toFixed(1).replace('.', ',')}</small>` : '—'}</td>`).join('')}<td class="nowrap">${temp(arm.tempDelta)}</td><td>${verdictChip(arm.verdict)}</td></tr>`).join('')}</tbody></table>` : ''}
+      ${resultTable(result.arms.map((arm) => ({ name: arm.label, change: `${arm.fromLabel} → ${arm.valueLabel}`, ...arm })), 'Ideia')}
+      ${result.combos.length ? `<h4 class="lab-subhead">Combinações inéditas (${result.combos.length})</h4>${resultTable(result.combos.map((combo) => ({ name: combo.wild ? 'Exploração radical' : 'Combinação', change: combo.label, ...combo })), 'Tipo')}` : ''}
       ${combo ? `<div class="combo"><strong>Combinação testada de novo (${combo.replicates} pares):</strong> ${combo.knobs.map((key) => { const [id, value] = key.split('='); return escapeHtml(`${knobLabel(id)} → ${valueText(id, Number(value))}`); }).join(' + ')} · ${verdictChip(combo.verdict)} ${signed(combo.compositeDelta)}</div>` : ''}
       <details class="lab-details"><summary>Registro completo (${result.log?.length || 0} linhas)</summary><ol class="lab-log">${(result.log || []).map((line) => `<li><time>${new Date(line.t).toLocaleTimeString('pt-BR')}</time><span>${escapeHtml(line.message)}</span></li>`).join('')}</ol></details>
       <p class="muted">Como ler: o ganho é a mediana das comparações intercaladas; ± é o ruído medido na base. Só vira “melhorou” acima de 3% e de 1,5× o ruído, com a maioria dos pares concordando.</p>
       <div class="btn-row">${canAdopt ? '<button class="btn primary" type="button" id="lab-adopt">Adotar esta combinação</button>' : ''}${result.restoreFailed ? '<button class="btn danger" type="button" id="lab-recover-now">Recuperar agora</button>' : ''}<button class="btn" type="button" id="lab-again">Nova sessão</button></div>`;
     box.hidden = false;
+    document.querySelector('.lab-split')?.classList.add('wide-result'); // a tabela precisa da largura toda
     document.getElementById('lab-again').addEventListener('click', resetForm);
     document.getElementById('lab-recover-now')?.addEventListener('click', recover);
     document.getElementById('lab-adopt')?.addEventListener('click', async () => {
@@ -193,7 +226,18 @@
     renderHistory();
   }
 
+  /** Tabela de resultados com uma coluna por teste usado na sessão (1 núcleo, todos, rajadas, latência, disco). */
+  function resultTable(rows, firstColumn) {
+    if (!rows.length) return '';
+    const benches = NexoLab.BENCHES.filter((bench) => rows.some((row) => row.results?.[bench]));
+    // Melhores primeiro: o que ganhou aparece no topo, o inconclusivo no fim.
+    const order = { melhorou: 0, misto: 1, 'sem-diferenca': 2, piorou: 3, inconclusivo: 4 };
+    rows = [...rows].sort((a, b) => (order[a.verdict] ?? 5) - (order[b.verdict] ?? 5) || (b.compositeDelta ?? -99) - (a.compositeDelta ?? -99));
+    return `<div class="table-scroll"><table class="exp"><thead><tr><th>${firstColumn}</th><th>De → para</th>${benches.map((bench) => `<th>${BENCH_SHORT[bench]}</th>`).join('')}<th>Ganho (${escapeHtml(NexoLab.GOALS?.[options.goal]?.label || 'composto')})</th><th>Temp.</th><th>Veredito</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.change)}</td>${benches.map((bench) => `<td>${row.results?.[bench] ? `${signed(row.results[bench].deltaPct)}<small> ±${(row.results[bench].noisePct ?? 0).toFixed(1).replace('.', ',')}</small>` : '—'}</td>`).join('')}<td>${signed(row.compositeDelta)}</td><td class="nowrap">${temp(row.tempDelta)}</td><td>${verdictChip(row.verdict)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
   function resetForm() {
+    document.querySelector('.lab-split')?.classList.remove('wide-result');
     document.getElementById('lab-result').hidden = true;
     document.getElementById('lab-run').hidden = true;
     document.getElementById('lab-form').hidden = false;
@@ -231,6 +275,9 @@
   bindSegment('lab-autonomy', 'autonomy');
   bindSegment('lab-risk', 'allowRisk');
   bindSegment('lab-arms', 'maxArms', Number);
+  bindSegment('lab-goal', 'goal');
+  bindSegment('lab-combos', 'combos', Number);
+  bindSegment('lab-budget', 'budgetMin', Number);
   document.getElementById('lab-ack').addEventListener('change', updateForm);
   document.getElementById('lab-phrase').addEventListener('input', updateForm);
   document.getElementById('lab-start').addEventListener('click', startRun);

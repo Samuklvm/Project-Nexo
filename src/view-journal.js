@@ -80,6 +80,26 @@
       if (done) { Nexo.journal.markReverted(id, 'usuário removido do grupo'); Nexo.emit('journal'); }
       return done;
     }
+    if (entry.actionId === 'registry-tweak') {
+      const scan = await desktopBridge.scanSystem().catch(() => null);
+      const now = scan?.items?.find((item) => item.id === entry.before.id);
+      const check = Nexo.journal.canRevert(entry, now ? { values: now.values } : null);
+      if (!check.ok) { showToast(check.reason); return false; }
+      if (check.conflict && !await Nexo.confirm({ title: 'Reverter mesmo assim?', body: check.reason, confirmLabel: 'Reverter', tone: 'danger' })) return false;
+      try {
+        await desktopBridge.applyTweaks([{ id: entry.before.id, values: entry.before.values, revert: true }]);
+        Nexo.journal.markReverted(id, 'valor anterior de volta');
+        showToast(`${entry.title}: valor anterior de volta.${entry.after?.reboot === 'reiniciar' ? ' Vale depois de reiniciar o PC.' : ''}`);
+        Nexo.emit('journal');
+        Nexo.emit('scan-changed');
+        return true;
+      } catch (error) {
+        Nexo.journal.update(id, { revertNote: `Falha ao reverter: ${error.message || 'erro desconhecido'}` });
+        showToast(error.message || 'Não foi possível reverter.');
+        Nexo.emit('journal');
+        return false;
+      }
+    }
     await Nexo.loadPower?.();
     const active = Nexo.state.power?.active;
     const check = Nexo.journal.canRevert(entry, { activeGuid: active?.guid, activeName: active?.name });

@@ -276,7 +276,7 @@
           <div class="hazard-body">
             <div class="hazard-badges"><span class="badge beta">BETA</span><span class="badge risk">OPÇÃO ARRISCADA</span></div>
             <h2>Otimização extrema</h2>
-            <p>O Nexo vira um laboratório: inventa combinações de ajustes ocultos do processador que quase ninguém mexe, testa cada uma <strong>na hora, neste PC</strong>, e mede contra o ruído. Nada de receita da internet: só fica o que a medição provar.</p>
+            <p>O Nexo vira um laboratório: inventa combinações entre dezenas de ajustes ocultos do processador, dos núcleos, do sono do processador, do SSD e do PCI Express que quase ninguém mexe, testa cada uma <strong>na hora, neste PC</strong>, e mede contra o ruído. Nada de receita da internet: só fica o que a medição provar.</p>
             <div class="hazard-cols">
               <div><h4>O que pode acontecer</h4><ul><li>O PC esquenta e as ventoinhas aceleram por alguns minutos.</li><li>Uma pausa curta ou engasgo enquanto um ajuste é aplicado.</li><li>Num caso raro de instabilidade, o sistema pode precisar reiniciar.</li><li>É beta: ainda não foi validado em muitos PCs reais.</li></ul></div>
               <div><h4>O que protege você</h4><ul><li data-only="win32">Ponto de restauração do Windows antes de começar.</li><li data-only="win32">Testes só num <strong>clone</strong> do seu plano de energia; o original nunca é editado.</li><li data-only="linux">No Linux, só o perfil de energia muda (power-profiles-daemon, sem root); o original é guardado e volta no fim.</li><li>Guardas: tomada, temperatura, aquecimento e erros graves do sistema param tudo na hora.</li><li>Volta automática ao original no fim, e na próxima abertura se o PC travar.</li></ul></div>
@@ -286,10 +286,14 @@
         <div class="split lab-split">
           <section class="sheet lab-console" id="lab-console">
             <div id="lab-form">
-              <div class="sheet-head"><div><h3>Nova sessão de risco</h3><p class="muted">Leva de 3 a 10 minutos. Feche jogos e programas pesados e deixe o notebook na tomada.</p></div></div>
+              <div class="sheet-head"><div><h3>Nova sessão de risco</h3><p class="muted"><span id="lab-estimate">Leva cerca de 6 minutos.</span> Feche jogos e programas pesados e deixe o notebook na tomada.</p></div></div>
               <div class="lab-field"><span>Autonomia</span><div class="segmented" role="group" aria-label="Autonomia"><button type="button" data-lab-autonomy="assistido" aria-pressed="true">Assistida</button><button type="button" data-lab-autonomy="autonomo" aria-pressed="false">Autônoma</button></div><small id="lab-autonomy-note">Testa e recomenda. Você decide o que adotar.</small></div>
-              <div class="lab-field"><span>Risco permitido</span><div class="segmented" role="group" aria-label="Risco permitido"><button type="button" data-lab-risk="baixo" aria-pressed="false">Só baixo</button><button type="button" data-lab-risk="moderado" aria-pressed="true">Até moderado</button></div></div>
-              <div class="lab-field"><span>Ideias por sessão</span><div class="segmented" role="group" aria-label="Ideias por sessão"><button type="button" data-lab-arms="2" aria-pressed="false">2</button><button type="button" data-lab-arms="4" aria-pressed="true">4</button><button type="button" data-lab-arms="6" aria-pressed="false">6</button></div></div>
+              <div class="lab-field"><span>Objetivo</span><div class="segmented" role="group" aria-label="Objetivo"><button type="button" data-lab-goal="jogos" aria-pressed="true">Jogos</button><button type="button" data-lab-goal="geral" aria-pressed="false">Uso geral</button><button type="button" data-lab-goal="pesado" aria-pressed="false">Trabalho pesado</button><button type="button" data-lab-goal="resposta" aria-pressed="false">Resposta</button></div><small id="lab-goal-note">Pesa mais um núcleo, rajadas e latência.</small></div>
+              <div class="lab-field"><span>Risco permitido</span><div class="segmented" role="group" aria-label="Risco permitido"><button type="button" data-lab-risk="baixo" aria-pressed="false">Só baixo</button><button type="button" data-lab-risk="moderado" aria-pressed="true">Até moderado</button><button type="button" data-lab-risk="alto" aria-pressed="false">Tudo, inclusive alto</button></div><small id="lab-risk-note"></small></div>
+              <div class="lab-field"><span>Ideias por sessão</span><div class="segmented" role="group" aria-label="Ideias por sessão"><button type="button" data-lab-arms="4" aria-pressed="false">4</button><button type="button" data-lab-arms="8" aria-pressed="true">8</button><button type="button" data-lab-arms="16" aria-pressed="false">16</button><button type="button" data-lab-arms="32" aria-pressed="false">32</button></div></div>
+              <div class="lab-field"><span>Combinações inéditas</span><div class="segmented" role="group" aria-label="Combinações inéditas"><button type="button" data-lab-combos="0" aria-pressed="false">0</button><button type="button" data-lab-combos="2" aria-pressed="true">2</button><button type="button" data-lab-combos="4" aria-pressed="false">4</button><button type="button" data-lab-combos="8" aria-pressed="false">8</button></div><small>Misturas de ajustes que o Nexo sorteia e testa juntas, nunca testadas neste PC.</small></div>
+              <div class="lab-field"><span>Duração máxima</span><div class="segmented" role="group" aria-label="Duração máxima"><button type="button" data-lab-budget="15" aria-pressed="false">15 min</button><button type="button" data-lab-budget="30" aria-pressed="true">30 min</button><button type="button" data-lab-budget="60" aria-pressed="false">60 min</button><button type="button" data-lab-budget="120" aria-pressed="false">2 h</button></div><small>Se o tempo acabar, o que faltou fica para a próxima sessão.</small></div>
+              <label class="switch compact"><input id="lab-wild" type="checkbox" /><i></i><span>Exploração radical <small>As combinações inéditas também puxam ajustes que ninguém testou neste PC, de grupos diferentes, mesmo sem sinal de ganho sozinhos.</small></span></label>
               <label class="switch compact" data-only="win32"><input id="lab-restore" type="checkbox" checked /><i></i><span>Exigir ponto de restauração <small>Recomendado. O Windows pede permissão de administrador (UAC) para criar.</small></span></label>
               <div class="consent">
                 <label class="consent-check"><span class="check"><input id="lab-ack" type="checkbox" /><i></i></span><span>Li o aviso. Entendo que é uma opção arriscada, em beta, e que o Nexo vai testar ajustes sozinho neste PC.</span></label>
@@ -308,10 +312,14 @@
             <div id="lab-result" hidden></div>
           </section>
           <div class="stack">
-            <section class="sheet"><div class="sheet-head"><div><h3>Espaço de ajustes</h3><p class="muted">O laboratório só mexe nisto. Tudo reversível, revisado e aplicado num plano temporário.</p></div></div><ul class="knobs" id="lab-knobs"></ul></section>
+            <section class="sheet"><div class="sheet-head"><div><h3>Espaço de ajustes</h3><p class="muted">O laboratório só mexe nisto. Tudo reversível, revisado e aplicado num plano temporário.</p></div></div><div class="lab-stats" id="lab-space-stats"></div><div class="knob-groups" id="lab-knobs"></div></section>
             <section class="sheet"><div class="sheet-head"><div><h3>Sessões de risco</h3><p class="muted">Cada execução fica marcada como sessão de risco, com o que foi testado e o resultado.</p></div><button class="link" id="lab-forget" type="button">Esquecer o aprendizado</button></div><ul class="lab-history" id="lab-history"></ul></section>
           </div>
         </div>
+        <section class="sheet scan-sheet" id="scan-sheet" data-only="win32">
+          <div class="sheet-head"><div><span class="badge risk sm">RAIO-X</span><h3>Raio-X do PC: registro e sistema</h3><p class="muted">O Nexo varre o registro e o sistema atrás de ajustes de desempenho, mostra o valor de agora e o que a evidência diz de cada um. Você escolhe o que aplicar; tudo vai para o Diário com o valor anterior, para reverter quando quiser.</p></div><button class="btn primary" id="scan-run" type="button">Varrer o PC</button></div>
+          <div id="scan-body"><p class="muted">Ainda não varrido. A leitura não muda nada e não pede permissão.</p></div>
+        </section>
       </section>
 
       <!-- ATLAS -->
@@ -467,6 +475,7 @@
   <script src="src/fps.js"></script>
   <script src="src/session.js"></script>
   <script src="src/lab-space.js"></script>
+  <script src="src/lab-space.js"></script>
   <script src="src/lab.js"></script>
   <script src="src/atlas.js"></script>
   <script src="src/core.js"></script>
@@ -490,6 +499,7 @@
   <script src="src/view-settings.js"></script>
   <script src="src/view-library.js"></script>
   <script src="src/view-lab.js"></script>
+  <script src="src/view-scan.js"></script>
   <script src="src/view-atlas.js"></script>
   <script src="src/view-account.js"></script>
   <script src="app.js"></script>

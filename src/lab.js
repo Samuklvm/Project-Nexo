@@ -31,6 +31,9 @@
   const KNOB = new Map(ALL.map((knob) => [knob.id, knob]));
   const RISK_RANK = { baixo: 1, moderado: 2, alto: 3 };
   const NOVELTY_BONUS = { raro: 3, 'pouco-conhecido': 2, conhecido: 0 };
+  /** Impacto esperado (0 a 3): decide a ordem das ideias nunca testadas, junto com o risco e a raridade. */
+  const PRIOR = { perfepp: 3, boostmode: 3, minstate: 3, idledisable: 3, idlestatemax: 3, autonomous: 2, latperf: 2, mincores: 2, incpol: 2, boostpol: 2, aspm: 2, nvmeidle: 2, ahcilpm: 2,
+    schedpolicy: 2, shortschedpolicy: 2, perfepp1: 2, cpconcurrency: 2, dectime: 2, perfcheck: 2, maxcores: 1, cooling: 1, diskidle: 0, distributeutil: 0, perfhistory: 1, heteropolicy: 1 };
 
   const BENCHES = ['single', 'multi', 'burst', 'latency', 'disk'];
   const BENCH_LABEL = { single: 'um núcleo', multi: 'todos os núcleos', burst: 'rajadas curtas (resposta)', latency: 'latência para acordar um núcleo', disk: 'disco (gravações curtas com pausas)' };
@@ -98,7 +101,7 @@
         const seen = evidence[key];
         const untested = !seen || !seen.n;
         const bonus = untested ? 0 : 3 * Math.sqrt(Math.log(total + 1) / seen.n);
-        const score = untested ? 1000 - (RISK_RANK[knob.risk] || 1) * 10 + (NOVELTY_BONUS[knob.novelty] || 0) - index * 0.5 : (seen.mean || 0) + bonus;
+        const score = untested ? 1000 - (RISK_RANK[knob.risk] || 1) * 10 + (knob.prior ?? PRIOR[knob.id] ?? 1) * 4 + (NOVELTY_BONUS[knob.novelty] || 0) - index * 0.5 : (seen.mean || 0) + bonus;
         arms.push({ ...arm, key, untested, score, risk: knob.risk, group: knob.group, benches: benchesOf(knob), novelty: untested ? 'inedito-aqui' : knob.novelty });
       });
     }

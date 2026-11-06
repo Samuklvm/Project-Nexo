@@ -14,6 +14,7 @@ const { createElevator, toolLauncher, PAWNIO } = require('./electron/elevate.cjs
 const { decodeConsole } = require('./electron/console-text.cjs');
 const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
+const { createSystemScan } = require('./electron/system-scan.cjs');
 const LabParsers = { parseList: parseLabPlanList };
 const { createLibrary } = require('./electron/games.cjs');
 const { createWatcher } = require('./electron/watcher.cjs');
@@ -1670,6 +1671,18 @@ registerIpcHandler('lab:run', async (_event, options) => {
       emit: (event) => sendToWindow('lab:event', event.type === 'done' ? { type: 'done' } : event)
     });
   } finally { labState.running = false; labState.signal = null; }
+});
+// ---- Raio-X do PC (registro e sistema) ----
+const systemScan = createSystemScan({ runPowerShell: runPowerShellCode, run: runCode, elevate: (task, args) => elevate(task, args) });
+registerIpcHandler('scan:run', async () => systemScan.scan());
+registerIpcHandler('scan:apply', async (_event, changes) => {
+  if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
+  const clean = (Array.isArray(changes) ? changes : []).slice(0, 40).map((change) => ({
+    id: String(change?.id || '').slice(0, 40),
+    values: Array.isArray(change?.values) ? change.values.slice(0, 8).map((value) => (value === null || typeof value === 'number' || typeof value === 'string' ? value : undefined)) : [],
+    revert: change?.revert === true
+  }));
+  return systemScan.apply(clean);
 });
 registerIpcHandler('lab:cancel', async () => { if (labState.signal) labState.signal.cancelled = true; return { ok: true }; });
 registerIpcHandler('lab:recover', async () => labSystem.recover());
