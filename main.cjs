@@ -16,6 +16,7 @@ const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
 const { createSystemScan, validateChange: validateScanChange } = require('./electron/system-scan.cjs');
 const { createRebootTest } = require('./electron/reboot-test.cjs');
+const { DISK_MODEL_SCRIPT, parseDiskModels } = require('./electron/disk-models.cjs');
 const APP_LAUNCHED_AT = Date.now();
 const LabParsers = { parseList: parseLabPlanList };
 const { createLibrary } = require('./electron/games.cjs');
@@ -148,23 +149,11 @@ function normalizeDrive(item) {
 /* Letra → disco físico. Muda quase nunca e a consulta custa caro: fica guardada por 10 minutos e nunca atrasa a leitura. */
 const DISK_MODEL_TTL_MS = 10 * 60 * 1000;
 const diskModels = { value: null, at: 0, pending: null };
-const DISK_MODEL_SCRIPT = String.raw`
-$out = @{}
-$physical = @(Get-PhysicalDisk -ErrorAction SilentlyContinue)
-Get-Partition -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter } | ForEach-Object {
-  try {
-    $disk = Get-Disk -Number $_.DiskNumber -ErrorAction Stop
-    $pd = $physical | Where-Object { [string]$_.DeviceId -eq [string]$disk.Number } | Select-Object -First 1
-    $out[[string]$_.DriveLetter] = @{ model = [string]$disk.FriendlyName; bus = [string]$disk.BusType; media = [string]$pd.MediaType }
-  } catch {}
-}
-[Console]::Out.Write(($out | ConvertTo-Json -Compress))`;
+
 function refreshDiskModels() {
   if (process.platform !== 'win32' || diskModels.pending) return diskModels.pending;
   diskModels.pending = runPowerShellCode(DISK_MODEL_SCRIPT, 20000).then(({ stdout }) => {
-    let parsed = {};
-    try { parsed = JSON.parse(String(stdout || '').trim() || '{}'); } catch { parsed = {}; }
-    diskModels.value = parsed && typeof parsed === 'object' ? parsed : {};
+    diskModels.value = parseDiskModels(stdout);
     diskModels.at = Date.now();
     return diskModels.value;
   }).finally(() => { diskModels.pending = null; });

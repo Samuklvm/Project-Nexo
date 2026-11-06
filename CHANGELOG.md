@@ -6,6 +6,12 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.8.1: correções do teste num PC de verdade
+- Correção: limites de aviso e crítico do SSD NVMe apareciam como temperatura; mínimo e máximo "0 °C" viram "—".
+- Correção: a conferência do laboratório conta só o que vale neste PC (sem núcleos P/E quando não há) e o espaço de ajustes mostra os números do PC.
+- Correção: Atlas com os grupos novos do laboratório, o Raio-X e o teste com reinício.
+- Correção: Manutenção mostra a temperatura e o tipo do disco; o Início não usa mais uma temperatura antiga depois de reiniciar o app; notas da atualização sem palavras cortadas.
+
 ### 0.8.0: otimização extrema no último nível
 - Novo: laboratório com 71 ajustes ocultos e 393 opções (processador, núcleos, estados ociosos, núcleos híbridos, temperatura, SATA, NVMe, PCIe, Wi-Fi), nove testes (inclusive ritmo de quadros, timer, memória e rede), ordem ABBA, objetivo da sessão, triagem em duas etapas, combinações inéditas, exploração radical e risco alto.
 - Novo: Raio-X do PC com 109 ajustes e 309 opções (registro, 30 serviços, plano de energia ativo, rede, navegadores), evidência de cada um, aplicar e reverter pelo Diário; o que reduz a segurança fica recusado.
@@ -69,6 +75,12 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.8.1: fixes from testing on a real PC
+- Fix: NVMe SSD warning and critical limits showed up as temperatures; "0 °C" minimum and maximum now show "—".
+- Fix: the lab check counts only what applies to this PC (no P/E cores when there are none) and the settings space shows the PC's numbers.
+- Fix: the Atlas has the lab's new groups, the X-ray and the reboot test.
+- Fix: Maintenance shows the disk's temperature and type; Home no longer uses an old temperature after the app restarts; update notes no longer cut words.
 
 ### 0.8.0: extreme optimization at its peak
 - New: lab with 71 hidden settings and 393 options (processor, cores, idle states, hybrid cores, thermals, SATA, NVMe, PCIe, Wi-Fi), nine tests (including frame pacing, timer, memory and network), ABBA order, session goal, two-stage screening, novel combinations, radical exploration and high risk.

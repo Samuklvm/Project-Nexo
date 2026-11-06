@@ -214,3 +214,12 @@ test('leitura: o script inteiro cabe com folga na linha de comando do PowerShell
   for (const [id, index] of registry) assert.ok(script.includes(`$out['${id}#${index}']`), `${id}#${index}`);
   assert.doesNotMatch(script, /Set-ItemProperty|New-ItemProperty|Remove-ItemProperty|reg add|reg delete/i, 'a leitura nunca grava');
 });
+
+test('disco físico por letra: só leitura e saída higienizada', () => {
+  const Disk = require('../electron/disk-models.cjs');
+  assert.doesNotMatch(Disk.DISK_MODEL_SCRIPT, /Set-|Remove-|New-|Format-|Clear-|Initialize-|Invoke-Expression/i);
+  assert.deepEqual(Disk.parseDiskModels('{"c":{"model":" KINGSTON SNV2S500G ","bus":"NVMe","media":"SSD"},"DD":{"model":"x"},"E":"nada"}'), { C: { model: 'KINGSTON SNV2S500G', bus: 'NVMe', media: 'SSD' } });
+  assert.deepEqual(Disk.parseDiskModels('não é json'), {});
+  assert.deepEqual(Disk.parseDiskModels('[1,2]'), {});
+  assert.deepEqual(Disk.parseDiskModels(''), {});
+});

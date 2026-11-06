@@ -41,7 +41,7 @@ brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `net10.0` · LibreHardwareMonitorLib 0.9.6 · Node 20+ no CI (os testes foram rodados no Node 22). Windows 10/11 x64.
 
 ## 52.05 Estado dos testes
-`npm test` roda 16 arquivos, 180 testes, todos passando no Linux:
+`npm test` roda 16 arquivos, 182 testes, todos passando no Linux:
 
 - `linux.test.cjs` (9): montagens, `/proc/<pid>/stat`, powerprofilesctl, `.desktop`, xprop, detecção de jogos via Proton/Heroic, MangoHud em pedaços, laboratório com perfis de energia, biblioteca Steam+Heroic num HOME temporário, pkexec validado e leitura real do `/proc` e `/sys` desta máquina.
 - `brain.test.cjs` (8) e `catalog-journal-experiment.test.cjs` (13, incluindo os perfis).
@@ -50,10 +50,10 @@ Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `n
 - `probe-fps-runner.test.cjs` (7): sonda e executor de FPS com processos filhos simulados; política do hash do PresentMon.
 - `lab.test.cjs` (28): motor do laboratório contra um PC simulado — espaço fechado, faixa do PC, escolha (inédito → UCB, tabu, variedade por grupo), juiz A/B com ruído e consistência, ordem ABBA, combinações, guardas, cancelamento, restauração que falha, orçamento de tempo, consentimento.
 - `lab-system.test.cjs` (14): adaptador real contra um `powercfg` simulado em português — leitura completa do `/qh`, clone sem tocar o original, trava + RunOnce, recuperação, queda no Equilibrado, adoção, UAC recusado, ponta a ponta e análise estática (nada de bcdedit/Defender/VBS/leitura de memória; **uma única** elevação no código: `electron/elevate.cjs`).
-- `system-scan.test.cjs` (13): catálogo do Raio-X (chaves seguras, sem política em HKCU, sem entrada repetida), serviços proibidos fora, plano de energia pelo `/qh` e pelo `powercfg`, falha parcial, recusa do UAC, tamanho da linha de comando elevada.
+- `system-scan.test.cjs` (14): catálogo do Raio-X (chaves seguras, sem política em HKCU, sem entrada repetida), serviços proibidos fora, plano de energia pelo `/qh` e pelo `powercfg`, falha parcial, recusa do UAC, tamanho da linha de comando elevada.
 - `reboot-test.test.cjs` (10): plano ABBA, máquina de estados (só mede depois de um boot novo), veredito com ruído entre boots, estado adulterado, executor com Windows simulado (RunOnce, troca A↔B, UAC recusado, cancelamento, reinício automático).
 - `fuzz.test.cjs` (7): milhares de entradas aleatórias com semente fixa contra o laboratório, o Raio-X (validação, reversão, script elevado) e o veredito do teste com reinício.
-- `connections.test.cjs` (12), `library-account.test.cjs` (19), `sensor-service.test.cjs` (5), `release-notes.test.cjs` (2) e `syntax.test.cjs` (5: todo script compila, nenhum carregado duas vezes, ordem de dependências).
+- `connections.test.cjs` (12), `library-account.test.cjs` (19), `sensor-service.test.cjs` (5), `release-notes.test.cjs` (3) e `syntax.test.cjs` (5: todo script compila, nenhum carregado duas vezes, ordem de dependências).
 
 **Não existe** teste automatizado de: NSIS, PowerShell real, registro, `powercfg`, sensor-host, PresentMon real, interface dentro do Electron real. Isso exige Windows (ver 52.15).
 

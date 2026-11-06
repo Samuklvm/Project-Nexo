@@ -120,7 +120,7 @@ O Nexo Device Care é **software proprietário**: todos os direitos reservados. 
 
 ## 📚 Mais
 
-- [Novidades de cada versão](CHANGELOG.md) (0.8.0: otimização extrema com 702 opções, Raio-X do registro, teste com reinício e leituras em tempo real) · [Notas das releases](docs/releases/)
+- [Novidades de cada versão](CHANGELOG.md) (0.8.1: correções de temperatura, laboratório, Atlas e Manutenção; 0.8.0: otimização extrema com 702 opções, Raio-X do registro, teste com reinício e leituras em tempo real) · [Notas das releases](docs/releases/)
 - [Para desenvolvedores](docs/DESENVOLVIMENTO.md): rodar, testar, gerar instaladores e publicar versões
 - [Arquitetura](docs/ARQUITETURA.md) · [Conexões de jogos](docs/CONEXOES.md) · [Segurança](SECURITY.md)
 

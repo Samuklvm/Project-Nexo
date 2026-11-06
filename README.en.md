@@ -122,7 +122,7 @@ Nexo Device Care is **proprietary software**: all rights reserved. You may downl
 
 ## 📚 More
 
-- [What changed in each version](CHANGELOG.md) (0.8.0: extreme optimization with 702 options, a registry X-ray, the reboot test and real-time readings) · [Release notes](docs/releases/)
+- [What changed in each version](CHANGELOG.md) (0.8.1: temperature, lab, Atlas and Maintenance fixes; 0.8.0: extreme optimization with 702 options, a registry X-ray, the reboot test and real-time readings) · [Release notes](docs/releases/)
 - [For developers](docs/DEVELOPMENT.md): run, test, build installers and publish versions
 - [Architecture](docs/ARQUITETURA.md) · [Game connections](docs/CONEXOES.md) · [Security](SECURITY.md)
 

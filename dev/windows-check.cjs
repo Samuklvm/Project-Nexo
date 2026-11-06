@@ -15,6 +15,7 @@ const Elevate = require('../electron/elevate.cjs');
 const Sys = require('../electron/lab-system.cjs');
 const LabSpace = require('../src/lab-space.js');
 const { BOOT_SCRIPT } = require('../electron/reboot-test.cjs');
+const Disk = require('../electron/disk-models.cjs');
 
 if (process.platform !== 'win32') { console.log('Só no Windows.'); process.exit(0); }
 const failures = [];
@@ -49,6 +50,7 @@ async function parses(name, script) {
   await parses('leitura do Raio-X', Scan.readScript());
   await parses('Raio-X elevado (todos os ajustes do sistema)', `$NexoOut = 'x'\n${Elevate.TASKS['registry-tweaks']({ changes: allHklm })}`);
   await parses('leitura do boot', BOOT_SCRIPT);
+  await parses('disco físico por letra', Disk.DISK_MODEL_SCRIPT);
   const launcherSize = Elevate.encode(`$ErrorActionPreference = 'Stop'\n$NexoOut = ${Elevate.psQuote(path.join(os.homedir(), 'AppData', 'Roaming', 'Nexo Device Care', 'elevation', 'registry-tweaks-1730000000000.json'))}\n${Elevate.TASKS['registry-tweaks']({ changes: allHklm })}`).length;
   check(launcherSize < 31000, `linha de comando elevada com todos os ajustes: ${launcherSize} caracteres`);
 
@@ -80,7 +82,11 @@ async function parses(name, script) {
     check(JSON.stringify(now.values) === JSON.stringify(item.values), `  ${item.id} de volta: ${now.current}`);
   }
 
-  // 4. Leitura do boot e do plano inteiro.
+  // 4. Disco físico de cada letra (para a temperatura do SSD na Manutenção).
+  const disks = Disk.parseDiskModels((await ps(Disk.DISK_MODEL_SCRIPT, 30000)).stdout);
+  check(disks.C && disks.C.model, `disco físico por letra: ${JSON.stringify(disks)}`);
+
+  // 5. Leitura do boot e do plano inteiro.
   const boot = await ps(BOOT_SCRIPT, 30000);
   let info = {};
   try { info = JSON.parse(boot.stdout.trim()); } catch { info = {}; }
