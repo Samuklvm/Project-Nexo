@@ -60,3 +60,12 @@ test('telemetria: todo título de atividade está na lista fixa de recursos (o r
   assert.ok(titles.size >= 15);
   for (const title of titles) assert.ok(features.has(slug(title)), `"${title}" falta em FEATURES`);
 });
+
+test('instalador: todo arquivo que o index.html carrega entra no pacote', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const files = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).build.files;
+  const covered = (file) => files.some((pattern) => pattern === file || (pattern.endsWith('/**/*') && file.startsWith(pattern.slice(0, -4))));
+  const refs = [...html.matchAll(/<(?:script|link)[^>]+(?:src|href)="([^"]+)"/g)].map((match) => match[1]).filter((ref) => !/^(https?:|data:|#)/.test(ref));
+  assert.ok(refs.length > 30);
+  for (const ref of refs) assert.ok(covered(ref), `${ref} não está em build.files do package.json (ficaria fora do instalador)`);
+});

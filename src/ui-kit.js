@@ -163,57 +163,7 @@
   };
   Nexo.liveRateStored = () => { try { return localStorage.getItem(LIVE_RATE_KEY) !== null; } catch { return true; } };
 
-  /* ---------- Céu: estrelas cadentes discretas ---------- */
-  (function ambient() {
-    const canvas = document.getElementById('ambient');
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)');
-    if (!canvas || reduce.matches) return;
-    const context = canvas.getContext('2d');
-    let width = 0;
-    let height = 0;
-    let stars = [];
-    let nextAt = 2500;
-    let last = 0;
-    const resize = () => { const ratio = Math.min(devicePixelRatio || 1, 1.5); width = canvas.width = innerWidth * ratio; height = canvas.height = innerHeight * ratio; };
-    resize();
-    addEventListener('resize', resize);
-    // Nada roda entre uma estrela e outra: um timer agenda a próxima e o desenho só existe enquanto ela cruza o céu.
-    let running = false;
-    let timer = null;
-    const quiet = () => document.hidden || Nexo.effectsLite || document.body.classList.contains('idle');
-    function schedule() { clearTimeout(timer); timer = setTimeout(spawn, nextAt); nextAt = 5500 + Math.random() * 7000; }
-    function spawn() {
-      if (!quiet()) {
-        stars.push({ x: width * (0.45 + Math.random() * 0.6), y: -30, progress: 0 });
-        if (!running) { running = true; last = performance.now(); requestAnimationFrame(frame); }
-      }
-      schedule();
-    }
-    function frame(time) {
-      const delta = Math.min(time - last, 80);
-      last = time;
-      context.clearRect(0, 0, width, height);
-      stars = stars.filter((star) => star.progress < 1);
-      if (!stars.length || quiet()) { stars = []; running = false; return; }
-      for (const star of stars) {
-        star.progress += delta / 1500;
-        const k = star.progress;
-        const headX = star.x - k * width * 0.42;
-        const headY = -30 + k * height * 0.78;
-        const length = width * 0.11;
-        const alpha = Math.sin(k * Math.PI) * 0.75;
-        const gradient = context.createLinearGradient(headX, headY, headX + length * 0.55, headY - length * 0.83);
-        gradient.addColorStop(0, `rgba(215, 242, 255, ${alpha})`);
-        gradient.addColorStop(1, 'rgba(90, 150, 255, 0)');
-        context.strokeStyle = gradient;
-        context.lineWidth = Math.max(1.2, width / 1400);
-        context.lineCap = 'round';
-        context.beginPath(); context.moveTo(headX, headY); context.lineTo(headX + length * 0.55, headY - length * 0.83); context.stroke();
-      }
-      requestAnimationFrame(frame);
-    }
-    schedule();
-  })();
+  /* O céu (estrelas, vagalumes e meteoros) fica em src/sky.js. */
 
   /* ---------- Controles da janela ---------- */
   $('#window-minimize')?.addEventListener('click', () => desktopBridge?.minimizeWindow?.());

@@ -7,6 +7,8 @@
   const updatePanel = document.getElementById('update-panel');
   const checkUpdatesButton = document.getElementById('check-updates');
   let currentUpdateStatus = { state: 'checking' };
+  let lastCheckAt = 0;
+  Nexo.updateState = () => ({ ...currentUpdateStatus, checkedAt: lastCheckAt || null });
 
   function formatUpdateEta(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) return '';
@@ -75,6 +77,7 @@
     const canRetryDownload = status.state === 'error' && status.canRetry;
     const hasInterruptedDownload = canRetryDownload && Number(status.total) > 0;
     currentUpdateStatus = status;
+    if (['current', 'available', 'error'].includes(status.state)) lastCheckAt = Date.now();
 
     setText('update-status', isDownloading
       ? `Baixando atualização · ${percent}%`

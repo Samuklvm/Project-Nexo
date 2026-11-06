@@ -38,8 +38,9 @@
 |---|---|
 | 📏 **Measures before it touches** | Every tweak can be measured before and after. If there is no real gain, Nexo tells you. |
 | ↩️ **Everything is reversible** | Every change goes into a Journal with the previous value and a **Revert** button. |
-| 🔒 **Stays on your PC** | No required account and no Nexo server. The analysis runs on your computer. |
+| 🔒 **Stays on your PC** | No required account. The analysis runs on your computer; the Nexo server (sync, error reports and telemetry) is optional and starts off. |
 | 🧭 **Honest** | No “speed up your PC by 300%”. Nexo shows the evidence and the limits of every conclusion. |
+| 🌌 **Beautiful and light** | A living sky with fireflies and shooting stars, seven accent colors and more than 30 features on every screen, without weighing down your PC. |
 
 ## 🎮 Built for gamers
 

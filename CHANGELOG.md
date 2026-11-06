@@ -6,6 +6,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.10.0: noite viva
+- Novo: céu vivo (estrelas piscando, estrelas cadentes, chuva de meteoros) e vagalumes, com opções em Ajustes > Aparência.
+- Novo: sete cores de destaque e tom do céu que acompanha a hora.
+- Novo: mais de 30 recursos em cada uma das 12 telas (389 no Windows, 375 no Linux), com busca, filtros e favoritos.
+- Novo: janela de novidades depois de cada atualização.
+- Melhoria: interface repaginada (vidro, neon, títulos, botões) e um teste que confere os arquivos do instalador.
+
 ### 0.9.0: servidor do Nexo (sincronização, erros e telemetria)
 - Novo: sincronização entre PCs com o login do Google; cópia criptografada por PC e escolha do que trazer de outro PC.
 - Novo: relatórios de erro agrupados (sem nome de usuário nem pastas; e-mail opcional) e telemetria diária anônima, tudo desligado por padrão.
@@ -81,6 +88,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.10.0: living night
+- New: living sky (twinkling stars, shooting stars, meteor showers) and fireflies, with options in Settings > Appearance.
+- New: seven accent colors and a sky tone that follows the time of day.
+- New: more than 30 features on each of the 12 screens (389 on Windows, 375 on Linux), with search, filters and favorites.
+- New: what's-new window after each update.
+- Improvement: refreshed interface (glass, neon, titles, buttons) and a test that checks the installer files.
 
 ### 0.9.0: Nexo server (sync, errors and telemetry)
 - New: sync between PCs with Google sign-in; one encrypted copy per PC and you choose what to bring from another PC.

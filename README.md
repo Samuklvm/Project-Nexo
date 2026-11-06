@@ -36,8 +36,9 @@
 |---|---|
 | 📏 **Mede antes de mexer** | Cada ajuste pode ser medido antes e depois. Se não houver ganho real, o Nexo diz isso. |
 | ↩️ **Tudo é reversível** | Cada mudança vai para um Diário, com o valor anterior e um botão **Reverter**. |
-| 🔒 **Fica no seu PC** | Sem conta obrigatória e sem servidor próprio. A análise acontece no seu computador. |
+| 🔒 **Fica no seu PC** | Sem conta obrigatória. A análise acontece no seu computador; o servidor do Nexo (sincronização, erros e telemetria) é opcional e começa desligado. |
 | 🧭 **Honesto** | Nada de “acelere seu PC em 300%”. O Nexo mostra a evidência e os limites de cada conclusão. |
+| 🌌 **Bonito e leve** | Céu vivo com vagalumes e estrelas cadentes, sete cores de destaque e mais de 30 recursos em cada tela, sem pesar no PC. |
 
 ## 🎮 Feito para quem joga
 
