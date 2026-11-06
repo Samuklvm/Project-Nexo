@@ -11,7 +11,8 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 - Correção: temperatura 0 °C ignorada em todas as fontes e no histórico antigo.
 - Correção: sessões duplicadas e gravação travada; mensagens claras na manutenção (UAC recusado, SFC com avisos).
 - Correção: serviço de sensores espera o processo fechar ao atualizar ou remover; biblioteca com confirmação ao tirar jogo e aviso de capas que não fica para sempre; CSV com vírgula decimal.
-- Melhoria: histórico 60% menor, gráficos sem redesenho excessivo, textos para o público.
+- Correção: acentos dos planos de energia, coluna que vazava em Otimizar, janelas sobrepostas, observador de jogos que se recupera sozinho.
+- Melhoria: histórico 60% menor, gráficos sem redesenho excessivo, FPS ligado por padrão quando pronto, serviço de sensores no Diário, textos para o público.
 
 ### 0.7.0: temperatura do processador, tudo no mais recente
 - Novo: serviço de sensores com o driver PawnIO (Windows) para ler a temperatura do processador e da placa-mãe; instalado com permissão (UAC) e removido na desinstalação.
@@ -67,7 +68,8 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 - Fix: 0 °C temperature ignored in every source and in old history.
 - Fix: duplicated sessions and stuck recordings; clear maintenance messages (declined UAC, SFC with warnings).
 - Fix: the sensor service waits for its process to close when updating or removing; the library asks before removing a game and the covers notice no longer stays forever; CSV with decimal comma.
-- Improvement: 60% smaller history, charts without excessive redraws, user-facing wording.
+- Fix: power plan accents, a column overflowing in Optimize, overlapping dialogs, a game watcher that recovers on its own.
+- Improvement: 60% smaller history, charts without excessive redraws, FPS on by default when ready, sensor service in the Journal, user-facing wording.
 
 ### 0.7.0: processor temperature, everything on the latest version
 - New: sensor service with the PawnIO driver (Windows) to read processor and motherboard temperature; installed with permission (UAC) and removed on uninstall.
