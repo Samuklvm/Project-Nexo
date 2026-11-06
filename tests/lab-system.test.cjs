@@ -199,3 +199,75 @@ test('adoptCurrent (modo assistido): só aplica valores revisados que mudam o pl
   assert.deepEqual(adopted.config, { perfepp: 0 });
   assert.equal(win.state.values.get(`${CLONE}|PERFEPP`), 0, 'o primeiro clone disponível vira o plano ajustado');
 });
+
+const DUMP = [
+  'GUID do Esquema de Energia: 381b4222-f694-41f0-9685-ff5bb260df2e  (Equilibrado)',
+  '  Alias de GUID: SCHEME_BALANCED',
+  '  GUID do Subgrupo: 54533251-82be-4824-96c1-47b60b740d00  (Gerenciamento de energia do processador)',
+  '    Alias de GUID: SUB_PROCESSOR',
+  '    GUID da Configuração de Energia: 893dee8e-2bef-41e0-89c6-b55d0929964c  (Estado mínimo do processador)',
+  '      Alias de GUID: PROCTHROTTLEMIN',
+  '      Configuração Mínima Possível: 0x00000000',
+  '      Configuração Máxima Possível: 0x00000064',
+  '      Incremento das Configurações Possíveis: 0x00000001',
+  '      Unidades das Configurações Possíveis: %',
+  '    Índice de Configuração de Energia CA Atual: 0x00000005',
+  '    Índice de Configuração de Energia CC Atual: 0x00000005',
+  '',
+  '    GUID da Configuração de Energia: be337238-0d82-4146-a960-4f3749d470c7  (Modo de aumento de desempenho do processador)',
+  '      Alias de GUID: PERFBOOSTMODE',
+  '      Índice de Configuração Possível: 000',
+  '      Nome Amigável de Configuração Possível: Desabilitado',
+  '      Índice de Configuração Possível: 001',
+  '      Nome Amigável de Configuração Possível: Habilitado',
+  '      Índice de Configuração Possível: 002',
+  '      Nome Amigável de Configuração Possível: Agressivo',
+  '    Índice de Configuração de Energia CA Atual: 0x00000001',
+  '    Índice de Configuração de Energia CC Atual: 0x00000001',
+  '',
+  '    GUID da Configuração de Energia: 4d2b0152-7d5c-498b-88e2-34345392a2c5  (Intervalo de verificação de tempo de desempenho do processador)',
+  '      Configuração Mínima Possível: 0x00000001',
+  '      Configuração Máxima Possível: 0x00001388',
+  '      Incremento das Configurações Possíveis: 0x00000001',
+  '      Unidades das Configurações Possíveis: Milissegundos',
+  '    Índice de Configuração de Energia CA Atual: 0x0000000f',
+  '    Índice de Configuração de Energia CC Atual: 0x0000001e',
+  '  GUID do Subgrupo: 501a4d13-42af-4429-9fd1-a8218c268e20  (PCI Express)',
+  '    Alias de GUID: SUB_PCIEXPRESS',
+  '    GUID da Configuração de Energia: ee12f906-d277-404b-b6da-e5fa1a576df5  (Gerenciamento de Energia do Estado de Link)',
+  '      Alias de GUID: ASPM',
+  '      Índice de Configuração Possível: 000',
+  '      Nome Amigável de Configuração Possível: Desligado',
+  '      Índice de Configuração Possível: 001',
+  '      Nome Amigável de Configuração Possível: Economia moderada',
+  '    Índice de Configuração de Energia CA Atual: 0x00000001',
+  '    Índice de Configuração de Energia CC Atual: 0x00000002'
+].join('\r\n');
+
+test('powercfg /qh completo: subgrupo, configuração, apelido, faixa e índices, em qualquer idioma', () => {
+  const map = Sys.parseQueryAll(DUMP);
+  assert.deepEqual(map['54533251-82be-4824-96c1-47b60b740d00/893dee8e-2bef-41e0-89c6-b55d0929964c'], { ac: 5, dc: 5, min: 0, max: 100 });
+  assert.deepEqual(map['alias:SUB_PROCESSOR/PERFBOOSTMODE'], { ac: 1, dc: 1, indexes: [0, 1, 2] });
+  assert.deepEqual(map['54533251-82be-4824-96c1-47b60b740d00/4d2b0152-7d5c-498b-88e2-34345392a2c5'], { ac: 15, dc: 30, min: 1, max: 5000 });
+  assert.deepEqual(map['501a4d13-42af-4429-9fd1-a8218c268e20/ee12f906-d277-404b-b6da-e5fa1a576df5'], { ac: 1, dc: 2, indexes: [0, 1] });
+});
+
+test('leitura de uma chamada só, faixa do PC respeitada e GUIDs nos ajustes novos', async () => {
+  const win = fakeWindows();
+  const realRun = win.run;
+  const run = async (file, args) => { if (file === 'powercfg' && args[0] === '/qh' && args.length === 2) { win.state.calls.push([file, ...args]); return { code: 0, stdout: DUMP }; } return realRun(file, args); };
+  const { system } = makeSystem({ run });
+  const pre = await system.preflight();
+  assert.equal(pre.knobs.minstate.current, 5);
+  assert.deepEqual(pre.knobs.boostmode.indexes, [0, 1, 2]);
+  assert.equal(pre.knobs.perfcheck.max, 5000);
+  assert.equal(pre.knobs.aspm.available, true);
+  assert.equal(pre.knobs.idledisable.available, false, 'o que o PC não lista fica de fora');
+  assert.equal(win.state.calls.filter((call) => call[1] === '/qh').length, 1, 'uma chamada só');
+  await system.begin();
+  await system.readConfig();
+  await assert.rejects(system.apply([{ id: 'boostmode', sub: 'SUB_PROCESSOR', setting: 'PERFBOOSTMODE', value: 5 }]), /não aceita/);
+  await system.apply([{ id: 'aspm', sub: 'SUB_PCIEXPRESS', setting: 'ASPM', value: 0 }]);
+  const call = win.state.calls.find((item) => item[1] === '/setacvalueindex');
+  assert.deepEqual(call.slice(3), ['501a4d13-42af-4429-9fd1-a8218c268e20', 'ee12f906-d277-404b-b6da-e5fa1a576df5', '0']);
+});

@@ -939,7 +939,128 @@ while (performance.now() < end) {
 }
 parentPort.postMessage({ iterations, seconds: busy / 1000, checksum: x >>> 0 });
 `;
+/*
+ * Latência para acordar um núcleo: um trabalhador dorme (Atomics.wait sem prazo) e o outro o acorda depois de uma pausa
+ * de 0,5 a 3 ms, medindo a ida e volta no próprio relógio. Isso é o que estados ociosos, estacionamento de núcleos e
+ * dicas de latência mudam (e não depende da resolução do timer do Windows, porque o acordar vem de um aviso, não do relógio).
+ * Pontuação: quanto maior, mais rápido (1.000.000 / média do percentil 50 e 90 em µs).
+ */
+const LATENCY_WORKER = String.raw`
+const { parentPort, workerData } = require('worker_threads');
+const flags = new Int32Array(workerData.buffer);
+if (workerData.role === 'sleeper') {
+  let seen = 0;
+  for (;;) {
+    Atomics.wait(flags, 0, seen);
+    seen = Atomics.load(flags, 0);
+    if (seen < 0) break;
+    Atomics.store(flags, 1, seen);
+  }
+  parentPort.postMessage({ done: true });
+} else {
+  const latencies = [];
+  const end = performance.now() + workerData.ms;
+  let seed = 12345;
+  for (let i = 1; performance.now() < end; i += 1) {
+    seed = (seed * 16807) % 2147483647;
+    const gapEnd = performance.now() + 0.5 + (seed / 2147483647) * 2.5;
+    while (performance.now() < gapEnd) { /* pausa: o outro núcleo tem tempo de dormir */ }
+    const start = performance.now();
+    Atomics.store(flags, 0, i);
+    Atomics.notify(flags, 0);
+    const limit = start + 50;
+    while (Atomics.load(flags, 1) !== i && performance.now() < limit) { /* espera a resposta */ }
+    latencies.push((performance.now() - start) * 1000);
+  }
+  Atomics.store(flags, 0, -1);
+  Atomics.notify(flags, 0);
+  latencies.sort((a, b) => a - b);
+  const pick = (q) => latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * q))] || 0;
+  parentPort.postMessage({ samples: latencies.length, p50: pick(0.5), p90: pick(0.9) });
+}
+`;
+/*
+ * Disco: gravações de 4 KB com fsync (a gravação só termina quando o disco confirma) num arquivo de 4 MB do próprio
+ * laboratório, com pausas de 3, 30 e 150 ms entre elas, para o SSD/link ter tempo de entrar em economia. Mede o que as
+ * opções de energia de SATA, NVMe e PCI Express mudam: o atraso da primeira operação depois de uma pausa.
+ * Pontuação: 1.000.000 / média em µs. O arquivo é apagado no fim da sessão.
+ */
+const DISK_WORKER = String.raw`
+const { parentPort, workerData } = require('worker_threads');
+const fs = require('fs');
+const SIZE = 4 * 1024 * 1024;
+const fd = fs.openSync(workerData.file, fs.existsSync(workerData.file) ? 'r+' : 'w+');
+try {
+  if (fs.fstatSync(fd).size < SIZE) fs.ftruncateSync(fd, SIZE);
+  const block = Buffer.alloc(4096, 7);
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  const gaps = [3, 30, 150];
+  const times = [];
+  const end = performance.now() + workerData.ms;
+  let seed = 777;
+  for (let i = 0; performance.now() < end; i += 1) {
+    Atomics.wait(pause, 0, 0, gaps[i % gaps.length]);
+    seed = (seed * 16807) % 2147483647;
+    const offset = (seed % (SIZE / 4096)) * 4096;
+    block.writeUInt32LE(i, 0);
+    const start = performance.now();
+    fs.writeSync(fd, block, 0, block.length, offset);
+    fs.fsyncSync(fd);
+    times.push((performance.now() - start) * 1000);
+  }
+  times.sort((a, b) => a - b);
+  const mean = times.reduce((sum, value) => sum + value, 0) / Math.max(1, times.length);
+  parentPort.postMessage({ samples: times.length, meanUs: mean, p50: times[Math.floor(times.length / 2)] || 0 });
+} finally { fs.closeSync(fd); }
+`;
 let activeBench = null;
+
+function runWorker(source, workerData, state) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(source, { eval: true, workerData });
+    state.workers.push(worker);
+    worker.once('message', resolve);
+    worker.once('error', reject);
+    worker.once('exit', () => { if (state.cancelled) reject(new Error('Teste cancelado.')); });
+  });
+}
+
+/** Testes extras do laboratório. A pontuação segue a regra dos outros: maior é melhor. */
+async function runLabBench(mode, ms) {
+  if (mode !== 'latency' && mode !== 'disk') return runCpuBench(mode, ms);
+  if (activeBench) throw new Error('Já existe um teste em andamento.');
+  const state = { workers: [], cancelled: false };
+  activeBench = state;
+  try {
+    if (mode === 'latency') {
+      const buffer = new SharedArrayBuffer(8);
+      const sleeper = runWorker(LATENCY_WORKER, { role: 'sleeper', buffer }, state);
+      const waker = await runWorker(LATENCY_WORKER, { role: 'waker', buffer, ms }, state);
+      await sleeper;
+      const us = Math.max(0.05, (waker.p50 + waker.p90) / 2);
+      return { mode, threads: 2, ms, mopsPerSec: 1e6 / us, detail: waker };
+    }
+    const dir = path.join(app.getPath('userData'), 'lab');
+    await fs.mkdir(dir, { recursive: true });
+    const result = await runWorker(DISK_WORKER, { file: path.join(dir, 'disk-probe.bin'), ms }, state);
+    return { mode, threads: 1, ms, mopsPerSec: 1e6 / Math.max(1, result.meanUs), detail: result };
+  } finally {
+    activeBench = null;
+    for (const worker of state.workers) worker.terminate();
+  }
+}
+
+/** Processador híbrido (núcleos P e E): os sensores mostram "P-Core"/"E-Core"; sem sensores, o modelo da Intel entrega. */
+async function isHybridCpu() {
+  const sensors = await getHardwareSensors().catch(() => null);
+  const names = (sensors?.devices || []).filter((device) => device.type === 'Cpu').flatMap((device) => (device.sensors || []).map((sensor) => sensor.name));
+  if (names.some((name) => /\bE-Core\b/i.test(name))) return true;
+  if (names.some((name) => /\bCore #\d+/i.test(name))) {
+    const model = os.cpus()[0]?.model || '';
+    return /Core\(TM\) Ultra|1[2-4]th Gen Intel|i[3579]-1[2-4]\d{3}/i.test(model) ? true : false;
+  }
+  return null;
+}
 
 async function runCpuBench(mode, ms) {
   if (activeBench) throw new Error('Já existe um teste em andamento.');
@@ -1515,13 +1636,14 @@ async function readCpuTemperature() {
   return acpi.length ? Math.max(...acpi) : null;
 }
 const labState = { running: false, signal: null };
-const labSystem = IS_LINUX ? createLinuxLabSystem({ linux, run: runCode, bench: (mode) => runCpuBench(mode, 1200), readTemp: () => readCpuTemperature(), cpuLoad: getCpuUsage, onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()), fs, path, dir: path.join(app.getPath('userData'), 'lab') }) : createLabSystem({
+const labBench = (mode) => runLabBench(mode, mode === 'disk' ? 2400 : 1200);
+const labSystem = IS_LINUX ? createLinuxLabSystem({ linux, run: runCode, bench: (mode) => runCpuBench(['single', 'multi', 'burst'].includes(mode) ? mode : 'burst', 1200), readTemp: () => readCpuTemperature(), cpuLoad: getCpuUsage, onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()), fs, path, dir: path.join(app.getPath('userData'), 'lab') }) : createLabSystem({
   run: runCode, runPowerShell: runPowerShellCode,
-  bench: (mode) => runCpuBench(mode, 1200),
+  bench: labBench, isHybrid: isHybridCpu,
   readTemp: readCpuTemperature, cpuLoad: getCpuUsage, onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()),
   elevate, fs, path, dir: path.join(app.getPath('userData'), 'lab'), exePath: process.execPath, isPackaged: app.isPackaged
 });
-registerIpcHandler('lab:status', async () => ({ running: labState.running, pending: await labSystem.hasPendingLock(), platform: process.platform, space: NexoLab.spaceFor(process.platform).map(({ id, label, values, risk, novelty, hidden, what, unit, names }) => ({ id, label, values, risk, novelty, hidden, what, unit, names })) }));
+registerIpcHandler('lab:status', async () => ({ running: labState.running, pending: await labSystem.hasPendingLock(), platform: process.platform, space: NexoLab.spaceFor(process.platform).map(({ id, group, label, values, risk, novelty, hidden, what, unit, names, affects, hybrid }) => ({ id, group, label, values, risk, novelty, hidden, what, unit, names, affects, hybrid })) }));
 registerIpcHandler('lab:preflight', async () => {
   if (labState.running) throw new Error('O laboratório já está rodando.');
   const pre = await labSystem.preflight();
@@ -1537,8 +1659,12 @@ registerIpcHandler('lab:run', async (_event, options) => {
     return await NexoLab.run(labSystem, {
       consent: { acknowledged: options?.consent?.acknowledged === true, phrase: String(options?.consent?.phrase || '').slice(0, 40) },
       autonomy: options?.autonomy === 'autonomo' ? 'autonomo' : 'assistido',
-      allowRisk: options?.allowRisk === 'baixo' ? 'baixo' : 'moderado',
-      maxArms: Math.max(1, Math.min(8, Math.round(Number(options?.maxArms) || 4))),
+      allowRisk: ['baixo', 'moderado', 'alto'].includes(options?.allowRisk) ? options.allowRisk : 'moderado',
+      maxArms: Math.max(1, Math.min(48, Math.round(Number(options?.maxArms) || 4))),
+      goal: ['jogos', 'geral', 'pesado', 'resposta'].includes(options?.goal) ? options.goal : 'geral',
+      combos: Math.max(0, Math.min(8, Math.round(Number(options?.combos) || 0))),
+      wild: options?.wild === true,
+      limits: { budgetMs: Math.max(5, Math.min(120, Math.round(Number(options?.budgetMin) || 20))) * 60 * 1000 },
       requireRestorePoint: options?.requireRestorePoint !== false,
       evidence: memory.evidence, tabu: memory.tabu, signal: labState.signal,
       emit: (event) => sendToWindow('lab:event', event.type === 'done' ? { type: 'done' } : event)

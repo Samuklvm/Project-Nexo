@@ -45,13 +45,64 @@ test('validateStep aceita só o espaço fechado e o valor original', () => {
   assert.throws(() => Lab.validateStep('perfepp', 1.5, 33), (error) => error.code === 'fora-do-espaco');
 });
 
-test('nenhum ajuste do espaço é de risco alto e todos vivem no subgrupo do processador', () => {
+test('espaço revisado: GUIDs válidos e únicos, valores inteiros dentro da faixa, cada ajuste medido por algum teste', () => {
+  const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  assert.ok(Lab.SPACE.length >= 60, `só ${Lab.SPACE.length} ajustes`);
+  const ids = new Set();
+  const guids = new Set();
   for (const knob of Lab.SPACE) {
-    assert.ok(['baixo', 'moderado'].includes(knob.risk), knob.id);
-    assert.equal(knob.sub, 'SUB_PROCESSOR');
-    assert.match(knob.setting, /^[A-Z]+$/);
-    assert.ok(knob.values.every((value) => Number.isInteger(value) && value >= 0 && value <= 100));
+    assert.ok(!ids.has(knob.id), `id repetido: ${knob.id}`); ids.add(knob.id);
+    assert.ok(!guids.has(knob.guid), `GUID repetido: ${knob.id}`); guids.add(knob.guid);
+    assert.ok(['baixo', 'moderado', 'alto'].includes(knob.risk), knob.id);
+    assert.ok(['SUB_PROCESSOR', 'SUB_DISK', 'SUB_PCIEXPRESS'].includes(knob.sub), knob.id);
+    assert.match(knob.guid, GUID, knob.id);
+    assert.match(knob.subGuid, GUID, knob.id);
+    assert.match(knob.setting, /^[A-Z0-9]+$/);
+    assert.ok(Lab.GROUPS[knob.group], `grupo desconhecido: ${knob.id}`);
+    assert.ok(knob.label && knob.what, knob.id);
+    const max = Number.isFinite(knob.max) ? knob.max : 100;
+    assert.ok(knob.values.length >= 2 && new Set(knob.values).size === knob.values.length, knob.id);
+    assert.ok(knob.values.every((value) => Number.isInteger(value) && value >= 0 && value <= max), knob.id);
+    assert.ok(Lab.benchesOf(knob).length >= 1, `nenhum teste mede ${knob.id}`);
   }
+  // Os sete originais continuam com o apelido do powercfg (compatível com o que já foi aprendido).
+  for (const id of ['perfepp', 'boostmode', 'minstate', 'mincores', 'incpol', 'boostpol', 'cooling']) assert.equal(Lab.knob(id).alias, true, id);
+});
+
+test('risco alto só entra quando a pessoa libera "tudo"', () => {
+  const high = Lab.SPACE.filter((knob) => knob.risk === 'alto');
+  assert.ok(high.length >= 1);
+  const baseline = Object.fromEntries(high.map((knob) => [knob.id, knob.values[knob.values.length - 1]]));
+  assert.equal(Lab.chooseCandidates({ baseline, count: 10, allowRisk: 'moderado' }).length, 0);
+  assert.ok(Lab.chooseCandidates({ baseline, count: 10, allowRisk: 'alto' }).length >= 1);
+});
+
+test('o que o PC informa corta o catálogo: faixa, índices e núcleos híbridos', () => {
+  const knob = Lab.knob('perfcheck');
+  assert.deepEqual(Lab.supportedValues(knob, { min: 1, max: 20 }), [5, 10, 1, 15]);
+  assert.deepEqual(Lab.supportedValues(Lab.knob('boostmode'), { indexes: [0, 1, 2] }), [2, 1, 0]);
+  const baseline = { perfepp: 33, perfepp1: 33, schedpolicy: 5 };
+  const plain = Lab.chooseCandidates({ baseline, count: 20, hybrid: false });
+  assert.ok(plain.every((arm) => !Lab.knob(arm.knob).hybrid));
+  const hybrid = Lab.chooseCandidates({ baseline, count: 20, hybrid: true });
+  assert.ok(hybrid.some((arm) => arm.knob === 'schedpolicy'));
+  const limited = Lab.chooseCandidates({ baseline: { boostmode: 1 }, count: 10, support: { boostmode: { indexes: [0, 1, 2] } } });
+  assert.deepEqual(limited.map((arm) => arm.value).sort(), [0, 2]);
+});
+
+test('números do espaço: dezenas de ajustes, centenas de opções e combinações astronômicas', () => {
+  const all = Lab.spaceStats();
+  assert.ok(all.knobs >= 60 && all.options >= 200 && all.log10 > 30, JSON.stringify(all));
+  const low = Lab.spaceStats({ allowRisk: 'baixo', hybrid: false });
+  assert.ok(low.knobs < all.knobs && low.options < all.options);
+});
+
+test('escolha espalha as ideias entre grupos diferentes', () => {
+  const baseline = Object.fromEntries(Lab.SPACE.filter((knob) => !knob.hybrid).map((knob) => [knob.id, knob.values[knob.values.length - 1]]));
+  const picked = Lab.chooseCandidates({ baseline, count: 10, allowRisk: 'moderado', hybrid: false });
+  assert.equal(picked.length, 10);
+  assert.equal(new Set(picked.map((arm) => arm.knob)).size, 10);
+  assert.ok(new Set(picked.map((arm) => arm.group)).size >= 5, 'ideias concentradas num grupo só');
 });
 
 test('chooseCandidates prioriza o inédito, espalha por ajustes e respeita tabu e risco', () => {
@@ -68,7 +119,8 @@ test('chooseCandidates prioriza o inédito, espalha por ajustes e respeita tabu 
 test('UCB: depois de tudo testado, o melhor ganho médio vem primeiro', () => {
   const baseline = { cooling: 1, perfepp: 33 };
   let evidence = {};
-  for (const key of ['cooling=0', 'perfepp=0', 'perfepp=15', 'perfepp=50']) evidence = Lab.updateEvidence(evidence, key, { delta: key === 'perfepp=0' ? 6 : 0, verdict: 'sem-diferenca' });
+  const keys = ['cooling=0', ...Lab.knob('perfepp').values.filter((value) => value !== 33).map((value) => `perfepp=${value}`)];
+  for (const key of keys) evidence = Lab.updateEvidence(evidence, key, { delta: key === 'perfepp=0' ? 6 : 0, verdict: 'sem-diferenca' });
   const [best] = Lab.chooseCandidates({ baseline, evidence, count: 1 });
   assert.equal(best.key, 'perfepp=0');
   assert.equal(best.untested, false);
@@ -205,4 +257,45 @@ test('sanitizeMemory descarta chaves e valores fora do espaço', () => {
   const clean = Lab.sanitizeMemory({ 'perfepp=0': { n: 2, mean: 5 }, 'hvci=0': { n: 1 }, 'perfepp=77': { n: 1 }, 'cooling=0': 'x' }, ['perfepp=15', 'rm -rf=1', 'cooling=0']);
   assert.deepEqual(Object.keys(clean.evidence), ['perfepp=0']);
   assert.deepEqual(clean.tabu, ['perfepp=15', 'cooling=0']);
+});
+
+test('triagem em duas etapas: o que promete ganha mais pares; o neutro para em 2', async () => {
+  const { system } = fakeSystem();
+  const result = await Lab.run(system, { consent: CONSENT, maxArms: 7, allowRisk: 'baixo', combos: 0 });
+  const winner = result.arms.find((arm) => arm.key === 'minstate=100');
+  const neutral = result.arms.find((arm) => arm.key === 'cooling=0');
+  assert.equal(winner.pairsDone, Lab.DEFAULT_LIMITS.pairs);
+  assert.equal(neutral.pairsDone, Lab.DEFAULT_LIMITS.screenPairs);
+  assert.ok(winner.benches.includes('burst'));
+});
+
+test('combinações inéditas: sorteadas entre o que deu sinal, registradas e nunca repetidas', async () => {
+  const first = fakeSystem();
+  const result = await Lab.run(first.system, { consent: CONSENT, maxArms: 7, allowRisk: 'baixo', combos: 3, wild: true });
+  assert.equal(result.status, 'completed');
+  assert.ok(result.combos.length >= 1, 'nenhuma combinação testada');
+  for (const combo of result.combos) {
+    assert.match(combo.key, /^combo:/);
+    assert.ok(combo.keys.length >= 2 && new Set(combo.keys.map((key) => key.split('=')[0])).size === combo.keys.length);
+    assert.ok(result.evidence[combo.key]?.n >= 1);
+  }
+  const again = fakeSystem();
+  const second = await Lab.run(again.system, { consent: CONSENT, maxArms: 7, allowRisk: 'baixo', combos: 3, wild: true, evidence: result.evidence, tabu: result.tabu });
+  const before = new Set(result.combos.map((combo) => combo.key));
+  assert.ok(second.combos.every((combo) => !before.has(combo.key)), 'repetiu combinação já testada');
+  const clean = Lab.sanitizeMemory(result.evidence, []);
+  for (const combo of result.combos) assert.ok(clean.evidence[combo.key], 'combinação perdida ao higienizar');
+});
+
+test('objetivo muda o peso de cada teste no ganho composto', () => {
+  const results = { multi: { verdict: 'melhorou', deltaPct: 10 }, latency: { verdict: 'sem-diferenca', deltaPct: 0 } };
+  const heavy = Lab.combine(results, Lab.GOALS.pesado.weights).compositeDelta;
+  const quick = Lab.combine(results, Lab.GOALS.resposta.weights).compositeDelta;
+  assert.ok(heavy > quick, `${heavy} <= ${quick}`);
+});
+
+test('sanitizeMemory: combinação só com ajustes válidos e sem repetir ajuste', () => {
+  const clean = Lab.sanitizeMemory({ 'combo:minstate=100+perfepp=0': { n: 1, mean: 4 }, 'combo:minstate=100+minstate=50': { n: 1 }, 'combo:hvci=0+perfepp=0': { n: 1 }, 'combo:perfepp=0': { n: 1 } }, ['combo:minstate=100+perfepp=0']);
+  assert.deepEqual(Object.keys(clean.evidence), ['combo:minstate=100+perfepp=0']);
+  assert.deepEqual(clean.tabu, ['combo:minstate=100+perfepp=0']);
 });
