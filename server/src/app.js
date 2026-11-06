@@ -49,6 +49,14 @@ async function readJson(request) {
 }
 
 const adminEmails = (env) => String(env.ADMIN_EMAILS || '').toLowerCase().split(',').map((item) => item.trim()).filter(Boolean);
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const ROLES = { dono: 'Dono', colaborador: 'Colaborador', leitura: 'Leitura' };
+/** O que cada papel pode fazer no painel. */
+const CAN = {
+  dono: new Set(['ver', 'emails', 'status', 'equipe', 'chaves']),
+  colaborador: new Set(['ver', 'emails', 'status']),
+  leitura: new Set(['ver'])
+};
 
 export function createApp({ fetchImpl = (...args) => fetch(...args), now = () => Date.now() } = {}) {
   /** Limite diário por chave (pessoa, PC ou IP com hash). */
@@ -62,6 +70,15 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   }
   async function limit(env, key, max) { if (!await allow(env, key, max)) throw new HttpError(429, 'Muitos pedidos hoje. Tente amanhã.'); }
   const ipKey = async (request) => `ip:${(await sha256Hex(`nexo:${request.headers.get('cf-connecting-ip') || 'local'}`)).slice(0, 20)}`;
+
+  /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
+  async function roleOf(env, email) {
+    const normalized = String(email || '').toLowerCase();
+    if (!normalized) return null;
+    if (adminEmails(env).includes(normalized)) return 'dono';
+    const row = await env.DB.prepare('SELECT role FROM team WHERE email = ?').bind(normalized).first();
+    return row && CAN[row.role] && row.role !== 'dono' ? row.role : null;
+  }
 
   /** Sessão do app (Authorization: Bearer). Devolve null sem token; lança 401 com token inválido. */
   async function session(request, env, { required = true } = {}) {
@@ -89,7 +106,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const expiresAt = at + SESSION_DAYS * DAY;
     await env.DB.prepare('INSERT INTO sessions (sid, uid, device_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').bind(sid, uid, deviceId, at, expiresAt).run();
     const token = await signToken({ sid, exp: expiresAt }, env.SESSION_SECRET);
-    return json({ token, expiresAt, user: { email: google.email, name: google.name }, admin: adminEmails(env).includes(google.email) });
+    const role = await roleOf(env, google.email);
+    return json({ token, expiresAt, user: { email: google.email, name: google.name }, admin: Boolean(role), role });
   }
 
   async function logout(request, env) {
@@ -101,7 +119,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   async function me(request, env) {
     const who = await session(request, env);
     const devices = await env.DB.prepare('SELECT COUNT(*) AS n FROM snapshots WHERE uid = ?').bind(who.uid).first();
-    return json({ email: who.email, name: who.name, devices: devices?.n || 0, admin: adminEmails(env).includes(who.email) });
+    const role = await roleOf(env, who.email);
+    return json({ email: who.email, name: who.name, devices: devices?.n || 0, admin: Boolean(role), role });
   }
 
   /** Apaga tudo da conta. Os relatórios de erro ficam, mas sem o e-mail. */
@@ -236,7 +255,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   /* ---------- Painel do criador ---------- */
   async function adminLink(request, env, url) {
     const who = await session(request, env);
-    if (!adminEmails(env).includes(who.email)) throw new HttpError(403, 'Só o criador do Nexo entra no painel.');
+    if (!await roleOf(env, who.email)) throw new HttpError(403, 'Só o criador do Nexo e a equipe dele entram no painel.');
     const code = randomId(24);
     await env.DB.prepare('INSERT INTO admin_links (code, email, expires_at) VALUES (?, ?, ?)').bind(code, who.email, now() + ADMIN_LINK_MS).run();
     return json({ url: `${url.origin}/painel/entrar?c=${code}`, expiresIn: ADMIN_LINK_MS / 1000 });
@@ -245,7 +264,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   async function adminEnter(env, url) {
     const code = url.searchParams.get('c') || '';
     const row = /^[A-Za-z0-9_-]{20,64}$/.test(code) ? await env.DB.prepare('SELECT code, email, expires_at, used FROM admin_links WHERE code = ?').bind(code).first() : null;
-    if (!row || row.used || row.expires_at < now() || !adminEmails(env).includes(row.email)) return page(PANEL_LOCKED('O link expirou ou já foi usado. Abra de novo pelo Nexo.'), 'text/html; charset=utf-8', 403);
+    if (!row || row.used || row.expires_at < now() || !await roleOf(env, row.email)) return page(PANEL_LOCKED('O link expirou ou já foi usado. Abra de novo pelo Nexo.'), 'text/html; charset=utf-8', 403);
     const sid = randomId(24);
     await env.DB.batch([
       env.DB.prepare('UPDATE admin_links SET used = 1 WHERE code = ?').bind(code),
@@ -260,13 +279,16 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const payload = cookie ? await verifyToken(cookie, env.SESSION_SECRET, now()) : null;
     if (!payload?.sid) return null;
     const row = await env.DB.prepare('SELECT email, expires_at FROM admin_sessions WHERE sid = ?').bind(payload.sid).first();
-    if (!row || row.expires_at < now() || !adminEmails(env).includes(row.email)) return null;
-    return { email: row.email, sid: payload.sid };
+    // O papel é conferido a cada pedido: tirar alguém da equipe corta o acesso na hora.
+    const role = row && row.expires_at >= now() ? await roleOf(env, row.email) : null;
+    if (!role) return null;
+    return { email: row.email, sid: payload.sid, role, can: (action) => CAN[role].has(action) };
   }
 
   async function adminApi(request, env, url, rest) {
     const admin = await adminSession(request, env);
     if (!admin) throw new HttpError(401, 'Abra o painel pelo Nexo.');
+    const need = (action) => { if (!admin.can(action)) throw new HttpError(403, 'O seu papel no painel não permite isso.'); };
     if (request.method !== 'GET') {
       // Contra CSRF: mesmo site e um cabeçalho que formulário de outro site não consegue mandar.
       if (request.headers.get('x-nexo-painel') !== '1' || (request.headers.get('origin') && request.headers.get('origin') !== url.origin)) throw new HttpError(403, 'Pedido recusado.');
@@ -281,7 +303,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         env.DB.prepare('SELECT version, COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ? GROUP BY version ORDER BY n DESC LIMIT 10').bind(dayOf(since7)).all()
       ]);
       const accounts = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
-      return json({ openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [], admin: admin.email });
+      return json({ openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [], admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]] });
     }
     if (rest === 'erros' && request.method === 'GET') {
       const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
@@ -298,10 +320,11 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       const group = await env.DB.prepare('SELECT * FROM error_groups WHERE signature = ?').bind(detail[1]).first();
       if (!group) throw new HttpError(404, 'Erro não encontrado.');
       const { results = [] } = await env.DB.prepare('SELECT email, version, platform, count, first_at, last_at FROM error_reports WHERE signature = ? ORDER BY last_at DESC LIMIT 500').bind(detail[1]).all();
-      const emails = [...new Set(results.map((row) => row.email).filter(Boolean))];
-      return json({ group, reports: results.map(({ email, ...row }) => ({ ...row, hasEmail: Boolean(email) })), emails });
+      const emails = admin.can('emails') ? [...new Set(results.map((row) => row.email).filter(Boolean))] : [];
+      return json({ group, reports: results.map(({ email, ...row }) => ({ ...row, hasEmail: Boolean(email) })), emails, emailsHidden: !admin.can('emails') });
     }
     if (detail && request.method === 'POST') {
+      need('status');
       const body = await readJson(request);
       const status = STATUSES.has(body.status) ? body.status : null;
       if (!status) throw new HttpError(400, 'Status inválido.');
@@ -316,11 +339,81 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       const { results = [] } = await env.DB.prepare('SELECT install_id, day, version, platform, data FROM telemetry WHERE day >= ? ORDER BY day').bind(from).all();
       return json(aggregateTelemetry(results));
     }
+    /* ----- Equipe (só o dono) ----- */
+    if (rest === 'equipe' && request.method === 'GET') {
+      need('equipe');
+      const { results = [] } = await env.DB.prepare('SELECT email, role, added_by, added_at FROM team ORDER BY added_at').all();
+      return json({ owners: adminEmails(env), members: results, roles: { colaborador: ROLES.colaborador, leitura: ROLES.leitura } });
+    }
+    if (rest === 'equipe' && request.method === 'POST') {
+      need('equipe');
+      const body = await readJson(request);
+      const email = String(body.email || '').trim().toLowerCase().slice(0, 254);
+      if (!EMAIL.test(email)) throw new HttpError(400, 'E-mail inválido.');
+      if (!['colaborador', 'leitura'].includes(body.role)) throw new HttpError(400, 'Papel inválido.');
+      if (adminEmails(env).includes(email)) throw new HttpError(400, 'Esse e-mail já é dono do painel.');
+      const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM team').first();
+      if ((count?.n || 0) >= 50) throw new HttpError(409, 'A equipe chegou a 50 pessoas.');
+      await env.DB.prepare('INSERT INTO team (email, role, added_by, added_at) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET role = excluded.role').bind(email, body.role, admin.email, now()).run();
+      return json({ ok: true });
+    }
+    if (rest === 'equipe/remover' && request.method === 'POST') {
+      need('equipe');
+      const body = await readJson(request);
+      const email = String(body.email || '').trim().toLowerCase();
+      await env.DB.batch([
+        env.DB.prepare('DELETE FROM team WHERE email = ?').bind(email),
+        env.DB.prepare('DELETE FROM admin_sessions WHERE email = ?').bind(email)
+      ]);
+      return json({ ok: true });
+    }
+    /* ----- Chaves de acesso para ferramentas (só o dono) ----- */
+    if (rest === 'chaves' && request.method === 'GET') {
+      need('chaves');
+      const { results = [] } = await env.DB.prepare('SELECT id, label, scope, created_by, created_at, last_used, revoked FROM tool_keys ORDER BY created_at DESC').all();
+      return json({ keys: results });
+    }
+    if (rest === 'chaves' && request.method === 'POST') {
+      need('chaves');
+      const body = await readJson(request);
+      const label = text(body.label, 60).trim() || 'Chave sem nome';
+      const active = await env.DB.prepare('SELECT COUNT(*) AS n FROM tool_keys WHERE revoked = 0').first();
+      if ((active?.n || 0) >= 10) throw new HttpError(409, 'Já existem 10 chaves ativas. Revogue uma antes.');
+      const secret = `nexo_${randomId(30)}`;
+      const id = randomId(9);
+      await env.DB.prepare('INSERT INTO tool_keys (id, label, key_hash, scope, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, label, await sha256Hex(secret), 'erros:ler', admin.email, now()).run();
+      // A chave aparece só agora; depois, nem o painel consegue mostrar de novo.
+      return json({ id, label, key: secret, scope: 'erros:ler' });
+    }
+    if (rest === 'chaves/revogar' && request.method === 'POST') {
+      need('chaves');
+      const body = await readJson(request);
+      await env.DB.prepare('UPDATE tool_keys SET revoked = 1 WHERE id = ?').bind(String(body.id || '').slice(0, 40)).run();
+      return json({ ok: true });
+    }
     if (rest === 'sair' && request.method === 'POST') {
       await env.DB.prepare('DELETE FROM admin_sessions WHERE sid = ?').bind(admin.sid).run();
       return json({ ok: true }, 200, { 'set-cookie': 'nexo_painel=; Path=/painel; HttpOnly; Secure; SameSite=Strict; Max-Age=0' });
     }
     throw new HttpError(404, 'Não encontrado.');
+  }
+
+  /* ---------- Ferramentas (chave de acesso, só leitura dos erros, sem e-mails) ---------- */
+  async function toolErrors(request, env, url) {
+    const header = request.headers.get('authorization') || '';
+    const secret = header.startsWith('Bearer nexo_') ? header.slice(7).trim() : '';
+    if (!/^nexo_[A-Za-z0-9_-]{30,60}$/.test(secret)) throw new HttpError(401, 'Chave de acesso inválida.');
+    const row = await env.DB.prepare('SELECT id, scope, revoked FROM tool_keys WHERE key_hash = ?').bind(await sha256Hex(secret)).first();
+    if (!row || row.revoked || row.scope !== 'erros:ler') throw new HttpError(401, 'Chave de acesso inválida ou revogada.');
+    await limit(env, `tool:${row.id}`, 200);
+    await env.DB.prepare('UPDATE tool_keys SET last_used = ? WHERE id = ?').bind(now(), row.id).run();
+    const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
+    const { results = [] } = await env.DB.prepare(`SELECT g.signature, g.source, g.level, g.message, g.stack, g.context, g.first_at, g.last_at, g.status, g.fixed_in, g.note,
+        COUNT(r.install_id) AS installs, COALESCE(SUM(r.count), 0) AS occurrences, GROUP_CONCAT(DISTINCT r.version) AS versions, GROUP_CONCAT(DISTINCT r.platform) AS platforms
+      FROM error_groups g LEFT JOIN error_reports r ON r.signature = g.signature
+      WHERE (? IS NULL AND g.status IN ('aberto', 'reaberto')) OR g.status = ?
+      GROUP BY g.signature ORDER BY g.last_at DESC LIMIT 200`).bind(status, status).all();
+    return json({ groups: results, generatedAt: now() });
   }
 
   async function route(request, env, ctx) {
@@ -341,6 +434,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     if (path === '/v1/errors' && method === 'POST') return postErrors(request, env);
     if (path === '/v1/telemetry' && method === 'POST') return postTelemetry(request, env);
     if (path === '/v1/admin/link' && method === 'POST') return adminLink(request, env, url);
+    if (path === '/v1/tools/errors' && method === 'GET') return toolErrors(request, env, url);
     if (path === '/painel/entrar' && method === 'GET') return adminEnter(env, url);
     if (path === '/painel' && method === 'GET') return (await adminSession(request, env)) ? page(PANEL_HTML, 'text/html; charset=utf-8') : page(PANEL_LOCKED('Abra o painel pelo Nexo: Ajustes > Painel do criador.'), 'text/html; charset=utf-8', 401);
     if (path === '/painel/app.js' && method === 'GET') return page(PANEL_JS, 'text/javascript; charset=utf-8');

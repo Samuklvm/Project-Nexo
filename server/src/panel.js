@@ -9,7 +9,7 @@ export const PANEL_HTML = `<!doctype html><html lang="pt-BR"><head><meta charset
 <body>
 <header class="top"><div><span class="badge">PAINEL DO CRIADOR</span><h1>Nexo Device Care</h1><p class="muted" id="who">Carregando…</p></div><button id="logout" type="button" class="ghost">Sair</button></header>
 <section class="tiles" id="tiles"></section>
-<nav class="tabs" role="tablist"><button type="button" data-tab="erros" aria-pressed="true">Erros</button><button type="button" data-tab="telemetria" aria-pressed="false">Telemetria</button></nav>
+<nav class="tabs" role="tablist"><button type="button" data-tab="erros" aria-pressed="true">Erros</button><button type="button" data-tab="telemetria" aria-pressed="false">Telemetria</button><button type="button" data-tab="equipe" aria-pressed="false" hidden>Equipe e acessos</button></nav>
 <section id="tab-erros">
   <div class="filters"><select id="status"><option value="">Abertos e reabertos primeiro (todos)</option><option value="aberto">Só abertos</option><option value="reaberto">Só reabertos</option><option value="corrigido">Corrigidos</option><option value="ignorado">Ignorados</option></select>
   <label><input type="checkbox" id="avisos"> Incluir avisos</label><input id="busca" type="search" placeholder="Filtrar pela mensagem"></div>
@@ -18,6 +18,18 @@ export const PANEL_HTML = `<!doctype html><html lang="pt-BR"><head><meta charset
 <section id="tab-telemetria" hidden>
   <div class="filters"><select id="dias"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select></div>
   <div id="telemetry"></div>
+</section>
+<section id="tab-equipe" hidden>
+  <div class="cols">
+    <div class="card"><h3>Equipe do painel</h3><p class="muted">Colaborador vê tudo e marca erros como corrigidos. Leitura só vê, sem os e-mails dos usuários. Só o dono adiciona e tira pessoas.</p>
+      <ul class="list" id="team"></ul>
+      <div class="row"><input type="text" id="team-email" placeholder="e-mail Google da pessoa"><select id="team-role"><option value="colaborador">Colaborador</option><option value="leitura">Leitura</option></select><button type="button" id="team-add">Adicionar</button></div>
+      <p class="muted">A pessoa entra pelo Nexo dela (Ajustes &gt; Painel do criador), logada com esse e-mail.</p></div>
+    <div class="card"><h3>Chaves de acesso para ferramentas</h3><p class="muted">Só leitura dos erros, sem e-mails de usuários. Servem para a rotina que copia os erros abertos para o repositório privado. A chave aparece uma vez só.</p>
+      <ul class="list" id="keys"></ul>
+      <div class="row"><input type="text" id="key-label" placeholder="Nome (ex.: relatórios no GitHub)"><button type="button" id="key-add">Criar chave</button></div>
+      <div id="key-new"></div></div>
+  </div>
 </section>
 <script src="/painel/app.js"></script>
 </body></html>`;
@@ -78,6 +90,8 @@ export const PANEL_JS = `
   const SOURCE = { principal: 'processo principal', interface: 'interface', ipc: 'ação do app', servico: 'serviço', processo: 'processo do app' };
   let groups = [];
   let selected = null;
+  let can = new Set();
+  const ROLE = { dono: 'dono', colaborador: 'colaborador', leitura: 'leitura' };
 
   async function api(path, options) {
     const response = await fetch('/painel/api/' + path, Object.assign({ credentials: 'same-origin', headers: { 'x-nexo-painel': '1', 'content-type': 'application/json' } }, options || {}));
@@ -89,7 +103,9 @@ export const PANEL_JS = `
 
   async function summary() {
     const s = await api('resumo');
-    $('who').textContent = 'Entrou como ' + s.admin;
+    can = new Set(s.permissions || []);
+    $('who').textContent = 'Entrou como ' + s.admin + ' (' + (ROLE[s.role] || s.role) + ')';
+    document.querySelector('[data-tab="equipe"]').hidden = !can.has('equipe');
     $('tiles').innerHTML = [['Erros abertos', s.openErrors], ['PCs com erro (7 dias)', s.reportingInstalls7], ['PCs ativos (7 dias)', s.activeInstalls7], ['PCs ativos (30 dias)', s.activeInstalls30], ['Contas sincronizando', s.accounts]]
       .map(([label, n]) => '<div class="tile"><span class="muted">' + esc(label) + '</span><strong>' + esc(n) + '</strong></div>').join('');
   }
@@ -115,10 +131,10 @@ export const PANEL_JS = `
     $('detail').innerHTML = '<h3>' + esc(g.message) + '</h3><div class="chips"><span class="chip ' + esc(g.status) + '">' + esc(STATUS[g.status] || g.status) + '</span><span class="chip">' + esc(SOURCE[g.source] || g.source) + '</span><span class="chip">#' + esc(g.signature) + '</span><span class="chip">desde ' + esc(when(g.first_at)) + '</span></div>'
       + (g.context ? '<p class="muted">Contexto: ' + esc(g.context) + '</p>' : '')
       + (g.stack ? '<pre>' + esc(g.stack) + '</pre>' : '<p class="muted">Sem detalhes técnicos.</p>')
-      + '<p><strong>' + d.emails.length + ' pessoa(s) para avisar</strong></p><div class="emails">' + (d.emails.length ? esc(d.emails.join(', ')) : '<span class="muted">Ninguém deixou o e-mail neste erro.</span>') + '</div>'
-      + '<div class="row">' + (d.emails.length ? '<button type="button" id="copy-emails">Copiar e-mails</button>' : '') + '</div>'
-      + '<div class="row"><input type="text" id="fixed-in" placeholder="Corrigido na versão (ex.: 0.8.2)" value="' + esc(g.fixed_in || '') + '"><button type="button" class="ok" data-status="corrigido">Marcar como corrigido</button></div>'
-      + '<div class="row"><input type="text" id="note" placeholder="Nota (opcional)" value="' + esc(g.note || '') + '"><button type="button" class="ghost" data-status="ignorado">Ignorar</button><button type="button" class="ghost" data-status="aberto">Reabrir</button></div>'
+      + (d.emailsHidden ? '<p class="muted">O seu papel no painel não mostra os e-mails dos usuários.</p>' : '<p><strong>' + d.emails.length + ' pessoa(s) para avisar</strong></p><div class="emails">' + (d.emails.length ? esc(d.emails.join(', ')) : '<span class="muted">Ninguém deixou o e-mail neste erro.</span>') + '</div>'
+      + '<div class="row">' + (d.emails.length ? '<button type="button" id="copy-emails">Copiar e-mails</button>' : '') + '</div>')
+      + (can.has('status') ? '<div class="row"><input type="text" id="fixed-in" placeholder="Corrigido na versão (ex.: 0.8.2)" value="' + esc(g.fixed_in || '') + '"><button type="button" class="ok" data-status="corrigido">Marcar como corrigido</button></div>'
+      + '<div class="row"><input type="text" id="note" placeholder="Nota (opcional)" value="' + esc(g.note || '') + '"><button type="button" class="ghost" data-status="ignorado">Ignorar</button><button type="button" class="ghost" data-status="aberto">Reabrir</button></div>' : '')
       + '<p class="muted">' + d.reports.length + ' PC(s): ' + esc([...new Set(d.reports.map((r) => r.version + ' ' + r.platform))].join(' · ')) + '</p>';
     const copy = $('copy-emails');
     if (copy) copy.onclick = () => navigator.clipboard.writeText(d.emails.join(', ')).then(() => { copy.textContent = 'Copiado'; });
@@ -142,11 +158,40 @@ export const PANEL_JS = `
     $('telemetry').querySelectorAll('[data-h]').forEach((el) => { el.style.height = el.dataset.h + '%'; });
   }
 
+  async function loadTeam() {
+    const t = await api('equipe');
+    $('team').innerHTML = t.owners.map((email) => '<li><strong>' + esc(email) + '</strong><div class="chips"><span class="chip corrigido">dono</span></div></li>').join('')
+      + t.members.map((m) => '<li><strong>' + esc(m.email) + '</strong><div class="chips"><span class="chip">' + esc(m.role) + '</span><span class="chip">adicionado por ' + esc(m.added_by) + ' em ' + esc(when(m.added_at)) + '</span></div><div class="row"><button type="button" class="ghost" data-remove="' + esc(m.email) + '">Tirar da equipe</button></div></li>').join('');
+    const k = await api('chaves');
+    $('keys').innerHTML = k.keys.length ? k.keys.map((key) => '<li><strong>' + esc(key.label) + '</strong><div class="chips"><span class="chip ' + (key.revoked ? 'ignorado' : 'corrigido') + '">' + (key.revoked ? 'revogada' : 'ativa') + '</span><span class="chip">criada em ' + esc(when(key.created_at)) + '</span><span class="chip">último uso ' + esc(when(key.last_used)) + '</span></div>' + (key.revoked ? '' : '<div class="row"><button type="button" class="danger" data-revoke="' + esc(key.id) + '">Revogar</button></div>') + '</li>').join('') : '<li class="muted">Nenhuma chave criada.</li>';
+  }
+  $('team-add').onclick = async () => { try { await api('equipe', { method: 'POST', body: JSON.stringify({ email: $('team-email').value.trim(), role: $('team-role').value }) }); $('team-email').value = ''; await loadTeam(); } catch (error) { alert(error.message); } };
+  $('key-add').onclick = async () => {
+    try {
+      const created = await api('chaves', { method: 'POST', body: JSON.stringify({ label: $('key-label').value.trim() }) });
+      $('key-new').innerHTML = '<p><strong>Copie agora: esta chave não aparece de novo.</strong></p><pre id="key-text"></pre><button type="button" id="key-copy">Copiar chave</button>';
+      $('key-text').textContent = created.key;
+      $('key-copy').onclick = () => navigator.clipboard.writeText(created.key).then(() => { $('key-copy').textContent = 'Copiada'; });
+      $('key-label').value = '';
+      await loadTeam();
+    } catch (error) { alert(error.message); }
+  };
+  $('tab-equipe').onclick = async (event) => {
+    const remove = event.target.closest('[data-remove]');
+    const revoke = event.target.closest('[data-revoke]');
+    try {
+      if (remove && confirm('Tirar ' + remove.dataset.remove + ' da equipe?')) { await api('equipe/remover', { method: 'POST', body: JSON.stringify({ email: remove.dataset.remove }) }); await loadTeam(); }
+      if (revoke && confirm('Revogar esta chave? A rotina que usa ela para de funcionar.')) { await api('chaves/revogar', { method: 'POST', body: JSON.stringify({ id: revoke.dataset.revoke }) }); await loadTeam(); }
+    } catch (error) { alert(error.message); }
+  };
+
   document.querySelectorAll('[data-tab]').forEach((button) => { button.onclick = () => {
     document.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
     $('tab-erros').hidden = button.dataset.tab !== 'erros';
     $('tab-telemetria').hidden = button.dataset.tab !== 'telemetria';
+    $('tab-equipe').hidden = button.dataset.tab !== 'equipe';
     if (button.dataset.tab === 'telemetria') loadTelemetry();
+    if (button.dataset.tab === 'equipe') loadTeam().catch((error) => alert(error.message));
   }; });
   $('errors').onclick = (event) => { const li = event.target.closest('li[data-sig]'); if (li) showDetail(li.dataset.sig); };
   $('status').onchange = loadErrors;

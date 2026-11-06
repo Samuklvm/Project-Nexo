@@ -101,7 +101,8 @@ function signIn({ config, createServer, openExternal, fetch, randomBytes = crypt
         }
         if (tokens.access_token) fetch(REVOKE_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: tokens.access_token }).toString() }).catch(() => {});
         finish(true, 'Você entrou no Nexo. Pode fechar esta aba e voltar ao aplicativo.');
-        done(null, { profile: checked.profile, avatar });
+        // O id_token só passa adiante (para o servidor do Nexo, se a pessoa ligar a sincronização); nunca é salvo.
+        done(null, { profile: checked.profile, avatar, idToken: typeof tokens.id_token === 'string' ? tokens.id_token : null });
       } catch (error) { finish(false, `${error.message}. Pode fechar esta aba e tentar de novo.`); done(error); }
     });
     const timer = setTimeout(() => done(new Error('o login demorou demais e foi cancelado')), timeoutMs);

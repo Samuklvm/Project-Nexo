@@ -2031,13 +2031,99 @@ async function accountView() {
 }
 registerIpcHandler('account:get', accountView);
 let signingIn = false;
+let freshIdToken = null;
+
+// ---- Servidor do Nexo: sincronização, relatórios de erro e telemetria (tudo desligado por padrão) ----
+async function serverUrl() {
+  if (process.env.NEXO_SERVER_URL) return process.env.NEXO_SERVER_URL;
+  const candidates = [path.join(app.getPath('userData'), 'server.json'), app.isPackaged ? path.join(process.resourcesPath, 'config', 'server.json') : path.join(__dirname, 'config', 'server.json')];
+  for (const file of candidates) { try { const url = JSON.parse(await fs.readFile(file, 'utf8')).url; if (typeof url === 'string' && url) return url; } catch { /* próximo */ } }
+  return null;
+}
+const { createCloud } = require('./electron/cloud.cjs');
+let cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: null, fetchImpl: (url, init) => net.fetch(url, init), safeStorage, version: app.getVersion(), errorLog });
+const cloudReady = serverUrl().then((url) => { cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog }); }).catch(() => {});
+const withCloud = async () => { await cloudReady; return cloud; };
+/** Telemetria: o que dá para saber do hardware sem nada pessoal (fabricante e modelo do processador, núcleos, memória, vídeo, sistema). */
+async function telemetryHardware() {
+  const cpus = os.cpus();
+  const model = String(cpus[0]?.model || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  let gpuVendor = null;
+  try {
+    const sensors = await getHardwareSensors();
+    const types = (sensors?.devices || []).map((device) => String(device.type));
+    gpuVendor = types.includes('GpuNvidia') ? 'NVIDIA' : types.includes('GpuAmd') ? 'AMD' : types.includes('GpuIntel') ? 'Intel' : null;
+  } catch { gpuVendor = null; }
+  return { cpuVendor: /amd|ryzen/i.test(model) ? 'AMD' : /intel/i.test(model) ? 'Intel' : model ? 'Outro' : null, cpuModel: model || null, cores: cpus.length, ramGB: Math.round(os.totalmem() / 1024 ** 3), gpuVendor, osBuild: os.release(), arch: process.arch };
+}
+registerIpcHandler('cloud:status', async () => (await withCloud()).status());
+registerIpcHandler('cloud:set', async (_event, options) => (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked }));
+/** Liga a sincronização: usa o login recente ou abre o login do Google de novo. */
+registerIpcHandler('cloud:connect', async () => {
+  const target = await withCloud();
+  if (!target.configured) throw new Error('O servidor do Nexo não está configurado nesta versão.');
+  if (!freshIdToken || Date.now() - freshIdToken.at > 50 * 60 * 1000) {
+    if (signingIn) throw new Error('Já existe um login em andamento no navegador.');
+    const config = await googleConfig();
+    if (!config) throw new Error('O login com Google ainda não foi configurado nesta build.');
+    signingIn = true;
+    try { const result = await Account.signIn({ config, createServer: http.createServer, openExternal: (url) => shell.openExternal(url), fetch: (url, init) => net.fetch(url, init) }); freshIdToken = result.idToken ? { value: result.idToken, at: Date.now() } : null; }
+    finally { signingIn = false; mainWindow?.show(); mainWindow?.focus(); }
+  }
+  const token = freshIdToken?.value;
+  freshIdToken = null; // uso único
+  return target.connect(token);
+});
+registerIpcHandler('cloud:disconnect', async () => (await withCloud()).disconnect());
+registerIpcHandler('cloud:delete-remote', async () => (await withCloud()).deleteRemote());
+registerIpcHandler('cloud:push', async (_event, sections) => {
+  if (!sections || typeof sections !== 'object' || Array.isArray(sections)) throw new Error('Nada para sincronizar.');
+  const clean = {};
+  for (const [name, value] of Object.entries(sections).slice(0, 12)) if (/^[a-z][a-z0-9]{1,23}$/.test(name)) clean[name] = value;
+  // Preferências do processo principal vão junto (só as que fazem sentido em outro PC).
+  clean.preferenciasapp = { tray: settings.tray, autoSession: settings.autoSession, onlineCovers: settings.onlineCovers };
+  return (await withCloud()).push({ name: os.hostname(), sections: clean });
+});
+registerIpcHandler('cloud:devices', async () => (await withCloud()).devices());
+registerIpcHandler('cloud:pull', async (_event, deviceId, only) => {
+  const data = await (await withCloud()).pull(String(deviceId || ''), Array.isArray(only) ? only.map(String).slice(0, 12) : []);
+  // Preferências do app vêm aplicadas aqui; o resto a interface aplica (ela é quem guarda).
+  const prefs = data?.sections?.preferenciasapp;
+  if (prefs && typeof prefs === 'object') {
+    const patch = {};
+    for (const key of ['tray', 'autoSession', 'onlineCovers']) if (typeof prefs[key] === 'boolean') patch[key] = prefs[key];
+    await applySettings(patch).catch(() => {});
+  }
+  return data;
+});
+registerIpcHandler('cloud:forget', async (_event, deviceId) => (await withCloud()).forget(String(deviceId || '')));
+registerIpcHandler('cloud:telemetry', async (_event, usage) => {
+  const target = await withCloud();
+  const status = await target.status();
+  if (!status.telemetry) return { skipped: true };
+  const clean = usage && typeof usage === 'object' ? usage : {};
+  return target.sendTelemetry({ hw: await telemetryHardware(), usage: { views: clean.views || {} }, features: clean.features || {}, settings: { liveRate: String(clean.liveRate || '').slice(0, 12), profile: String(clean.profile || '').slice(0, 20) } });
+});
+registerIpcHandler('cloud:send-errors', async () => (await withCloud()).sendErrors());
+registerIpcHandler('cloud:admin', async () => {
+  const link = await (await withCloud()).adminLink();
+  if (!/^https:\/\/[A-Za-z0-9.-]+\/painel\/entrar\?c=[A-Za-z0-9_-]+$/.test(String(link?.url || ''))) throw new Error('O servidor devolveu um link estranho; não abri.');
+  await shell.openExternal(link.url);
+  return { ok: true };
+});
+// Relatórios de erro (se ligados): 2 minutos depois de abrir e a cada 30 minutos.
+setTimeout(() => withCloud().then((target) => target.sendErrors()).catch(() => {}), 2 * 60 * 1000).unref?.();
+setInterval(() => withCloud().then((target) => target.sendErrors()).catch(() => {}), 30 * 60 * 1000).unref?.();
+
 registerIpcHandler('account:sign-in', async () => {
   if (signingIn) throw new Error('Já existe um login em andamento no navegador.');
   const config = await googleConfig();
   if (!config) throw new Error('O login com Google ainda não foi configurado nesta build.');
   signingIn = true;
   try {
-    const { profile, avatar } = await Account.signIn({ config, createServer: http.createServer, openExternal: (url) => shell.openExternal(url), fetch: (url, init) => net.fetch(url, init) });
+    const { profile, avatar, idToken } = await Account.signIn({ config, createServer: http.createServer, openExternal: (url) => shell.openExternal(url), fetch: (url, init) => net.fetch(url, init) });
+    // Guardado só na memória por 50 minutos: se a pessoa ligar a sincronização logo depois, não precisa entrar de novo.
+    freshIdToken = idToken ? { value: idToken, at: Date.now() } : null;
     const dir = ACCOUNT_DIR();
     await fs.mkdir(dir, { recursive: true });
     let avatarFile = null;
@@ -2049,7 +2135,7 @@ registerIpcHandler('account:sign-in', async () => {
     return accountView();
   } finally { signingIn = false; }
 });
-registerIpcHandler('account:sign-out', async () => { await fs.rm(ACCOUNT_DIR(), { recursive: true, force: true }); return accountView(); });
+registerIpcHandler('account:sign-out', async () => { await cloud.disconnect().catch(() => {}); freshIdToken = null; await fs.rm(ACCOUNT_DIR(), { recursive: true, force: true }); return accountView(); });
 registerIpcHandler('account:import-config', async () => {
   const picked = await dialog.showOpenDialog(mainWindow, { title: 'Credenciais OAuth do Google Cloud (JSON)', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
   if (picked.canceled || !picked.filePaths[0]) return accountView();

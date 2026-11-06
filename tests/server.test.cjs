@@ -245,3 +245,87 @@ test('peças: versões, criptografia e validação', async () => {
   await assert.rejects(crypto0.seal({}, { dataKey: 'curta', uid: 'u1' }), /DATA_KEY/);
   assert.equal(await crypto0.verifyToken(await crypto0.signToken({ sid: 'a', exp: 10 }, 'z'.repeat(40)), 'z'.repeat(40), 20), null, 'vencido');
 });
+
+test('equipe: o dono adiciona e tira pessoas; cada papel só faz o que pode; tirar corta o acesso na hora', async () => {
+  const { call, loginAs } = setup();
+  const enterPanel = async (session) => {
+    const link = await call('POST', '/v1/admin/link', { token: session.token });
+    if (link.status !== 200) return { status: link.status };
+    const enter = await call('GET', `/painel/entrar?c=${new URL(link.data.url).searchParams.get('c')}`, { raw: true });
+    return { status: enter.status, cookie: enter.headers.get('set-cookie')?.split(';')[0] };
+  };
+  const owner = await loginAs({ sub: 'sub-dono', email: ADMIN }, 'pc-dono0000');
+  const ownerPanel = await enterPanel(owner);
+  const post = (cookie, route, body) => call('POST', `/painel/api/${route}`, { headers: { cookie, 'x-nexo-painel': '1' }, body });
+  // Ainda fora da equipe.
+  const helper = await loginAs({ sub: 'sub-ajudante', email: 'ajudante@exemplo.com' }, 'pc-ajud0000');
+  assert.equal((await enterPanel(helper)).status, 403);
+  assert.equal((await post(ownerPanel.cookie, 'equipe', { email: 'nao-e-email', role: 'leitura' })).status, 400);
+  assert.equal((await post(ownerPanel.cookie, 'equipe', { email: ADMIN, role: 'leitura' })).status, 400, 'o dono não vira leitura');
+  assert.equal((await post(ownerPanel.cookie, 'equipe', { email: 'ajudante@exemplo.com', role: 'dono' })).status, 400, 'não dá para criar outro dono pelo painel');
+  assert.equal((await post(ownerPanel.cookie, 'equipe', { email: 'Ajudante@Exemplo.com', role: 'leitura' })).status, 200);
+  const helperPanel = await enterPanel(helper);
+  assert.equal(helperPanel.status, 302);
+  const resumo = await call('GET', '/painel/api/resumo', { headers: { cookie: helperPanel.cookie } });
+  assert.equal(resumo.data.role, 'leitura');
+  assert.deepEqual(resumo.data.permissions, ['ver']);
+  // Leitura: vê o erro, mas não os e-mails e não muda nada.
+  const user = await loginAs();
+  await call('POST', '/v1/errors', { token: user.token, body: { installId: 'install-0000000011', version: '0.9.0', includeEmail: true, reports: [{ signature: 'abababababababab', message: 'Falhou' }] } });
+  const detail = await call('GET', '/painel/api/erros/abababababababab', { headers: { cookie: helperPanel.cookie } });
+  assert.deepEqual(detail.data.emails, []);
+  assert.equal(detail.data.emailsHidden, true);
+  assert.equal((await post(helperPanel.cookie, 'erros/abababababababab', { status: 'ignorado' })).status, 403);
+  assert.equal((await call('GET', '/painel/api/equipe', { headers: { cookie: helperPanel.cookie } })).status, 403);
+  assert.equal((await post(helperPanel.cookie, 'equipe', { email: 'outro@exemplo.com', role: 'colaborador' })).status, 403, 'só o dono mexe na equipe');
+  // Colaborador: muda status e vê e-mails, mas não mexe na equipe.
+  await post(ownerPanel.cookie, 'equipe', { email: 'ajudante@exemplo.com', role: 'colaborador' });
+  assert.equal((await post(helperPanel.cookie, 'erros/abababababababab', { status: 'ignorado' })).status, 200);
+  assert.deepEqual((await call('GET', '/painel/api/erros/abababababababab', { headers: { cookie: helperPanel.cookie } })).data.emails, ['pessoa@exemplo.com']);
+  assert.equal((await call('GET', '/painel/api/chaves', { headers: { cookie: helperPanel.cookie } })).status, 403);
+  // Tirar da equipe: a sessão do painel para de valer na hora.
+  assert.equal((await post(ownerPanel.cookie, 'equipe/remover', { email: 'ajudante@exemplo.com' })).status, 200);
+  assert.equal((await call('GET', '/painel/api/resumo', { headers: { cookie: helperPanel.cookie } })).status, 401);
+  const team = await call('GET', '/painel/api/equipe', { headers: { cookie: ownerPanel.cookie } });
+  assert.deepEqual(team.data.owners, [ADMIN]);
+  assert.deepEqual(team.data.members, []);
+});
+
+test('chaves de acesso: só leitura dos erros, sem e-mails, aparecem uma vez e podem ser revogadas', async () => {
+  const { call, loginAs, env } = setup();
+  const owner = await loginAs({ sub: 'sub-dono', email: ADMIN }, 'pc-dono0000');
+  const link = await call('POST', '/v1/admin/link', { token: owner.token });
+  const cookie = (await call('GET', `/painel/entrar?c=${new URL(link.data.url).searchParams.get('c')}`, { raw: true })).headers.get('set-cookie').split(';')[0];
+  const created = await call('POST', '/painel/api/chaves', { headers: { cookie, 'x-nexo-painel': '1' }, body: { label: 'Relatórios no GitHub' } });
+  assert.match(created.data.key, /^nexo_[\w-]{30,}$/);
+  assert.equal(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM tool_keys WHERE key_hash = ?').get(created.data.key).n, 0, 'a chave em si não fica guardada');
+  const listed = await call('GET', '/painel/api/chaves', { headers: { cookie } });
+  assert.equal(listed.data.keys[0].key, undefined);
+  assert.equal(listed.data.keys[0].key_hash, undefined);
+  const user = await loginAs();
+  await call('POST', '/v1/errors', { token: user.token, body: { installId: 'install-0000000012', version: '0.9.0', includeEmail: true, reports: [{ signature: 'cdcdcdcdcdcdcdcd', message: 'Quebrou feio', stack: 'Error\n    at x (a.js:1:1)', count: 2 }] } });
+  const tools = await call('GET', '/v1/tools/errors', { headers: { authorization: `Bearer ${created.data.key}` } });
+  assert.equal(tools.status, 200);
+  assert.equal(tools.data.groups[0].message, 'Quebrou feio');
+  assert.equal(tools.data.groups[0].occurrences, 2);
+  assert.doesNotMatch(JSON.stringify(tools.data), /pessoa@exemplo\.com/, 'sem e-mails de usuários');
+  assert.equal((await call('GET', '/v1/tools/errors', { headers: { authorization: 'Bearer nexo_chave-falsa-chave-falsa-chave-falsa' } })).status, 401);
+  assert.equal((await call('GET', '/v1/tools/errors', { token: user.token })).status, 401, 'token de usuário não serve');
+  await call('POST', '/painel/api/chaves/revogar', { headers: { cookie, 'x-nexo-painel': '1' }, body: { id: created.data.id } });
+  assert.equal((await call('GET', '/v1/tools/errors', { headers: { authorization: `Bearer ${created.data.key}` } })).status, 401, 'revogada');
+});
+
+test('rotina de relatórios: cria, atualiza e fecha issues pela assinatura', async () => {
+  const tools = await import('../server/tools/relatorios.mjs');
+  const group = { signature: '0123456789abcdef', message: 'Quebrou\n  feio', status: 'aberto', level: 'erro', source: 'interface', occurrences: 3, installs: 2, versions: '0.9.0', platforms: 'win32', first_at: 1, last_at: 2, stack: 'Error\n```x', context: '{"tela":"lab"}' };
+  const created = tools.plan([group], []);
+  assert.equal(created[0].type, 'create');
+  assert.equal(created[0].title, 'Quebrou feio');
+  assert.match(created[0].body, /<!-- nexo:0123456789abcdef -->/);
+  assert.doesNotMatch(created[0].body.split('```')[1] || '', /```/);
+  const issue = { number: 7, title: created[0].title, body: created[0].body };
+  assert.deepEqual(tools.plan([group], [issue]), [], 'nada mudou: nada a fazer');
+  assert.equal(tools.plan([{ ...group, occurrences: 9 }], [issue])[0].type, 'update');
+  assert.deepEqual(tools.plan([], [issue]), [{ type: 'close', number: 7 }], 'corrigido no painel: fecha');
+  assert.equal(tools.issueTitle({ ...group, status: 'reaberto' }), '[voltou] Quebrou feio');
+});

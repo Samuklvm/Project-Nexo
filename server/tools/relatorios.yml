@@ -1,0 +1,23 @@
+# Copie este arquivo para .github/workflows/relatorios.yml do repositório PRIVADO de relatórios, junto com
+# relatorios.mjs na raiz. Segredos do repositório privado: NEXO_TOOLS_KEY (criada no painel) e NEXO_SERVER_URL.
+name: Relatórios de erro do Nexo
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node relatorios.mjs
+        env:
+          NEXO_SERVER_URL: ${{ secrets.NEXO_SERVER_URL }}
+          NEXO_TOOLS_KEY: ${{ secrets.NEXO_TOOLS_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

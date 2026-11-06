@@ -418,6 +418,10 @@
           <div class="account-row"><span class="avatar lg" id="account-avatar-lg"><svg><use href="#i-user"/></svg></span><div class="account-copy"><h3 id="account-name">Conta</h3><p class="muted" id="account-detail">Entre com a sua conta Google para ter o seu perfil no Nexo.</p></div><div class="btn-row" id="account-actions"></div></div>
           <p class="muted footnote" id="account-note">Opcional. O login acontece no seu navegador; o Nexo guarda só nome, e-mail e foto neste PC (cifrados pelo Windows) e não guarda senhas nem tokens do Google.</p>
         </section>
+        <section class="sheet cloud-sheet" id="cloud-sheet">
+          <div class="sheet-head"><div><h3>Sincronização entre PCs</h3><p class="muted">Com o seu login do Google, cada PC guarda uma cópia criptografada no servidor do Nexo. Em outro PC, você escolhe de qual PC e o que trazer. Desligado por padrão.</p></div></div>
+          <div id="cloud-sync-body"><p class="muted">Carregando…</p></div>
+        </section>
         <section class="sheet connections-sheet" id="connections-sheet">
           <div class="sheet-head"><div><h3>Contas e conexões</h3><p class="muted">Ligue o Nexo às suas plataformas para completar a biblioteca, trazer tempo de jogo e capas oficiais e mostrar no Discord o que você está jogando. Tudo opcional e desconectável.</p></div><button class="btn sm ghost" id="integrations-import" type="button" hidden>Importar configuração (desenvolvedor)</button></div>
           <div class="conn-grid" id="conn-grid"></div>
@@ -436,9 +440,11 @@
           </section>
           <section class="sheet">
             <div class="sheet-head"><h3>Privacidade e dados</h3></div>
-            <p class="muted">Tudo o que o Nexo aprende fica neste computador. Nada é enviado, exceto a consulta pública de atualizações ao GitHub e o que você ligar: login com o Google e capas da CDN da Steam.</p>
+            <p class="muted">Tudo o que o Nexo aprende fica neste computador. Nada é enviado, exceto a consulta pública de atualizações ao GitHub e o que você ligar: login com o Google, capas da CDN da Steam, a sincronização e as opções abaixo.</p>
             <dl class="facts"><div><dt>Dados locais</dt><dd id="data-size">--</dd></div><div><dt>Pasta</dt><dd class="path" id="data-path">--</dd></div></dl>
-            <label class="switch"><input id="share-toggle" type="checkbox" /><i></i><span><strong>Compartilhamento opcional com o criador</strong><small>Desativado por padrão. Nesta versão a escolha só é guardada aqui; o Nexo não envia telemetria.</small></span></label>
+            <label class="switch"><input id="cloud-telemetry" type="checkbox" /><i></i><span><strong>Ajudar a melhorar o Nexo (telemetria)</strong><small>Desligado por padrão. Uma vez por dia, sem nada pessoal: versão, sistema, tipo de processador, memória e placa de vídeo, e quais telas e recursos foram usados. Vai com um código aleatório deste PC, nunca com o seu e-mail.</small></span></label>
+            <label class="switch"><input id="cloud-errors" type="checkbox" /><i></i><span><strong>Enviar relatórios de erro</strong><small>Desligado por padrão. Os erros do registro abaixo vão para o criador corrigir, sem o seu nome de usuário nem as suas pastas.</small></span></label>
+            <label class="switch sub" id="cloud-email-row"><input id="cloud-error-email" type="checkbox" /><i></i><span><strong>Incluir meu e-mail nos relatórios</strong><small>Para o criador avisar você quando o erro for corrigido. Só funciona com a sincronização ligada (é ela que confirma o seu e-mail).</small></span></label>
             <div class="btn-row"><button class="btn sm" id="export-data" type="button">Exportar meus dados</button><button class="btn sm" id="erase-learning" type="button">Apagar aprendizado e histórico</button><button class="btn sm ghost" id="open-privacy" type="button">Política completa</button></div>
           </section>
         </div>
@@ -504,6 +510,7 @@
   <script src="src/view-updates.js"></script>
   <script src="src/view-settings.js"></script>
   <script src="src/view-errors.js"></script>
+  <script src="src/view-cloud.js"></script>
   <script src="src/view-library.js"></script>
   <script src="src/view-lab.js"></script>
   <script src="src/reboot-test.js"></script>

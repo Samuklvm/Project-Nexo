@@ -134,6 +134,20 @@ function createErrorLog({ fs, path, dir, version = '0.0.0', platform = process.p
     return { total: items.reduce((sum, item) => sum + item.count, 0), groups: items.slice(0, Math.max(1, Math.min(500, limit))), file, dir };
   }
 
+  /** Para enviar ao servidor: só o que aconteceu depois de `since`, agrupado (count = ocorrências novas). */
+  async function groupsSince(since = 0, { levels = ['erro'], limit = 50 } = {}) {
+    const groups = new Map();
+    let newest = since;
+    for (const entry of await readEntries()) {
+      if (!(entry.at > since) || !levels.includes(entry.level)) continue;
+      newest = Math.max(newest, entry.at);
+      const group = groups.get(entry.signature);
+      if (!group) groups.set(entry.signature, { signature: entry.signature, source: entry.source, level: entry.level, message: entry.message, stack: entry.stack, context: entry.context, count: 1, firstAt: entry.at, lastAt: entry.at, version: entry.version });
+      else { group.count += 1; group.lastAt = Math.max(group.lastAt, entry.at); group.firstAt = Math.min(group.firstAt, entry.at); if (entry.at >= group.lastAt) Object.assign(group, { message: entry.message, context: entry.context, stack: entry.stack || group.stack }); }
+    }
+    return { groups: [...groups.values()].sort((a, b) => b.count - a.count).slice(0, limit), newest };
+  }
+
   async function clear() {
     await chain;
     await fs.rm(file, { force: true }).catch(() => {});
@@ -158,7 +172,7 @@ function createErrorLog({ fs, path, dir, version = '0.0.0', platform = process.p
 
   const onRecord = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
 
-  return { record, list, clear, exportText, onRecord, redact, file, dir };
+  return { record, list, groupsSince, clear, exportText, onRecord, redact, file, dir };
 }
 
 module.exports = { createErrorLog, makeRedactor, signatureOf, SOURCES, MAX_BYTES, PER_HOUR };
