@@ -11,6 +11,7 @@ const { Worker } = require('worker_threads');
 const { createProbe } = require('./electron/probe.cjs');
 const { createFpsRunner } = require('./electron/fps-runner.cjs');
 const { createElevator, toolLauncher, PAWNIO } = require('./electron/elevate.cjs');
+const { decodeConsole } = require('./electron/console-text.cjs');
 const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
 const LabParsers = { parseList: parseLabPlanList };
@@ -862,8 +863,9 @@ async function listPowerPlans() {
   } catch { /* em alguns PCs o CIM de energia não responde; o powercfg abaixo resolve */ }
   if (plans.length) return plans;
   // Alternativa: o próprio powercfg (lista independente do idioma; nomes conhecidos traduzidos pelo GUID).
-  const { stdout } = await execFileAsync('powercfg', ['/list'], { windowsHide: true, timeout: 10000 }).catch(() => ({ stdout: '' }));
-  return LabParsers.parseList(stdout).filter((plan) => GUID_PATTERN.test(plan.guid)).map((plan) => ({ ...plan, name: KNOWN_PLANS[plan.guid] || plan.name }));
+  // Bytes crus: a saída vem na página de código do console (CP850), e lida como UTF-8 estragava os acentos ("M�ximo").
+  const { stdout } = await execFileAsync('powercfg', ['/list'], { windowsHide: true, timeout: 10000, encoding: 'buffer' }).catch(() => ({ stdout: Buffer.alloc(0) }));
+  return LabParsers.parseList(decodeConsole(stdout)).filter((plan) => GUID_PATTERN.test(plan.guid)).map((plan) => ({ ...plan, name: KNOWN_PLANS[plan.guid] || plan.name }));
 }
 
 registerIpcHandler('power:list', async () => (IS_LINUX ? linux.powerProfiles() : listPowerPlans()));

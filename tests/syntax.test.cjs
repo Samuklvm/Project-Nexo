@@ -28,3 +28,10 @@ test('o processo principal e os módulos compilam', () => {
     assert.doesNotThrow(() => new vm.Script(`(function (exports, require, module, __filename, __dirname) {${code}\n})`, { filename: file }), `${file} tem erro de sintaxe`);
   }
 });
+
+test('saída do console do Windows: UTF-8 ou CP850, sem "�"', () => {
+  const { decodeConsole } = require('../electron/console-text.cjs');
+  assert.equal(decodeConsole(Buffer.from([0x4d, 0xa0, 0x78, 0x69, 0x6d, 0x6f])), 'Máximo');
+  assert.equal(decodeConsole(Buffer.from('Econômico', 'utf8')), 'Econômico');
+  assert.equal(decodeConsole(Buffer.from([0x87, 0xc6, 0x6f])), 'ção');
+});
