@@ -176,6 +176,8 @@ test('Atlas: fatos do sistema viram achados honestos', () => {
   assert.equal(slow.refresh.state, 'atencao');
   assert.equal(slow.gameMode.state, 'atencao');
   assert.match(slow.vbs.text, /Integridade de memória/);
+  assert.equal(Atlas.evaluateFacts({ platform: 'win32', capture: 1, historical: 1 }).capture.state, 'atencao', 'gravar o que aconteceu ligado');
+  assert.equal(Atlas.evaluateFacts({ platform: 'win32', capture: null, historical: null }).capture.state, 'ok', 'sem valor no Registro = padrão do Windows (desligado)');
   const fine = Atlas.evaluateFacts({ platform: 'win32', memory: [{ speed: 3200, configured: 3200, capacity: 8e9 }, { speed: 3200, configured: 3200, capacity: 8e9 }], displays: [{ name: 'GPU', current: 144, max: 165 }], gameMode: 1, capture: 0 });
   assert.equal(fine.xmp.state, 'info');
   assert.equal(fine.channels.state, 'ok');
@@ -185,4 +187,32 @@ test('Atlas: fatos do sistema viram achados honestos', () => {
   assert.equal(linux.ppd.state, 'atencao');
   assert.equal(linux.mangohud.state, 'ok');
   assert.match(linux.session.text, /XWayland/);
+});
+
+test('build: o instalador do Windows leva o coletor de sensores e o PresentMon fixado', () => {
+  const pkg = require('../package.json');
+  const win = pkg.build.win.extraResources || [];
+  assert.ok(win.some((entry) => entry.from === 'sensor-host/publish' && entry.to === 'sensor-host'), 'sensor-host empacotado (sumiu do build desde a 0.4.0)');
+  assert.ok(pkg.build.extraResources.some((entry) => entry.from === 'third-party/bin' && entry.to === 'tools'));
+  const lock = require('../third-party/presentmon.lock.json');
+  assert.match(lock.sha256, /^[0-9a-f]{64}$/);
+});
+
+test('biblioteca: DLC fica de fora e programas da Steam viram "app", não jogo', () => {
+  const Games = require('../electron/games.cjs');
+  const acf = (appid, name) => `"AppState" { "appid" "${appid}" "name" "${name}" "StateFlags" "4" "installdir" "x" }`;
+  assert.equal(Games.parseAppManifest(acf('2138330', 'Cyberpunk 2077 Bonus Content')), null);
+  assert.equal(Games.parseAppManifest(acf('431960', 'Wallpaper Engine')).kind, 'app');
+  assert.equal(Games.parseAppManifest(acf('629520', 'Soundpad')).kind, 'app');
+  assert.equal(Games.parseAppManifest(acf('1091500', 'Cyberpunk 2077')).kind, 'game');
+  assert.equal(Games.publicView({ id: 'steam-431960', name: 'Wallpaper Engine', source: 'steam', kind: 'app' }).kind, 'app');
+  const { normalizeProbe } = require('../electron/probe.cjs');
+  const sample = normalizeProbe({ t: 1, fg: { pid: 9, name: 'wallpaper32', path: 'C:\\Steam\\steamapps\\common\\wallpaper_engine\\wallpaper32.exe' } }, () => ({ id: 'steam-431960', name: 'Wallpaper Engine', kind: 'app' }));
+  assert.equal(sample.fg.isGame, false);
+});
+
+test('planos de energia: a saída do powercfg (em português) é lida sem depender do idioma', () => {
+  const { parseList } = require('../electron/lab-system.cjs');
+  const plans = parseList('Esquemas de Energia Existentes (* Ativo)\r\n-----------------------------------\r\nGUID do Esquema de Energia: 381b4222-f694-41f0-9685-ff5bb260df2e  (Equilibrado) *\r\nGUID do Esquema de Energia: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c  (Alto desempenho)\r\n');
+  assert.deepEqual(plans.map((plan) => [plan.guid.slice(0, 8), plan.active]), [['381b4222', true], ['8c5e7fda', false]]);
 });

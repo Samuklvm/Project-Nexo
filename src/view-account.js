@@ -77,11 +77,11 @@
       : steam.detected.length ? `<p class="muted">Contas que já entraram na Steam deste PC:</p><div class="conn-pick">${steam.detected.map((user) => `<button type="button" data-steam="${escapeHtml(user.steamId)}">${avatar(user.avatar)}<span><b>${escapeHtml(user.personaName)}</b><small>${user.mostRecent ? 'conta atual' : 'outra conta'}</small></span></button>`).join('')}</div>`
       : '<p class="muted">Entre na Steam pelo menos uma vez neste PC para o Nexo encontrar a conta.</p>';
     const xbox = c.xbox;
-    const xboxBody = !xbox.configured ? '<p class="muted">Ainda não configurado nesta build: falta o ID do app no Azure (veja docs/CONEXOES.md).</p>'
+    const xboxBody = !xbox.configured ? '<p class="muted">O login com a conta Xbox chega numa próxima versão.</p>'
       : xbox.connected ? `<div class="conn-who">${avatar(xbox.avatar)}<div><b>${escapeHtml(xbox.gamertag)}</b><small>${xbox.titles} títulos no histórico · artes oficiais do Xbox nas capas</small></div></div><div class="btn-row"><button class="btn sm" type="button" data-conn="xbox-in">Atualizar</button><button class="btn sm ghost" type="button" data-conn="xbox-off">Desconectar</button></div>`
       : '<p class="muted">Gamertag, foto e o histórico de jogos com as artes oficiais de cada título. O login acontece no navegador; o Nexo não guarda tokens.</p><button class="btn primary sm" type="button" data-conn="xbox-in">Entrar com a conta Microsoft</button>';
     const d = c.discord;
-    const discordBody = !d.configured ? '<p class="muted">Ainda não configurado nesta build: falta o Application ID do Discord (veja docs/CONEXOES.md).</p>'
+    const discordBody = !d.configured ? '<p class="muted">O status no Discord não está disponível nesta versão.</p>'
       : `<label class="switch compact"><input type="checkbox" data-discord="enabled" ${d.enabled ? 'checked' : ''}/><i></i><span>Mostrar no meu perfil do Discord</span></label>
         <label class="switch compact"><input type="checkbox" data-discord="showGame" ${d.showGame ? 'checked' : ''} ${d.enabled ? '' : 'disabled'}/><i></i><span>O jogo que o Nexo está gravando</span></label>
         <label class="switch compact"><input type="checkbox" data-discord="showNexo" ${d.showNexo ? 'checked' : ''} ${d.enabled ? '' : 'disabled'}/><i></i><span>“Cuidando do PC com o Nexo” quando não houver jogo</span></label>

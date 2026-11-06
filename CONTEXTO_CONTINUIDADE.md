@@ -11,7 +11,7 @@ O repositório local é `C:\Users\samue\OneDrive\Desktop\Project-Nexo` e o remot
 ## Projeto e objetivo do criador
 
 - O Project Nexo é um aplicativo desktop de otimização e cuidados do computador, feito para aprender e evoluir continuamente.
-- O criador quer que seja gratuito, de código aberto, honesto e respeitoso com a privacidade.
+- O criador quer que seja gratuito, honesto e respeitoso com a privacidade. O código é proprietário (todos os direitos reservados, veja LICENSE).
 - Ao conversar, usar português brasileiro e um tom próximo e claro. O usuário gosta de aprender visualmente, com demonstrações na tela quando pede isso.
 - O usuário autoriza criatividade de design e funcionalidades quando diz que podemos decidir livremente, mas prefere testar uma versão antes de abrir novas frentes grandes.
 

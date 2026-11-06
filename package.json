@@ -47,6 +47,10 @@
     ],
     "extraResources": [
       {
+        "from": "THIRD-PARTY-NOTICES.md",
+        "to": "THIRD-PARTY-NOTICES.md"
+      },
+      {
         "from": "third-party/bin",
         "to": "tools",
         "filter": [
@@ -72,6 +76,15 @@
         }
       ],
       "artifactName": "Nexo-Setup-${version}.${ext}",
+      "extraResources": [
+        {
+          "from": "sensor-host/publish",
+          "to": "sensor-host",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ],
       "icon": "assets/icon.ico"
     },
     "nsis": {

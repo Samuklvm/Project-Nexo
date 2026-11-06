@@ -24,7 +24,7 @@
     setText('drive-used-label', `${formatBytes(drive.usedBytes)} usados`); setText('drive-free-label', `${formatBytes(drive.freeBytes)} livres`);
     setText('drive-operation-title', 'Otimização do Windows');
     setText('drive-operation-description', 'O Windows seleciona a operação adequada para o tipo de unidade.');
-    setText('drive-method', 'Otimizar');
+    setText('drive-method', 'Automática');
     bar.style.width = `${drive.usedPercent}%`;
     optimizeButton.disabled = false;
   }
@@ -34,7 +34,7 @@
     const signature = drives.map((drive) => drive.driveLetter).join(',');
     if (select.dataset.signature !== signature) {
       const previous = select.value || Nexo.state.snapshot?.primaryDrive?.driveLetter;
-      select.innerHTML = drives.length ? drives.map((drive) => `<option value="${escapeHtml(drive.driveLetter)}">${escapeHtml(drive.driveLetter)}: ${escapeHtml(drive.name || 'Disco local')}</option>`).join('') : '<option value="">Nenhuma unidade</option>';
+      select.innerHTML = drives.length ? drives.map((drive) => `<option value="${escapeHtml(drive.driveLetter)}">${escapeHtml(drive.name || `${drive.driveLetter}: Disco local`)}</option>`).join('') : '<option value="">Nenhuma unidade</option>';
       if (drives.some((drive) => drive.driveLetter === previous)) select.value = previous;
       select.dataset.signature = signature;
     }

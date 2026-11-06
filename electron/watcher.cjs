@@ -52,7 +52,7 @@ function createWatchLogic({ match = () => null, alive = defaultAlive, onStart = 
       if (!reading || !reading.pid) return;
       if (current) return;
       const game = match(reading.path);
-      const classified = game ? { isGame: true } : Session.classifyForeground({ name: reading.name, path: reading.path });
+      const classified = game ? { isGame: game.kind !== 'app' } : Session.classifyForeground({ name: reading.name, path: reading.path });
       if (!classified.isGame) { candidate = null; return; }
       if (candidate && candidate.pid === reading.pid) {
         current = { pid: reading.pid, name: game?.name || String(reading.name || 'Jogo').slice(0, 60), gameId: game?.id || null, since: Date.now() };

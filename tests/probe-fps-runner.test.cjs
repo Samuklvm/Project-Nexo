@@ -100,10 +100,11 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-test('PresentMon: sem hash fixado nada é baixado; com hash, só se a URL for oficial e o arquivo conferir', () => {
+test('PresentMon: hash fixado e conferido; sem hash nada é baixado; só baixa da URL oficial e se o arquivo conferir', () => {
   const lock = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'third-party', 'presentmon.lock.json'), 'utf8'));
-  assert.equal(lock.sha256, null, 'o hash só deve ser fixado depois de conferido por uma pessoa');
-  assert.equal(Fetch.plan(lock).action, 'skip');
+  assert.equal(lock.sha256, 'b2a706bc6ad475749e3b7e3409263aa1e6906d45bdcf993f6dbc0f660188f1af', 'hash conferido com o digest da release v2.6.0 do GitHub');
+  assert.equal(Fetch.plan(lock).action, 'download');
+  assert.equal(Fetch.plan({ ...lock, sha256: null }).action, 'skip', 'sem hash, nada é baixado');
   assert.equal(Fetch.plan(lock, ['--print-hash']).action, 'print-hash');
   assert.equal(Fetch.plan({ ...lock, sha256: 'abc' }).action, 'skip', 'hash malformado é ignorado');
   const good = crypto.createHash('sha256').update('conteudo').digest('hex');

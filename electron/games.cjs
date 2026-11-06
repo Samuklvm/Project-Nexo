@@ -9,7 +9,10 @@
  *    tamanho, última vez jogado e a capa já copiada para a pasta de dados do Nexo.
  */
 const LAUNCHER_NAMES = /^(steam|steamworks common redistributables|epic games launcher|epic online services|ea app|ea desktop|origin|battle\.net|riot client|riot vanguard|ubisoft connect|uplay|gog galaxy|rockstar games launcher|rockstar games social club|xbox|gaming services|microsoft gameinput|nvidia app|geforce experience|amd software|directx|microsoft visual c\+\+.*|vulkan run ?time.*|easy ?anti-?cheat.*|battleye.*|punkbuster.*|physx.*)$/i;
-const NOT_A_GAME = /redistributable|^proton\b|steam linux runtime|steamvr|dedicated server|\bsdk\b|soundtrack|benchmark tool|^steamworks/i;
+const NOT_A_GAME = /redistributable|^proton\b|steam linux runtime|steamvr|dedicated server|\bsdk\b|soundtrack|benchmark tool|^steamworks|bonus content|\bartbook\b|\bart book\b|digital extras|season pass/i;
+/** Programas da Steam que não são jogos: aparecem em “Apps”, fora dos destaques e da gravação automática. */
+const STEAM_APPS = new Set(['431960', '629520', '993090', '1905180', '365670', '1840', '1250410', '388080', '1454400', '774361', '440900', '607380', '1066780']);
+const APP_NAMES = /^(wallpaper engine|soundpad|lossless scaling|obs studio|blender|source filmmaker|rpg maker|aseprite|fpsvr|steam deck|krita|voicemod|tabletop simulator workshop)/i;
 const GAME_PUBLISHERS = /(electronic arts|riot games|blizzard|rockstar games|ubisoft|bethesda|mojang|activision|bandai namco|cd projekt|square enix|\bsega\b|capcom|wargaming|garena|mihoyo|hoyoverse|krafton|nexon|grinding gear|digital extremes|hi-rez|innersloth|paradox interactive|focus entertainment|2k games|take-two|warner bros\. games|devolver|team17|ea swiss|respawn|bungie|epic games, inc\.)/i;
 const GAME_FOLDER = [/\\steamapps\\common\\/i, /\\epic games\\(?!launcher)/i, /\\gog galaxy\\games\\/i, /\\gog games\\/i, /\\riot games\\/i,
   /\\ubisoft game launcher\\games\\/i, /\\ea games\\/i, /\\origin games\\/i, /\\xboxgames\\/i, /\\rockstar games\\(?!launcher)/i];
@@ -67,7 +70,8 @@ function parseAppManifest(text) {
   if (!state || !state.appid || !state.name) return null;
   if (state.appid === '228980' || NOT_A_GAME.test(state.name)) return null;
   const flags = Number(state.stateflags) || 0;
-  return { appid: String(state.appid).replace(/\D/g, ''), name: state.name.trim(), installdir: state.installdir || '', sizeBytes: Number(state.sizeondisk) || 0,
+  const appid = String(state.appid).replace(/\D/g, '');
+  return { appid, name: state.name.trim(), kind: STEAM_APPS.has(appid) || APP_NAMES.test(state.name.trim()) ? 'app' : 'game', installdir: state.installdir || '', sizeBytes: Number(state.sizeondisk) || 0,
     lastPlayed: Number(state.lastplayed) ? Number(state.lastplayed) * 1000 : null, installed: (flags & 4) === 4 || flags === 0 };
 }
 
@@ -135,7 +139,7 @@ function publicView(game) {
   return { id: game.id, name: game.name, source: game.source, sourceLabel: SOURCE_LABEL[game.source] || 'Instalado', sizeBytes: game.sizeBytes || 0, lastPlayed: game.lastPlayed || null,
     cover: game.cover || null, hero: game.hero || null, logo: game.logo || null, header: game.header || null, icon: game.icon || null, hue: hueOf(game.name),
     installed: game.installed !== false, playtimeMin: Number.isFinite(game.playtimeMin) ? game.playtimeMin : null, fromAccount: game.fromAccount || null,
-    canLaunch: Boolean(game.launchUri || game.exe), coverSource: game.coverSource || null };
+    canLaunch: Boolean(game.launchUri || game.exe), coverSource: game.coverSource || null, kind: game.kind === 'app' ? 'app' : 'game' };
 }
 
 const REGISTRY_SCRIPT = String.raw`
@@ -185,7 +189,7 @@ function createLibrary({ fs, path, runPowerShell, getFileIcon, coversDir, manual
         let manifest;
         try { manifest = parseAppManifest(await fs.readFile(path.join(apps, entry.name), 'utf8')); } catch { continue; }
         if (!manifest || !manifest.installed) continue;
-        found.push({ id: `steam-${manifest.appid}`, source: 'steam', name: manifest.name, sizeBytes: manifest.sizeBytes, lastPlayed: manifest.lastPlayed, appid: manifest.appid, installed: true,
+        found.push({ id: `steam-${manifest.appid}`, source: 'steam', name: manifest.name, kind: manifest.kind, sizeBytes: manifest.sizeBytes, lastPlayed: manifest.lastPlayed, appid: manifest.appid, installed: true,
           installDir: path.join(apps, 'common', manifest.installdir), launchUri: `steam://rungameid/${manifest.appid}`, ...(await steamLocalArt(root, manifest.appid)) });
       }
     }
@@ -402,4 +406,4 @@ function createLibrary({ fs, path, runPowerShell, getFileIcon, coversDir, manual
   return { scan, fetchOfficialArt, matchPath, steamRoot: () => steamRoot, get: (id) => byId.get(id) || null, list: () => games.map(publicView) };
 }
 
-module.exports = { NOT_A_GAME, createLibrary, parseVdf, steamLibraries, parseAppManifest, parseEpicManifest, parseMicrosoftGameConfig, classifyUninstall, mergeGames, publicView, slug, hueOf, SOURCE_LABEL, GAME_FOLDER, REGISTRY_SCRIPT };
+module.exports = { NOT_A_GAME, STEAM_APPS, createLibrary, parseVdf, steamLibraries, parseAppManifest, parseEpicManifest, parseMicrosoftGameConfig, classifyUninstall, mergeGames, publicView, slug, hueOf, SOURCE_LABEL, GAME_FOLDER, REGISTRY_SCRIPT };

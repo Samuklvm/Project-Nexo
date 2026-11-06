@@ -110,7 +110,10 @@ function iconUse(id) { return `<svg aria-hidden="true"><use href="#${id}"/></svg
 function recordActivity(title, detail) {
   const entries = readJSON(Nexo.keys.activity, []);
   const list = Array.isArray(entries) ? entries : [];
-  list.unshift({ title: String(title), detail: String(detail), timestamp: Date.now() });
+  const last = list[0];
+  // Repetições seguidas (ex.: "Análise inteligente · nada preocupante") viram uma linha só, com contador.
+  if (last && last.title === String(title) && last.detail === String(detail) && Date.now() - last.timestamp < 12 * 3600e3) { last.timestamp = Date.now(); last.count = (Number(last.count) || 1) + 1; }
+  else list.unshift({ title: String(title), detail: String(detail), timestamp: Date.now() });
   if (!writeJSON(Nexo.keys.activity, list.slice(0, 20))) showToast('Atividade registrada apenas nesta sessão.');
   renderActivity(list.slice(0, 20));
 }
@@ -118,13 +121,14 @@ function recordActivity(title, detail) {
 function renderActivity(entries = readJSON(Nexo.keys.activity, [])) {
   const list = document.getElementById('activity-list');
   if (!list) return;
-  const valid = (Array.isArray(entries) ? entries : []).filter((entry) => entry && typeof entry.title === 'string' && Number.isFinite(entry.timestamp)).slice(0, 20);
+  const valid = (Array.isArray(entries) ? entries : []).filter((entry) => entry && typeof entry.title === 'string' && Number.isFinite(entry.timestamp))
+    .reduce((acc, entry) => { const prev = acc[acc.length - 1]; if (prev && prev.title === entry.title && prev.detail === entry.detail) { prev.count = (prev.count || 1) + (Number(entry.count) || 1); } else acc.push({ ...entry }); return acc; }, []).slice(0, 20);
   list.replaceChildren(...valid.map((entry) => {
     const item = document.createElement('li');
     const label = document.createElement('strong');
     const meta = document.createElement('span');
     label.textContent = entry.title;
-    meta.textContent = `${new Date(entry.timestamp).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${entry.detail || ''}`;
+    meta.textContent = `${new Date(entry.timestamp).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${entry.detail || ''}${entry.count > 1 ? ` · ${entry.count} vezes` : ''}`;
     item.append(label, meta);
     return item;
   }));

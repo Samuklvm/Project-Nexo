@@ -42,6 +42,9 @@
   function visible() {
     const query = state.query.toLocaleLowerCase('pt-BR');
     const list = state.games.filter((game) => {
+      const isApp = game.kind === 'app';
+      if (state.filter === 'apps') return isApp && (!query || game.name.toLocaleLowerCase('pt-BR').includes(query));
+      if (isApp) return false;
       if (state.filter === 'installed' && !game.installed) return false;
       if (state.filter === 'account' && game.installed) return false;
       if (!['installed', 'account', 'all'].includes(state.filter) && game.source !== state.filter) return false;
@@ -53,18 +56,20 @@
   }
 
   function renderFilters() {
-    const installed = state.games.filter((game) => game.installed);
-    const account = state.games.length - installed.length;
+    const games = state.games.filter((game) => game.kind !== 'app');
+    const apps = state.games.length - games.length;
+    const installed = games.filter((game) => game.installed);
+    const account = games.length - installed.length;
     const counts = installed.reduce((acc, game) => { acc[game.source] = (acc[game.source] || 0) + 1; return acc; }, {});
     const labels = Object.fromEntries(state.games.map((game) => [game.source, game.sourceLabel]));
-    const entries = [['installed', `Instalados · ${installed.length}`], ...(account ? [['account', `Na conta · ${account}`], ['all', `Tudo · ${state.games.length}`]] : []),
-      ...Object.keys(counts).sort((a, b) => counts[b] - counts[a]).map((source) => [source, `${labels[source]} · ${counts[source]}`])];
+    const entries = [['installed', `Instalados · ${installed.length}`], ...(account ? [['account', `Na conta · ${account}`], ['all', `Tudo · ${games.length}`]] : []),
+      ...Object.keys(counts).sort((a, b) => counts[b] - counts[a]).map((source) => [source, `${labels[source]} · ${counts[source]}`]), ...(apps ? [['apps', `Apps · ${apps}`]] : [])];
     document.getElementById('lib-sources').innerHTML = entries.map(([id, label]) => `<button type="button" data-lib-source="${escapeHtml(id)}" aria-pressed="${state.filter === id}">${escapeHtml(label)}</button>`).join('');
   }
 
   /* ---------- Destaque ---------- */
   function renderHero() {
-    const installed = state.games.filter((game) => game.installed);
+    const installed = state.games.filter((game) => game.installed && game.kind !== 'app');
     const hero = installed.filter((game) => game.lastPlayed).sort((a, b) => b.lastPlayed - a.lastPlayed)[0] || installed[0] || state.games[0];
     const artBox = document.getElementById('lib-hero-art');
     const actions = document.getElementById('lib-hero-actions');
@@ -112,8 +117,8 @@
   }
 
   function renderShelves() {
-    const recent = state.games.filter((game) => game.installed && game.lastPlayed).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 8);
-    const top = state.games.filter((game) => game.playtimeMin > 0).sort((a, b) => b.playtimeMin - a.playtimeMin).slice(0, 10);
+    const recent = state.games.filter((game) => game.installed && game.lastPlayed && game.kind !== 'app').sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 8);
+    const top = state.games.filter((game) => game.playtimeMin > 0 && game.kind !== 'app').sort((a, b) => b.playtimeMin - a.playtimeMin).slice(0, 10);
     document.getElementById('shelf-recent').hidden = recent.length < 2;
     document.getElementById('shelf-recent-row').innerHTML = recent.map(tile).join('');
     document.getElementById('shelf-top').hidden = top.length < 3;
@@ -124,7 +129,7 @@
     const grid = document.getElementById('lib-grid');
     if (state.loading && !state.games.length) { grid.innerHTML = Array.from({ length: 10 }, () => '<div class="game-card skeleton-card"><span class="skeleton"></span></div>').join(''); return; }
     const list = visible();
-    setText('lib-count', state.filter === 'account' ? `Na sua conta (${list.length})` : state.filter === 'all' ? `Toda a biblioteca (${list.length})` : `Instalados (${list.length})`);
+    setText('lib-count', state.filter === 'account' ? `Na sua conta (${list.length})` : state.filter === 'all' ? `Toda a biblioteca (${list.length})` : state.filter === 'apps' ? `Apps (${list.length})` : `Instalados (${list.length})`);
     grid.innerHTML = list.length ? list.map(card).join('') : `<div class="sheet empty-art">${Nexo.constellation?.() || ''}<span>${state.games.length ? 'Nada com esse filtro.' : 'Nenhum jogo encontrado neste PC ainda.'}</span></div>`;
   }
 
@@ -228,7 +233,7 @@
     const entry = details.get(game.id);
     const info = entry?.data;
     const ach = info?.achievements?.state === 'ok' || info?.achievements?.state === 'private' ? info.achievements : null;
-    const stats = [['Tempo de jogo', hours(game.playtimeMin) || '—'], ['Última vez', game.lastPlayed ? short(game.lastPlayed) : '—'], ['Conquistas', ach?.state === 'ok' ? `${ach.unlocked}/${ach.total}` : '—'], ['Tamanho', game.sizeBytes ? formatBytes(game.sizeBytes) : '—'], ['FPS médio', last ? dec(last.avgFps) : '—'], ['1% baixo', last ? dec(last.p1LowFps) : '—']];
+    const stats = [['Tempo de jogo', hours(game.playtimeMin) || '—'], ['Última vez', game.lastPlayed ? short(game.lastPlayed) : '—'], ['Conquistas', ach?.state === 'ok' ? `${ach.unlocked}/${ach.total}` : info?.store?.achievementsTotal ? `${info.store.achievementsTotal} no jogo` : '—'], ['Tamanho', game.sizeBytes ? formatBytes(game.sizeBytes) : '—'], ['FPS médio', last ? dec(last.avgFps) : '—'], ['1% baixo', last ? dec(last.p1LowFps) : '—']];
     const tab = state.tab || 'geral';
     let body = '';
     if (tab === 'desempenho') body = performanceTab(game, sessions);

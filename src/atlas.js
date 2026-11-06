@@ -110,7 +110,10 @@
     }
     out.hags = facts.hags === 2 ? { state: 'info', text: 'Ligado neste PC.' } : facts.hags === 1 ? { state: 'info', text: 'Desligado neste PC.' } : { state: 'desconhecido', text: 'Não exposto pelo driver (ou não suportado).' };
     out.gameMode = facts.gameMode === 0 ? { state: 'atencao', text: 'Desligado neste PC.' } : { state: 'ok', text: 'Ligado (padrão).' };
-    out.capture = facts.capture === 1 ? { state: 'atencao', text: 'A captura de jogos está ativa. Se "Gravar o que aconteceu" estiver ligado, há gravação contínua.' } : facts.capture === 0 ? { state: 'ok', text: 'Captura de jogos desligada.' } : { state: 'desconhecido', text: 'Não foi possível ler.' };
+    // "Gravar o que aconteceu" (HistoricalCaptureEnabled) é o que grava o tempo todo; sem o valor no Registro, vale o padrão do Windows (desligado).
+    out.capture = facts.historical === 1 ? { state: 'atencao', text: '"Gravar o que aconteceu" está ligado: o Windows grava os últimos minutos o tempo todo.' }
+      : facts.capture === 0 ? { state: 'ok', text: 'Captura de jogos desligada.' }
+      : { state: 'ok', text: '"Gravar o que aconteceu" está desligado (padrão do Windows). Só grava quando você pede.' };
     if (facts.vbs !== null && facts.vbs !== undefined) out.vbs = facts.vbs === 2 ? { state: 'info', text: `VBS em execução${facts.hvci ? ', com Integridade de memória ligada' : ''}.` } : { state: 'info', text: 'VBS não está em execução.' };
     return out;
   }

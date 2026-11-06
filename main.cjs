@@ -11,7 +11,8 @@ const { Worker } = require('worker_threads');
 const { createProbe } = require('./electron/probe.cjs');
 const { createFpsRunner } = require('./electron/fps-runner.cjs');
 const { createElevator, toolLauncher } = require('./electron/elevate.cjs');
-const { createLabSystem } = require('./electron/lab-system.cjs');
+const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
+const LabParsers = { parseList: parseLabPlanList };
 const { createLibrary } = require('./electron/games.cjs');
 const { createWatcher } = require('./electron/watcher.cjs');
 const Account = require('./electron/account.cjs');
@@ -823,15 +824,24 @@ registerIpcHandler('updates:install', async () => {
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UTF8_PS = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ErrorActionPreference='SilentlyContinue'; ";
 
+/** Nomes dos planos padrão do Windows (a saída do powercfg vem na página de código do console e estraga acentos). */
+const KNOWN_PLANS = { '381b4222-f694-41f0-9685-ff5bb260df2e': 'Equilibrado', '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c': 'Alto desempenho', 'a1841308-3541-4fab-bc81-f71556f20b4a': 'Economia de energia', 'e9a42b02-d5df-448d-aa00-03f14749eb61': 'Desempenho máximo' };
 async function listPowerPlans() {
   if (process.platform !== 'win32') return [];
-  const script = UTF8_PS + String.raw`$p=@(Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan | ForEach-Object { [pscustomobject]@{ guid = ([string]$_.InstanceID -replace '.*\{|\}.*',''); name = [string]$_.ElementName; active = [bool]$_.IsActive } }); ConvertTo-Json -InputObject $p -Compress`;
-  const { stdout } = await runPowerShell(script, 10000);
-  if (!stdout.trim()) return [];
-  const parsed = JSON.parse(stdout);
-  return (Array.isArray(parsed) ? parsed : [parsed])
-    .filter((plan) => GUID_PATTERN.test(plan.guid))
-    .map((plan) => ({ guid: plan.guid.toLowerCase(), name: String(plan.name || 'Plano'), active: Boolean(plan.active) }));
+  let plans = [];
+  try {
+    const script = UTF8_PS + String.raw`$p=@(Get-CimInstance -Namespace root\cimv2\power -ClassName Win32_PowerPlan | ForEach-Object { [pscustomobject]@{ guid = ([string]$_.InstanceID -replace '.*\{|\}.*',''); name = [string]$_.ElementName; active = [bool]$_.IsActive } }); ConvertTo-Json -InputObject $p -Compress`;
+    const { stdout } = await runPowerShell(script, 10000);
+    if (stdout.trim()) {
+      const parsed = JSON.parse(stdout);
+      plans = (Array.isArray(parsed) ? parsed : [parsed]).filter((plan) => GUID_PATTERN.test(plan?.guid || ''))
+        .map((plan) => ({ guid: plan.guid.toLowerCase(), name: String(plan.name || 'Plano'), active: Boolean(plan.active) }));
+    }
+  } catch { /* em alguns PCs o CIM de energia não responde; o powercfg abaixo resolve */ }
+  if (plans.length) return plans;
+  // Alternativa: o próprio powercfg (lista independente do idioma; nomes conhecidos traduzidos pelo GUID).
+  const { stdout } = await execFileAsync('powercfg', ['/list'], { windowsHide: true, timeout: 10000 }).catch(() => ({ stdout: '' }));
+  return LabParsers.parseList(stdout).filter((plan) => GUID_PATTERN.test(plan.guid)).map((plan) => ({ ...plan, name: KNOWN_PLANS[plan.guid] || plan.name }));
 }
 
 registerIpcHandler('power:list', async () => (IS_LINUX ? linux.powerProfiles() : listPowerPlans()));
@@ -1221,10 +1231,11 @@ $disp = @(Get-CimInstance Win32_VideoController | ForEach-Object { [pscustomobje
 $hags = (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name HwSchMode).HwSchMode
 $gm = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\GameBar' -Name AutoGameModeEnabled).AutoGameModeEnabled
 $cap = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name AppCaptureEnabled).AppCaptureEnabled
+$hist = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name HistoricalCaptureEnabled).HistoricalCaptureEnabled
 $dg = Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName Win32_DeviceGuard
 $vbs = $null; $hvci = $null
 if ($dg) { $vbs = [int]$dg.VirtualizationBasedSecurityStatus; $hvci = [bool](@($dg.SecurityServicesRunning) -contains 2) }
-[pscustomobject]@{ memory = $mem; displays = $disp; hags = $hags; gameMode = $gm; capture = $cap; vbs = $vbs; hvci = $hvci } | ConvertTo-Json -Depth 4 -Compress`;
+[pscustomobject]@{ memory = $mem; displays = $disp; hags = $hags; gameMode = $gm; capture = $cap; historical = $hist; vbs = $vbs; hvci = $hvci } | ConvertTo-Json -Depth 4 -Compress`;
 registerIpcHandler('system:facts', async () => {
   if (IS_LINUX) {
     const [profiles, mangohud, gamemode, governor] = await Promise.all([linux.powerProfiles(), linux.which('mangohud'), linux.which('gamemoded'), fs.readFile('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor', 'utf8').then((text) => text.trim()).catch(() => null)]);

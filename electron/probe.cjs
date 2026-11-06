@@ -100,7 +100,7 @@ function normalizeProbe(raw, match = () => null) {
   if (!raw || typeof raw !== 'object' || raw.error) return null;
   const foreground = raw.fg && raw.fg.name ? raw.fg : null;
   const libraryGame = foreground ? match(foreground.path) : null;
-  const classification = libraryGame ? { isGame: true, reason: 'é um jogo da sua biblioteca' } : foreground ? Session.classifyForeground({ name: foreground.name, path: foreground.path }) : null;
+  const classification = libraryGame ? (libraryGame.kind === 'app' ? { isGame: false, reason: 'é um programa da sua biblioteca, não um jogo' } : { isGame: true, reason: 'é um jogo da sua biblioteca' }) : foreground ? Session.classifyForeground({ name: foreground.name, path: foreground.path }) : null;
   return {
     t: Number.isFinite(raw.t) ? raw.t : Date.now(),
     fg: foreground ? { pid: Number(foreground.pid) || 0, name: text(foreground.name), isGame: classification.isGame, reason: classification.reason, gameId: libraryGame?.id || null, gameName: libraryGame ? text(libraryGame.name, 80) : null } : null,
