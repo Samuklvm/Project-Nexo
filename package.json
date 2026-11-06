@@ -21,12 +21,15 @@
     "type": "git",
     "url": "https://github.com/Samuklvm/Project-Nexo.git"
   },
+  "overrides": {
+    "minimatch": "^11.0.5"
+  },
   "devDependencies": {
-    "electron": "42.11.16",
+    "electron": "45.2.3",
     "electron-builder": "26.18.0"
   },
   "dependencies": {
-    "electron-updater": "6.8.9"
+    "electron-updater": "6.8.11"
   },
   "build": {
     "appId": "com.samuklvm.nexo",
