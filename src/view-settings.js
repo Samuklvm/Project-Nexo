@@ -45,11 +45,7 @@
   $$('[data-effects]').forEach((button) => button.addEventListener('click', () => Nexo.setEffects(button.dataset.effects)));
   $$('[data-live-rate]').forEach((button) => button.addEventListener('click', () => Nexo.setLiveRate(button.dataset.liveRate)));
 
-  const shareToggle = document.getElementById('share-toggle');
-  shareToggle.addEventListener('change', async () => {
-    try { await desktopBridge?.setPrivacy?.(shareToggle.checked); showToast('Preferência salva neste computador.'); }
-    catch { shareToggle.checked = !shareToggle.checked; showToast('Não foi possível salvar a preferência.'); }
-  });
+  // Telemetria e relatórios de erro: src/view-cloud.js.
 
   document.getElementById('export-data').addEventListener('click', () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(Nexo.store.exportAll(), null, 2)], { type: 'application/json' }));
@@ -81,7 +77,7 @@
     const confirmed = await Nexo.confirm({
       title: 'Desinstalar o Nexo completamente?',
       body: 'O Nexo vai fechar e remover tudo em poucos segundos. Uma mensagem final mostrará se algo não pôde ser apagado.',
-      items: ['O programa e todos os arquivos da instalação.', 'Seus dados e preferências: histórico, aprendizado, sessões, capas de jogos, conta, papel de parede.', 'Atalhos, entradas do Registro (inclusive iniciar com o Windows) e o cache de atualizações.', 'Planos de energia criados pelo laboratório (o Windows volta ao Equilibrado se um deles estiver ativo).', 'O serviço de sensores e o driver PawnIO, se foi o Nexo que instalou (o Windows pede permissão para remover).', 'Rastros que o Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes).', 'Nada além disso: outros programas, arquivos pessoais e pontos de restauração do Windows não são tocados.'],
+      items: ['O programa e todos os arquivos da instalação.', 'Seus dados e preferências: histórico, aprendizado, sessões, capas de jogos, conta, papel de parede.', 'Atalhos, entradas do Registro (inclusive iniciar com o Windows) e o cache de atualizações.', 'Planos de energia criados pelo laboratório (o Windows volta ao Equilibrado se um deles estiver ativo).', 'O serviço de sensores e o driver PawnIO, se foi o Nexo que instalou (o Windows pede permissão para remover).', 'Rastros que o Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes).', 'Nada além disso: outros programas, arquivos pessoais e pontos de restauração do Windows não são tocados.', 'Se você usa a sincronização, as cópias no servidor do Nexo ficam lá: para apagar, use antes “Apagar meus dados do servidor”, logo acima.'],
       confirmLabel: 'Desinstalar', tone: 'danger'
     });
     if (!confirmed) return;
@@ -109,7 +105,7 @@
     Nexo.setEffects(localStorage.getItem(Nexo.keys.effects) === 'lite' ? 'lite' : 'full');
     Nexo.setLiveRate(Nexo.liveRate, { save: false });
     try { applyWallpaper((await desktopBridge?.getWallpaper?.())?.url || null); } catch { applyWallpaper(null); }
-    try { shareToggle.checked = Boolean((await desktopBridge?.getPrivacy?.())?.shareWithCreator); } catch { /* padrão desativado */ }
+
     refreshInfo();
   };
   Nexo.on('view', (view) => { if (view === 'settings') refreshInfo(); });

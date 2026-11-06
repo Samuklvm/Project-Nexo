@@ -69,7 +69,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return true;
   }
   async function limit(env, key, max) { if (!await allow(env, key, max)) throw new HttpError(429, 'Muitos pedidos hoje. Tente amanhã.'); }
-  const ipKey = async (request) => `ip:${(await sha256Hex(`nexo:${request.headers.get('cf-connecting-ip') || 'local'}`)).slice(0, 20)}`;
+  // O IP nunca é guardado: só um resumo com o segredo do servidor (sem ele, não dá para voltar ao IP), apagado em um dia.
+  const ipKey = async (request, env) => `ip:${(await sha256Hex(`${env.SESSION_SECRET}|${request.headers.get('cf-connecting-ip') || 'local'}`)).slice(0, 20)}`;
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -94,7 +95,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
 
   /* ---------- Conta ---------- */
   async function login(request, env) {
-    await limit(env, await ipKey(request), 60);
+    await limit(env, await ipKey(request, env), 60);
     const body = await readJson(request);
     const deviceId = RE.deviceId.test(String(body.deviceId || '')) ? body.deviceId : null;
     const google = await verifyGoogleIdToken(body.idToken, { clientIds: env.GOOGLE_CLIENT_IDS, fetchImpl, now: now() });
@@ -195,7 +196,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const installId = String(body.installId || '');
     if (!RE.installId.test(installId)) throw new HttpError(400, 'Instalação inválida.');
     await limit(env, `err:${installId}`, 30);
-    await limit(env, `errip:${(await ipKey(request)).slice(3)}`, 300);
+    await limit(env, `errip:${(await ipKey(request, env)).slice(3)}`, 300);
     const version = RE.version.test(String(body.version || '')) ? body.version : '0.0.0';
     const platform = PLATFORMS.has(body.platform) ? body.platform : 'win32';
     // O e-mail vem da sessão (nunca do corpo): só de quem está logado e marcou "incluir meu e-mail".
@@ -463,7 +464,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         env.DB.prepare('DELETE FROM sessions WHERE expires_at < ? OR revoked = 1').bind(at),
         env.DB.prepare('DELETE FROM admin_links WHERE expires_at < ?').bind(at),
         env.DB.prepare('DELETE FROM admin_sessions WHERE expires_at < ?').bind(at),
-        env.DB.prepare('DELETE FROM rate WHERE day < ?').bind(dayOf(at - DAY))
+        env.DB.prepare('DELETE FROM rate WHERE day < ?').bind(dayOf(at - DAY)),
+        // Cópia de PC sem atualizar há um ano some; conta sem sessão nem cópia (só nome e e-mail) some junto.
+        env.DB.prepare('DELETE FROM snapshots WHERE updated_at < ?').bind(at - 365 * DAY),
+        env.DB.prepare('DELETE FROM users WHERE last_seen < ? AND uid NOT IN (SELECT uid FROM sessions) AND uid NOT IN (SELECT uid FROM snapshots)').bind(at - 30 * DAY)
       ]);
     }
   };

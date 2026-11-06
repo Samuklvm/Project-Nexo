@@ -44,3 +44,19 @@ test('saída do console do Windows: UTF-8 ou CP850, sem "�"', () => {
   assert.equal(decodeConsole(Buffer.from('Econômico', 'utf8')), 'Econômico');
   assert.equal(decodeConsole(Buffer.from([0x87, 0xc6, 0x6f])), 'ção');
 });
+
+test('telemetria: todo título de atividade está na lista fixa de recursos (o resto vira "outro")', () => {
+  const cloud = fs.readFileSync(path.join(root, 'src', 'view-cloud.js'), 'utf8');
+  const list = cloud.match(/const FEATURES = new Set\(\[([^\]]+)\]\)/);
+  assert.ok(list, 'lista FEATURES em src/view-cloud.js');
+  const features = new Set([...list[1].matchAll(/'([a-z0-9-]+)'/g)].map((match) => match[1]));
+  const slug = (value) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 39);
+  const titles = new Set();
+  for (const file of fs.readdirSync(path.join(root, 'src')).filter((name) => name.endsWith('.js'))) {
+    const source = fs.readFileSync(path.join(root, 'src', file), 'utf8');
+    for (const match of source.matchAll(/recordActivity\(\s*(?:[^,'"`]*\?\s*)?'([^']+)'(?:\s*:\s*'([^']+)')?/g)) { titles.add(match[1]); if (match[2]) titles.add(match[2]); }
+    assert.ok(!/recordActivity\(\s*`/.test(source), `${file}: título de atividade com template (pode levar dado pessoal)`);
+  }
+  assert.ok(titles.size >= 15);
+  for (const title of titles) assert.ok(features.has(slug(title)), `"${title}" falta em FEATURES`);
+});

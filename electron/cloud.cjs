@@ -25,8 +25,11 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     try { stored = JSON.parse(await fs.readFile(file, 'utf8')); } catch { stored = {}; }
     state = { ...DEFAULTS, ...stored };
     for (const key of Object.keys(DEFAULTS)) if (typeof state[key] !== 'boolean') state[key] = DEFAULTS[key];
-    if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(state.installId || ''))) state.installId = randomId();
-    if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(state.deviceId || ''))) state.deviceId = `pc-${randomId(12)}`;
+    let fresh = false;
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(state.installId || ''))) { state.installId = randomId(); fresh = true; }
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(state.deviceId || ''))) { state.deviceId = `pc-${randomId(12)}`; fresh = true; }
+    // Códigos novos são gravados na hora: senão o PC ganharia outra identidade a cada abertura do app.
+    if (fresh) await save();
     return state;
   }
   function save() {

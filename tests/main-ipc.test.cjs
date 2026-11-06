@@ -233,3 +233,18 @@ test('registro de erros: canais, falha de ação vira aviso e a tela recebe o er
   assert.match(failure.context, /bench:cpu/);
   assert.match(await call('log:export'), /Nexo Device Care/);
 });
+
+test('servidor do Nexo: canais registrados, tudo desligado e nada sai sem servidor configurado', async () => {
+  for (const channel of ['cloud:status', 'cloud:set', 'cloud:connect', 'cloud:disconnect', 'cloud:delete-remote', 'cloud:push', 'cloud:devices', 'cloud:pull', 'cloud:forget', 'cloud:telemetry', 'cloud:send-errors', 'cloud:admin']) assert.ok(handlers.has(channel), `faltou ${channel}`);
+  const status = await call('cloud:status');
+  assert.equal(status.configured, false, 'sem endereço do servidor nesta build de teste');
+  for (const key of ['sync', 'telemetry', 'errors', 'connected']) assert.equal(status[key], false, key);
+  assert.equal((await call('cloud:set', { telemetry: true, errors: true, sync: true, extra: 'x' })).sync, false, 'sincronização só liga conectando');
+  assert.deepEqual(await call('cloud:telemetry', { views: { home: 1 } }), { skipped: true }, 'sem servidor, a telemetria não sai');
+  assert.deepEqual(await call('cloud:send-errors'), { skipped: true });
+  await call('cloud:set', { telemetry: false, errors: false });
+  await assert.rejects(call('cloud:connect'), /não está configurado/);
+  await assert.rejects(call('cloud:push', 'não é objeto'), /Nada para sincronizar/);
+  await assert.rejects(call('cloud:devices'), /não está configurado|sincronização/);
+  await assert.rejects(call('cloud:admin'), /não está configurado|sincronização/);
+});

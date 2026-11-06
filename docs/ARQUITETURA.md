@@ -32,7 +32,8 @@ Módulos de lógica **pura** (rodam e são testados fora do Electron): `brain.js
 renderer (src/*.js) ──IPC──> main.cjs ──> PowerShell / powercfg / reg / sfc / Optimize-Volume
                                       ├─> sensor-host (stdout JSON) ──> LibreHardwareMonitorLib
                                       ├─> worker_threads (benchmark)
-                                      └─> electron-updater ──> GitHub Releases (único tráfego de rede)
+                                      ├─> electron/cloud.cjs ──HTTPS──> servidor do Nexo (Cloudflare Worker + D1; só o que a pessoa ligar)
+                                      └─> electron-updater ──> GitHub Releases
 brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 ```
 
@@ -41,11 +42,11 @@ brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `net10.0` · LibreHardwareMonitorLib 0.9.6 · Node 20+ no CI (os testes foram rodados no Node 22). Windows 10/11 x64.
 
 ## 52.05 Estado dos testes
-`npm test` roda 16 arquivos, 182 testes, todos passando no Linux:
+`npm test` roda 19 arquivos, 210 testes, todos passando no Linux:
 
 - `linux.test.cjs` (9): montagens, `/proc/<pid>/stat`, powerprofilesctl, `.desktop`, xprop, detecção de jogos via Proton/Heroic, MangoHud em pedaços, laboratório com perfis de energia, biblioteca Steam+Heroic num HOME temporário, pkexec validado e leitura real do `/proc` e `/sys` desta máquina.
 - `brain.test.cjs` (8) e `catalog-journal-experiment.test.cjs` (13, incluindo os perfis).
-- `main-ipc.test.cjs` (13): carrega o `main.cjs` real com Electron simulado (inclusive os canais do Raio-X e do teste com reinício).
+- `main-ipc.test.cjs` (15): carrega o `main.cjs` real com Electron simulado (inclusive os canais do Raio-X, do teste com reinício, do registro de erros e do servidor, que fica desligado sem endereço).
 - `session-fps.test.cjs` (15): sessões sintéticas de cada tipo de gargalo, detecção de jogo, parser de FPS nos formatos novo e antigo.
 - `probe-fps-runner.test.cjs` (7): sonda e executor de FPS com processos filhos simulados; política do hash do PresentMon.
 - `lab.test.cjs` (28): motor do laboratório contra um PC simulado — espaço fechado, faixa do PC, escolha (inédito → UCB, tabu, variedade por grupo), juiz A/B com ruído e consistência, ordem ABBA, combinações, guardas, cancelamento, restauração que falha, orçamento de tempo, consentimento.
@@ -53,7 +54,10 @@ Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `n
 - `system-scan.test.cjs` (14): catálogo do Raio-X (chaves seguras, sem política em HKCU, sem entrada repetida), serviços proibidos fora, plano de energia pelo `/qh` e pelo `powercfg`, falha parcial, recusa do UAC, tamanho da linha de comando elevada.
 - `reboot-test.test.cjs` (10): plano ABBA, máquina de estados (só mede depois de um boot novo), veredito com ruído entre boots, estado adulterado, executor com Windows simulado (RunOnce, troca A↔B, UAC recusado, cancelamento, reinício automático).
 - `fuzz.test.cjs` (7): milhares de entradas aleatórias com semente fixa contra o laboratório, o Raio-X (validação, reversão, script elevado) e o veredito do teste com reinício.
-- `connections.test.cjs` (12), `library-account.test.cjs` (19), `sensor-service.test.cjs` (5), `release-notes.test.cjs` (3) e `syntax.test.cjs` (5: todo script compila, nenhum carregado duas vezes, ordem de dependências).
+- `error-log.test.cjs` (5): registro de erros local (limpeza de pastas e nome de usuário, agrupamento por assinatura, limite por hora, rotação).
+- `server.test.cjs` (13): servidor do Nexo (Cloudflare Worker) no Node, com D1 simulado em SQLite e um Google de teste: login só com id_token verdadeiro, sessões, sincronização cifrada e isolada por conta, erros agrupados com e-mail só da sessão, telemetria limpa, painel (link único, cookie, CSRF, papéis da equipe), chaves de ferramenta e limpeza diária.
+- `cloud.test.cjs` (7): o lado do app (`electron/cloud.cjs`) contra o servidor real em memória: nada sai sem ligar, cópia cifrada no banco, escolher o que trazer, outra conta não enxerga, sessão recusada desliga, erros só depois de ligar e sem nome de usuário, telemetria uma vez por dia e sem a conta.
+- `connections.test.cjs` (12), `library-account.test.cjs` (19), `sensor-service.test.cjs` (5), `release-notes.test.cjs` (3) e `syntax.test.cjs` (6: todo script compila, nenhum carregado duas vezes, ordem de dependências, lista fixa de recursos da telemetria).
 
 **Não existe** teste automatizado de: NSIS, PowerShell real, registro, `powercfg`, sensor-host, PresentMon real, interface dentro do Electron real. Isso exige Windows (ver 52.15).
 

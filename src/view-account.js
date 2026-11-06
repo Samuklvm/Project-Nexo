@@ -18,7 +18,7 @@
     actions.innerHTML = profile ? '<button class="btn sm" type="button" id="account-out">Sair da conta</button>'
       : account?.configured ? '<button class="btn primary" type="button" id="account-in">Entrar com o Google</button>'
       : packaged ? '' : '<button class="btn sm" type="button" id="account-import">Importar credenciais (desenvolvedor)</button>';
-    setText('account-note', profile ? `Guardado só neste PC${account.encrypted ? ', cifrado pelo Windows' : ''}: nome, e-mail e foto. O Nexo não guarda senhas nem tokens do Google e não envia nada ao criador. Sincronização entre PCs ainda não existe.`
+    setText('account-note', profile ? `Guardado só neste PC${account.encrypted ? ', cifrado pelo Windows' : ''}: nome, e-mail e foto. O Nexo não guarda senhas nem tokens do Google. A sincronização entre PCs, logo abaixo, é opcional e só liga se você pedir.`
       : account?.configured ? 'Opcional. O login acontece no seu navegador; o Nexo guarda só nome, e-mail e foto neste PC (cifrados pelo Windows) e não guarda senhas nem tokens do Google.'
       : packaged ? 'O login com Google não está disponível nesta instalação. Atualize o Nexo pela página de Atualizações.'
       : 'Para ativar: crie um cliente OAuth “App para computador” no Google Cloud e importe o JSON aqui, ou coloque-o em config/google-oauth.json na build (veja docs/LOGIN_GOOGLE.md).');
@@ -28,21 +28,22 @@
     if (!bridge?.getAccount) return;
     try { account = await bridge.getAccount(); } catch { account = null; }
     render();
+    Nexo.emit('account', account);
   }
 
   async function signIn() {
     const button = document.getElementById('account-in');
     setButtonBusy(button, true, 'Abrindo o navegador…');
     showToast('Continue no navegador. O Nexo espera até 5 minutos.');
-    try { account = await bridge.signIn(); render(); showToast(`Olá, ${account.profile.name.split(' ')[0]}!`); recordActivity('Conta Google conectada', account.profile.email); }
+    try { account = await bridge.signIn(); render(); Nexo.emit('account', account); showToast(`Olá, ${account.profile.name.split(' ')[0]}!`); recordActivity('Conta Google conectada', account.profile.email); }
     catch (error) { showToast(error.message || 'O login não foi concluído.'); render(); }
   }
 
   document.getElementById('account-actions').addEventListener('click', async (event) => {
     if (event.target.closest('#account-in')) signIn();
     if (event.target.closest('#account-out')) {
-      if (!await Nexo.confirm({ title: 'Sair da conta?', body: 'O nome, o e-mail e a foto guardados neste PC serão apagados. Nada mais muda.', confirmLabel: 'Sair' })) return;
-      account = await bridge.signOut(); render(); showToast('Você saiu da conta.');
+      if (!await Nexo.confirm({ title: 'Sair da conta?', body: 'O nome, o e-mail e a foto guardados neste PC serão apagados e a sincronização deste PC é desligada (as cópias no servidor continuam lá até você apagar).', confirmLabel: 'Sair' })) return;
+      account = await bridge.signOut(); render(); Nexo.emit('account', account); showToast('Você saiu da conta.');
     }
     if (event.target.closest('#account-import')) { try { account = await bridge.importOAuthConfig(); render(); if (account.configured) showToast('Credenciais importadas. Agora é só entrar.'); } catch (error) { showToast(error.message); } }
   });

@@ -2,7 +2,9 @@
 
 ## Resumo
 
-O Nexo é gratuito. O código é proprietário (veja LICENSE). A coleta e o processamento locais são ativos para alimentar os recursos do app e ficam no computador. O compartilhamento de telemetria com o criador é opcional e começa desativado. Nesta versão, não existe envio de telemetria, anúncios ou relatórios de falha; a opção do instalador apenas guarda a preferência localmente. Qualquer futura coleta externa deverá apresentar previamente os campos exatos, finalidade, destino, retenção e forma de revogar o consentimento.
+O Nexo é gratuito. O código é proprietário (veja LICENSE). A coleta e o processamento locais são ativos para alimentar os recursos do app e ficam no computador.
+
+O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera a telemetria apenas uma vez por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. Cada parte (sincronização, relatórios de erro e telemetria) liga e desliga separada; o inventário completo está em [Servidor do Nexo](#servidor-do-nexo-opcional-e-desligado-por-padrão). Não há anúncios.
 
 ## Coleta local (ativa)
 
@@ -20,12 +22,13 @@ A coleta local é parte do funcionamento do Nexo e não depende do consentimento
 - **Sensores detalhados:** valores atuais e mínimos/máximos da sessão ficam em memória para a tela de sensores e não são gravados automaticamente no histórico de sete dias. Se a pessoa escolher **Exportar CSV**, o Nexo cria um arquivo local com nome/categoria do componente, nome e tipo do sensor, valor atual, unidade, mínimo, máximo e indicador de sensor avançado.
 - **Feedback local:** categoria da recomendação, resposta útil/não útil e horário, limitado aos últimos 100 registros.
 - **Atividade local:** título, detalhe e horário das últimas 20 atividades exibidas pelo app.
+- **Registro de erros:** quando algo dá errado no app, o Nexo anota localmente o horário, a origem (processo principal, tela, ação, serviço), a mensagem, a pilha de chamadas e um contexto curto (por exemplo, a tela aberta), na pasta `logs` dos dados do app (até 512 KB, com uma cópia anterior). Antes de gravar, troca a sua pasta pessoal e o seu nome de usuário por `<usuário>` e apaga tokens e chaves. Você vê, copia e apaga tudo em **Ajustes → Registro de erros**. Só sai do PC se você ligar os relatórios de erro (veja Servidor do Nexo).
 - **Sessões de observação (só quando você inicia uma):** a cada segundo, uso total de CPU, do núcleo mais ocupado, memória, GPU, temperatura e queda de clock; a cada poucos segundos, o programa em primeiro plano, os programas que mais usaram CPU e GPU (só o **nome**, nunca o caminho nem a linha de comando) e o custo do próprio Nexo; e, se você ativar, FPS e tempo de quadro do programa escolhido. Para saber se algo é um jogo, o Nexo olha **só a pasta de instalação** do programa em primeiro plano; o caminho é usado nessa hora e não é guardado. Nunca lê a memória de outro programa. Guarda as 10 sessões mais recentes (relatório e linha do tempo reduzida a um ponto a cada 5 s); você pode exportar, excluir cada uma ou apagar todas.
 - **Perfil de uso:** a opção escolhida (Jogos, Trabalho e criação ou Uso geral), só para ajustar pesos e a ordem das observações.
 - **Diário de alterações:** para cada alteração feita pelo Nexo (plano de energia, limpezas, otimização de unidade, verificação do sistema) ficam registrados o nome da operação, o horário, o risco, o valor anterior e o novo (por exemplo, nome e identificador do plano de energia), a quantidade e o tamanho dos itens removidos e a forma de autorização. Guarda até 100 registros e serve para você auditar e reverter.
 - **Benchmark local:** o experimento do plano de energia executa uma carga sintética de CPU por cerca de 20 segundos, sempre iniciada por você. Só os números resultantes (medianas, ruído e veredito) são guardados no Diário.
 - **Preferências locais:** papel de parede escolhido (até 12 MB, guardado como arquivo na pasta de dados do app), modo de efeitos visuais, configuração da limpeza automática e horário da última execução.
-- **Compartilhamento opcional:** a preferência para enviar telemetria ao criador, hoje inativa, é guardada no Registro do Windows em `HKCU\Software\NexoDeviceCare\Privacy\DeveloperTelemetryOptIn`. Não é enviada ao desenvolvedor.
+- **Servidor do Nexo:** as escolhas (sincronização, telemetria, relatórios de erro, incluir o e-mail), dois códigos aleatórios deste PC (um para a telemetria, outro para a sincronização), o horário dos últimos envios e, com a sincronização ligada, o e-mail da conta e o token de sessão do servidor, cifrado com o cofre do sistema quando disponível, ficam em `cloud.json`. A caixa do instalador fica também no Registro do Windows em `HKCU\Software\NexoDeviceCare\Privacy\DeveloperTelemetryOptIn` (no Linux, em `privacy.json`). Na tela, a contagem do dia de telas abertas e recursos usados fica em `nexo-usage-day` e só sai do PC com a telemetria ligada.
 
 Os itens acima ficam no computador da pessoa. O gráfico da sessão mantém amostras em memória por até cinco minutos. Nomes e detalhes locais de atividades podem incluir o resultado de ações iniciadas pela pessoa, como a quantidade de arquivos removidos e o espaço liberado.
 
@@ -60,7 +63,7 @@ Guarda no navegador interno do app (`nexo-lab-v1`): a evidência por ajuste (qua
 
 ## Conta Google (opcional)
 
-Se você escolher **Entrar com o Google**, o login acontece no seu navegador padrão, com OAuth 2.0 para aplicativos instalados (PKCE e retorno para `127.0.0.1` numa porta temporária). O Nexo se conecta a `accounts.google.com` e `oauth2.googleapis.com` e, para a foto, ao endereço `googleusercontent.com` que o Google informar. Pede só os escopos `openid`, `email` e `profile`, **sem acesso offline**: depois de ler o perfil, revoga o token de acesso e não guarda tokens nem senhas. Fica neste computador, cifrado com a proteção de dados do Windows quando disponível (`account/profile.bin`), apenas: identificador da conta Google, nome, e-mail e horário do login; a foto fica em `account/avatar.*`. Nada disso é enviado ao criador. Sair da conta apaga esses arquivos. Ainda não existe sincronização entre computadores.
+Se você escolher **Entrar com o Google**, o login acontece no seu navegador padrão, com OAuth 2.0 para aplicativos instalados (PKCE e retorno para `127.0.0.1` numa porta temporária). O Nexo se conecta a `accounts.google.com` e `oauth2.googleapis.com` e, para a foto, ao endereço `googleusercontent.com` que o Google informar. Pede só os escopos `openid`, `email` e `profile`, **sem acesso offline**: depois de ler o perfil, revoga o token de acesso e não guarda tokens nem senhas. Fica neste computador, cifrado com a proteção de dados do Windows quando disponível (`account/profile.bin`), apenas: identificador da conta Google, nome, e-mail e horário do login; a foto fica em `account/avatar.*`. Nada disso é enviado ao criador, a não ser que você ligue a sincronização (veja abaixo). Sair da conta apaga esses arquivos e desliga a sincronização deste PC.
 
 ## No Linux
 
@@ -82,15 +85,51 @@ Para medir FPS, o Nexo pode executar o **PresentMon** (Intel, licença MIT) como
 
 - **Exportar:** em **Ajustes** é possível salvar um arquivo JSON com o histórico, o aprendizado, o feedback, a atividade, o diário, as sessões, o aprendizado do laboratório e o perfil.
 - **Apagar o aprendizado:** o botão correspondente apaga o histórico, o aprendizado, o feedback, as sessões e o aprendizado do laboratório. O diário de alterações é mantido para permitir reverter.
-- **Desinstalar:** a desinstalação pelo Windows ou por **Ajustes** remove o programa, os dados e preferências (inclusive capas, conta e laboratório), os caches, os atalhos, as entradas do Registro do Nexo (inclusive `Run` e `RunOnce`) e os planos de energia criados pelo laboratório. Pontos de restauração continuam sendo gerenciados pelo Windows. Atualizações preservam os dados.
+- **Desinstalar:** a desinstalação pelo Windows ou por **Ajustes** remove o programa, os dados e preferências (inclusive capas, conta e laboratório), os caches, os atalhos, as entradas do Registro do Nexo (inclusive `Run` e `RunOnce`) e os planos de energia criados pelo laboratório. Pontos de restauração continuam sendo gerenciados pelo Windows. As cópias da sincronização no servidor não são apagadas pela desinstalação (use “Apagar meus dados do servidor” antes). Atualizações preservam os dados.
 
 ## Conexões de rede
 
-Ao iniciar, a versão empacotada consulta as releases públicas do GitHub para verificar se existe uma atualização. Como qualquer conexão HTTP, o GitHub pode receber metadados técnicos da solicitação, incluindo endereço IP, horário, URL consultada e identificação do cliente. O Nexo não anexa a essa consulta inventário do computador, nomes de processos, arquivos, histórico, papel de parede ou feedback. Nenhuma atualização é baixada até a pessoa escolher **Baixar e atualizar**. As outras conexões só acontecem se você usar os recursos opcionais acima: abrir um jogo pelo launcher dele, capas oficiais, chave da Steam Web API, conta Xbox e login com o Google.
+Ao iniciar, a versão empacotada consulta as releases públicas do GitHub para verificar se existe uma atualização. Como qualquer conexão HTTP, o GitHub pode receber metadados técnicos da solicitação, incluindo endereço IP, horário, URL consultada e identificação do cliente. O Nexo não anexa a essa consulta inventário do computador, nomes de processos, arquivos, histórico, papel de parede ou feedback. Nenhuma atualização é baixada até a pessoa escolher **Baixar e atualizar**. As outras conexões só acontecem se você usar os recursos opcionais acima: abrir um jogo pelo launcher dele, capas oficiais, chave da Steam Web API, conta Xbox, login com o Google e o servidor do Nexo (sincronização, relatórios de erro e telemetria, cada um só se ligado).
 
-## Compartilhamento opcional com o criador
+## Servidor do Nexo (opcional e desligado por padrão)
 
-Nesta versão não existe serviço ou código que envie telemetria ao criador. A opção do instalador fica desativada por padrão e registra a preferência em `HKCU\Software\NexoDeviceCare\Privacy\DeveloperTelemetryOptIn`; neste momento, marcá-la não ativa transmissão alguma. Se uma versão futura implementar compartilhamento, deverá mostrar o inventário completo dos campos, finalidade, destino, retenção e forma de revogar a escolha, mantendo o envio desativado até consentimento explícito e informado.
+O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera a telemetria apenas uma vez por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo.
+
+O servidor roda na **Cloudflare** (Workers e banco D1), num endereço `*.workers.dev`, só por HTTPS. A Cloudflare recebe os dados normais de qualquer conexão (endereço IP, horário, identificação do app). O servidor não guarda o endereço IP: para limitar abusos, guarda por um dia só um resumo dele misturado com um segredo do servidor, que não permite voltar ao IP. As três partes ligam e desligam separadas, em **Ajustes**:
+
+- **Na primeira abertura**, o app pergunta uma vez (com o texto acima) se você quer ligar a telemetria e os relatórios de erro. “Agora não” deixa tudo desligado. Quem marcou **“Ajudar a melhorar o Nexo”** no instalador já respondeu: as duas ficam ligadas e o app não pergunta de novo.
+
+### Telemetria (no máximo uma vez por dia)
+
+- **O que vai:** versão do app, sistema (Windows ou Linux, versão do sistema, arquitetura), fabricante e modelo do processador, quantidade de núcleos, memória total arredondada em GB, fabricante da placa de vídeo, a contagem do dia de **quais telas** foram abertas e **quais recursos** foram usados (de uma lista fixa de nomes, como “raio-x-do-pc” ou “limpeza-segura”; nunca o detalhe de uma atividade, nome de jogo ou arquivo) e duas preferências (velocidade das leituras e perfil de uso).
+- **Com o quê:** um código aleatório criado neste PC. **Sem e-mail, sem conta, sem nome do computador**, mesmo se você estiver com a sincronização ligada (a telemetria nunca leva a sessão).
+- **Retenção:** 120 dias. O painel do criador mostra só somas (instalações por dia, versões, sistemas, hardware e telas mais usadas).
+
+### Relatórios de erro
+
+- **O que vai:** os erros do registro local (não os avisos) que acontecerem **depois** de você ligar, agrupados: a mensagem, a pilha de chamadas, o contexto curto, a origem, quantas vezes e quando aconteceu, a versão do app e o sistema. O app já tira a sua pasta pessoal e o seu nome de usuário antes de gravar, e o servidor limpa de novo ao receber.
+- **E-mail (opcional):** se a sincronização estiver ligada e você marcar **“Incluir meu e-mail nos relatórios”**, o e-mail vai junto, para o criador avisar você quando o erro for corrigido. Quem informa o e-mail é a sessão do servidor (confirmada pelo Google), nunca um campo digitado.
+- **Quando:** 2 minutos depois de abrir o app e a cada 30 minutos, se houver erro novo.
+- **Retenção:** 180 dias desde a última ocorrência. Apagar os seus dados do servidor tira o seu e-mail dos relatórios que você mandou.
+
+### Sincronização entre PCs
+
+- **A “senha” é o seu login do Google:** ao ligar, o navegador confirma o login e o servidor recebe do Google só o identificador da conta, o e-mail e o nome. O Nexo não guarda o token do Google; o servidor devolve uma sessão própria (válida por até um ano), que fica cifrada no PC.
+- **O que vai, de cada PC:** o nome do computador e uma cópia de: preferências (efeitos visuais, velocidade das leituras, bandeja, sessões automáticas e capas online), perfil de uso, as sessões de jogo gravadas (até 10, o que couber em 1 MB) e o histórico de atividades (até 20). **Não vão:** o Diário de alterações, o aprendizado, o laboratório, a biblioteca de jogos, contas de jogos, a limpeza automática (ela apaga arquivos, então cada PC confirma a sua), o papel de parede e qualquer arquivo pessoal.
+- **Trazer dados de outro PC** é sempre uma escolha sua: você vê os PCs da sua conta, escolhe um e marca o que trazer. Preferências e perfil substituem os deste PC; sessões e atividades se juntam às daqui. Nada entra sozinho.
+- **Criptografia, sem exagero:** cada cópia (e o nome do PC) é cifrada no servidor com AES-256-GCM, com uma chave própria da sua conta, derivada de uma chave mestra que só existe como segredo do servidor; o banco guarda só o texto cifrado, então um vazamento do banco não revela o conteúdo. **Como a “senha” é o login do Google, e não uma senha só sua, o servidor consegue abrir as cópias para entregá-las a você** — e, em tese, quem opera o servidor também conseguiria. O painel do criador mostra só **quantas contas** usam a sincronização no total; **não mostra** quem são, os PCs de cada uma nem o conteúdo, e nenhuma ferramenta do painel lê essas cópias.
+- **Limites e retenção:** até 20 PCs por conta. A cópia de um PC que não é atualizada há um ano é apagada, e a conta sem sessão nem cópia some depois de 30 dias.
+
+### Painel do criador
+
+Só o e-mail do criador (configurado como segredo do servidor, fora do código) e as pessoas que ele adicionar entram no painel, por um link de uso único que o próprio app abre e um cookie de 8 horas. Cada pessoa tem um papel: **colaborador** (vê erros, e-mails de quem pediu aviso e telemetria somada; muda o estado de um erro) ou **leitura** (vê erros e telemetria, **sem e-mails**). Para o assistente de programação do criador, existe uma chave de leitura que só vê os erros, **sem e-mails**. Os relatórios podem ser copiados para um repositório **privado** do criador no GitHub, também sem e-mails.
+
+### Desligar, apagar e revogar
+
+- **Desligar** qualquer parte em **Ajustes** para os envios na hora.
+- **Desligar a sincronização** encerra a sessão deste PC; as cópias ficam no servidor até você apagar.
+- **Apagar a cópia de um PC** ou **“Apagar meus dados do servidor”** (todas as cópias, a conta e o e-mail nos relatórios) acontece na hora, pelo app.
+- **Desinstalar** não apaga as cópias no servidor: use “Apagar meus dados do servidor” antes, se quiser.
 
 ## Contato e código
 

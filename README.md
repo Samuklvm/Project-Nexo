@@ -106,8 +106,9 @@ As mesmas telas nos dois sistemas. No Linux, o Nexo usa `/proc` e os sensores do
 
 ## 🔒 Privacidade
 
-- Nada é enviado a servidores do Nexo: **não existe servidor do Nexo.**
-- As conexões externas são só as que você usa: verificação de atualizações no GitHub, capas e dados de jogos das lojas oficiais e as contas que você conectar (Google, Steam, Discord).
+- O Nexo tem um servidor para **sincronizar a conta entre PCs, coletar erros e telemetria**. Tudo é opcional e **vem desligado**. A telemetria sai no máximo uma vez por dia e não leva nada pessoal; peço que você deixe ligada para o app melhorar em outras máquinas.
+- A sincronização usa o seu login do Google como chave de acesso, guarda cada PC criptografado e só traz dados de outro PC quando você escolhe qual PC e o quê.
+- As outras conexões externas são só as que você usa: verificação de atualizações no GitHub, capas e dados de jogos das lojas oficiais e as contas que você conectar (Google, Steam, Discord).
 - O Nexo **nunca encerra processos sozinho** e não lê a memória dos jogos.
 - No Windows, a temperatura do processador precisa de um driver: com a sua permissão, o Nexo instala o **PawnIO** (assinado e de código aberto, o mesmo do LibreHardwareMonitor) e um serviço que só lê sensores. Tudo sai junto na desinstalação.
 - Os seus dados podem ser exportados ou apagados em **Ajustes**.

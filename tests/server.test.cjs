@@ -222,13 +222,25 @@ test('apagar minha conta: some tudo, os erros ficam sem o e-mail, e o token para
 });
 
 test('limpeza diária e limites', async () => {
-  const { app, env, call } = setup();
+  const { app, env, call, loginAs } = setup();
+  const kept = await loginAs({ sub: 'sub-fica', email: 'fica@exemplo.com' }, 'pc-fica0000');
+  const gone = await loginAs({ sub: 'sub-sai', email: 'sai@exemplo.com' }, 'pc-sai00000');
+  await call('PUT', '/v1/sync/pc-sai00000', { token: gone.token, body: { name: 'Velho', sections: { perfil: 'geral' } } });
+  await call('POST', '/v1/auth/logout', { token: gone.token });
   await call('POST', '/v1/errors', { body: { installId: 'install-0000000007', version: '0.9.0', reports: [{ signature: '1111111111111111', message: 'velho' }] } });
   await call('POST', '/v1/telemetry', { body: { installId: 'install-0000000007', version: '0.9.0', data: { hw: { cores: 4 } } } });
   clock += 200 * 24 * 3600 * 1000;
   await app.scheduled({}, env);
   assert.equal(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM error_reports').get().n, 0);
   assert.equal(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM telemetry').get().n, 0);
+  assert.equal(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM snapshots').get().n, 1, 'cópia de 200 dias fica');
+  clock += 200 * 24 * 3600 * 1000;
+  const active = await loginAs({ sub: 'sub-fica', email: 'fica@exemplo.com' }, 'pc-fica0000');
+  await app.scheduled({}, env);
+  assert.equal(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM snapshots').get().n, 0, 'cópia de mais de um ano sai');
+  assert.deepEqual(env.DB.raw.prepare('SELECT email FROM users').all().map((row) => row.email), ['fica@exemplo.com'], 'conta sem sessão nem cópia sai; quem ainda tem sessão fica');
+  assert.equal((await call('GET', '/v1/sync', { token: active.token })).status, 200);
+  assert.equal((await call('GET', '/v1/sync', { token: kept.token })).status, 401, 'a sessão de mais de um ano venceu');
   for (let i = 0; i < 30; i += 1) await call('POST', '/v1/errors', { body: { installId: 'install-0000000008', version: '0.9.0', reports: [] } });
   assert.equal((await call('POST', '/v1/errors', { body: { installId: 'install-0000000008', version: '0.9.0', reports: [] } })).status, 429);
   assert.equal((await call('POST', '/v1/telemetry', { body: 'x'.repeat(1_700_000) })).status, 413);

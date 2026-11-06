@@ -1095,3 +1095,16 @@ body.lite .rise, body.lite .game-card, body.lite .modal-backdrop > * { animation
 .errors-main strong { overflow-wrap: anywhere; }
 .errors-main details summary { cursor: pointer; font-size: 12.5px; color: var(--mist); margin-top: 4px; }
 .errors-main pre { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.35); font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+
+/* ---------- Sincronização entre PCs ---------- */
+.cloud-sheet #cloud-sync-body > p { margin: 0 0 12px; }
+.cloud-devices { list-style: none; margin: 14px 0 6px; padding: 0; display: grid; gap: 10px; }
+.cloud-devices li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border: 1px solid var(--hair); border-radius: 14px; background: rgba(150, 175, 255, 0.05); flex-wrap: wrap; }
+.cloud-devices li > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.cloud-devices .muted { font-size: 12.5px; }
+.cloud-danger { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair); }
+.btn.danger-text, .danger-text { color: #ffb3c3; }
+.cloud-pick { display: grid; gap: 14px; margin-top: 12px; }
+.switch.sub { margin-left: 26px; }
+.switch input:disabled + i { opacity: 0.45; }
+.switch input:disabled ~ span { opacity: 0.6; }

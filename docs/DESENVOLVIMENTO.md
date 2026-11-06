@@ -55,6 +55,7 @@ O app instalado verifica atualizações ao iniciar e só baixa quando a pessoa p
 | `GOOGLE_OAUTH_JSON` | Cliente OAuth “App para computador” do Google. Veja [LOGIN_GOOGLE.md](LOGIN_GOOGLE.md). |
 | `NEXO_INTEGRATIONS_JSON` | Opcional: `{"xboxClientId":"…"}` para o login com Xbox. O Discord já vem com o app oficial embutido. Veja [CONEXOES.md](CONEXOES.md). |
 | `WIN_CSC_LINK` e `WIN_CSC_KEY_PASSWORD` | Opcional: certificado Authenticode (`.pfx`) para assinar os executáveis. Sem eles a release sai sem assinatura. Assine o instalador visual e o Setup com o mesmo certificado, porque um executável que roda outro em modo silencioso costuma chamar a atenção de antivírus e do SmartScreen. |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` e `NEXO_ADMIN_EMAILS` | Servidor do Nexo (sincronização, erros e telemetria), publicado pelo fluxo **Publicar servidor**. Veja [SERVIDOR.md](SERVIDOR.md). |
 
 ## FPS: PresentMon (Windows)
 

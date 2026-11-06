@@ -108,8 +108,9 @@ The same screens on both systems. On Linux, Nexo uses `/proc` and kernel sensors
 
 ## 🔒 Privacy
 
-- Nothing is sent to Nexo servers: **there is no Nexo server.**
-- The only external connections are the ones you use: update checks on GitHub, game covers and data from the official stores, and the accounts you connect (Google, Steam, Discord).
+- Nexo has a server to **sync your account between PCs, collect errors and telemetry**. All of it is optional and **off by default**. Telemetry is sent at most once a day and carries nothing personal; please leave it on so the app can improve on other machines.
+- Sync uses your Google sign-in as the key, stores each PC encrypted and only brings data from another PC when you choose which PC and what.
+- The other external connections are only the ones you use: update checks on GitHub, game covers and data from the official stores, and the accounts you connect (Google, Steam, Discord).
 - Nexo **never ends processes on its own** and does not read game memory.
 - On Windows, the processor temperature needs a driver: with your permission, Nexo installs **PawnIO** (signed and open source, the same one LibreHardwareMonitor uses) and a service that only reads sensors. Both are removed when you uninstall.
 - Your data can be exported or deleted in **Ajustes** (Settings).

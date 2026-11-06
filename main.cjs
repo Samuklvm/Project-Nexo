@@ -1448,20 +1448,23 @@ registerIpcHandler('wallpaper:reset', async () => {
 // ---- Preferência de compartilhamento opcional (Registro do Windows, como no instalador) ----
 const PRIVACY_KEY = 'HKCU\\Software\\NexoDeviceCare\\Privacy';
 const PRIVACY_FILE = () => path.join(app.getPath('userData'), 'privacy.json');
-registerIpcHandler('privacy:get', async () => {
+/** A caixa "Ajudar a melhorar o Nexo" do instalador (Windows) ou a escolha guardada (Linux). */
+async function readSharePreference() {
   if (IS_LINUX) { try { return { shareWithCreator: JSON.parse(await fs.readFile(PRIVACY_FILE(), 'utf8')).shareWithCreator === true }; } catch { return { shareWithCreator: false }; } }
   if (process.platform !== 'win32') return { shareWithCreator: false };
   try {
     const { stdout } = await execFileAsync('reg', ['query', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn'], { windowsHide: true, timeout: 5000 });
     return { shareWithCreator: /0x1\b/i.test(stdout) };
   } catch { return { shareWithCreator: false }; }
-});
-registerIpcHandler('privacy:set', async (_event, enabled) => {
+}
+async function writeSharePreference(enabled) {
   if (IS_LINUX) { await fs.writeFile(PRIVACY_FILE(), JSON.stringify({ shareWithCreator: Boolean(enabled) }), 'utf8'); return { shareWithCreator: Boolean(enabled) }; }
   if (process.platform !== 'win32') return { shareWithCreator: false };
   await execFileAsync('reg', ['add', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', enabled ? '1' : '0', '/f'], { windowsHide: true, timeout: 5000 });
   return { shareWithCreator: Boolean(enabled) };
-});
+}
+registerIpcHandler('privacy:get', async () => readSharePreference());
+registerIpcHandler('privacy:set', async (_event, enabled) => writeSharePreference(enabled));
 
 // ---- Preferências do processo principal (bandeja, início com o Windows, observador, capas online) ----
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'nexo-settings.json');
@@ -2042,7 +2045,12 @@ async function serverUrl() {
 }
 const { createCloud } = require('./electron/cloud.cjs');
 let cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: null, fetchImpl: (url, init) => net.fetch(url, init), safeStorage, version: app.getVersion(), errorLog });
-const cloudReady = serverUrl().then((url) => { cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog }); }).catch(() => {});
+const cloudReady = serverUrl().then(async (url) => {
+  cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog });
+  // Quem marcou "Ajudar a melhorar o Nexo" no instalador já respondeu: liga telemetria e erros e o app não pergunta de novo.
+  const status = await cloud.status();
+  if (status.configured && !status.asked && (await readSharePreference()).shareWithCreator) await cloud.setOptions({ telemetry: true, errors: true, asked: true });
+}).catch(() => {});
 const withCloud = async () => { await cloudReady; return cloud; };
 /** Telemetria: o que dá para saber do hardware sem nada pessoal (fabricante e modelo do processador, núcleos, memória, vídeo, sistema). */
 async function telemetryHardware() {
@@ -2057,7 +2065,12 @@ async function telemetryHardware() {
   return { cpuVendor: /amd|ryzen/i.test(model) ? 'AMD' : /intel/i.test(model) ? 'Intel' : model ? 'Outro' : null, cpuModel: model || null, cores: cpus.length, ramGB: Math.round(os.totalmem() / 1024 ** 3), gpuVendor, osBuild: os.release(), arch: process.arch };
 }
 registerIpcHandler('cloud:status', async () => (await withCloud()).status());
-registerIpcHandler('cloud:set', async (_event, options) => (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked }));
+registerIpcHandler('cloud:set', async (_event, options) => {
+  const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
+  // O Registro acompanha a escolha, para o instalador mostrar a caixa certa numa reinstalação.
+  if (typeof options?.telemetry === 'boolean') writeSharePreference(status.telemetry).catch(() => {});
+  return status;
+});
 /** Liga a sincronização: usa o login recente ou abre o login do Google de novo. */
 registerIpcHandler('cloud:connect', async () => {
   const target = await withCloud();

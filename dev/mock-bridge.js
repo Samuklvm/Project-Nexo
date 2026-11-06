@@ -149,6 +149,26 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
       { signature: 'a1', level: 'erro', source: 'interface', message: "Cannot read properties of undefined (reading 'devices')", context: '{"tela":"hardware"}', count: 2, firstAt: Date.now() - 3600000, lastAt: Date.now() - 60000, versions: ['0.8.1'], stack: "TypeError: Cannot read properties of undefined (reading 'devices')\n    at renderSensorExplorer (view-hardware.js:62:20)" },
       { signature: 'b2', level: 'aviso', source: 'ipc', message: 'Você recusou a permissão do Windows; os ajustes do sistema não foram aplicados.', context: '{"acao":"scan:apply"}', count: 1, firstAt: Date.now() - 7200000, lastAt: Date.now() - 7200000, versions: ['0.8.1'], stack: '' }] }),
     exportErrors: async () => 'Nexo Device Care 0.8.1 (win32) · 3 ocorrência(s)',
+    // Servidor do Nexo na prévia: tudo desligado até a pessoa ligar; um "outro PC" de exemplo para trazer dados.
+    ...(() => {
+      const cloud = { sync: false, telemetry: false, errors: false, errorEmail: true, asked: false, connected: false, admin: false, lastSyncAt: null };
+      const view = () => ({ configured: true, ...cloud, email: cloud.connected ? account.profile?.email || null : null, deviceId: 'pc-previa0001' });
+      const other = { deviceId: 'pc-notebook01', name: 'NOTEBOOK-SALA', sections: ['atividade', 'perfil', 'preferencias', 'preferenciasapp', 'sessoes'], size: 48210, appVersion: '0.9.0', updatedAt: Date.now() - 5 * 3600000, current: false };
+      return {
+        cloudStatus: async () => view(),
+        cloudSet: async (patch) => { for (const key of ['telemetry', 'errors', 'errorEmail', 'asked']) if (typeof patch[key] === 'boolean') cloud[key] = patch[key]; return view(); },
+        cloudConnect: async () => { if (!account.profile) throw new Error('Entre com o Google primeiro.'); await wait(700); Object.assign(cloud, { connected: true, sync: true, admin: new URLSearchParams(location.search).has('admin') }); return view(); },
+        cloudDisconnect: async () => { Object.assign(cloud, { connected: false, sync: false, admin: false }); return view(); },
+        cloudDeleteRemote: async () => { await wait(400); Object.assign(cloud, { connected: false, sync: false, admin: false, lastSyncAt: null }); return view(); },
+        cloudPush: async (sections) => { await wait(300); cloud.lastSyncAt = Date.now(); window.__pushed = sections; return { ok: true, size: JSON.stringify(sections).length }; },
+        cloudDevices: async () => ({ devices: [{ ...other }, { deviceId: 'pc-previa0001', name: 'ESTE-PC', sections: ['atividade', 'perfil', 'preferencias', 'sessoes'], size: 12000, appVersion: '0.9.0', updatedAt: cloud.lastSyncAt || Date.now(), current: true }] }),
+        cloudPull: async (_id, only) => { await wait(500); const all = { perfil: 'jogos', preferencias: { effects: 'full', liveRate: 'balanced' }, atividade: [{ title: 'Raio-X aplicado', detail: '3 ajustes no NOTEBOOK-SALA', timestamp: Date.now() - 4 * 3600000 }], sessoes: [] }; return { deviceId: other.deviceId, name: other.name, sections: Object.fromEntries(Object.entries(all).filter(([name]) => !only?.length || only.includes(name))) }; },
+        cloudForget: async () => ({ ok: true }),
+        cloudTelemetry: async (usage) => { window.__telemetry = usage; return { sent: cloud.telemetry }; },
+        cloudSendErrors: async () => ({ sent: 0 }),
+        cloudAdmin: async () => ({ ok: true })
+      };
+    })(),
     clearErrors: async () => ({ ok: true }), openErrorFolder: async () => ({ ok: true }),
     applyTweaks: async () => { await wait(600); return { ok: true, failed: [], after: null }; },
     // Teste com reinício na prévia: o motor de verdade (src/reboot-test.js); "reiniciar" simula um boot medido.
