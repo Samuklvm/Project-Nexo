@@ -13,35 +13,49 @@ function publicClientId(root) {
   try { const id = String(JSON.parse(fs.readFileSync(path.join(root, 'config', 'google-client.json'), 'utf8')).clientId || '').trim(); return CLIENT_ID.test(id) ? id : null; } catch { return null; }
 }
 
-/** Devolve { installed: { client_id, client_secret } } ou um motivo (sem conteúdo do segredo). */
+/*
+ * Devolve { config: { installed: { client_id, client_secret } } } ou { error: <código fixo> }.
+ * O código é sempre uma destas palavras, nunca nada tirado do segredo (nem o tamanho dele).
+ */
 function buildOAuthConfig(raw, clientId) {
   const text = String(raw || '').replace(/^﻿/, '').trim();
-  if (!text) return { error: 'segredo vazio' };
+  if (!text) return { error: 'empty' };
   if (text.startsWith('{')) {
     let parsed;
-    try { parsed = JSON.parse(text); } catch { return { error: 'o segredo parece JSON mas não abre' }; }
+    try { parsed = JSON.parse(text); } catch { return { error: 'bad-json' }; }
     const inner = parsed.installed || parsed.web || parsed;
     const id = String(inner.client_id || inner.clientId || '').trim();
     const secret = String(inner.client_secret || inner.clientSecret || '').trim();
-    if (!CLIENT_ID.test(id)) return { error: 'o JSON não tem um client_id do Google' };
+    if (!CLIENT_ID.test(id)) return { error: 'no-client-id' };
     return { config: { installed: { client_id: id, client_secret: secret || undefined } } };
   }
   if (/^GOCSPX-[\w-]{10,}$/.test(text)) {
-    if (!clientId) return { error: 'só o segredo do cliente, e config/google-client.json não tem o ID' };
+    if (!clientId) return { error: 'no-public-id' };
     return { config: { installed: { client_id: clientId, client_secret: text } } };
   }
-  return { error: `formato desconhecido (${text.length} caracteres)` };
+  return { error: 'unknown' };
+}
+
+/** Texto do aviso para cada código. Só textos fixos: nada que venha do segredo chega ao log. */
+function reasonText(code) {
+  switch (code) {
+    case 'empty': return 'o segredo GOOGLE_OAUTH_JSON está vazio';
+    case 'bad-json': return 'o segredo parece JSON mas não abre';
+    case 'no-client-id': return 'o JSON não tem um client_id do Google';
+    case 'no-public-id': return 'só o segredo do cliente, e config/google-client.json não tem o ID';
+    default: return 'o segredo está num formato desconhecido';
+  }
 }
 
 if (require.main === module) {
   const root = path.join(__dirname, '..');
   const result = buildOAuthConfig(process.env.GOOGLE_OAUTH_JSON, publicClientId(root));
-  if (result.error) {
-    console.log(`::warning::Login com Google desativado nesta build: ${result.error}.`);
-  } else {
+  if (result.config) {
     fs.writeFileSync(path.join(root, 'config', 'google-oauth.json'), JSON.stringify(result.config), 'utf8');
     console.log('Login com Google configurado nesta build.');
+  } else {
+    console.log('::warning::Login com Google desativado nesta build: ' + reasonText(String(result.error)) + '.');
   }
 }
 
-module.exports = { buildOAuthConfig, publicClientId };
+module.exports = { buildOAuthConfig, publicClientId, reasonText };

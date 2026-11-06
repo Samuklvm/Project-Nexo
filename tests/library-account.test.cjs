@@ -231,7 +231,11 @@ test('build: config do Google sai do JSON do cliente ou só do segredo GOCSPX + 
   const json = JSON.stringify({ installed: { client_id: '1-abc.apps.googleusercontent.com', client_secret: fake, redirect_uris: ['http://localhost'] } });
   assert.equal(buildOAuthConfig(`﻿${json}`, id).config.installed.client_id, '1-abc.apps.googleusercontent.com', 'JSON (até com BOM) vale como está');
   assert.ok(buildOAuthConfig(fake, null).error, 'sem ID público, só o segredo não basta');
-  for (const bad of ['', 'qualquer-coisa', '{ quebrado', JSON.stringify({ installed: { client_id: 'x' } })]) assert.ok(buildOAuthConfig(bad, id).error, bad);
+  // O motivo é sempre um código fixo, e o texto do aviso vem de uma lista fixa: nada do segredo vai para o log.
+  const codes = ['empty', 'bad-json', 'no-client-id', 'no-public-id', 'unknown'];
+  for (const bad of ['', 'qualquer-coisa', '{ quebrado', JSON.stringify({ installed: { client_id: 'x' } })]) assert.ok(codes.includes(buildOAuthConfig(bad, id).error), bad);
+  const { reasonText } = require('../scripts/write-google-oauth.cjs');
+  for (const code of codes) assert.ok(reasonText(code).length > 10, code);
   // O script nunca imprime o segredo (nem quando o formato é desconhecido).
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-oauth-'));
   fs.mkdirSync(path.join(dir, 'config')); fs.mkdirSync(path.join(dir, 'scripts'));
