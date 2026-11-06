@@ -27,6 +27,8 @@
       .slice(-MAX_SAMPLES);
   }
 
+  const plausible = (value) => Number.isFinite(value) && value > 5 && value < 125;
+
   /** Leituras profundas dos sensores (LibreHardwareMonitor), quando disponíveis. */
   function deepMetrics() {
     const snapshot = Nexo.state.sensors;
@@ -49,7 +51,7 @@
 
   function makeSample(snapshot, timestamp) {
     const thermal = snapshot.temperatureReadings || {};
-    const acpi = (thermal.acpiSensors || []).map((sensor) => sensor.celsius).filter(Number.isFinite);
+    const acpi = (thermal.acpiSensors || []).map((sensor) => sensor.celsius).filter(plausible);
     const gpu = thermal.gpuSensors?.[0] || null;
     const deep = deepMetrics();
     return {
@@ -59,14 +61,15 @@
       disk: snapshot.primaryDrive?.usedPercent ?? null,
       gpu: deep.gpuLoad ?? gpu?.usagePercent ?? null,
       acpiTemperature: acpi.length ? Math.max(...acpi) : null,
-      gpuTemperature: deep.gpuTemperature ?? gpu?.temperatureCelsius ?? null,
+      gpuTemperature: deep.gpuTemperature ?? (plausible(gpu?.temperatureCelsius) ? gpu.temperatureCelsius : null),
       cpuSensorTemperature: deep.cpuTemperature,
       cpuClock: deep.cpuClock
     };
   }
 
   const hottest = (sample) => {
-    const values = [sample.cpuSensorTemperature, sample.gpuTemperature, sample.acpiTemperature].filter(Number.isFinite);
+    // O histórico de versões antigas pode ter 0 °C gravado (sensor sem acesso): não conta como temperatura.
+    const values = [sample.cpuSensorTemperature, sample.gpuTemperature, sample.acpiTemperature].filter(plausible);
     return values.length ? Math.max(...values) : null;
   };
 

@@ -177,7 +177,7 @@ async function getTemperatureReadings() {
       const script = String.raw`
 $sensors = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue | ForEach-Object {
   $celsius = [Math]::Round(([double]$_.CurrentTemperature / 10) - 273.15, 1)
-  if ($celsius -ge 0 -and $celsius -le 125) {
+  if ($celsius -gt 5 -and $celsius -le 125) {  # 0 °C (2732 décimos de kelvin) = zona sem sensor de verdade
     [pscustomobject]@{ name = [string]$_.InstanceName; celsius = $celsius }
   }
 })
@@ -1497,14 +1497,14 @@ function maxTemperature(readings) {
   const values = [];
   for (const device of readings?.devices || []) {
     if (!/cpu/i.test(String(device.type))) continue;
-    for (const sensor of device.sensors || []) if (sensor.type === 'Temperature' && Number.isFinite(sensor.value) && sensor.value > 0 && sensor.value < 125) values.push(sensor.value);
+    for (const sensor of device.sensors || []) if (sensor.type === 'Temperature' && Number.isFinite(sensor.value) && sensor.value > 5 && sensor.value < 125) values.push(sensor.value);
   }
   return values.length ? Math.max(...values) : null;
 }
 async function readCpuTemperature() {
   const detailed = maxTemperature(await getHardwareSensors().catch(() => null));
   if (Number.isFinite(detailed)) return detailed;
-  const acpi = (await getTemperatureReadings().catch(() => ({ acpiSensors: [] }))).acpiSensors.map((sensor) => sensor.celsius).filter(Number.isFinite);
+  const acpi = (await getTemperatureReadings().catch(() => ({ acpiSensors: [] }))).acpiSensors.map((sensor) => sensor.celsius).filter((value) => Number.isFinite(value) && value > 5 && value < 125);
   return acpi.length ? Math.max(...acpi) : null;
 }
 const labState = { running: false, signal: null };
