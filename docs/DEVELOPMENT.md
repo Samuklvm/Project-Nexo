@@ -71,7 +71,7 @@ FPS comes from **PresentMon** (Intel, MIT license), run as a separate program on
 | Programs and sessions | PowerShell and Windows counters | `/proc` and `xprop` (X11 and XWayland; on pure Wayland automatic game detection does not work) |
 | FPS | PresentMon | MangoHud (Nexo reads its log; the launch option is ready in Sessions) |
 | Power | Windows power plans (`powercfg`) | power-profiles-daemon profiles |
-| Lab (beta) | 63 hidden power settings (processor, core parking, idle states, hybrid cores, SATA/NVMe, PCIe), latency and disk tests, novel combinations, restore point; PC X-ray of 24 registry settings | power profiles, no root |
+| Lab (beta) | 71 hidden power settings (processor, core parking, idle states, hybrid cores, SATA/NVMe, PCIe, Wi-Fi), 9 tests, novel combinations, restore point; PC X-ray of 109 settings (registry, services, active plan); reboot test (ABBA) | power profiles, no root |
 | Cleanup | temp files, crash reports, WER, Recycle Bin | `/tmp`, thumbnails, apport reports, freedesktop Trash |
 | Optimize drive | `defrag` (UAC) | `fstrim` (pkexec) |
 | SFC, Performance Log Users, Xbox app games | yes | not available on Linux |

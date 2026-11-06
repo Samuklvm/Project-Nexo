@@ -64,7 +64,7 @@
     <td width="50%"><img src="docs/images/atlas.jpg" alt="Atlas de opções"></td>
   </tr>
   <tr>
-    <td><b>Otimização extrema (beta).</b> Um laboratório que testa <b>63 ajustes ocultos</b> (processador, núcleos, estados ociosos, SSD e PCI Express) e combinações inéditas <b>no seu PC</b>, num plano de energia temporário, com ponto de restauração antes e medição A/B contra o ruído. Só adota o que a medição confirmou. Inclui o <b>Raio-X do registro</b>, com aplicar e reverter.</td>
+    <td><b>Otimização extrema (beta).</b> Um laboratório que testa <b>71 ajustes ocultos</b> (processador, núcleos, estados ociosos, SSD, PCI Express e Wi-Fi) e combinações inéditas <b>no seu PC</b>, num plano de energia temporário, com ponto de restauração antes e medição A/B contra o ruído. Só adota o que a medição confirmou. Inclui o <b>Raio-X</b> (109 ajustes do registro, serviços e plano de energia, com aplicar e reverter) e o <b>teste com reinício</b>, que mede o PC reiniciando sem e com os ajustes. São 702 opções no total.</td>
     <td><b>Atlas de opções.</b> As alavancas de desempenho que valem conhecer, incluindo os mitos que você <b>não</b> deve seguir e o que o Nexo se recusa a fazer.</td>
   </tr>
 </table>
@@ -120,7 +120,7 @@ O Nexo Device Care é **software proprietário**: todos os direitos reservados. 
 
 ## 📚 Mais
 
-- [Novidades de cada versão](CHANGELOG.md) (0.8.0: otimização extrema com 63 ajustes ocultos, Raio-X do registro e leituras em tempo real) · [Notas das releases](docs/releases/)
+- [Novidades de cada versão](CHANGELOG.md) (0.8.0: otimização extrema com 702 opções, Raio-X do registro, teste com reinício e leituras em tempo real) · [Notas das releases](docs/releases/)
 - [Para desenvolvedores](docs/DESENVOLVIMENTO.md): rodar, testar, gerar instaladores e publicar versões
 - [Arquitetura](docs/ARQUITETURA.md) · [Conexões de jogos](docs/CONEXOES.md) · [Segurança](SECURITY.md)
 

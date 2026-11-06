@@ -7,8 +7,10 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ## Português
 
 ### 0.8.0: otimização extrema no último nível
-- Novo: laboratório com 63 ajustes ocultos (processador, núcleos, estados ociosos, núcleos híbridos, SATA, NVMe, PCIe), testes de latência e disco, objetivo da sessão, triagem em duas etapas, combinações inéditas, exploração radical e risco alto.
-- Novo: Raio-X do PC com 24 ajustes do registro e do sistema, evidência de cada um, aplicar e reverter pelo Diário; o que reduz a segurança fica recusado.
+- Novo: laboratório com 71 ajustes ocultos e 393 opções (processador, núcleos, estados ociosos, núcleos híbridos, temperatura, SATA, NVMe, PCIe, Wi-Fi), nove testes (inclusive ritmo de quadros, timer, memória e rede), ordem ABBA, objetivo da sessão, triagem em duas etapas, combinações inéditas, exploração radical e risco alto.
+- Novo: Raio-X do PC com 109 ajustes e 309 opções (registro, 30 serviços, plano de energia ativo, rede, navegadores), evidência de cada um, aplicar e reverter pelo Diário; o que reduz a segurança fica recusado.
+- Novo: teste com reinício: mede o PC reiniciando sem e com os ajustes (A, B, B, A) e só mantém o que ganhou nos dois lados.
+- Melhoria: 180 testes automáticos, com testes de força bruta contra as travas de segurança.
 - Novo: leituras em tempo real (painel a cada 1 s, sensores a cada 2 s) sem travar, com a opção "Velocidade das leituras".
 
 ### 0.7.1: revisão completa
@@ -69,8 +71,10 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ## English
 
 ### 0.8.0: extreme optimization at its peak
-- New: lab with 63 hidden settings (processor, cores, idle states, hybrid cores, SATA, NVMe, PCIe), latency and disk tests, session goal, two-stage screening, novel combinations, radical exploration and high risk.
-- New: PC X-ray with 24 registry and system settings, the evidence for each, apply and revert through the Journal; anything that reduces security stays refused.
+- New: lab with 71 hidden settings and 393 options (processor, cores, idle states, hybrid cores, thermals, SATA, NVMe, PCIe, Wi-Fi), nine tests (including frame pacing, timer, memory and network), ABBA order, session goal, two-stage screening, novel combinations, radical exploration and high risk.
+- New: PC X-ray with 109 settings and 309 options (registry, 30 services, the active power plan, network, browsers), the evidence for each, apply and revert through the Journal; anything that reduces security stays refused.
+- New: reboot test: measures the PC restarting without and with the settings (A, B, B, A) and only keeps what won on both sides.
+- Improvement: 180 automated tests, including brute-force tests against the safety locks.
 - New: real-time readings (dashboard every 1 s, sensors every 2 s) without stutter, with a "Reading speed" option.
 
 ### 0.7.1: full review

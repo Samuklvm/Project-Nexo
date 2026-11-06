@@ -205,3 +205,12 @@ test('interface do Raio-X lê o catálogo do mesmo jeito que o app (grupos e con
   const view = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'view-scan.js'), 'utf8');
   for (const group of Object.keys(Scan.GROUPS)) assert.match(view, new RegExp(`${group}: '`), group);
 });
+
+test('leitura: o script inteiro cabe com folga na linha de comando do PowerShell', () => {
+  const script = Scan.readScript();
+  assert.ok(script.length < 24000, `${script.length} caracteres`);
+  // Toda entrada do registro é lida; plano de energia vem do powercfg (fora do script).
+  const registry = Scan.TWEAKS.flatMap((tweak) => tweak.entries.map((entry, index) => [tweak.id, index, entry])).filter(([, , entry]) => entry.kind !== 'power');
+  for (const [id, index] of registry) assert.ok(script.includes(`$out['${id}#${index}']`), `${id}#${index}`);
+  assert.doesNotMatch(script, /Set-ItemProperty|New-ItemProperty|Remove-ItemProperty|reg add|reg delete/i, 'a leitura nunca grava');
+});
