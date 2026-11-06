@@ -21,8 +21,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       WRANGLER: npx --yes wrangler@4
     steps:
       - uses: actions/checkout@v7
@@ -31,21 +29,31 @@ jobs:
           node-version: 24
       - name: Testes do servidor
         run: node --test tests/server.test.cjs
+      # Colar o token às vezes traz espaço, quebra de linha ou texto junto: fica só o token (e o ID da conta).
       - name: Conferir os segredos
         id: check
+        env:
+          RAW_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RAW_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "Sem CLOUDFLARE_API_TOKEN ou CLOUDFLARE_ACCOUNT_ID: o servidor não foi publicado."
+          TOKEN="$(printf '%s\n' "$RAW_TOKEN" | tr -d '\r' | grep -Eo 'cfut_[A-Za-z0-9_-]+' | head -n 1 || true)"
+          if [ -z "$TOKEN" ]; then TOKEN="$(printf '%s\n' "$RAW_TOKEN" | tr -d '\r' | grep -Eo '[A-Za-z0-9_-]{30,}' | head -n 1 || true)"; fi
+          ACCOUNT="$(printf '%s\n' "$RAW_ACCOUNT" | grep -Eo '[0-9a-f]{32}' | head -n 1 || true)"
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+            echo "Sem CLOUDFLARE_API_TOKEN ou CLOUDFLARE_ACCOUNT_ID válidos: o servidor não foi publicado."
             echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "::add-mask::$TOKEN"
+          echo "CLOUDFLARE_API_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_ACCOUNT_ID=$ACCOUNT" >> "$GITHUB_ENV"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: Banco D1 (cria se não existir) e migrações
         if: steps.check.outputs.ready == 'true'
         working-directory: server
         run: |
           set -euo pipefail
-          find_db() { $WRANGLER d1 list --json | node -e "let s='';process.stdin.on('data',(d)=>s+=d).on('end',()=>{const list=JSON.parse(s);const db=(Array.isArray(list)?list:[]).find((x)=>x.name==='nexo');process.stdout.write(db?(db.uuid||db.id||''):'')})"; }
+          find_db() { $WRANGLER d1 list --json | node -e "let s='';process.stdin.on('data',(d)=>s+=d).on('end',()=>{let list=[];try{list=JSON.parse(s)}catch{console.error('Resposta inesperada do wrangler d1 list:\n'+s.slice(0,800));process.exit(1)}const db=(Array.isArray(list)?list:[]).find((x)=>x.name==='nexo');process.stdout.write(db?(db.uuid||db.id||''):'')})"; }
           ID="$(find_db)"
           if [ -z "$ID" ]; then $WRANGLER d1 create nexo > /dev/null; ID="$(find_db)"; fi
           if [ -z "$ID" ]; then echo "Não consegui criar nem achar o banco D1 'nexo'."; exit 1; fi
@@ -68,11 +76,13 @@ jobs:
       - name: Segredos do servidor (cria os que faltam)
         if: steps.check.outputs.ready == 'true'
         working-directory: server
+        # Só cria o que falta, e só se conseguiu LER a lista: um erro aqui nunca pode gerar um DATA_KEY novo por cima do antigo.
         run: |
-          set -uo pipefail
-          LIST="$($WRANGLER secret list --format json 2>/dev/null || $WRANGLER secret list 2>/dev/null || echo '[]')"
+          set -euo pipefail
+          LIST="$($WRANGLER secret list --format json 2>/dev/null)" || { echo "Não consegui listar os segredos do Worker; nada foi criado."; exit 1; }
+          NAMES="$(printf '%s' "$LIST" | node -e "let s='';process.stdin.on('data',(d)=>s+=d).on('end',()=>{let l;try{l=JSON.parse(s)}catch{process.exit(2)}if(!Array.isArray(l))process.exit(2);process.stdout.write(l.map((x)=>x.name).join(' '))})")" || { echo "Lista de segredos ilegível; nada foi criado."; exit 1; }
           for NAME in SESSION_SECRET DATA_KEY; do
-            if printf '%s' "$LIST" | grep -q "\"$NAME\""; then echo "$NAME já existe."; continue; fi
+            if printf ' %s ' "$NAMES" | grep -q " $NAME "; then echo "$NAME já existe."; continue; fi
             openssl rand -base64 48 | tr -d '\n' | $WRANGLER secret put "$NAME" > /dev/null
             echo "$NAME criado."
           done
