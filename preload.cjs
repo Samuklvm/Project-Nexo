@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   // Sistema e sensores
   getSystemSnapshot: () => call('system:snapshot'),
   getHardwareSensors: () => call('sensors:snapshot'),
+  getSensorService: () => call('sensors:service-status'),
+  installSensorService: () => call('sensors:service-install'),
+  onSensorSetup: subscribe('sensors:setup'),
   getTopProcesses: () => call('system:top-processes'),
   openTaskManager: () => call('system:task-manager'),
   listDrives: () => call('drives:list'),

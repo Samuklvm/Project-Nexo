@@ -84,7 +84,7 @@ Out of reach for a program without administrator rights: Windows event logs, Pre
 
 ## Limits
 
-- Readings depend on the hardware, firmware and LibreHardwareMonitorLib. Nexo does not install kernel drivers.
+- Readings depend on the hardware, firmware and LibreHardwareMonitorLib. On Windows, processor and motherboard temperatures come from the `NexoSensors` service (collector with `--service`, PawnIO driver); without it, the collector runs as a normal process without those readings.
 - The diagnosis points to possibilities, it does not prove causes, and Nexo **never ends processes**.
 - Cleanup only removes regular files older than 7 days, skips links and stops at 5,000 files per run. Automatic cleanup only looks at the temp folder and requires four readings and 60 seconds with the disk above 90%, at most once per hour.
 - In the browser (`npm run preview`), actions that depend on the computer use sample data.

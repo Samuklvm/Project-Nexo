@@ -121,6 +121,34 @@
     }
   }
 
+  /* ---------- Serviço de sensores (Windows): temperatura do processador ---------- */
+  const serviceBox = document.getElementById('sensor-service');
+  const serviceButton = document.getElementById('sensor-service-install');
+  async function renderSensorService() {
+    if (!serviceBox || !desktopBridge?.getSensorService) return;
+    const state = await desktopBridge.getSensorService().catch(() => null);
+    if (!state?.supported) { serviceBox.hidden = true; return; }
+    serviceBox.hidden = false;
+    const ok = state.running && !state.needsInstall;
+    serviceBox.dataset.state = ok ? 'ok' : state.setupRunning ? 'busy' : 'off';
+    setText('sensor-service-title', ok ? 'Leitura completa ativa' : state.setupRunning ? 'Ativando a leitura completa…' : state.installed ? 'Serviço de sensores precisa ser atualizado' : 'Leitura completa desligada');
+    setText('sensor-service-detail', ok ? 'Temperatura do processador e da placa-mãe pelo serviço “Nexo Device Care: sensores”.' : state.setupRunning ? 'O Windows vai pedir permissão (UAC) para instalar o driver PawnIO e o serviço.' : 'Sem o serviço, o Windows não deixa ler a temperatura do processador. Ativar pede permissão de administrador uma vez.');
+    serviceButton.hidden = ok || state.setupRunning;
+  }
+  serviceButton?.addEventListener('click', async () => {
+    setButtonBusy(serviceButton, true, 'Aguardando o Windows…');
+    try { await desktopBridge.installSensorService(); } catch (error) { showToast(error.message || 'Não foi possível ativar.'); }
+    finally { setButtonBusy(serviceButton, false); renderSensorService(); refreshHardwareSensors?.(); }
+  });
+  desktopBridge?.onSensorSetup?.((event) => {
+    if (event.phase === 'start') showToast('Ativando a leitura de temperatura: o Windows vai pedir permissão.');
+    else if (event.ok) showToast('Leitura completa ativa: temperatura do processador liberada.');
+    else if (event.declined) showToast('Tudo bem: a leitura completa fica desligada. Dá para ativar em Hardware quando quiser.');
+    else showToast(`Não foi possível ativar a leitura completa${event.note ? `: ${event.note}` : '.'}`);
+    renderSensorService();
+  });
+  Nexo.on?.('view', (view) => { if (view === 'hardware') renderSensorService(); });
+
   sensorCategoryFilters?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-sensor-category]');
     if (!button) return;

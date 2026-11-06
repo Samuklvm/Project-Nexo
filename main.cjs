@@ -10,7 +10,8 @@ const readline = require('readline');
 const { Worker } = require('worker_threads');
 const { createProbe } = require('./electron/probe.cjs');
 const { createFpsRunner } = require('./electron/fps-runner.cjs');
-const { createElevator, toolLauncher } = require('./electron/elevate.cjs');
+const { createElevator, toolLauncher, PAWNIO } = require('./electron/elevate.cjs');
+const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
 const LabParsers = { parseList: parseLabPlanList };
 const { createLibrary } = require('./electron/games.cjs');
@@ -294,6 +295,17 @@ async function getHardwareSensors() {
   }
   if (process.platform !== 'win32') {
     return { status: 'unsupported', collectedAt: new Date().toISOString(), devices: [], sensorCount: 0, issues: [] };
+  }
+  // Primeiro o serviço (com o driver PawnIO, lê a temperatura do processador); se não houver, o coletor comum.
+  if (sensorService && (serviceReadable || Date.now() - serviceCheckedAt > 60000)) {
+    const fromService = await sensorService.read();
+    serviceCheckedAt = Date.now();
+    if (fromService && typeof fromService.status === 'string') {
+      serviceReadable = true;
+      if (sensorHost) { sensorHost.kill(); sensorHost = null; }
+      return fromService;
+    }
+    serviceReadable = false;
   }
   if (sensorRequestPending) return sensorRequestPending.promise;
   const host = startSensorHost();
@@ -1205,6 +1217,40 @@ registerIpcHandler('settings:set', async (_event, patch) => applySettings(patch)
 // ---- Elevação centralizada (UAC) ----
 const elevate = createElevator({ runPowerShell: runPowerShellCode, fs, path, dir: path.join(app.getPath('userData'), 'elevate') });
 
+// ---- Serviço de sensores (temperatura do processador com o driver PawnIO) ----
+const sensorService = process.platform === 'win32' ? createSensorService({
+  net: nodeNet, fs, path, crypto: require('crypto'), run: (file, args) => runCode(file, args, 8000), fetchBuffer: fetchBytes, elevate,
+  userData: app.getPath('userData'), pawnio: PAWNIO,
+  hostDir: app.isPackaged ? path.join(process.resourcesPath, 'sensor-host') : path.join(__dirname, 'sensor-host', 'publish')
+}) : null;
+let serviceReadable = true;
+let serviceCheckedAt = 0;
+let sensorSetupRunning = false;
+const SENSOR_SETUP_FILE = () => path.join(app.getPath('userData'), 'sensor-setup.json');
+async function runSensorSetup(trigger) {
+  if (!sensorService || sensorSetupRunning) return { ok: false, note: 'indisponível' };
+  sensorSetupRunning = true;
+  sendToWindow('sensors:setup', { phase: 'start', trigger });
+  try {
+    const result = await sensorService.install().catch((error) => ({ ok: false, note: error.message }));
+    await fs.writeFile(SENSOR_SETUP_FILE(), JSON.stringify({ at: Date.now(), declined: Boolean(result.declined), ok: Boolean(result.ok) }), 'utf8').catch(() => {});
+    if (result.ok) { serviceReadable = true; serviceCheckedAt = 0; temperatureCache.expiresAt = 0; }
+    sendToWindow('sensors:setup', { phase: 'done', trigger, ...result });
+    return result;
+  } finally { sensorSetupRunning = false; }
+}
+/** Sempre ativo: na primeira abertura (e quando o serviço muda de versão) o Nexo instala o serviço; o Windows pede a permissão. */
+async function autoSensorSetup() {
+  if (!sensorService || !app.isPackaged) return;
+  const state = await sensorService.status().catch(() => null);
+  if (!state?.needsInstall) return;
+  const last = JSON.parse(await fs.readFile(SENSOR_SETUP_FILE(), 'utf8').catch(() => '{}'));
+  if (last.declined && Date.now() - (Number(last.at) || 0) < 3 * 86400e3) return;
+  await runSensorSetup('auto');
+}
+registerIpcHandler('sensors:service-status', async () => (sensorService ? { supported: true, setupRunning: sensorSetupRunning, ...(await sensorService.status()) } : { supported: false }));
+registerIpcHandler('sensors:service-install', async () => runSensorSetup('manual'));
+
 // ---- Acesso ao FPS: grupo "Performance Log Users" (SID S-1-5-32-559), automático com a permissão da pessoa ----
 const ACCESS_SCRIPT = String.raw`$id=[Security.Principal.WindowsIdentity]::GetCurrent(); $pr=New-Object Security.Principal.WindowsPrincipal($id); $in=[bool](@($id.Groups | Where-Object { $_.Value -eq 'S-1-5-32-559' }).Count); $member=$false; try { $member=[bool](@(Get-LocalGroupMember -SID 'S-1-5-32-559' -ErrorAction Stop | Where-Object { $_.SID.Value -eq $id.User.Value }).Count) } catch {}; [pscustomobject]@{ sid=$id.User.Value; inToken=$in; member=$member; admin=$pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) } | ConvertTo-Json -Compress`;
 async function readAccess() {
@@ -1767,6 +1813,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     if (recovered.recovered) mainWindow.webContents.once('did-finish-load', () => sendToWindow('lab:recovered', recovered));
     applyTray();
+    if (process.platform === 'win32' && app.isPackaged) setTimeout(() => autoSensorSetup().catch(() => {}), 5000);
     if (settings.autoSession) library.scan().catch(() => []).finally(() => watcher.start());
 
     app.on('activate', () => {

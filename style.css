@@ -1,3 +1,4 @@
+@font-face { font-family: "Inter Nexo"; src: url("assets/fonts/InterVariable.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: block; }
 /* Nexo Device Care — sistema visual "noite estrelada".
    Paleta: noite #060919 · crepúsculo #0d1433 · pétala #5b8cff · estrela #5ad7ff · lua #e4eaff · névoa #9aa8d6
    Estados: bom #6ef2c2 · atenção #ffc46b · crítico #ff7a95 */
@@ -15,13 +16,14 @@
   --hair: rgba(150, 175, 255, 0.15);
   --glass: linear-gradient(180deg, rgba(17, 26, 62, 0.6), rgba(9, 14, 38, 0.52));
   --c-cpu: #5ad7ff; --c-mem: #a08cff; --c-disk: #ffb86b; --c-gpu: #6ef2c2; --c-acpi: #ffb86b;
-  --font: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", "Inter", "Cantarell", "Noto Sans", "Ubuntu", system-ui, sans-serif;
+  --font: "Inter Nexo", "Segoe UI Variable Display", "Segoe UI", "Cantarell", "Noto Sans", system-ui, sans-serif;
   --wallpaper-image: url('./assets/wallpaper.webp');
   --rail-w: 76px;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--night); color: var(--moon); font: 400 14px/1.5 var(--font); overflow: hidden; }
+body { font-optical-sizing: auto; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 h1, h2, h3, h4, p, dl, dd, ul, ol { margin: 0; }
@@ -971,3 +973,47 @@ body[data-platform="linux"] [data-only="win32"], body:not([data-platform="linux"
 /* Estado vazio dentro de um cartão: com respiro e centralizado (a regra .empty-art tirava o padding do .sheet). */
 .sheet.empty-art { padding: 26px 24px; justify-items: center; text-align: center; }
 .sheet.empty-art span { max-width: 52ch; }
+
+/* Serviço de sensores (Windows) */
+.sensor-service { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 20px; border-left: 3px solid rgba(150, 175, 255, 0.35); }
+.sensor-service strong { display: block; font-size: 14.5px; }
+.sensor-service span { font-size: 12.5px; }
+.sensor-service[data-state="ok"] { border-left-color: #6ef2c2; }
+.sensor-service[data-state="off"] { border-left-color: #ffc56b; }
+.sensor-service[data-state="busy"] { border-left-color: var(--star); }
+
+/* ===================== Movimento (0.7.0) =====================
+   Uma curva só (desacelera como algo real parando), um único movimento por entrada de página,
+   durações curtas para o que responde ao clique e longas só para o que é decorativo. */
+:root { --ease-out: cubic-bezier(0.22, 1, 0.36, 1); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1); }
+.view.active { animation: viewFade 0.24s var(--ease-out); }
+@keyframes viewFade { from { opacity: 0; } }
+.rise { animation: riseIn 0.56s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 38ms); }
+@keyframes riseIn { from { opacity: 0; transform: translate3d(0, 10px, 0); } }
+.gp-tab-body, .game-page { animation: viewFade 0.26s var(--ease-out); }
+.game-card { animation: cardIn 0.42s var(--ease-out) both; animation-delay: calc(min(var(--i, 0), 16) * 22ms); }
+@keyframes cardIn { from { opacity: 0; transform: translate3d(0, 10px, 0); } }
+.cover { transition: transform 0.34s var(--ease-out), box-shadow 0.34s var(--ease-out), border-color 0.25s; }
+.game-card:hover .cover, .game-card:focus-visible .cover { transform: translate3d(0, -4px, 0) scale(1.025); }
+.cover::after { transition: transform 0.8s var(--ease-out); }
+.btn { transition: background-color 0.18s, border-color 0.18s, color 0.18s, box-shadow 0.28s var(--ease-out), transform 0.2s var(--ease-out), opacity 0.18s; }
+.btn:active:not(:disabled) { transform: scale(0.97); transition-duration: 0.08s; }
+.btn.primary::after { transition: transform 0.9s var(--ease-out); pointer-events: none; }
+.rail { transition: width 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out); }
+.rail-label { transition: opacity 0.12s ease-out; }
+.rail:hover .rail-label, .rail:has(:focus-visible) .rail-label { transition: opacity 0.22s var(--ease-out) 0.06s; }
+.rail-item { transition: background-color 0.18s, color 0.18s; }
+.rail-pill { transition: transform 0.5s var(--ease-spring), height 0.3s var(--ease-out), opacity 0.3s; }
+.switch i { transition: background-color 0.22s var(--ease-out), box-shadow 0.22s; }
+.switch i::after { transition: transform 0.26s var(--ease-spring); }
+.sheet::before, .sheet::after { transition: opacity 0.45s var(--ease-out); }
+.toasts { transition: opacity 0.26s var(--ease-out), transform 0.36s var(--ease-out); }
+.modal-backdrop { animation: viewFade 0.2s var(--ease-out); }
+.modal-backdrop > * { animation: modalIn 0.32s var(--ease-out); }
+@keyframes modalIn { from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.98); } }
+.shot, .shelf-tile, .pcard, .atlas-card { transition: transform 0.3s var(--ease-out), border-color 0.25s, box-shadow 0.3s var(--ease-out); }
+body.lite .rise, body.lite .game-card, body.lite .modal-backdrop > * { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .rise, .game-card, .gp-tab-body, .game-page, .modal-backdrop > * { animation: none; }
+  .rail, .rail-pill, .cover, .btn { transition-duration: 0.01s; }
+}

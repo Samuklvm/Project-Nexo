@@ -25,20 +25,20 @@
     });
   }, { passive: true });
 
-  /* Paralaxe da arte de fundo. */
+  /* Paralaxe da arte de fundo: segue o mouse com inércia (sem trancos) e para sozinha quando chega. */
   const art = document.querySelector('.sky-art');
-  let parallaxFrame = 0;
-  let px = 0;
-  let py = 0;
+  let targetX = 0, targetY = 0, curX = 0, curY = 0, parallaxFrame = 0;
+  const parallaxStep = () => {
+    curX += (targetX - curX) * 0.08;
+    curY += (targetY - curY) * 0.08;
+    art.style.transform = `translate3d(${(-curX * 16).toFixed(2)}px, ${(-curY * 10).toFixed(2)}px, 0) scale(1.06)`;
+    parallaxFrame = Math.abs(targetX - curX) + Math.abs(targetY - curY) > 0.0015 ? requestAnimationFrame(parallaxStep) : 0;
+  };
   addEventListener('pointermove', (event) => {
     if (still() || !art) return;
-    px = event.clientX / innerWidth - 0.5;
-    py = event.clientY / innerHeight - 0.5;
-    if (parallaxFrame) return;
-    parallaxFrame = requestAnimationFrame(() => {
-      parallaxFrame = 0;
-      art.style.transform = `translate3d(${(-px * 22).toFixed(1)}px, ${(-py * 14).toFixed(1)}px, 0) scale(1.06)`;
-    });
+    targetX = event.clientX / innerWidth - 0.5;
+    targetY = event.clientY / innerHeight - 0.5;
+    if (!parallaxFrame) parallaxFrame = requestAnimationFrame(parallaxStep);
   }, { passive: true });
 
   /* Pílula que desliza até o item ativo da barra lateral. */
@@ -61,11 +61,13 @@
     const panel = document.querySelector(`[data-view-panel="${view}"]`);
     if (!panel || still()) return;
     const parts = $$(':scope > .hero, :scope > .live, :scope > .orbit, :scope > .sheet, :scope > .learn, :scope > .page-head, :scope > .section-head, :scope > .chart-grid > *, :scope > .split > *, :scope > .split > .stack > *', panel);
-    parts.forEach((element, index) => { element.style.setProperty('--i', String(Math.min(index, 14))); element.classList.remove('rise'); });
+    parts.forEach((element, index) => { element.style.setProperty('--i', String(Math.min(index, 10))); element.classList.remove('rise'); });
     void panel.offsetWidth;
-    parts.forEach((element) => element.classList.add('rise'));
-    clearTimeout(panel._riseTimer);
-    panel._riseTimer = setTimeout(() => parts.forEach((element) => element.classList.remove('rise')), 1300);
+    // Cada bloco perde a classe quando a SUA animação termina (antes um temporizador cortava os últimos no meio).
+    parts.forEach((element) => {
+      element.classList.add('rise');
+      element.addEventListener('animationend', function done(event) { if (event.target !== element) return; element.classList.remove('rise'); element.removeEventListener('animationend', done); });
+    });
   });
 
   /* Números que deslizam até o novo valor em vez de saltar. */

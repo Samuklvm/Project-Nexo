@@ -133,6 +133,7 @@ body{padding:0;display:block;overflow:hidden;background:#060919}.wrap{width:100v
         <li>Biblioteca de jogos: lê os manifestos dos launchers, o Registro e as pastas dos jogos e copia as capas do cache local. Buscar capas oficiais na Steam e na Microsoft Store é opcional e começa desligado.</li>
         <li>Contas de jogos (opcionais): Steam deste PC (só arquivos locais), chave da Steam Web API, conta Xbox pelo navegador (tokens descartados) e Discord pelo canal local. O que fica guardado é cifrado neste PC.</li>
         <li>Sessão automática, bandeja e iniciar com o Windows: desligados até você ligar. O observador lê o programa em primeiro plano a cada 3 s, sem guardar caminhos.</li>
+        <li>Sensores de temperatura (Windows): na primeira abertura, com a sua permissão (UAC), o Nexo instala o driver PawnIO (assinado, código aberto, o mesmo do LibreHardwareMonitor; baixado do GitHub oficial com o arquivo conferido) e o serviço “Nexo Device Care: sensores”, que só lê sensores e responde ao app por um canal local. Desinstalar o Nexo remove o serviço e o PawnIO, se foi o Nexo que instalou.</li>
         <li>Liberar o FPS: com a sua permissão, coloca o seu usuário no grupo Performance Log Users (dá para desfazer).</li>
         <li>Conta Google (opcional): login no seu navegador; ficam neste PC, cifrados, só nome, e-mail, identificador da conta e foto. Sem senhas nem tokens.</li>
       </ul>

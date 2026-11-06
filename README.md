@@ -108,7 +108,8 @@ As mesmas telas nos dois sistemas. No Linux, o Nexo usa `/proc` e os sensores do
 
 - Nada é enviado a servidores do Nexo: **não existe servidor do Nexo.**
 - As conexões externas são só as que você usa: verificação de atualizações no GitHub, capas e dados de jogos das lojas oficiais e as contas que você conectar (Google, Steam, Discord).
-- O Nexo **nunca encerra processos sozinho**, não instala drivers de kernel e não lê a memória dos jogos.
+- O Nexo **nunca encerra processos sozinho** e não lê a memória dos jogos.
+- No Windows, a temperatura do processador precisa de um driver: com a sua permissão, o Nexo instala o **PawnIO** (assinado e de código aberto, o mesmo do LibreHardwareMonitor) e um serviço que só lê sensores. Tudo sai junto na desinstalação.
 - Os seus dados podem ser exportados ou apagados em **Ajustes**.
 
 Inventário completo: [PRIVACIDADE.md](PRIVACIDADE.md).
@@ -119,7 +120,7 @@ O Nexo Device Care é **software proprietário**: todos os direitos reservados. 
 
 ## 📚 Mais
 
-- [Novidades de cada versão](CHANGELOG.md) (0.6.2: sensores e FPS de volta no Windows) · [Notas das releases](docs/releases/)
+- [Novidades de cada versão](CHANGELOG.md) (0.7.0: temperatura do processador, animações refinadas e tudo no mais recente) · [Notas das releases](docs/releases/)
 - [Para desenvolvedores](docs/DESENVOLVIMENTO.md): rodar, testar, gerar instaladores e publicar versões
 - [Arquitetura](docs/ARQUITETURA.md) · [Conexões de jogos](docs/CONEXOES.md) · [Segurança](SECURITY.md)
 

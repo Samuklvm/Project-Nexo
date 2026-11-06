@@ -6,6 +6,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.7.0: temperatura do processador, tudo no mais recente
+- Novo: serviço de sensores com o driver PawnIO (Windows) para ler a temperatura do processador e da placa-mãe; instalado com permissão (UAC) e removido na desinstalação.
+- Novo: fonte Inter embutida.
+- Melhoria: animações refinadas (curva única, uma entrada por página, fundo com inércia).
+- Melhoria: Electron 45.2.3, electron-updater 6.8.11, .NET 10, Node 24 e ações do GitHub atualizadas.
+- Correção: notas da atualização em HTML cru, bandeiras que viravam letras, temperatura falsa de 0 °C e alerta do Dependabot (minimatch 11).
+
 ### 0.6.2: sensores e FPS de volta, biblioteca mais certinha
 - Correção: o coletor de sensores voltou ao instalador do Windows (estava fora desde a 0.4.0).
 - Correção: PresentMon 2.6.0 embutido, com integridade conferida; o FPS funciona sem baixar nada.
@@ -47,6 +54,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.7.0: processor temperature, everything on the latest version
+- New: sensor service with the PawnIO driver (Windows) to read processor and motherboard temperature; installed with permission (UAC) and removed on uninstall.
+- New: built-in Inter font.
+- Improvement: refined animations (single curve, one entrance per page, background with inertia).
+- Improvement: Electron 45.2.3, electron-updater 6.8.11, .NET 10, Node 24 and updated GitHub actions.
+- Fix: update notes shown as raw HTML, flags turning into letters, a false 0 °C temperature and the Dependabot alert (minimatch 11).
 
 ### 0.6.2: sensors and FPS back, a tidier library
 - Fix: the sensor collector is back in the Windows installer (it was missing since 0.4.0).

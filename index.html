@@ -330,6 +330,10 @@
           <div><strong id="sensor-status-title">Iniciando leitura local</strong><span id="sensor-status-detail">Nenhum dado é enviado. A disponibilidade depende dos sensores expostos pelo hardware e pelo firmware.</span></div>
           <div class="sensor-count"><strong id="sensor-count">--</strong><span>sensores</span></div>
         </section>
+        <section class="sheet sensor-service" id="sensor-service" data-only="win32" hidden>
+          <div><strong id="sensor-service-title">Leitura completa dos sensores</strong><span class="muted" id="sensor-service-detail">Temperatura do processador e da placa-mãe pelo serviço de sensores do Nexo.</span></div>
+          <button class="btn primary sm" id="sensor-service-install" type="button" hidden>Ativar leitura completa</button>
+        </section>
         <div class="sensor-toolbar">
           <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="sensor-search" type="search" placeholder="Buscar componente ou sensor" autocomplete="off" /></label>
           <label class="switch compact"><input id="sensor-advanced" type="checkbox" /><i></i><span>Incluir sensores avançados</span></label>
@@ -337,7 +341,7 @@
         </div>
         <div class="chips" id="sensor-category-filters" role="group" aria-label="Filtrar categorias de sensores"></div>
         <div class="sensor-grid" id="sensor-device-list" aria-live="polite"><article class="sheet sensor-empty"><strong>Preparando o explorador</strong><span>As categorias e leituras aparecem quando o coletor local terminar a primeira varredura.</span></article></div>
-        <p class="muted footnote">O Nexo não instala drivers de kernel nem abre um serviço oculto para ler sensores. Alguns dados avançados exigem suporte do fabricante; nesses casos o sensor pode permanecer indisponível.</p>
+        <p class="muted footnote" data-only="win32">No Windows, a temperatura do processador e da placa-mãe vem do serviço de sensores do Nexo, que usa o driver PawnIO (assinado e de código aberto, o mesmo do LibreHardwareMonitor). O serviço só lê sensores, aparece em Serviços do Windows como “Nexo Device Care: sensores” e sai junto quando você desinstala o Nexo. Alguns sensores dependem do fabricante e podem continuar indisponíveis.</p><p class="muted footnote" data-only="linux">No Linux, as leituras vêm do próprio kernel (hwmon), sem driver extra.</p>
       </section>
 
       <!-- MANUTENÇÃO -->

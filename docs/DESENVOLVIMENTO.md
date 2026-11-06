@@ -84,7 +84,7 @@ Fora do alcance de um programa sem administrador: logs de eventos do Windows, Pr
 
 ## Limites
 
-- As leituras dependem do hardware, do firmware e da LibreHardwareMonitorLib. O Nexo não instala drivers de kernel.
+- As leituras dependem do hardware, do firmware e da LibreHardwareMonitorLib. No Windows, temperaturas do processador e da placa-mãe vêm do serviço `NexoSensors` (coletor com `--service`, driver PawnIO); sem ele, o coletor roda como processo comum, sem essas leituras.
 - O diagnóstico indica possibilidades, não comprova causas, e o Nexo **nunca encerra processos**.
 - A limpeza remove só arquivos regulares com mais de 7 dias, ignora links e para em 5.000 arquivos por execução. A limpeza automática considera só a pasta temporária e exige quatro leituras e 60 segundos com o disco acima de 90%, no máximo uma vez por hora.
 - No navegador (`npm run preview`), as ações que dependem do computador usam dados fictícios.
