@@ -71,7 +71,7 @@ O FPS vem do **PresentMon** (Intel, licença MIT), executado como programa separ
 | Programas e sessões | PowerShell e contadores do Windows | `/proc` e `xprop` (X11 e XWayland; no Wayland puro a detecção automática de jogo não funciona) |
 | FPS | PresentMon | MangoHud (o Nexo lê o log; a opção de inicialização fica pronta em Sessões) |
 | Energia | planos do Windows (`powercfg`) | perfis do power-profiles-daemon |
-| Laboratório (beta) | 7 ajustes ocultos do processador, ponto de restauração | perfis de energia, sem root |
+| Laboratório (beta) | 63 ajustes ocultos de energia (processador, núcleos, estados ociosos, núcleos híbridos, SATA/NVMe, PCIe), testes de latência e disco, combinações inéditas, ponto de restauração; Raio-X de 24 ajustes do registro | perfis de energia, sem root |
 | Limpeza | temporários, relatórios de falha, WER, Lixeira | `/tmp`, miniaturas, relatórios do apport, Lixeira freedesktop |
 | Otimizar unidade | `defrag` (UAC) | `fstrim` (pkexec) |
 | SFC, Performance Log Users, jogos do app Xbox | sim | não existem no Linux |

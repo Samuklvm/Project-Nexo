@@ -6,6 +6,11 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.8.0: otimização extrema no último nível
+- Novo: laboratório com 63 ajustes ocultos (processador, núcleos, estados ociosos, núcleos híbridos, SATA, NVMe, PCIe), testes de latência e disco, objetivo da sessão, triagem em duas etapas, combinações inéditas, exploração radical e risco alto.
+- Novo: Raio-X do PC com 24 ajustes do registro e do sistema, evidência de cada um, aplicar e reverter pelo Diário; o que reduz a segurança fica recusado.
+- Novo: leituras em tempo real (painel a cada 1 s, sensores a cada 2 s) sem travar, com a opção "Velocidade das leituras".
+
 ### 0.7.1: revisão completa
 - Correção: notas da atualização em todos os passos (baixando, baixada, erro); botão "Verificar novamente" com o estado certo.
 - Correção: temperatura 0 °C ignorada em todas as fontes e no histórico antigo.
@@ -62,6 +67,11 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.8.0: extreme optimization at its peak
+- New: lab with 63 hidden settings (processor, cores, idle states, hybrid cores, SATA, NVMe, PCIe), latency and disk tests, session goal, two-stage screening, novel combinations, radical exploration and high risk.
+- New: PC X-ray with 24 registry and system settings, the evidence for each, apply and revert through the Journal; anything that reduces security stays refused.
+- New: real-time readings (dashboard every 1 s, sensors every 2 s) without stutter, with a "Reading speed" option.
 
 ### 0.7.1: full review
 - Fix: update notes at every step (downloading, downloaded, error); the "Check again" button shows the right state.

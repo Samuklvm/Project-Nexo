@@ -66,7 +66,7 @@
     <td width="50%"><img src="docs/images/atlas.jpg" alt="Options Atlas"></td>
   </tr>
   <tr>
-    <td><b>Extreme optimization (beta).</b> A lab that tests hidden processor settings <b>on your PC</b>, in a temporary power plan, with a restore point first and A/B measurement against noise. It only adopts what the measurement confirmed.</td>
+    <td><b>Extreme optimization (beta).</b> A lab that tests <b>63 hidden settings</b> (processor, cores, idle states, SSD and PCI Express) and novel combinations <b>on your PC</b>, in a temporary power plan, with a restore point first and A/B measurement against noise. It only adopts what the measurement confirmed. Includes the <b>registry X-ray</b>, with apply and revert.</td>
     <td><b>Options Atlas.</b> The performance levers worth knowing, including the myths you should <b>not</b> follow and what Nexo refuses to do.</td>
   </tr>
 </table>
@@ -122,7 +122,7 @@ Nexo Device Care is **proprietary software**: all rights reserved. You may downl
 
 ## 📚 More
 
-- [What changed in each version](CHANGELOG.md) (0.7.1: full review, with fixes to updates, sessions, maintenance and temperature) · [Release notes](docs/releases/)
+- [What changed in each version](CHANGELOG.md) (0.8.0: extreme optimization with 63 hidden settings, a registry X-ray and real-time readings) · [Release notes](docs/releases/)
 - [For developers](docs/DEVELOPMENT.md): run, test, build installers and publish versions
 - [Architecture](docs/ARQUITETURA.md) · [Game connections](docs/CONEXOES.md) · [Security](SECURITY.md)
 
