@@ -6,6 +6,12 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.9.0: servidor do Nexo (sincronização, erros e telemetria)
+- Novo: sincronização entre PCs com o login do Google; cópia criptografada por PC e escolha do que trazer de outro PC.
+- Novo: relatórios de erro agrupados (sem nome de usuário nem pastas; e-mail opcional) e telemetria diária anônima, tudo desligado por padrão.
+- Novo: registro de erros local em Ajustes e pergunta única na primeira abertura.
+- Correção: login com Google nas versões publicadas.
+
 ### 0.8.1: correções do teste num PC de verdade
 - Correção: limites de aviso e crítico do SSD NVMe apareciam como temperatura; mínimo e máximo "0 °C" viram "—".
 - Correção: a conferência do laboratório conta só o que vale neste PC (sem núcleos P/E quando não há) e o espaço de ajustes mostra os números do PC.
@@ -75,6 +81,12 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.9.0: Nexo server (sync, errors and telemetry)
+- New: sync between PCs with Google sign-in; one encrypted copy per PC and you choose what to bring from another PC.
+- New: grouped error reports (no user name or folders; optional email) and anonymous daily telemetry, all off by default.
+- New: local error log in Settings and a single question on first launch.
+- Fix: Google sign-in in published builds.
 
 ### 0.8.1: fixes from testing on a real PC
 - Fix: NVMe SSD warning and critical limits showed up as temperatures; "0 °C" minimum and maximum now show "—".
