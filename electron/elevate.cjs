@@ -82,7 +82,19 @@ $dest = Join-Path $env:ProgramFiles 'Nexo Device Care\SensorService'
 $regKey = 'HKLM:\SOFTWARE\NexoDeviceCare\SensorService'
 function Remove-NexoService {
   $svc = Get-Service -Name '${SENSOR_SERVICE}' -ErrorAction SilentlyContinue
-  if ($svc) { if ($svc.Status -ne 'Stopped') { Stop-Service -Name '${SENSOR_SERVICE}' -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 800 }; & sc.exe delete '${SENSOR_SERVICE}' | Out-Null; Start-Sleep -Milliseconds 500 }
+  if ($svc) {
+    if ($svc.Status -ne 'Stopped') { Stop-Service -Name '${SENSOR_SERVICE}' -Force -ErrorAction SilentlyContinue; try { $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(15)) } catch {} }
+    & sc.exe delete '${SENSOR_SERVICE}' | Out-Null
+  }
+  # Espera o processo do serviço sair de verdade: sem isso a pasta do coletor fica travada e a reinstalação falha.
+  $hostExe = Join-Path $dest 'host\Nexo.SensorHost.exe'
+  for ($i = 0; $i -lt 30; $i++) {
+    $left = @(Get-Process -Name 'Nexo.SensorHost' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $hostExe })
+    if (-not $left.Count) { break }
+    if ($i -eq 20) { $left | Stop-Process -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 250
+  }
+  for ($i = 0; $i -lt 20 -and (Get-Service -Name '${SENSOR_SERVICE}' -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 250 }
 }
 function Find-PawnIO { Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -like 'PawnIO*' } | Select-Object -First 1 }`;
   if (action === 'uninstall') {

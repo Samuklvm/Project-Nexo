@@ -175,10 +175,14 @@
         state: 'error',
         message: error.message || 'Não foi possível baixar a atualização.',
         version: currentUpdateStatus.version,
+        releaseName: currentUpdateStatus.releaseName,
+        releaseDate: currentUpdateStatus.releaseDate,
+        releaseNotes: currentUpdateStatus.releaseNotes,
         canRetry: true
       });
     } finally {
       setButtonBusy(downloadUpdateButton, false);
+      renderUpdateStatus(currentUpdateStatus);
     }
   });
 
@@ -188,6 +192,8 @@
     setButtonBusy(checkUpdatesButton, true, 'Verificando...');
     await checkForUpdates();
     setButtonBusy(checkUpdatesButton, false);
+    // setButtonBusy reabilita o botão e volta o texto antigo; o estado atual decide (ex.: desabilitado com a versão já baixada).
+    renderUpdateStatus(currentUpdateStatus);
   });
 
 

@@ -59,9 +59,18 @@ internal static class ServiceRemoval
     public static int Run()
     {
         string dest = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Nexo Device Care", "SensorService");
-        Exec("sc.exe", $"stop {Program.PipeName}");
-        Thread.Sleep(1000);
+        try
+        {
+            using var service = new System.ServiceProcess.ServiceController(Program.PipeName);
+            if (service.Status != System.ServiceProcess.ServiceControllerStatus.Stopped)
+            {
+                service.Stop();
+                service.WaitForStatus(System.ServiceProcess.ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
+            }
+        }
+        catch { }
         Exec("sc.exe", $"delete {Program.PipeName}");
+        WaitForServiceProcess(Path.Combine(dest, "host", "Nexo.SensorHost.exe"));
         using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\NexoDeviceCare\SensorService"))
         {
             bool byNexo = key?.GetValue("PawnIOByNexo") is int flag && flag == 1;
@@ -72,6 +81,23 @@ internal static class ServiceRemoval
         try { string parent = Path.GetDirectoryName(dest)!; if (Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any()) Directory.Delete(parent); } catch { }
         try { Microsoft.Win32.Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\NexoDeviceCare", false); } catch { }
         return 0;
+    }
+
+    /** O processo do serviço segura os arquivos da pasta protegida; espera ele sair (e encerra se passar do tempo). */
+    private static void WaitForServiceProcess(string exePath)
+    {
+        int self = Environment.ProcessId;
+        for (int attempt = 0; attempt < 40; attempt++)
+        {
+            var left = System.Diagnostics.Process.GetProcessesByName("Nexo.SensorHost").Where(process =>
+            {
+                try { return process.Id != self && string.Equals(process.MainModule?.FileName, exePath, StringComparison.OrdinalIgnoreCase); }
+                catch { return false; }
+            }).ToList();
+            if (left.Count == 0) return;
+            if (attempt == 30) foreach (var process in left) { try { process.Kill(); } catch { } }
+            Thread.Sleep(250);
+        }
     }
 
     private static void Exec(string file, string arguments, int timeoutMs = 20000)

@@ -158,19 +158,23 @@
   sensorSearchInput?.addEventListener('input', renderSensorExplorer);
   sensorAdvancedToggle?.addEventListener('change', renderSensorExplorer);
   sensorRefreshButton?.addEventListener('click', () => refreshHardwareSensors().catch(() => {}));
+  // Excel em português usa vírgula decimal (e o arquivo usa ";" como separador): "45.5" viraria texto ou data.
+  const csvNumber = (value) => (Number.isFinite(value) ? String(Math.round(value * 1000) / 1000).replace('.', ',') : '');
+  // Nomes que começam com = + - @ seriam lidos como fórmula pela planilha.
+  const csvCell = (cell) => { const text = String(cell); return `"${(/^[=+\-@]/.test(text) && !/^-?\d/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`; };
   sensorExportButton?.addEventListener('click', () => {
     const rows = [['Componente', 'Categoria', 'Sensor', 'Métrica', 'Valor', 'Unidade', 'Mínimo', 'Máximo', 'Avançado']];
     for (const device of Nexo.state.sensors?.devices || []) {
       for (const sensor of device.sensors || []) {
         rows.push([device.path || device.name, sensorTypeLabels[device.type] || device.type, sensor.name,
-          sensorMetricLabels[sensor.type] || sensor.type, sensor.value ?? '', sensor.unit || '', sensor.min ?? '', sensor.max ?? '', sensor.advanced ? 'Sim' : 'Não']);
+          sensorMetricLabels[sensor.type] || sensor.type, csvNumber(sensor.value), sensor.unit || '', csvNumber(sensor.min), csvNumber(sensor.max), sensor.advanced ? 'Sim' : 'Não']);
       }
     }
     if (rows.length === 1) {
       showToast('Ainda não há sensores para exportar.');
       return;
     }
-    const csv = `\uFEFF${rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\r\n')}`;
+    const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(';')).join('\r\n')}`;
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;

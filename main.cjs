@@ -492,6 +492,8 @@ function isInsideDirectory(root, candidate) {
   return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
+/** Notas da versão em todo estado da atualização (baixando, erro…): sem isso a tela mostrava "sem notas" no meio do download. */
+const releaseFields = () => ({ releaseName: updateReleaseInfo?.releaseName, releaseDate: updateReleaseInfo?.releaseDate, releaseNotes: updateReleaseInfo?.releaseNotes });
 function publishUpdateStatus(state, details = {}) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('updates:status', { state, ...details });
@@ -537,6 +539,7 @@ autoUpdater.on('download-progress', (progress) => {
   };
   publishUpdateStatus('downloading', {
     ...updateProgress,
+    ...releaseFields(),
     version: updateAvailableVersion
   });
 });
@@ -762,7 +765,7 @@ const downloadedStatus = () => ({ state: 'downloaded', version: updateAvailableV
 registerIpcHandler('updates:check', async () => {
   if (!app.isPackaged) return { state: 'development', version: app.getVersion() };
   if (updateDownloaded) return downloadedStatus();
-  if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion, ...updateProgress };
+  if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion, ...releaseFields(), ...updateProgress };
   if (updateCheckInProgress) return { state: 'checking', currentVersion: app.getVersion() };
 
   updateCheckInProgress = true;
@@ -801,18 +804,15 @@ registerIpcHandler('updates:download', async () => {
   if (updateDownloaded) return downloadedStatus();
   if (updateCheckInProgress) return { state: 'checking', currentVersion: app.getVersion() };
   if (!updateAvailableVersion) return { state: 'current', version: app.getVersion() };
-  if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion, ...updateProgress };
+  if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion, ...releaseFields(), ...updateProgress };
 
   updateDownloadInProgress = true;
   updateProgress = { percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 };
-  publishUpdateStatus('downloading', { version: updateAvailableVersion, ...updateProgress });
+  publishUpdateStatus('downloading', { version: updateAvailableVersion, ...releaseFields(), ...updateProgress });
   try {
     await autoUpdater.downloadUpdate();
-    return {
-      state: updateDownloaded ? 'downloaded' : 'downloading',
-      version: updateAvailableVersion,
-      ...updateProgress
-    };
+    // O evento "update-downloaded" já publicou o estado com as notas; a resposta precisa ser igual, senão sobrescreve a tela sem elas.
+    return updateDownloaded ? downloadedStatus() : { state: 'downloading', version: updateAvailableVersion, ...releaseFields(), ...updateProgress };
   } catch (error) {
     return {
       state: 'error',
@@ -1481,7 +1481,7 @@ const watcher = (IS_LINUX ? (options) => createLinuxWatcher({ linux, ...options 
   match: (exePath) => library.matchPath(exePath),
   onStart: (game) => {
     sendToWindow('watch:game', { type: 'start', name: game.name, gameId: game.gameId, pid: game.pid });
-    if (!mainWindow?.isVisible()) new Notification({ title: `Gravando a sessão de ${game.name}`, body: 'O Nexo começou a observar o desempenho. O relatório fica pronto quando o jogo fechar.', icon: path.join(__dirname, 'assets', 'icon.png') }).show();
+    if (!mainWindow?.isVisible() && Notification.isSupported()) new Notification({ title: `Gravando a sessão de ${game.name}`, body: 'O Nexo começou a observar o desempenho. O relatório fica pronto quando o jogo fechar.', icon: path.join(__dirname, 'assets', 'icon.png') }).show();
   },
   onEnd: (game) => sendToWindow('watch:game', { type: 'end', name: game.name, gameId: game.gameId, pid: game.pid })
 });
