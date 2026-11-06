@@ -102,6 +102,8 @@
     const box = el();
     if (!box) return;
     const status = view.status;
+    // Enquanto mede um boot, o painel para de ler o sistema (a própria leitura atrapalharia a medida).
+    Nexo.state.rebootMeasuring = Boolean(status?.busy && status?.state?.status === 'running' && view.progress?.stage === 'medindo');
     let html = '';
     if (view.composing) html = composeHtml();
     else if (status?.state?.status === 'running') html = runningHtml(status);

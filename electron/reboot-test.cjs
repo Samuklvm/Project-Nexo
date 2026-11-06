@@ -62,6 +62,9 @@ function createRebootTest({ fs, path, dir, run, runPowerShell, apply, validate, 
   const disarm = () => run('reg', ['delete', RUNONCE_KEY, '/v', RUNONCE_VALUE, '/f']).catch(() => ({ code: 1 }));
 
   async function restart(delay = 15) {
+    // Só reinicia o PC por causa de um teste em andamento (nunca por um pedido solto da interface).
+    const current = await load();
+    if (!current || current.status !== 'running') throw new Error('Não há teste com reinício em andamento.');
     const seconds = Math.max(5, Math.min(600, Math.round(delay)));
     const outcome = await run('shutdown', ['/r', '/t', String(seconds), '/c', 'Nexo Device Care: teste com reinício. O PC vai reiniciar para medir de novo; salve o que estiver aberto.']);
     if (outcome.code !== 0) throw new Error('O Windows não aceitou o pedido de reinício.');

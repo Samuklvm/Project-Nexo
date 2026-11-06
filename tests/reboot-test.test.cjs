@@ -186,6 +186,8 @@ test('executor: UAC recusado pausa o teste; cancelar volta ao A', async () => {
 
 test('executor: reinício automático só se pedido, e só depois de medir ou trocar', async () => {
   const sys = harness();
+  await assert.rejects(sys.test.restart(15), /Não há teste/, 'sem teste, a interface não consegue reiniciar o PC');
+  assert.ok(!sys.calls.some((call) => call[0] === 'shutdown'));
   await sys.test.start({ changes: [HKCU], protocol: 'rapido', auto: true });
   await sys.test.tick({});
   assert.ok(!sys.calls.some((call) => call[0] === 'shutdown'), 'abrir o Nexo esperando reinício não reinicia sozinho');

@@ -12,7 +12,7 @@
 
   async function refreshSnapshot() {
     if (!desktopBridge?.getSystemSnapshot) { setAppStatus('Abra o app desktop para monitorar'); return; }
-    if (snapshotBusy || Nexo.state.labRunning) return; // durante o laboratório, nada de carga extra atrapalhando a medição
+    if (snapshotBusy || Nexo.state.labRunning || Nexo.state.rebootMeasuring) return; // durante as medições, nada de carga extra atrapalhando
     // Janela escondida ou sem foco: uma leitura a cada 30 s (o aprendizado continua, o custo quase some).
     if (Nexo.isIdle?.() && !Nexo.sessions?.isRecording?.() && Date.now() - lastSnapshotAt < IDLE_SNAPSHOT_MS) return;
     lastSnapshotAt = Date.now();
@@ -50,7 +50,7 @@
   // Laços com setTimeout encadeado: o próximo só é marcado quando o anterior acabou (nunca empilham).
   const loop = (fn, delay) => { const tick = async () => { try { await fn(); } catch { /* segue */ } setTimeout(tick, delay()); }; setTimeout(tick, delay()); };
   loop(refreshSnapshot, () => (Nexo.isIdle?.() && !Nexo.sessions?.isRecording?.() ? 5000 : rate().snapshot));
-  loop(async () => { if (!Nexo.state.labRunning && (!Nexo.isIdle?.() || Nexo.sessions?.isRecording?.())) await Nexo.refreshSensors?.(); },
+  loop(async () => { if (!Nexo.state.labRunning && !Nexo.state.rebootMeasuring && (!Nexo.isIdle?.() || Nexo.sessions?.isRecording?.())) await Nexo.refreshSensors?.(); },
     () => (Nexo.state.sensors?.source === 'service' ? rate().sensors : rate().slowSensors));
   Nexo.on('learned', () => Nexo.refreshHome());
 

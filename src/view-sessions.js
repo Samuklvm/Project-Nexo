@@ -175,7 +175,7 @@
 
   async function beginRecording(options) {
     if (!bridge?.sampleSession) { showToast('As sessões estão disponíveis no aplicativo desktop.'); return; }
-    if (Nexo.state.labRunning) { showToast('O laboratório está medindo agora; a sessão fica para depois.'); return; }
+    if (Nexo.state.labRunning || Nexo.state.rebootMeasuring) { showToast('O Nexo está medindo o PC agora; a sessão fica para depois.'); return; }
     const auto = options.auto === true;
     if (!fps.status) await refreshFps();
     let useFps = auto ? Boolean(fps.status?.available && fps.access?.ready) : document.getElementById('sess-fps').checked;
