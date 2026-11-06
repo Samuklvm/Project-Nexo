@@ -122,8 +122,8 @@ body.lite .sheet, body.lite .rail, body.lite .status-pill, body.lite .modal, bod
 .section-head h2 { font-size: 19px; font-weight: 600; }
 .section-head p { color: var(--mist); font-size: 13px; margin-top: 2px; }
 .split { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-.split.even { grid-template-columns: 1fr 1fr; }
-.stack { display: grid; gap: 16px; }
+.split.even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.stack { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 .stack > .sheet + .sheet, .split > .sheet + .sheet { margin-top: 0; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 20px; border-radius: 999px; border: 1px solid rgba(150, 175, 255, 0.28); background: rgba(150, 175, 255, 0.09); color: var(--moon); font-weight: 600; transition: transform 0.15s, background 0.15s, box-shadow 0.15s; white-space: nowrap; }
@@ -297,7 +297,7 @@ body.lite .sheet, body.lite .rail, body.lite .status-pill, body.lite .modal, bod
 .power-item[aria-checked="true"] .radio::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--star); }
 .power-item strong { font-weight: 600; display: block; }
 .power-item small { color: var(--mist); font-size: 12px; }
-.startup-list { display: grid; margin-bottom: 14px; max-height: 270px; overflow-y: auto; scrollbar-width: thin; }
+.startup-list { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 14px; max-height: 270px; overflow-y: auto; scrollbar-width: thin; }
 .startup-list li { padding: 9px 0; border-bottom: 1px solid var(--hair); }
 .startup-list li.empty { border: 0; }
 .startup-list strong { display: block; font-weight: 600; font-size: 13.5px; }
