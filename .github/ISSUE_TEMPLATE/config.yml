@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Problema de segurança · Security problem
+    url: https://github.com/Samuklvm/Project-Nexo/security/advisories/new
+    about: Relate em particular, não numa issue pública. · Report privately, not in a public issue.
+  - name: 📥 Versão mais nova · Newest version
+    url: https://github.com/Samuklvm/Project-Nexo/releases/latest
+    about: Atualize antes de relatar, o problema pode já estar resolvido. · Update before reporting; it may already be fixed.
+  - name: 🔐 Privacidade · Privacy
+    url: https://github.com/Samuklvm/Project-Nexo/blob/main/PRIVACIDADE.md
+    about: O que o Nexo guarda e envia. · What Nexo stores and sends.

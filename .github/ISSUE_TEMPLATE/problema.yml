@@ -1,0 +1,66 @@
+name: 🐞 Relatar um problema · Report a problem
+description: Algo não funcionou como deveria. · Something did not work as it should.
+title: "[Problema] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por relatar! Quanto mais detalhes, mais rápido sai a correção. 💙
+        Thanks for reporting! The more details, the faster the fix.
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do Nexo · Nexo version
+      description: Está na tela Atualizações. · It is on the Updates screen.
+      placeholder: "0.10.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: sistema
+    attributes:
+      label: Sistema · System
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (AppImage)
+        - Linux (.deb)
+    validations:
+      required: true
+  - type: textarea
+    id: aconteceu
+    attributes:
+      label: O que aconteceu · What happened
+      description: E o que você esperava que acontecesse. · And what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como repetir · How to reproduce
+      placeholder: |
+        1. Abri a tela...
+        2. Cliquei em...
+        3. Apareceu...
+    validations:
+      required: true
+  - type: textarea
+    id: registro
+    attributes:
+      label: Registro de erros · Error log
+      description: No app, Ajustes > Registro de erros > Copiar. Já sai sem o seu nome de usuário e sem as suas pastas. · In the app, Settings > Error log > Copy. It already leaves out your user name and folders.
+      render: text
+  - type: textarea
+    id: pc
+    attributes:
+      label: Seu PC (opcional) · Your PC (optional)
+      description: Processador, placa de vídeo e memória ajudam em problemas de sensores e desempenho. No Hardware, use "Copiar especificações". · CPU, GPU and memory help with sensor and performance problems. In Hardware, use "Copy specifications".
+  - type: checkboxes
+    id: confirma
+    attributes:
+      label: Antes de enviar · Before sending
+      options:
+        - label: Estou na versão mais nova · I am on the newest version
+          required: true
+        - label: Procurei e não achei uma issue igual · I searched and found no duplicate
+          required: true

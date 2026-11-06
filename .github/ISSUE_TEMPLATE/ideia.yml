@@ -1,0 +1,41 @@
+name: 💡 Sugerir uma ideia · Suggest an idea
+description: Algo que deixaria o Nexo melhor. · Something that would make Nexo better.
+title: "[Ideia] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Que problema isso resolve? · What problem does this solve?
+      description: Conte a situação, não só a solução. · Describe the situation, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: ideia
+    attributes:
+      label: Como você imagina · How you picture it
+    validations:
+      required: true
+  - type: dropdown
+    id: tela
+    attributes:
+      label: Em que parte do app · Which part of the app
+      options:
+        - Início · Home
+        - Análise · Analysis
+        - Sessões · Sessions
+        - Jogos · Games
+        - Otimizar · Optimize
+        - Extremo (laboratório, Raio-X) · Extreme (lab, X-ray)
+        - Atlas
+        - Hardware
+        - Manutenção · Maintenance
+        - Atividade · Activity
+        - Atualizações · Updates
+        - Ajustes · Settings
+        - Outra / nova tela · Other / new screen
+  - type: textarea
+    id: extra
+    attributes:
+      label: Mais alguma coisa? · Anything else?
+      description: Imagens, exemplos de outros apps, links. · Images, examples from other apps, links.
