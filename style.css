@@ -330,6 +330,7 @@ body.lite .sheet, body.lite .rail, body.lite .status-pill, body.lite .modal, bod
 .sensor-table td { padding: 7px 10px 7px 0; border-bottom: 1px solid rgba(150, 175, 255, 0.07); }
 .sensor-table td small { margin-left: 8px; color: var(--mist); }
 .sensor-table .sensor-current-value { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--star); }
+.sensor-table .sensor-current-value.is-limit { color: var(--mist); font-weight: 500; }
 .sensor-table tr.is-advanced td:first-child span { opacity: 0.8; }
 .sensor-no-readings { color: var(--mist); }
 
@@ -1073,6 +1074,7 @@ body.lite .rise, body.lite .game-card, body.lite .modal-backdrop > * { animation
 .rt-boots li strong { font-size: 16px; color: var(--moon); }
 .rt-boots li.done { border-color: rgba(70, 230, 160, 0.5); background: rgba(70, 230, 160, 0.08); }
 .rt-boots li.now { border-color: rgba(90, 215, 255, 0.7); box-shadow: 0 0 14px rgba(90, 215, 255, 0.25); }
+.knobs li.knob-missing { opacity: 0.45; }
 .rt-verdict { display: grid; gap: 6px; }
 .rt-verdict > .chip { justify-self: start; }
 .rt-table td small { display: block; }

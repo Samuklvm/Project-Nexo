@@ -137,8 +137,42 @@ function normalizeDrive(item) {
     sizeBytes,
     freeBytes,
     usedBytes,
-    usedPercent: sizeBytes ? Math.round((usedBytes / sizeBytes) * 100) : 0
+    usedPercent: sizeBytes ? Math.round((usedBytes / sizeBytes) * 100) : 0,
+    // Modelo do disco físico (para achar a temperatura do SSD nos sensores) e tipo de conexão.
+    model: typeof item.model === 'string' && item.model.trim() ? item.model.trim().slice(0, 80) : null,
+    bus: typeof item.bus === 'string' && item.bus ? item.bus.slice(0, 20) : null,
+    media: typeof item.media === 'string' && item.media ? item.media.slice(0, 20) : null
   };
+}
+
+/* Letra → disco físico. Muda quase nunca e a consulta custa caro: fica guardada por 10 minutos e nunca atrasa a leitura. */
+const DISK_MODEL_TTL_MS = 10 * 60 * 1000;
+const diskModels = { value: null, at: 0, pending: null };
+const DISK_MODEL_SCRIPT = String.raw`
+$out = @{}
+$physical = @(Get-PhysicalDisk -ErrorAction SilentlyContinue)
+Get-Partition -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter } | ForEach-Object {
+  try {
+    $disk = Get-Disk -Number $_.DiskNumber -ErrorAction Stop
+    $pd = $physical | Where-Object { [string]$_.DeviceId -eq [string]$disk.Number } | Select-Object -First 1
+    $out[[string]$_.DriveLetter] = @{ model = [string]$disk.FriendlyName; bus = [string]$disk.BusType; media = [string]$pd.MediaType }
+  } catch {}
+}
+[Console]::Out.Write(($out | ConvertTo-Json -Compress))`;
+function refreshDiskModels() {
+  if (process.platform !== 'win32' || diskModels.pending) return diskModels.pending;
+  diskModels.pending = runPowerShellCode(DISK_MODEL_SCRIPT, 20000).then(({ stdout }) => {
+    let parsed = {};
+    try { parsed = JSON.parse(String(stdout || '').trim() || '{}'); } catch { parsed = {}; }
+    diskModels.value = parsed && typeof parsed === 'object' ? parsed : {};
+    diskModels.at = Date.now();
+    return diskModels.value;
+  }).finally(() => { diskModels.pending = null; });
+  return diskModels.pending;
+}
+function cachedDiskModels() {
+  if (!diskModels.value || Date.now() - diskModels.at > DISK_MODEL_TTL_MS) refreshDiskModels()?.catch(() => {});
+  return diskModels.value || {};
 }
 
 async function listDrives() {
@@ -149,7 +183,8 @@ async function listDrives() {
     if (!stdout.trim()) return [];
 
     const result = JSON.parse(stdout);
-    return (Array.isArray(result) ? result : [result]).map(normalizeDrive);
+    const models = cachedDiskModels();
+    return (Array.isArray(result) ? result : [result]).map((item) => normalizeDrive({ ...item, ...(models[String(item.letter || '').toUpperCase()] || {}) }));
   }
 
   const root = path.parse(os.homedir()).root || path.parse(process.cwd()).root;
@@ -1747,7 +1782,7 @@ function maxTemperature(readings) {
   const values = [];
   for (const device of readings?.devices || []) {
     if (!/cpu/i.test(String(device.type))) continue;
-    for (const sensor of device.sensors || []) if (sensor.type === 'Temperature' && Number.isFinite(sensor.value) && sensor.value > 5 && sensor.value < 125) values.push(sensor.value);
+    for (const sensor of device.sensors || []) if (sensor.type === 'Temperature' && Number.isFinite(sensor.value) && sensor.value > 5 && sensor.value < 125 && !/warning|critical|limit|threshold|shutdown|t\s*j\s*max/i.test(String(sensor.name || ''))) values.push(sensor.value);
   }
   return values.length ? Math.max(...values) : null;
 }

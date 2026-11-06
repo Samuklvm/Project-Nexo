@@ -15,6 +15,8 @@
     Network: 'Rede', Cooler: 'Refrigeração', EmbeddedController: 'Controlador embarcado', Psu: 'Fonte',
     Battery: 'Bateria', PowerMonitor: 'Medidor de energia'
   };
+  /** Sensor que é um limite configurado (aviso/crítico), não uma leitura: nunca entra em "maior temperatura". */
+  const isLimit = (sensor) => sensor.type === 'Temperature' && /warning|critical|limit|threshold|shutdown|t\s*j\s*max/i.test(String(sensor.name || ''));
   const sensorMetricLabels = {
     Voltage: 'Tensão', Current: 'Corrente', Power: 'Potência', Clock: 'Clock', Temperature: 'Temperatura',
     Load: 'Uso', Frequency: 'Frequência', Fan: 'Ventoinha', Flow: 'Fluxo', Control: 'Controle', Level: 'Nível',
@@ -80,9 +82,13 @@
     }
 
     const cells = (sensor) => {
-      const noAccess = sensor.type === 'Temperature' && sensor.value !== null && sensor.value <= 0;
-      return [sensor.value === null ? 'Indisponível' : noAccess ? 'Sem acesso ao sensor' : formatSensorValue(sensor.value, sensor.unit),
-        sensor.min === null ? '—' : formatSensorValue(sensor.min, sensor.unit), sensor.max === null ? '—' : formatSensorValue(sensor.max, sensor.unit)];
+      const temp = sensor.type === 'Temperature';
+      const noAccess = temp && sensor.value !== null && sensor.value <= 0;
+      // 0 °C de mínimo/máximo é "ainda sem leitura" (o coletor começa em zero), não uma temperatura de verdade.
+      const extreme = (value) => (value === null || value === undefined || (temp && value <= 0) ? '—' : formatSensorValue(value, sensor.unit));
+      // Limites do fabricante (NVMe "Warning/Critical Temperature") são fixos: sem mínimo e máximo.
+      if (isLimit(sensor)) return [formatSensorValue(sensor.value, sensor.unit), '—', '—'];
+      return [sensor.value === null ? 'Indisponível' : noAccess ? 'Sem acesso ao sensor' : formatSensorValue(sensor.value, sensor.unit), extreme(sensor.min), extreme(sensor.max)];
     };
     // Com leituras a cada 2 s, reconstruir centenas de linhas travaria a rolagem: se a estrutura é a mesma,
     // só os números mudam (o resto da tabela, a rolagem e a seleção ficam intactos).
@@ -105,7 +111,7 @@
     sensorDeviceList.innerHTML = visibleDevices.map((device) => {
       const sensorRows = device.visibleSensors.map((sensor) => {
         const [state, minimum, maximum] = cells(sensor);
-        return `<tr data-sensor-row class="${sensor.advanced ? 'is-advanced' : ''}"><td><span>${escapeHtml(sensor.name)}</span>${sensor.advanced ? '<small>Avançado</small>' : ''}</td><td>${escapeHtml(sensorMetricLabels[sensor.type] || sensor.type)}</td><td class="sensor-current-value">${escapeHtml(state)}</td><td>${escapeHtml(minimum)}</td><td>${escapeHtml(maximum)}</td></tr>`;
+        return `<tr data-sensor-row class="${sensor.advanced ? 'is-advanced' : ''}"><td><span>${escapeHtml(sensor.name)}</span>${sensor.advanced ? '<small>Avançado</small>' : ''}</td><td>${escapeHtml(isLimit(sensor) ? 'Limite (fixo)' : sensorMetricLabels[sensor.type] || sensor.type)}</td><td class="sensor-current-value${isLimit(sensor) ? ' is-limit' : ''}">${escapeHtml(state)}</td><td>${escapeHtml(minimum)}</td><td>${escapeHtml(maximum)}</td></tr>`;
       }).join('');
       const deviceCategory = sensorTypeLabels[device.type] || device.type;
       const noSensor = !device.visibleSensors.length;

@@ -4,6 +4,22 @@
   const optimizeButton = document.getElementById('drive-optimize');
   const repairButton = document.getElementById('run-repair');
 
+  const BUS = { NVMe: 'SSD NVMe', SATA: 'SATA', USB: 'Disco USB', RAID: 'RAID', SAS: 'SAS' };
+  function driveKind(drive) {
+    const media = drive.media === 'SSD' ? 'SSD' : drive.media === 'HDD' ? 'HD' : '';
+    if (drive.bus === 'NVMe') return 'SSD NVMe';
+    if (drive.bus === 'SATA') return media ? `${media} SATA` : 'Disco SATA';
+    return BUS[drive.bus] || (media ? media : 'Unidade local');
+  }
+  const norm = (text) => String(text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  /** Temperatura do disco físico desta letra, pelo serviço de sensores (só leituras, nunca os limites do fabricante). */
+  function driveTemperature(drive) {
+    if (!drive.model) return null;
+    const device = (Nexo.state.sensors?.devices || []).find((item) => /storage/i.test(String(item.type)) && norm(item.name) && (norm(item.name).includes(norm(drive.model)) || norm(drive.model).includes(norm(item.name))));
+    const sensors = (device?.sensors || []).filter((sensor) => sensor.type === 'Temperature' && Number.isFinite(sensor.value) && sensor.value > 0 && sensor.value < 120 && !/warning|critical|limit|threshold|shutdown|t\s*j\s*max/i.test(String(sensor.name)));
+    const preferred = sensors.find((sensor) => /composite/i.test(sensor.name)) || sensors[0];
+    return preferred ? preferred.value : null;
+  }
   const selectedDrive = () => Nexo.state.snapshot?.drives?.find((drive) => drive.driveLetter === select.value) || null;
 
   function hydrate() {
@@ -17,8 +33,9 @@
       bar.style.width = '0%'; optimizeButton.disabled = true;
       return;
     }
-    setText('drive-type', 'Unidade local'); setText('drive-model', drive.name || `Disco ${drive.driveLetter}:`);
-    setText('drive-temp', 'Não medida'); setText('drive-format', drive.fileSystem || '--');
+    setText('drive-type', driveKind(drive)); setText('drive-model', drive.model ? `${drive.name} · ${drive.model}` : drive.name || `Disco ${drive.driveLetter}:`);
+    const temp = driveTemperature(drive);
+    setText('drive-temp', Number.isFinite(temp) ? `${Math.round(temp)} °C` : 'Sem sensor deste disco'); setText('drive-format', drive.fileSystem || '--');
     setText('drive-state', drive.usedPercent >= 95 ? 'Pouco espaço livre' : 'Leitura concluída');
     setText('drive-used-capacity', formatBytes(drive.usedBytes)); setText('drive-total-capacity', formatBytes(drive.sizeBytes));
     setText('drive-used-label', `${formatBytes(drive.usedBytes)} usados`); setText('drive-free-label', `${formatBytes(drive.freeBytes)} livres`);
@@ -102,4 +119,6 @@
   repairButton.addEventListener('click', runRepair);
   optimizeButton.disabled = true;
   Nexo.on('snapshot', syncOptions);
+  // A temperatura do disco chega pelos sensores (a cada poucos segundos): atualiza só esse campo.
+  Nexo.on?.('sensors', () => { if (Nexo.state.view === 'maintenance') hydrate(); });
 })();

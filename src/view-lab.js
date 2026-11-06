@@ -10,6 +10,7 @@
   const options = { autonomy: 'assistido', allowRisk: 'moderado', maxArms: 8, goal: 'jogos', combos: 2, budgetMin: 30 };
   let space = [];
   let live = null;
+  let lastPre = null; // última conferência deste PC (para mostrar o espaço que ele aceita de verdade)
 
   const memory = () => { const stored = readJSON(KEY, null); return { evidence: stored?.evidence || {}, tabu: Array.isArray(stored?.tabu) ? stored.tabu : [], runs: Array.isArray(stored?.runs) ? stored.runs : [] }; };
   const saveMemory = (value) => writeJSON(KEY, { evidence: value.evidence, tabu: value.tabu, runs: value.runs.slice(0, 15) });
@@ -32,25 +33,31 @@
   function renderKnobs() {
     const { evidence, tabu } = memory();
     const list = space.length ? space : NexoLab.spaceFor(Nexo.platform === 'linux' ? 'linux' : 'win32');
-    const stats = NexoLab.spaceStats({ allowRisk: 'alto', platform: Nexo.platform === 'linux' ? 'linux' : 'win32' });
+    // Depois de "Só conferir", os números passam a ser os deste PC (o que o powercfg aceita, sem núcleos híbridos se não houver).
+    const support = lastPre?.knobs ? Object.fromEntries(Object.entries(lastPre.knobs).filter(([, info]) => info.available)) : null;
+    const baseline = support ? Object.fromEntries(Object.entries(support).map(([id, info]) => [id, info.current])) : null;
+    const stats = NexoLab.spaceStats({ allowRisk: 'alto', platform: Nexo.platform === 'linux' ? 'linux' : 'win32', support, baseline, hybrid: lastPre ? lastPre.hybrid : null });
     const testedArms = Object.entries(evidence).filter(([key, item]) => !key.startsWith('combo:') && item?.n).length;
     const testedCombos = Object.entries(evidence).filter(([key, item]) => key.startsWith('combo:') && item?.n).length;
     const statsBox = document.getElementById('lab-space-stats');
-    if (statsBox) statsBox.innerHTML = `<div><strong>${stats.knobs}</strong><span>ajustes</span></div><div><strong>${stats.options}</strong><span>opções</span></div><div><strong>10<sup>${String(Math.floor(stats.log10))}</sup></strong><span>combinações possíveis</span></div><div><strong>${testedArms + testedCombos}</strong><span>testadas neste PC</span></div>`;
+    if (statsBox) statsBox.innerHTML = `<div><strong>${stats.knobs}</strong><span>ajustes${support ? ' neste PC' : ''}</span></div><div><strong>${stats.options}</strong><span>opções${support ? ' neste PC' : ''}</span></div><div><strong>10<sup>${String(Math.floor(stats.log10))}</sup></strong><span>combinações possíveis</span></div><div><strong>${testedArms + testedCombos}</strong><span>testadas neste PC</span></div>`;
     const groups = new Map();
     for (const knob of list) { const id = knob.group || 'desempenho'; if (!groups.has(id)) groups.set(id, []); groups.get(id).push(knob); }
     document.getElementById('lab-knobs').innerHTML = [...groups].map(([groupId, knobs]) => {
       const info = NexoLab.GROUPS?.[groupId] || { label: groupId, hint: '' };
-      const optionCount = knobs.reduce((sum, knob) => sum + knob.values.length, 0);
+      // Depois da conferência: o que este PC não tem (ou não usa) aparece apagado e não conta nas opções.
+      const usable = (knob) => !lastPre?.knobs || (lastPre.knobs[knob.id]?.available && !(knob.hybrid && lastPre.hybrid === false));
+      const optionCount = knobs.filter(usable).reduce((sum, knob) => sum + NexoLab.supportedValues(knob, lastPre?.knobs?.[knob.id]).length, 0);
+      const missing = knobs.filter((knob) => !usable(knob)).length;
       const tested = knobs.reduce((sum, knob) => sum + Object.keys(evidence).filter((key) => key.startsWith(`${knob.id}=`)).length, 0);
-      return `<details class="knob-group"><summary><strong>${escapeHtml(info.label)}</strong><span class="muted">${knobs.length} ajustes · ${optionCount} opções${tested ? ` · ${tested} testadas` : ''}</span></summary><p class="muted">${escapeHtml(info.hint || '')}</p><ul class="knobs">${knobs.map((knob) => {
+      return `<details class="knob-group"><summary><strong>${escapeHtml(info.label)}</strong><span class="muted">${knobs.length - missing} ajustes · ${optionCount} opções${missing ? ` · ${missing} não valem neste PC` : ''}${tested ? ` · ${tested} testadas` : ''}</span></summary><p class="muted">${escapeHtml(info.hint || '')}</p><ul class="knobs">${knobs.map((knob) => {
         const testedValues = Object.entries(evidence).filter(([key]) => key.startsWith(`${knob.id}=`));
         const blocked = tabu.filter((key) => key.startsWith(`${knob.id}=`));
         const best = testedValues.filter(([, item]) => item.wins).sort((x, y) => y[1].mean - x[1].mean)[0];
         const riskTone = knob.risk === 'alto' ? 'risk-alto' : knob.risk === 'moderado' ? 'risk-moderado' : 'risk-baixo';
         const benches = (knob.affects || []).map((bench) => BENCH_SHORT[bench]).filter(Boolean).join(', ');
-        return `<li><div><strong>${escapeHtml(knob.label)}</strong><span class="muted">${escapeHtml(knob.what)}</span></div>
-          <div class="chips-row"><span class="chip ${riskTone}">risco ${knob.risk}</span><span class="chip">${NOVELTY[knob.novelty] || knob.novelty}</span>${knob.hidden ? '<span class="chip">oculto no Windows</span>' : ''}${knob.hybrid ? '<span class="chip">só processadores P/E</span>' : ''}${benches ? `<span class="chip">medido por: ${escapeHtml(benches)}</span>` : ''}
+        return `<li class="${usable(knob) ? '' : 'knob-missing'}"><div><strong>${escapeHtml(knob.label)}</strong><span class="muted">${escapeHtml(knob.what)}</span></div>
+          <div class="chips-row"><span class="chip ${riskTone}">risco ${knob.risk}</span><span class="chip">${NOVELTY[knob.novelty] || knob.novelty}</span>${knob.hidden ? '<span class="chip">oculto no Windows</span>' : ''}${knob.hybrid ? '<span class="chip">só processadores P/E</span>' : ''}${!usable(knob) ? `<span class="chip">${lastPre.knobs[knob.id]?.available ? 'este processador não tem núcleos P/E' : 'não existe neste PC'}</span>` : ''}${benches ? `<span class="chip">medido por: ${escapeHtml(benches)}</span>` : ''}
           <span class="chip">${testedValues.length}/${knob.values.length} valores testados</span>${best ? `<span class="chip risk-baixo">melhor: ${escapeHtml(valueText(knob.id, Number(best[0].split('=')[1])))} (${signed(best[1].mean)})</span>` : ''}${blocked.length ? `<span class="chip risk-alto">${blocked.length} bloqueado(s) por guarda</span>` : ''}</div></li>`;
       }).join('')}</ul></details>`;
     }).join('');
@@ -93,13 +100,17 @@
     formError('');
     try {
       const pre = await bridge.labPreflight();
-      const available = Object.values(pre.knobs || {}).filter((knob) => knob.available).length;
+      // Ajustes de núcleos híbridos (P/E) existem no plano de qualquer PC, mas só valem com núcleos híbridos.
+      const hybridOnly = NexoLab.SPACE.filter((knob) => knob.hybrid && pre.knobs?.[knob.id]?.available).length;
+      const available = Object.entries(pre.knobs || {}).filter(([id, knob]) => knob.available && !(pre.hybrid === false && NexoLab.knob(id)?.hybrid)).length;
+      lastPre = pre;
+      renderKnobs();
       const lines = [
         [['win32', 'linux'].includes(pre.platform), 'Sistema compatível', pre.platform === 'linux' ? 'Linux (perfis de energia)' : pre.platform === 'win32' ? 'Windows' : 'o laboratório roda no Windows e no Linux'],
         [!pre.onBattery, 'Na tomada', pre.onBattery ? 'ligue o carregador' : 'ok'],
         [Number.isFinite(pre.tempC) && pre.tempC < 80, 'Temperatura do processador', Number.isFinite(pre.tempC) ? `${Math.round(pre.tempC)} °C` : 'sem leitura (sem ela, não roda)'],
         [!(pre.cpuLoad >= 50), 'Processador livre', Number.isFinite(pre.cpuLoad) ? `${Math.round(pre.cpuLoad)}% ocupado` : '?'],
-        [available > 0, 'Ajustes disponíveis', `${available} de ${NexoLab.SPACE.length}`],
+        [available > 0, 'Ajustes disponíveis', `${available} de ${NexoLab.SPACE.length}${pre.hybrid === false && hybridOnly ? ` (${hybridOnly} são só para núcleos híbridos P/E)` : ''}`],
         [!pre.pending, 'Sem teste pendente', pre.pending ? 'recupere o anterior primeiro' : 'ok']
       ];
       Nexo.dialog({ title: 'Dá para rodar agora?', html: `<ul class="checks">${lines.map(([ok, label, detail]) => `<li class="${ok ? 'ok' : 'no'}"><b>${ok ? '✓' : '✕'}</b><span>${escapeHtml(label)}</span><small>${escapeHtml(detail)}</small></li>`).join('')}</ul>`, actions: [{ id: 'ok', label: 'Fechar', tone: 'primary' }] });

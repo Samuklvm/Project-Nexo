@@ -8,6 +8,15 @@
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.NexoReleaseNotes = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
+  // Itens longos são cortados no fim de uma palavra (nunca no meio), com reticências.
+  const MAX_TEXT = 420;
+  function clip(text, max = MAX_TEXT) {
+    const value = String(text);
+    if (value.length <= max) return value;
+    const cut = value.slice(0, max - 1);
+    const space = cut.lastIndexOf(' ');
+    return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.(–—-]+$/, '')}…`;
+  }
   const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'", '#x27': "'", '#8211': '–', '#8212': '—', '#8230': '…' };
   const FLAGS = /[\u{1F1E6}-\u{1F1FF}]/gu;
 
@@ -77,7 +86,7 @@
         if (skipping) continue;
       } else if (skipping) continue;
       if (block.type === 'text' && /portugu[eê]s/i.test(block.text) && /english/i.test(block.text)) continue;
-      out.push({ type: block.type === 'heading' ? 'heading' : block.type, text: block.text.length > 220 ? `${block.text.slice(0, 217)}…` : block.text });
+      out.push({ type: block.type === 'heading' ? 'heading' : block.type, text: clip(block.text, MAX_TEXT) });
     }
     // Não termina com um título sozinho.
     const limited = out.slice(0, limit);
@@ -85,5 +94,5 @@
     return limited;
   }
 
-  return { parse };
+  return { parse, clip };
 });

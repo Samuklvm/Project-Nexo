@@ -29,3 +29,16 @@ test('notas em markdown e bandeiras que viram letras no Windows', () => {
   assert.deepEqual(Notes.parse(''), []);
   assert.deepEqual(Notes.parse([{ note: '- um item' }]), [{ type: 'item', text: 'um item' }]);
 });
+
+test('notas longas: corte no fim de uma palavra, com reticências', () => {
+  const Notes = require('../src/release-notes.js');
+  const long = `De 7 para 71 ajustes ocultos de energia, com 393 opções e cerca de 10⁵⁵ combinações possíveis: ${'motor de desempenho, turbo, estacionamento de núcleos, '.repeat(12)}núcleos híbridos.`;
+  const cut = Notes.clip(long);
+  assert.ok(cut.length <= 420, String(cut.length));
+  assert.match(cut, /…$/);
+  const lastWord = cut.slice(0, -1).split(/\s+/).pop().replace(/[,.;:]$/, '');
+  assert.ok(long.includes(`${lastWord} `) || long.includes(`${lastWord},`), `cortou no meio de "${lastWord}"`);
+  assert.equal(Notes.clip('curto'), 'curto');
+  const [item] = Notes.parse(`## Novidades\n- ${long}`).filter((block) => block.type === 'item');
+  assert.equal(item.text, cut);
+});

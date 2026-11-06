@@ -28,6 +28,8 @@
   }
 
   const plausible = (value) => Number.isFinite(value) && value > 5 && value < 125;
+  // Limites do fabricante (aviso/crítico) aparecem como "temperatura" nos sensores, mas não são leitura.
+  const LIMIT_SENSOR = /warning|critical|limit|threshold|shutdown|t\s*j\s*max/i;
 
   /** Leituras profundas dos sensores (LibreHardwareMonitor), quando disponíveis. */
   function deepMetrics() {
@@ -37,7 +39,7 @@
       .filter((device) => types.includes(device.type))
       .flatMap((device) => device.sensors || [])
       // Temperatura 0 °C (ou absurda) é sensor sem acesso, não leitura: sem o driver, o processador responde 0.
-      .filter((sensor) => sensor.type === sensorType && Number.isFinite(sensor.value) && (sensorType !== 'Temperature' || (sensor.value > 5 && sensor.value < 125)) && filter(sensor))
+      .filter((sensor) => sensor.type === sensorType && Number.isFinite(sensor.value) && (sensorType !== 'Temperature' || (sensor.value > 5 && sensor.value < 125 && !LIMIT_SENSOR.test(String(sensor.name || '')))) && filter(sensor))
       .map((sensor) => sensor.value);
     const max = (values) => (values.length ? Math.max(...values) : null);
     const gpuTypes = ['GpuNvidia', 'GpuAmd', 'GpuIntel'];
@@ -67,6 +69,8 @@
     };
   }
 
+  /** A amostra mais recente só vale como "agora" se for recente (depois de reiniciar o app, a última pode ser velha). */
+  const fresh = (sample, maxAgeMs = 20000) => (sample && Number.isFinite(sample.timestamp) && Date.now() - sample.timestamp <= maxAgeMs ? sample : null);
   const hottest = (sample) => {
     // O histórico de versões antigas pode ter 0 °C gravado (sensor sem acesso): não conta como temperatura.
     const values = [sample.cpuSensorTemperature, sample.gpuTemperature, sample.acpiTemperature].filter(plausible);
@@ -157,6 +161,7 @@
       return history.map((s) => ({ t: s.timestamp, cpu: s.cpu, mem: s.memory, disk: s.disk, gpu: s.gpu, temp: hottest(s) }));
     },
     hottest,
+    fresh,
     deepMetrics,
     feedback: () => (Array.isArray(readJSON(Nexo.keys.feedback, [])) ? readJSON(Nexo.keys.feedback, []) : []),
     addFeedback(category, helpful) {
