@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const Module = require('node:module');
+const netCalls = [];
 
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-ipc-'));
 const tmp = path.join(sandbox, 'tmp'); const local = path.join(sandbox, 'local'); const userData = path.join(sandbox, 'userData');
@@ -26,7 +27,7 @@ const electronStub = {
   ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on() {} },
   shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }, dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
   Tray: class { setToolTip() {} on() {} setContextMenu() {} destroy() {} }, Notification: class { static isSupported() { return false; } show() {} },
-  nativeImage: { createFromPath: () => ({ resize: () => ({}) }) }, net: { fetch: async () => ({ ok: false }) }, safeStorage: { isEncryptionAvailable: () => false }
+  nativeImage: { createFromPath: () => ({ resize: () => ({}) }) }, net: { fetch: async (url) => { netCalls.push(String(url)); return { ok: false, status: 503, json: async () => ({}) }; } }, safeStorage: { isEncryptionAvailable: () => false }
 };
 const updaterStub = { autoUpdater: { on() {}, autoDownload: false, autoInstallOnAppQuit: false, checkForUpdates: async () => null, logger: null } };
 const originalLoad = Module._load;
@@ -234,17 +235,25 @@ test('registro de erros: canais, falha de ação vira aviso e a tela recebe o er
   assert.match(await call('log:export'), /Nexo Device Care/);
 });
 
-test('servidor do Nexo: canais registrados, tudo desligado e nada sai sem servidor configurado', async () => {
+test('servidor do Nexo: canais registrados, tudo desligado por padrão e nada sai do PC sem a pessoa ligar', async () => {
   for (const channel of ['cloud:status', 'cloud:set', 'cloud:connect', 'cloud:disconnect', 'cloud:delete-remote', 'cloud:push', 'cloud:devices', 'cloud:pull', 'cloud:forget', 'cloud:telemetry', 'cloud:send-errors', 'cloud:admin']) assert.ok(handlers.has(channel), `faltou ${channel}`);
+  const shipped = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'server.json'), 'utf8')).url;
+  assert.match(shipped, /^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/, 'endereço do servidor só por HTTPS');
+  const before = netCalls.length;
   const status = await call('cloud:status');
-  assert.equal(status.configured, false, 'sem endereço do servidor nesta build de teste');
-  for (const key of ['sync', 'telemetry', 'errors', 'connected']) assert.equal(status[key], false, key);
-  assert.equal((await call('cloud:set', { telemetry: true, errors: true, sync: true, extra: 'x' })).sync, false, 'sincronização só liga conectando');
-  assert.deepEqual(await call('cloud:telemetry', { views: { home: 1 } }), { skipped: true }, 'sem servidor, a telemetria não sai');
-  assert.deepEqual(await call('cloud:send-errors'), { skipped: true });
-  await call('cloud:set', { telemetry: false, errors: false });
-  await assert.rejects(call('cloud:connect'), /não está configurado/);
+  assert.equal(status.configured, true);
+  for (const key of ['sync', 'telemetry', 'errors', 'connected', 'asked']) assert.equal(status[key], false, key);
+  assert.deepEqual(await call('cloud:telemetry', { views: { home: 1 } }), { skipped: true }, 'telemetria desligada não sai');
+  assert.deepEqual(await call('cloud:send-errors'), { skipped: true }, 'relatórios desligados não saem');
+  assert.equal((await call('cloud:set', { sync: true, extra: 'x' })).sync, false, 'sincronização só liga conectando');
   await assert.rejects(call('cloud:push', 'não é objeto'), /Nada para sincronizar/);
-  await assert.rejects(call('cloud:devices'), /não está configurado|sincronização/);
-  await assert.rejects(call('cloud:admin'), /não está configurado|sincronização/);
+  assert.deepEqual(await call('cloud:push', { perfil: 'jogos' }), { skipped: true });
+  await assert.rejects(call('cloud:devices'), /sincronização/);
+  await assert.rejects(call('cloud:admin'), /sincronização/);
+  assert.equal(netCalls.length, before, 'nenhum pedido ao servidor');
+  // Ligada, a telemetria vai para o endereço do servidor (e um erro do servidor não derruba nada).
+  await call('cloud:set', { telemetry: true });
+  await assert.rejects(call('cloud:telemetry', { views: { home: 1 } }), /503/);
+  assert.equal(netCalls.at(-1), `${shipped}/v1/telemetry`);
+  await call('cloud:set', { telemetry: false });
 });
