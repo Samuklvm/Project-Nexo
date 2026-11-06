@@ -38,7 +38,8 @@ Os testes rodam o Worker de verdade no Node, com o D1 simulado em SQLite (`serve
    | `CLOUDFLARE_API_TOKEN` | o token do passo 2 |
    | `CLOUDFLARE_ACCOUNT_ID` | o ID da conta (aparece na lateral do painel da Cloudflare) |
    | `NEXO_ADMIN_EMAILS` | o e-mail Google de quem entra no painel como dono (vírgula separa vários) |
-   | `GOOGLE_OAUTH_JSON` | já existe (o mesmo das builds); daqui sai só o ID do cliente, que é público |
+
+   O ID do cliente Google (público) vem de `config/google-client.json`, o mesmo que as builds usam.
 
 4. Rode o fluxo **Publicar servidor** (*Actions → Publicar servidor → Run workflow*), ou mande algo de `server/` para a `main`. Ele roda os testes, cria o banco `nexo` se não existir, aplica as migrações, publica o Worker, cria os segredos `SESSION_SECRET` e `DATA_KEY` (só na primeira vez, sem aparecer no log) e confere `/health`. O endereço sai no fim do log: `https://nexo-api.<subdomínio>.workers.dev`.
 5. Coloque esse endereço em `config/server.json` (`{ "url": "https://nexo-api.<subdomínio>.workers.dev" }`) e gere uma versão do app. Sem endereço, o app mostra que o servidor não está ligado e não manda nada.

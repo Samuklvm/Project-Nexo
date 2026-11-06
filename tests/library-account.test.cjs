@@ -2,6 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const Games = require('../electron/games.cjs');
 const Watch = require('../electron/watcher.cjs');
 const Account = require('../electron/account.cjs');
@@ -215,4 +218,28 @@ test('planos de energia: a saída do powercfg (em português) é lida sem depend
   const { parseList } = require('../electron/lab-system.cjs');
   const plans = parseList('Esquemas de Energia Existentes (* Ativo)\r\n-----------------------------------\r\nGUID do Esquema de Energia: 381b4222-f694-41f0-9685-ff5bb260df2e  (Equilibrado) *\r\nGUID do Esquema de Energia: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c  (Alto desempenho)\r\n');
   assert.deepEqual(plans.map((plan) => [plan.guid.slice(0, 8), plan.active]), [['381b4222', true], ['8c5e7fda', false]]);
+});
+
+test('build: config do Google sai do JSON do cliente ou só do segredo GOCSPX + ID público', () => {
+  const { buildOAuthConfig, publicClientId } = require('../scripts/write-google-oauth.cjs');
+  const { execFileSync } = require('node:child_process');
+  const id = publicClientId(path.join(__dirname, '..'));
+  assert.match(id, /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/);
+  const fake = 'GOCSPX-segredoDeTeste_123456789';
+  const fromSecret = buildOAuthConfig(`  ${fake}\n`, id);
+  assert.deepEqual(fromSecret.config, { installed: { client_id: id, client_secret: fake } });
+  const json = JSON.stringify({ installed: { client_id: '1-abc.apps.googleusercontent.com', client_secret: fake, redirect_uris: ['http://localhost'] } });
+  assert.equal(buildOAuthConfig(`﻿${json}`, id).config.installed.client_id, '1-abc.apps.googleusercontent.com', 'JSON (até com BOM) vale como está');
+  assert.ok(buildOAuthConfig(fake, null).error, 'sem ID público, só o segredo não basta');
+  for (const bad of ['', 'qualquer-coisa', '{ quebrado', JSON.stringify({ installed: { client_id: 'x' } })]) assert.ok(buildOAuthConfig(bad, id).error, bad);
+  // O script nunca imprime o segredo (nem quando o formato é desconhecido).
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-oauth-'));
+  fs.mkdirSync(path.join(dir, 'config')); fs.mkdirSync(path.join(dir, 'scripts'));
+  fs.copyFileSync(path.join(__dirname, '..', 'scripts', 'write-google-oauth.cjs'), path.join(dir, 'scripts', 'write-google-oauth.cjs'));
+  fs.copyFileSync(path.join(__dirname, '..', 'config', 'google-client.json'), path.join(dir, 'config', 'google-client.json'));
+  for (const secret of [fake, 'formato-estranho-mas-secreto-123']) {
+    const out = execFileSync(process.execPath, [path.join(dir, 'scripts', 'write-google-oauth.cjs')], { env: { ...process.env, GOOGLE_OAUTH_JSON: secret }, encoding: 'utf8' });
+    assert.ok(!out.includes(secret), 'segredo não aparece no log');
+  }
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'config', 'google-oauth.json'), 'utf8')).installed.client_secret, fake);
 });

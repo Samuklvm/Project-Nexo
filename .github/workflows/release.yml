@@ -45,11 +45,10 @@ jobs:
         continue-on-error: true
         run: node scripts/fetch-presentmon.cjs
 
-      # Opcional: login com Google. Guarde o JSON do cliente OAuth ("App para computador") no segredo GOOGLE_OAUTH_JSON.
+      # Login com Google: segredo GOOGLE_OAUTH_JSON = JSON do cliente ("App para computador") ou só o segredo GOCSPX-…
+      # (o ID do cliente, público, fica em config/google-client.json). Ver scripts/write-google-oauth.cjs.
       - name: Write Google OAuth client (optional)
-        shell: pwsh
-        run: |
-          if ($env:GOOGLE_OAUTH_JSON) { Set-Content -LiteralPath config/google-oauth.json -Value $env:GOOGLE_OAUTH_JSON -Encoding utf8 } else { Write-Host 'Sem GOOGLE_OAUTH_JSON: o login com Google fica desativado nesta build.' }
+        run: node scripts/write-google-oauth.cjs
         env:
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
 
@@ -124,7 +123,7 @@ jobs:
 
       - name: Write optional configs (Google, Discord, Xbox)
         run: |
-          if [ -n "$GOOGLE_OAUTH_JSON" ]; then printf '%s' "$GOOGLE_OAUTH_JSON" > config/google-oauth.json; fi
+          node scripts/write-google-oauth.cjs
           if [ -n "$NEXO_INTEGRATIONS_JSON" ]; then printf '%s' "$NEXO_INTEGRATIONS_JSON" > config/integrations.json; fi
         env:
           GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}

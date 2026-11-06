@@ -52,7 +52,7 @@ The installed app checks for updates at startup and only downloads when the user
 
 | Secret | Purpose |
 |---|---|
-| `GOOGLE_OAUTH_JSON` | Google OAuth “Desktop app” client. See [LOGIN_GOOGLE.md](LOGIN_GOOGLE.md) (in Portuguese). |
+| `GOOGLE_OAUTH_JSON` | Google OAuth “Desktop app” client: the JSON or just the `GOCSPX-…` secret (the public ID lives in `config/google-client.json`). See [LOGIN_GOOGLE.md](LOGIN_GOOGLE.md) (in Portuguese). |
 | `NEXO_INTEGRATIONS_JSON` | Optional: `{"xboxClientId":"…"}` for Xbox sign-in. Discord already ships with the official app built in. See [CONEXOES.md](CONEXOES.md) (in Portuguese). |
 | `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` | Optional: Authenticode certificate (`.pfx`) to sign the executables. Without them the release is unsigned. Sign the visual installer and the Setup with the same certificate, because an executable that silently runs another one tends to draw attention from antivirus software and SmartScreen. |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and `NEXO_ADMIN_EMAILS` | Nexo server (sync, error reports and telemetry), published by the **Publicar servidor** workflow. See [SERVIDOR.md](SERVIDOR.md) (in Portuguese). |

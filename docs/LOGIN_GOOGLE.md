@@ -16,7 +16,7 @@ O código do login está pronto (`electron/account.cjs`), mas o Google exige que
 
 Escolha **uma** das formas:
 
-- **Na build (recomendado para releases):** crie o segredo `GOOGLE_OAUTH_JSON` no repositório do GitHub (Settings → Secrets and variables → Actions) com o conteúdo do JSON. O workflow de release grava `config/google-oauth.json` antes de empacotar.
+- **Na build (recomendado para releases):** crie o segredo `GOOGLE_OAUTH_JSON` no repositório do GitHub (Settings → Secrets and variables → Actions) com o conteúdo do JSON **ou só com o segredo do cliente** (`GOCSPX-…`; o Google não deixa baixar o JSON depois de criar o cliente). O ID do cliente, que é público, fica em `config/google-client.json`. O workflow de release roda `scripts/write-google-oauth.cjs`, que grava `config/google-oauth.json` antes de empacotar e avisa no log se o formato não servir (sem mostrar o segredo).
 - **Localmente:** salve o arquivo como `config/google-oauth.json` (já está no `.gitignore`) e rode `npm start` ou gere o instalador.
 - **Num PC já instalado (testes):** em **Ajustes → Conta → Importar credenciais (desenvolvedor)**, escolha o JSON.
 - **Variáveis de ambiente (desenvolvimento):** `NEXO_GOOGLE_CLIENT_ID` e `NEXO_GOOGLE_CLIENT_SECRET`.

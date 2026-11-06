@@ -3,14 +3,14 @@
 #   CLOUDFLARE_API_TOKEN   token da Cloudflare com permissão de editar Workers e D1
 #   CLOUDFLARE_ACCOUNT_ID  ID da conta da Cloudflare
 #   NEXO_ADMIN_EMAILS      e-mail(s) que entram no painel do criador (vírgula separa vários)
-#   GOOGLE_OAUTH_JSON      o mesmo das builds do app (daqui sai só o ID do cliente, que é público)
+# O ID do cliente Google (público) vem de config/google-client.json, o mesmo que as builds usam.
 # Os segredos do próprio servidor (SESSION_SECRET e DATA_KEY) são criados aqui na primeira vez e nunca aparecem no log.
 # NUNCA apague o DATA_KEY na Cloudflare: sem ele, os dados sincronizados não abrem mais.
 name: Publicar servidor
 on:
   push:
     branches: [main]
-    paths: ['server/**', 'tests/server.test.cjs', '.github/workflows/server.yml']
+    paths: ['server/**', 'tests/server.test.cjs', '.github/workflows/server.yml', 'config/google-client.json']
   workflow_dispatch:
 permissions:
   contents: read
@@ -64,13 +64,12 @@ jobs:
         id: deploy
         working-directory: server
         env:
-          GOOGLE_OAUTH_JSON: ${{ secrets.GOOGLE_OAUTH_JSON }}
           NEXO_ADMIN_EMAILS: ${{ secrets.NEXO_ADMIN_EMAILS }}
         run: |
           set -euo pipefail
-          # O ID do cliente é público; sai do texto do segredo em qualquer formato (JSON do Google, com BOM, { clientId }...).
-          CLIENT_ID="$(printf '%s' "${GOOGLE_OAUTH_JSON:-}" | grep -Eo '[A-Za-z0-9-]+\.apps\.googleusercontent\.com' | head -n 1 || true)"
-          if [ -z "$CLIENT_ID" ]; then echo "::error::Sem o ID do cliente Google em GOOGLE_OAUTH_JSON: o login (e a sincronização) não funcionaria."; exit 1; fi
+          # O ID do cliente é público e fica em config/google-client.json (o mesmo que a build usa); o segredo nem é lido aqui.
+          CLIENT_ID="$(node -p "require('../config/google-client.json').clientId" 2>/dev/null | grep -E '^[A-Za-z0-9-]+\.apps\.googleusercontent\.com$' || true)"
+          if [ -z "$CLIENT_ID" ]; then echo "::error::config/google-client.json sem o ID do cliente Google: o login (e a sincronização) não funcionaria."; exit 1; fi
           echo "Cliente Google: $CLIENT_ID"
           $WRANGLER deploy --var "GOOGLE_CLIENT_IDS:${CLIENT_ID}" --var "ADMIN_EMAILS:${NEXO_ADMIN_EMAILS:-}" | tee deploy.log
           URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | head -n 1 || true)"
