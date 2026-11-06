@@ -1,0 +1,108 @@
+Nexo Device Care
+Copyright (c) 2026 Samuklvm. Todos os direitos reservados. / All rights reserved.
+
+=====================================================================
+PORTUGUÊS
+=====================================================================
+
+LICENÇA PROPRIETÁRIA
+
+Este repositório, incluindo o código-fonte, a interface, as imagens, as
+artes, os textos e a documentação (o "Software"), é propriedade exclusiva
+do titular dos direitos autorais acima e é protegido pela Lei de Direitos
+Autorais (Lei nº 9.610/1998), pela Lei de Software (Lei nº 9.609/1998) e
+por tratados internacionais.
+
+O código-fonte está visível publicamente apenas para consulta. Estar
+visível NÃO significa que ele seja livre ou de código aberto.
+
+1. O QUE VOCÊ PODE FAZER
+   a) Baixar os instaladores oficiais publicados na página de Releases
+      deste repositório e usar o Nexo Device Care no seu próprio
+      computador, para uso pessoal.
+   b) Ler o código-fonte no GitHub.
+
+2. O QUE VOCÊ NÃO PODE FAZER sem autorização prévia e por escrito do
+   titular:
+   a) copiar, reproduzir ou reutilizar o código-fonte, no todo ou em
+      parte, em qualquer outro projeto;
+   b) modificar, adaptar, traduzir ou criar obras derivadas;
+   c) distribuir, publicar, sublicenciar, vender, alugar ou disponibilizar
+      o Software ou versões modificadas dele, inclusive instaladores
+      alterados;
+   d) usar o Software, o nome "Nexo", o ícone ou as artes para fins
+      comerciais ou em outros produtos;
+   e) remover ou alterar avisos de direitos autorais;
+   f) usar o código-fonte para treinar ou aprimorar modelos de
+      inteligência artificial.
+
+3. GITHUB
+   Por estar publicado no GitHub, o repositório pode ser visualizado e
+   bifurcado ("fork") dentro do próprio GitHub, conforme os Termos de
+   Serviço do GitHub. Isso não concede nenhum outro direito além dos
+   descritos no item 1.
+
+4. COMPONENTES DE TERCEIROS
+   Componentes de terceiros incluídos ou usados pelo Software continuam
+   sob as suas próprias licenças, listadas em THIRD-PARTY-NOTICES.md.
+
+5. SEM GARANTIA
+   O Software é fornecido "no estado em que se encontra", sem garantias de
+   qualquer tipo. O titular não se responsabiliza por danos decorrentes do
+   uso do Software, na extensão máxima permitida pela lei.
+
+6. CONTATO
+   Pedidos de autorização: abra uma issue em
+   https://github.com/Samuklvm/Project-Nexo/issues
+
+=====================================================================
+ENGLISH
+=====================================================================
+
+PROPRIETARY LICENSE
+
+This repository, including the source code, interface, images, artwork,
+text and documentation (the "Software"), is the exclusive property of the
+copyright holder named above and is protected by Brazilian copyright and
+software law (Laws No. 9.610/1998 and No. 9.609/1998) and by international
+treaties.
+
+The source code is publicly visible for reference only. Being visible
+does NOT make it free or open source.
+
+1. WHAT YOU MAY DO
+   a) Download the official installers published on this repository's
+      Releases page and use Nexo Device Care on your own computer, for
+      personal use.
+   b) Read the source code on GitHub.
+
+2. WHAT YOU MAY NOT DO without prior written permission from the
+   copyright holder:
+   a) copy, reproduce or reuse the source code, in whole or in part, in
+      any other project;
+   b) modify, adapt, translate or create derivative works;
+   c) distribute, publish, sublicense, sell, rent or make available the
+      Software or modified versions of it, including altered installers;
+   d) use the Software, the "Nexo" name, icon or artwork for commercial
+      purposes or in other products;
+   e) remove or alter copyright notices;
+   f) use the source code to train or improve artificial intelligence
+      models.
+
+3. GITHUB
+   Because it is published on GitHub, the repository may be viewed and
+   forked within GitHub as allowed by the GitHub Terms of Service. This
+   grants no rights beyond those described in section 1.
+
+4. THIRD-PARTY COMPONENTS
+   Third-party components included in or used by the Software remain
+   under their own licenses, listed in THIRD-PARTY-NOTICES.md.
+
+5. NO WARRANTY
+   The Software is provided "as is", without warranty of any kind. To the
+   maximum extent permitted by law, the copyright holder is not liable for
+   any damages arising from the use of the Software.
+
+6. CONTACT
+   Permission requests: open an issue at
+   https://github.com/Samuklvm/Project-Nexo/issues

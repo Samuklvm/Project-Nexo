@@ -113,6 +113,10 @@ As mesmas telas nos dois sistemas. No Linux, o Nexo usa `/proc` e os sensores do
 
 Inventário completo: [PRIVACIDADE.md](PRIVACIDADE.md).
 
+## 📄 Licença
+
+O Nexo Device Care é **software proprietário**: todos os direitos reservados. Você pode baixar e usar os instaladores oficiais no seu PC. Copiar, modificar, redistribuir ou reutilizar o código não é permitido sem autorização. Detalhes em [LICENSE](LICENSE).
+
 ## 📚 Mais
 
 - [Novidades de cada versão](CHANGELOG.md) · [Notas das releases](docs/releases/)
