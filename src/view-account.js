@@ -2,6 +2,7 @@
 (function () {
   const bridge = desktopBridge;
   let account = null;
+  let packaged = true; // até o processo principal responder, esconde as opções de desenvolvedor
 
   function avatarHtml(url) { return url ? `<img src="${escapeHtml(url)}" alt="" />` : '<svg><use href="#i-user"/></svg>'; }
 
@@ -12,13 +13,14 @@
     setText('account-chip-label', profile ? profile.name.split(' ')[0] : 'Entrar');
     document.getElementById('account-chip').classList.toggle('signed', Boolean(profile));
     setText('account-name', profile ? profile.name : 'Conta');
-    setText('account-detail', profile ? `${profile.email} · conectado em ${new Date(profile.signedInAt).toLocaleDateString('pt-BR')}` : account?.configured ? 'Entre com a sua conta Google para ter o seu perfil no Nexo.' : 'O login com Google ainda não foi configurado nesta build.');
+    setText('account-detail', profile ? `${profile.email} · conectado em ${new Date(profile.signedInAt).toLocaleDateString('pt-BR')}` : account?.configured ? 'Entre com a sua conta Google para ter o seu perfil no Nexo.' : packaged ? 'Login com Google indisponível nesta instalação.' : 'O login com Google ainda não foi configurado nesta build.');
     const actions = document.getElementById('account-actions');
     actions.innerHTML = profile ? '<button class="btn sm" type="button" id="account-out">Sair da conta</button>'
       : account?.configured ? '<button class="btn primary" type="button" id="account-in">Entrar com o Google</button>'
-      : '<button class="btn sm" type="button" id="account-import">Importar credenciais (desenvolvedor)</button>';
+      : packaged ? '' : '<button class="btn sm" type="button" id="account-import">Importar credenciais (desenvolvedor)</button>';
     setText('account-note', profile ? `Guardado só neste PC${account.encrypted ? ', cifrado pelo Windows' : ''}: nome, e-mail e foto. O Nexo não guarda senhas nem tokens do Google e não envia nada ao criador. Sincronização entre PCs ainda não existe.`
       : account?.configured ? 'Opcional. O login acontece no seu navegador; o Nexo guarda só nome, e-mail e foto neste PC (cifrados pelo Windows) e não guarda senhas nem tokens do Google.'
+      : packaged ? 'O login com Google não está disponível nesta instalação. Atualize o Nexo pela página de Atualizações.'
       : 'Para ativar: crie um cliente OAuth “App para computador” no Google Cloud e importe o JSON aqui, ou coloque-o em config/google-oauth.json na build (veja docs/LOGIN_GOOGLE.md).');
   }
 
@@ -51,6 +53,10 @@
   function applySettings(settings) {
     for (const [id, key] of Object.entries(TOGGLES)) document.getElementById(id).checked = Boolean(settings[key]);
     document.getElementById('set-login').disabled = !settings.packaged;
+    // Importar credenciais e integrações é coisa de quem gera a build: some na versão instalada.
+    if (packaged !== Boolean(settings.packaged)) { packaged = Boolean(settings.packaged); render(); }
+    const importButton = document.getElementById('integrations-import');
+    if (importButton) importButton.hidden = packaged;
   }
   for (const [id, key] of Object.entries(TOGGLES)) {
     document.getElementById(id).addEventListener('change', async (event) => {
@@ -58,7 +64,7 @@
       catch (error) { event.target.checked = !event.target.checked; showToast(error.message || 'Não foi possível salvar.'); }
     });
   }
-  bridge?.onSettingsChanged?.((settings) => applySettings({ ...settings, packaged: !document.getElementById('set-login').disabled }));
+  bridge?.onSettingsChanged?.((settings) => applySettings({ ...settings, packaged }));
   Nexo.on('view', (view) => { if (view === 'settings') { refresh(); bridge?.getSettings?.().then(applySettings).catch(() => {}); } });
 
   /* ---------- Contas e conexões (Steam deste PC, Xbox, Discord) ---------- */

@@ -71,8 +71,14 @@ function createWatchLogic({ match = () => null, alive = defaultAlive, onStart = 
 function createWatcher({ spawnFn = spawn, platform = process.platform, match, alive, onStart, onEnd } = {}) {
   let child = null;
   let timer = null;
+  let wanted = false;
+  let restarts = 0;
+  let restartTimer = null;
   const logic = createWatchLogic({ match, alive, onStart, onEnd });
   function stop() {
+    wanted = false;
+    clearTimeout(restartTimer);
+    restartTimer = null;
     if (child) { try { child.kill(); } catch { /* já saiu */ } }
     child = null;
     clearInterval(timer);
@@ -81,11 +87,23 @@ function createWatcher({ spawnFn = spawn, platform = process.platform, match, al
   }
   function start() {
     if (child || platform !== 'win32') return { ok: platform === 'win32' };
+    wanted = true;
     const spawned = spawnFn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', WATCH_SCRIPT], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     child = spawned;
     readline.createInterface({ input: spawned.stdout }).on('line', (line) => { try { logic.feed(JSON.parse(line)); } catch { /* linha inválida */ } });
-    spawned.on('exit', () => { if (child === spawned) child = null; });
-    timer = setInterval(() => logic.tick(), 3000);
+    // Se o PowerShell do observador cair (antivírus, falta de memória…), a sessão automática parava em silêncio.
+    // Agora ele volta sozinho, com espera crescente e no máximo 5 vezes seguidas.
+    spawned.on('exit', () => {
+      if (child !== spawned) return;
+      child = null;
+      if (!wanted || restarts >= 5) return;
+      restarts += 1;
+      clearInterval(timer); timer = null;
+      restartTimer = setTimeout(() => { restartTimer = null; if (wanted && !child) start(); }, 5000 * restarts);
+    });
+    spawned.on('error', () => {});
+    if (!timer) timer = setInterval(() => logic.tick(), 3000);
+    setTimeout(() => { if (child === spawned) restarts = 0; }, 60000);
     return { ok: true };
   }
   return { start, stop, isRunning: () => Boolean(child), current: () => logic.current() };

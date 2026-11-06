@@ -19,21 +19,32 @@
   $$('.rail-item').forEach((button) => button.addEventListener('click', () => Nexo.go(button.dataset.view)));
   $$('[data-goto]').forEach((button) => button.addEventListener('click', () => Nexo.go(button.dataset.goto)));
 
+  /* Só uma janela por vez: se outra abrir por cima (ex.: um jogo começou durante uma pergunta), a anterior é
+     cancelada de verdade. Antes ela sumia da tela, mas a promessa nunca respondia e o Esc dela fechava a nova. */
+  let closeActive = null;
+  const takeOver = (close) => { const previous = closeActive; closeActive = close; previous?.(); };
+  const release = (close) => { if (closeActive === close) closeActive = null; };
+
   /* ---------- Confirmação (substitui o window.confirm do sistema) ---------- */
   Nexo.confirm = function confirmDialog({ title, body = '', items = [], confirmLabel = 'Continuar', cancelLabel = 'Cancelar', tone = 'primary' }) {
     return new Promise((resolve) => {
       const root = document.getElementById('modal-root');
+      let settled = false;
+      const cancel = () => finish(false, true);
+      takeOver(cancel);
       const previousFocus = document.activeElement;
       root.innerHTML = `<div class="modal-backdrop"><div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title">
         <h3 id="modal-title">${escapeHtml(title)}</h3>${body ? `<p>${escapeHtml(body)}</p>` : ''}
         ${items.length ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}
         <div class="modal-actions"><button class="btn" data-answer="no" type="button">${escapeHtml(cancelLabel)}</button><button class="btn ${tone === 'danger' ? 'danger' : 'primary'}" data-answer="yes" type="button">${escapeHtml(confirmLabel)}</button></div></div></div>`;
-      const finish = (answer) => {
+      function finish(answer, replaced = false) {
+        if (settled) return;
+        settled = true;
+        release(cancel);
         document.removeEventListener('keydown', onKey, true);
-        root.innerHTML = '';
-        previousFocus?.focus?.();
+        if (!replaced) { root.innerHTML = ''; previousFocus?.focus?.(); }
         resolve(answer);
-      };
+      }
       const buttons = $$('button', root);
       const onKey = (event) => {
         if (event.key === 'Escape') { event.preventDefault(); finish(false); }
@@ -54,6 +65,8 @@
   /* ---------- Diálogo rico: corpo atualizável, ações próprias, resultado por promessa ---------- */
   Nexo.dialog = function dialog({ title, html = '', actions = [], dismissible = true, wide = false }) {
     const root = document.getElementById('modal-root');
+    const cancel = () => api.close('dismiss', true);
+    takeOver(cancel);
     const previousFocus = document.activeElement;
     root.innerHTML = `<div class="modal-backdrop"><div class="modal${wide ? ' wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><h3 id="dialog-title"></h3><div class="dialog-body"></div><div class="modal-actions"></div></div></div>`;
     const heading = $('#dialog-title', root);
@@ -80,12 +93,12 @@
         }));
         bar.querySelector('.primary, .danger, .btn:last-child')?.focus?.();
       },
-      close(result) {
+      close(result, replaced = false) {
         if (closed) return;
         closed = true;
+        release(cancel);
         document.removeEventListener('keydown', onKey, true);
-        root.innerHTML = '';
-        previousFocus?.focus?.();
+        if (!replaced) { root.innerHTML = ''; previousFocus?.focus?.(); }
         finish(result);
       }
     };

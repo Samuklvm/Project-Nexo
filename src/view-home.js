@@ -82,7 +82,7 @@
     const c = colors();
     const series = (key) => samples.map((sample) => [sample.timestamp, sample[key]]);
     // 0 °C gravado por versões antigas (sensor sem acesso) não vira ponto no gráfico.
-    const temps = (key) => samples.map((sample) => [sample.timestamp, sample[key] > 5 && sample[key] < 125 ? sample[key] : null]);
+    const tempSeries = (key) => samples.map((sample) => [sample.timestamp, sample[key] > 5 && sample[key] < 125 ? sample[key] : null]);
     const tip = (id) => document.getElementById(id)?.parentElement.querySelector('.chart-tip') || (() => {
       const box = document.createElement('div'); box.className = 'chart-tip'; box.hidden = true;
       document.getElementById(id).parentElement.append(box); return box;
@@ -94,9 +94,9 @@
     draw('chart-gpu', { series: [{ label: 'Vídeo', color: c.gpu, data: series('gpu') }], yMin: 0, yMax: 100, unit: '%' });
     draw('chart-disk', { series: [{ label: 'Disco', color: c.disk, data: series('disk') }], yMin: 0, yMax: 100, unit: '%', bands: alert(90) });
     draw('chart-temperature', { unit: '°C', bands: [{ from: 85, to: 120, color: 'rgba(255, 122, 149, 0.07)', line: 'rgba(255, 122, 149, 0.4)' }], series: [
-      { label: 'Processador', color: c.cpu, data: temps('cpuSensorTemperature') },
-      { label: 'Vídeo', color: c.gpu, data: temps('gpuTemperature') },
-      { label: 'ACPI', color: c.acpi, data: temps('acpiTemperature') }
+      { label: 'Processador', color: c.cpu, data: tempSeries('cpuSensorTemperature') },
+      { label: 'Vídeo', color: c.gpu, data: tempSeries('gpuTemperature') },
+      { label: 'ACPI', color: c.acpi, data: tempSeries('acpiTemperature') }
     ].filter((serie) => serie.data.some((point) => Number.isFinite(point[1]))) });
 
     const stats = (key) => {

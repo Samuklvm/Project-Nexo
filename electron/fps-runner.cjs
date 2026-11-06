@@ -9,7 +9,7 @@ const Fps = require('../src/fps.js');
 
 const SESSION = 'NexoFPS';
 const MAX_FRAMES = 400000;
-const ACCESS_HINT = 'O Windows negou o acesso aos eventos de apresentação. O PresentMon precisa que o seu usuário esteja no grupo “Performance Log Users” (ou seja administrador). Em Gerenciamento do Computador, abra Usuários e Grupos Locais, depois Grupos, adicione o seu usuário a esse grupo, saia da conta do Windows e entre de novo.';
+const ACCESS_HINT = 'O Windows negou o acesso aos eventos de apresentação. O PresentMon precisa que o seu usuário esteja no grupo “Performance Log Users” (ou seja administrador). O Nexo libera isso sozinho em Sessões → Componentes → “Liberar automaticamente” (o Windows pede permissão); depois saia da conta do Windows e entre de novo.';
 
 function createFpsRunner({ spawnFn = spawn, emit = () => {}, platform = process.platform } = {}) {
   let child = null;
