@@ -34,7 +34,8 @@
     const collect = (types, sensorType, filter = () => true) => devices
       .filter((device) => types.includes(device.type))
       .flatMap((device) => device.sensors || [])
-      .filter((sensor) => sensor.type === sensorType && Number.isFinite(sensor.value) && filter(sensor))
+      // Temperatura 0 °C (ou absurda) é sensor sem acesso, não leitura: sem o driver, o processador responde 0.
+      .filter((sensor) => sensor.type === sensorType && Number.isFinite(sensor.value) && (sensorType !== 'Temperature' || (sensor.value > 5 && sensor.value < 125)) && filter(sensor))
       .map((sensor) => sensor.value);
     const max = (values) => (values.length ? Math.max(...values) : null);
     const gpuTypes = ['GpuNvidia', 'GpuAmd', 'GpuIntel'];

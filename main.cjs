@@ -529,7 +529,9 @@ autoUpdater.on('download-progress', (progress) => {
 autoUpdater.on('update-downloaded', (info) => {
   updateDownloaded = true;
   updateAvailableVersion = info.version;
-  updateReleaseInfo = info;
+  // O evento de download costuma vir sem as notas: mantém as que chegaram em "update-available".
+  updateReleaseInfo = { ...info, releaseNotes: info.releaseNotes || updateReleaseInfo?.releaseNotes || null, releaseName: info.releaseName || updateReleaseInfo?.releaseName, releaseDate: info.releaseDate || updateReleaseInfo?.releaseDate };
+  info = updateReleaseInfo;
   updateProgress = { percent: 100, transferred: null, total: null, bytesPerSecond: 0 };
   publishUpdateStatus('downloaded', {
     version: info.version,

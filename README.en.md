@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">🇧🇷 Português</a> · <b>🇺🇸 English</b>
+  <a href="README.md">Português</a> · <b>English</b>
 </p>
 
 <p align="center">
@@ -125,4 +125,4 @@ Nexo Device Care is **proprietary software**: all rights reserved. You may downl
 - [For developers](docs/DEVELOPMENT.md): run, test, build installers and publish versions
 - [Architecture](docs/ARQUITETURA.md) · [Game connections](docs/CONEXOES.md) · [Security](SECURITY.md)
 
-<p align="center"><sub>Made in Brazil 🇧🇷 · Recommendations are heuristics and do not guarantee a performance gain on every PC.</sub></p>
+<p align="center"><sub>Made in Brazil · Recommendations are heuristics and do not guarantee a performance gain on every PC.</sub></p>

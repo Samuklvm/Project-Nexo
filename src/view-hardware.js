@@ -34,7 +34,9 @@
   function renderSensorExplorer() {
     if (!Nexo.state.sensors || !sensorDeviceList) return;
     const snapshot = Nexo.state.sensors;
-    const devices = Array.isArray(snapshot.devices) ? snapshot.devices : [];
+    // Filtros virtuais de rede (WFP, QoS, LightWeight Filter…) repetem o mesmo adaptador várias vezes: ficam de fora.
+    const VIRTUAL_NET = /-WFP |-WFP$|LightWeight Filter|QoS Packet Scheduler|WiFi Filter Driver|Native MAC Layer|WAN Miniport|Kernel Debug|Virtual WiFi Filter/i;
+    const devices = (Array.isArray(snapshot.devices) ? snapshot.devices : []).filter((device) => !(device.type === 'Network' && VIRTUAL_NET.test(String(device.name))));
     const query = (sensorSearchInput?.value || '').trim().toLocaleLowerCase('pt-BR');
     const includeAdvanced = Boolean(sensorAdvancedToggle?.checked);
     const categories = [...new Set(devices.map((device) => device.type))];
@@ -73,7 +75,8 @@
 
     sensorDeviceList.innerHTML = visibleDevices.map((device) => {
       const sensorRows = device.visibleSensors.map((sensor) => {
-        const state = sensor.value === null ? 'Indisponível' : formatSensorValue(sensor.value, sensor.unit);
+        const noAccess = sensor.type === 'Temperature' && sensor.value !== null && sensor.value <= 0;
+        const state = sensor.value === null ? 'Indisponível' : noAccess ? 'Sem acesso ao sensor' : formatSensorValue(sensor.value, sensor.unit);
         const maximum = sensor.max === null ? '—' : formatSensorValue(sensor.max, sensor.unit);
         const minimum = sensor.min === null ? '—' : formatSensorValue(sensor.min, sensor.unit);
         return `<tr class="${sensor.advanced ? 'is-advanced' : ''}"><td><span>${escapeHtml(sensor.name)}</span>${sensor.advanced ? '<small>Avançado</small>' : ''}</td><td>${escapeHtml(sensorMetricLabels[sensor.type] || sensor.type)}</td><td class="sensor-current-value">${escapeHtml(state)}</td><td>${escapeHtml(minimum)}</td><td>${escapeHtml(maximum)}</td></tr>`;

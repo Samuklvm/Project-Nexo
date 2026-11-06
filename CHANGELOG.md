@@ -1,10 +1,10 @@
 # Histórico de versões · Version history
 
-🇧🇷 [Português](#-português) · 🇺🇸 [English](#-english)
+[Português](#português) · [English](#english)
 
 Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/releases/).
 
-## 🇧🇷 Português
+## Português
 
 ### 0.6.2: sensores e FPS de volta, biblioteca mais certinha
 - Correção: o coletor de sensores voltou ao instalador do Windows (estava fora desde a 0.4.0).
@@ -46,7 +46,7 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ---
 
-## 🇺🇸 English
+## English
 
 ### 0.6.2: sensors and FPS back, a tidier library
 - Fix: the sensor collector is back in the Windows installer (it was missing since 0.4.0).

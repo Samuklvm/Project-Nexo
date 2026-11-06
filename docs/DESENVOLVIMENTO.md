@@ -1,6 +1,6 @@
 # Para desenvolvedores
 
-🇧🇷 Português · [🇺🇸 English](DEVELOPMENT.md)
+Português · [English](DEVELOPMENT.md)
 
 ## Rodar em desenvolvimento
 

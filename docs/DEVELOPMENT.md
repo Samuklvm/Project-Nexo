@@ -1,6 +1,6 @@
 # For developers
 
-[🇧🇷 Português](DESENVOLVIMENTO.md) · 🇺🇸 English
+[Português](DESENVOLVIMENTO.md) · English
 
 ## Run in development
 

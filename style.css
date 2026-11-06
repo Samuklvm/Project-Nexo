@@ -363,6 +363,11 @@ body.lite .sheet, body.lite .rail, body.lite .status-pill, body.lite .modal, bod
 .release-notes h4 { font-size: 15px; margin-bottom: 8px; }
 .release-notes li { position: relative; padding-left: 16px; color: var(--mist); }
 .release-notes li::before { content: ""; position: absolute; left: 3px; top: 0.65em; width: 5px; height: 5px; border-radius: 50%; background: var(--star); }
+.release-notes ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; max-height: 300px; overflow: auto; scrollbar-width: thin; }
+.release-notes li.note-heading { padding: 10px 0 0; color: var(--moon); font-weight: 650; font-size: 13.5px; letter-spacing: 0.01em; }
+.release-notes li.note-heading:first-child { padding-top: 0; }
+.release-notes li.note-heading::before, .release-notes li.note-text::before { display: none; }
+.release-notes li.note-text { padding-left: 0; color: #d6def8; }
 .update-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .wall-row { display: flex; gap: 18px; align-items: flex-start; padding-bottom: 18px; border-bottom: 1px solid var(--hair); }
 .wall-preview { flex: none; width: 150px; aspect-ratio: 16 / 10; border-radius: 12px; border: 1px solid var(--hair); background: var(--wallpaper-image) center / cover; }

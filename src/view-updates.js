@@ -30,21 +30,6 @@
     return raw || 'Confira sua conexão e tente novamente.';
   }
 
-  function getReleaseNoteLines(notes) {
-    const text = Array.isArray(notes)
-      ? notes.map((note) => typeof note === 'string' ? note : note?.note || note?.text || '').join('\n')
-      : String(notes || '');
-    return text.split(/\r?\n/)
-      .map((line) => line.trim()
-        .replace(/^#{1,6}\s*/, '')
-        .replace(/^[-*+]\s+/, '')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .replace(/[*_`~]/g, ''))
-      .filter(Boolean)
-      .slice(0, 8)
-      .map((line) => line.length > 180 ? `${line.slice(0, 177)}...` : line);
-  }
-
   function renderUpdateReleaseNotes(status) {
     const section = document.getElementById('update-release-notes');
     const list = document.getElementById('update-release-list');
@@ -57,13 +42,14 @@
       return;
     }
 
-    setText('update-release-heading', status.releaseName || `Novidades da versão ${status.version}`);
-    const notes = getReleaseNoteLines(status.releaseNotes);
+    setText('update-release-heading', `Novidades da versão ${status.version}`);
+    const blocks = NexoReleaseNotes.parse(status.releaseNotes);
     list.replaceChildren();
-    if (!notes.length) notes.push('Esta versão não tem notas de alteração publicadas.');
-    for (const note of notes) {
+    if (!blocks.length) blocks.push({ type: 'text', text: 'Esta versão não tem notas de alteração publicadas.' });
+    for (const block of blocks) {
       const item = document.createElement('li');
-      item.textContent = note;
+      item.className = `note-${block.type}`;
+      item.textContent = block.text;
       list.append(item);
     }
     section.hidden = false;
