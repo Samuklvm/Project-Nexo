@@ -55,6 +55,8 @@ let sensorHost = null;
 let sensorRequestPending = null;
 let sensorHostStatus = 'starting';
 
+/** Saída do PowerShell em UTF-8: sem isso, nomes com acento (rótulos de disco, programas, planos) chegam quebrados. */
+const PS_UTF8_OUTPUT = '[Console]::OutputEncoding=[Text.Encoding]::UTF8; ';
 function runPowerShell(script, timeout = 15000) {
   if (process.platform !== 'win32') {
     throw new Error('Esta operação está disponível somente no Windows.');
@@ -65,7 +67,7 @@ function runPowerShell(script, timeout = 15000) {
     '-NoProfile',
     '-NonInteractive',
     '-Command',
-    script
+    PS_UTF8_OUTPUT + script
   ], {
     windowsHide: true,
     timeout,
@@ -77,7 +79,7 @@ function runPowerShell(script, timeout = 15000) {
 function runPowerShellCode(script, timeout = 15000) {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') { resolve({ code: -1, stdout: '' }); return; }
-    execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
+    execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PS_UTF8_OUTPUT + script], { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
       resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || '') });
     });
   });
@@ -263,7 +265,7 @@ function startSensorHost() {
     sensorHost = null;
     if (sensorRequestPending) {
       clearTimeout(sensorRequestPending.timeout);
-      sensorRequestPending.resolve({ status: 'unavailable', devices: [], sensorCount: 0, issues: [{ device: 'Coletor', message: 'O coletor de sensores não está instalado. Gere o app com o SDK .NET 10.' }] });
+      sensorRequestPending.resolve({ status: 'unavailable', devices: [], sensorCount: 0, issues: [{ device: 'Coletor', message: 'O coletor de sensores não foi encontrado nesta instalação. Reinstale o Nexo pela última versão no GitHub.' }] });
       sensorRequestPending = null;
     }
   });
@@ -756,9 +758,10 @@ registerIpcHandler('system:repair', async () => {
   return { ok: true };
 });
 
+const downloadedStatus = () => ({ state: 'downloaded', version: updateAvailableVersion, currentVersion: app.getVersion(), releaseName: updateReleaseInfo?.releaseName, releaseDate: updateReleaseInfo?.releaseDate, releaseNotes: updateReleaseInfo?.releaseNotes });
 registerIpcHandler('updates:check', async () => {
   if (!app.isPackaged) return { state: 'development', version: app.getVersion() };
-  if (updateDownloaded) return { state: 'downloaded', version: updateAvailableVersion, currentVersion: app.getVersion() };
+  if (updateDownloaded) return downloadedStatus();
   if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion, ...updateProgress };
   if (updateCheckInProgress) return { state: 'checking', currentVersion: app.getVersion() };
 
@@ -777,7 +780,7 @@ registerIpcHandler('updates:check', async () => {
         releaseNotes: result.updateInfo.releaseNotes
       };
     }
-    if (updateDownloaded) return { state: 'downloaded', version: updateAvailableVersion, currentVersion: app.getVersion() };
+    if (updateDownloaded) return downloadedStatus();
     updateAvailableVersion = null;
     updateReleaseInfo = null;
     return {
@@ -795,7 +798,7 @@ registerIpcHandler('updates:check', async () => {
 
 registerIpcHandler('updates:download', async () => {
   if (!app.isPackaged) return { state: 'development', version: app.getVersion() };
-  if (updateDownloaded) return { state: 'downloaded', version: updateAvailableVersion };
+  if (updateDownloaded) return downloadedStatus();
   if (updateCheckInProgress) return { state: 'checking', currentVersion: app.getVersion() };
   if (!updateAvailableVersion) return { state: 'current', version: app.getVersion() };
   if (updateDownloadInProgress) return { state: 'downloading', version: updateAvailableVersion, ...updateProgress };
