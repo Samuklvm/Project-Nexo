@@ -68,8 +68,10 @@ jobs:
           NEXO_ADMIN_EMAILS: ${{ secrets.NEXO_ADMIN_EMAILS }}
         run: |
           set -euo pipefail
-          CLIENT_ID="$(printf '%s' "${GOOGLE_OAUTH_JSON:-}" | node -e "let s='';process.stdin.on('data',(d)=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const i=j.installed||j.web||j;process.stdout.write(String(i.client_id||i.clientId||''))}catch{}})")"
-          if [ -z "$CLIENT_ID" ]; then echo "Sem GOOGLE_OAUTH_JSON: o login (e a sincronização) não vai funcionar."; fi
+          # O ID do cliente é público; sai do texto do segredo em qualquer formato (JSON do Google, com BOM, { clientId }...).
+          CLIENT_ID="$(printf '%s' "${GOOGLE_OAUTH_JSON:-}" | grep -Eo '[A-Za-z0-9-]+\.apps\.googleusercontent\.com' | head -n 1 || true)"
+          if [ -z "$CLIENT_ID" ]; then echo "::error::Sem o ID do cliente Google em GOOGLE_OAUTH_JSON: o login (e a sincronização) não funcionaria."; exit 1; fi
+          echo "Cliente Google: $CLIENT_ID"
           $WRANGLER deploy --var "GOOGLE_CLIENT_IDS:${CLIENT_ID}" --var "ADMIN_EMAILS:${NEXO_ADMIN_EMAILS:-}" | tee deploy.log
           URL="$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' deploy.log | head -n 1 || true)"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
