@@ -42,3 +42,11 @@ test('notas longas: corte no fim de uma palavra, com reticências', () => {
   const [item] = Notes.parse(`## Novidades\n- ${long}`).filter((block) => block.type === 'item');
   assert.equal(item.text, cut);
 });
+
+test('notas: nenhuma tag sobra, nem montada por pedaços nem vinda de entidades', () => {
+  const { parse } = require('../src/release-notes.js');
+  const blocks = parse('<ul><li>Antes <scr<script>ipt>alert(1)</scr</script>ipt> depois &lt;img src=x onerror=alert(1)&gt; fim &amp; a &lt; b</li></ul>');
+  const text = blocks.map((b) => b.text || '').join(' ');
+  assert.ok(!/<\s*(script|img)/i.test(text), text);
+  assert.match(text, /Antes .*depois .*fim & a < b/);
+});

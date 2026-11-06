@@ -40,7 +40,7 @@ if (require.main === module) {
     console.log(`::warning::Login com Google desativado nesta build: ${result.error}.`);
   } else {
     fs.writeFileSync(path.join(root, 'config', 'google-oauth.json'), JSON.stringify(result.config), 'utf8');
-    console.log(`Login com Google configurado (cliente ${result.config.installed.client_id}).`);
+    console.log('Login com Google configurado nesta build.');
   }
 }
 

@@ -26,7 +26,14 @@
       .replace(/&#(\d+);/g, (match, dec) => (ENTITIES[`#${dec}`] ?? String.fromCodePoint(Number(dec))))
       .replace(/&([a-z]+);/gi, (match, name) => ENTITIES[name.toLowerCase()] ?? match);
   }
-  const clean = (text) => decode(String(text).replace(/<[^>]*>/g, '')).replace(FLAGS, '').replace(/\s+/g, ' ').trim();
+  /** Tira tags até não sobrar nenhuma (um passe só deixaria `<scr<b>ipt>` virar `<script>`). */
+  function stripTags(text) {
+    let out = String(text);
+    for (let previous = null; previous !== out;) { previous = out; out = out.replace(/<[^<>]*>/g, ''); }
+    return out;
+  }
+  // Tira as tags antes e depois de decodificar: `&lt;b&gt;` vira texto `<b>`, que também sai.
+  const clean = (text) => stripTags(decode(stripTags(text))).replace(FLAGS, '').replace(/\s+/g, ' ').trim();
 
   function fromHtml(html) {
     const blocks = [];
