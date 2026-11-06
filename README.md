@@ -2,6 +2,11 @@
 
 Aplicativo desktop para Windows e Linux que cuida do computador: mede, explica o que está pesando, aprende a rotina de uso e oferece ações reais de manutenção, sempre com prévia e confirmação. É gratuito, de código aberto e processa tudo localmente. As recomendações são heurísticas e **não prometem** aumentar o desempenho em todos os PCs.
 
+## Novidades da 0.6.1
+
+- **Discord:** o status mostra o jogo que o Nexo está medindo, com o ícone oficial e um botão para baixar o Nexo. Funciona sem configurar nada.
+- **Entrar com Google** ativado.
+
 ## Novidades da 0.6.0
 
 - **Linux:** o Nexo agora roda no Linux (AppImage e `.deb`), com sensores, sessões, FPS pelo MangoHud, biblioteca Steam/Heroic, perfis de energia e laboratório. Veja a seção [Linux](#linux).
@@ -9,7 +14,7 @@ Aplicativo desktop para Windows e Linux que cuida do computador: mede, explica o
 - **Capas oficiais** (Steam, Microsoft Store e Xbox), **contas conectadas** (Steam deste PC, Steam Web API, Xbox, Discord Rich Presence).
 - **Mais leve em PC fraco:** modo leve automático, animações pausadas sem foco, leituras espaçadas em segundo plano e o custo real do Nexo em Ajustes.
 
-Notas completas: [`docs/releases/v0.6.0.md`](docs/releases/v0.6.0.md) · Histórico: [`CHANGELOG.md`](CHANGELOG.md)
+Notas completas: [`docs/releases/v0.6.1.md`](docs/releases/v0.6.1.md) e [`docs/releases/v0.6.0.md`](docs/releases/v0.6.0.md) · Histórico: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## O que ele faz
 

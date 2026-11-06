@@ -2,6 +2,11 @@
 
 Notas completas de cada versão em [`docs/releases/`](docs/releases/).
 
+## 0.6.1 — Discord oficial e login com Google
+- Novo: status do Discord com o app oficial "Nexo Device Care" (ícone, tempo de jogo e botão “Conhecer o Nexo”), sem configuração.
+- Novo: login com Google ativado nas builds oficiais.
+- Mudança: notas das releases 0.5.0 e 0.6.0 sem as seções internas de desenvolvimento.
+
 ## 0.6.0 — Linux, página completa do jogo e contas conectadas
 - Novo: suporte a Linux (AppImage e .deb) com sensores, sessões, FPS pelo MangoHud, biblioteca Steam/Heroic, perfis de energia e laboratório.
 - Novo: página de cada jogo com visão geral, conquistas (com raridade global), novidades e atualizações oficiais e desempenho.

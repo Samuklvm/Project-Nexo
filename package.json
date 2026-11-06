@@ -1,6 +1,6 @@
 {
   "name": "nexo-device-care",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Nexo Device Care: cuidado e otimização do seu PC (Windows e Linux), com análise local que aprende a sua rotina",
   "main": "main.cjs",
