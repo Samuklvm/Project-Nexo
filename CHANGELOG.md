@@ -6,6 +6,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.7.1: revisão completa
+- Correção: notas da atualização em todos os passos (baixando, baixada, erro); botão "Verificar novamente" com o estado certo.
+- Correção: temperatura 0 °C ignorada em todas as fontes e no histórico antigo.
+- Correção: sessões duplicadas e gravação travada; mensagens claras na manutenção (UAC recusado, SFC com avisos).
+- Correção: serviço de sensores espera o processo fechar ao atualizar ou remover; biblioteca com confirmação ao tirar jogo e aviso de capas que não fica para sempre; CSV com vírgula decimal.
+- Melhoria: histórico 60% menor, gráficos sem redesenho excessivo, textos para o público.
+
 ### 0.7.0: temperatura do processador, tudo no mais recente
 - Novo: serviço de sensores com o driver PawnIO (Windows) para ler a temperatura do processador e da placa-mãe; instalado com permissão (UAC) e removido na desinstalação.
 - Novo: fonte Inter embutida.
@@ -54,6 +61,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.7.1: full review
+- Fix: update notes at every step (downloading, downloaded, error); the "Check again" button shows the right state.
+- Fix: 0 °C temperature ignored in every source and in old history.
+- Fix: duplicated sessions and stuck recordings; clear maintenance messages (declined UAC, SFC with warnings).
+- Fix: the sensor service waits for its process to close when updating or removing; the library asks before removing a game and the covers notice no longer stays forever; CSV with decimal comma.
+- Improvement: 60% smaller history, charts without excessive redraws, user-facing wording.
 
 ### 0.7.0: processor temperature, everything on the latest version
 - New: sensor service with the PawnIO driver (Windows) to read processor and motherboard temperature; installed with permission (UAC) and removed on uninstall.

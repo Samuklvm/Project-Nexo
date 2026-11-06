@@ -120,7 +120,7 @@ O Nexo Device Care é **software proprietário**: todos os direitos reservados. 
 
 ## 📚 Mais
 
-- [Novidades de cada versão](CHANGELOG.md) (0.7.0: temperatura do processador, animações refinadas e tudo no mais recente) · [Notas das releases](docs/releases/)
+- [Novidades de cada versão](CHANGELOG.md) (0.7.1: revisão completa, com correções na atualização, sessões, manutenção e temperatura) · [Notas das releases](docs/releases/)
 - [Para desenvolvedores](docs/DESENVOLVIMENTO.md): rodar, testar, gerar instaladores e publicar versões
 - [Arquitetura](docs/ARQUITETURA.md) · [Conexões de jogos](docs/CONEXOES.md) · [Segurança](SECURITY.md)
 

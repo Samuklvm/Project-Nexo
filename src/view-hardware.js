@@ -24,7 +24,9 @@
 
   function formatSensorValue(value, unit = '') {
     if (!Number.isFinite(value)) return '—';
-    const digits = Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 ? 1 : 2;
+    // Porcentagem e temperatura com uma casa no máximo ("8,3 %", não "8,28 %"); tensões e afins precisam de mais.
+    const coarse = unit === '%' || unit === '°C';
+    const digits = Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 || coarse ? 1 : 2;
     const formatted = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: digits }).format(value);
     if (unit === 'B') return formatBytes(value);
     if (unit === 'B/s') return `${formatBytes(value)}/s`;
