@@ -103,11 +103,15 @@
     box.innerHTML = `${chips.join('')}${suggest ? `<button class="acc-suggest" type="button" data-connect-steam="${escapeHtml(c.steam.detected[0].steamId)}"><span class="avatar">${c.steam.detected[0].avatar ? `<img src="${escapeHtml(c.steam.detected[0].avatar)}" alt="" />` : ''}</span><span><b>Conectar ${escapeHtml(c.steam.detected[0].personaName)}</b><small>conta Steam deste PC · tempo de jogo</small></span></button>` : ''}<button class="btn sm ghost" type="button" id="lib-connect">${chips.length ? 'Gerenciar contas' : 'Conectar contas'}</button>`;
   }
 
+  const ART_SEEN_KEY = 'nexo.art-banner-seen';
+  const artSeen = () => { try { return Number(localStorage.getItem(ART_SEEN_KEY)) || 0; } catch { return 0; } };
+  const markArtSeen = () => { try { localStorage.setItem(ART_SEEN_KEY, String(state.games.filter((game) => !game.cover && game.kind !== 'app').length)); } catch { /* sem armazenamento */ } };
   function renderArtBanner() {
     const banner = document.getElementById('art-banner');
-    const missing = state.games.filter((game) => !game.cover).length;
+    const missing = state.games.filter((game) => !game.cover && game.kind !== 'app').length;
     const running = Boolean(state.art);
-    banner.hidden = !state.loaded || (!missing && !running);
+    // Depois de uma busca, o aviso só volta se aparecerem jogos novos sem capa (antes ficava para sempre na tela).
+    banner.hidden = !state.loaded || (!running && (!missing || missing <= artSeen()));
     if (banner.hidden) return;
     setText('art-banner-title', running ? 'Buscando capas oficiais…' : `${missing} jogo${missing > 1 ? 's' : ''} sem capa`);
     setText('art-banner-text', running ? `${state.art.done} de ${state.art.total} conferidos (Steam e Microsoft Store, só arte oficial)` : 'O Nexo pode buscar a capa oficial de cada um nas lojas (Steam e Microsoft Store). Jogos sem correspondência exata ficam com a arte gerada, e você pode escolher uma imagem.');
@@ -210,7 +214,7 @@
   function newsTab(game, info) {
     const news = info?.news || [];
     if (!news.length) return '<p class="muted gp-empty">Sem novidades publicadas na Steam para este jogo.</p>';
-    return `<ol class="news">${news.map((item) => { const [label, tone] = KIND[item.kind]; return `<li class="news-item" data-kind="${item.kind}"><div class="news-head"><span class="chip ${tone}">${label}</span><span class="muted">${item.date ? when(item.date) : ''} · ${escapeHtml(item.source)}</span></div>
+    return `<ol class="news">${news.map((item) => { const [label, tone] = KIND[item.kind] || KIND.noticia; return `<li class="news-item" data-kind="${item.kind}"><div class="news-head"><span class="chip ${tone}">${label}</span><span class="muted">${item.date ? when(item.date) : ''} · ${escapeHtml(item.source)}</span></div>
       <h4>${escapeHtml(item.title)}</h4><p>${escapeHtml(item.summary)}</p>${item.url ? `<button class="link" type="button" data-store-url="${escapeHtml(item.url)}">Ler completo na Steam</button>` : ''}</li>`; }).join('')}</ol>`;
   }
 
@@ -286,7 +290,7 @@
     renderArtBanner();
     try { const result = await bridge.fetchGameArt(); showToast(result.found ? `${result.found} capa(s) oficial(is) encontrada(s).` : 'Nenhuma capa nova com correspondência exata.'); }
     catch (error) { showToast(error.message || 'Não foi possível buscar as capas.'); }
-    finally { state.art = null; renderArtBanner(); }
+    finally { state.art = null; markArtSeen(); renderArtBanner(); }
   }
 
   async function play(id, record) {
@@ -323,7 +327,11 @@
     else if ('closeGame' in target.dataset) closeGame();
     else if (target.dataset.reveal) bridge.revealGame(target.dataset.reveal).catch((error) => showToast(error.message));
     else if (target.dataset.cover) { try { const result = await bridge.setGameCover(target.dataset.cover); if (result?.games) { state.games = result.games; render(); } } catch (error) { showToast(error.message || 'Não foi possível usar a imagem.'); } }
-    else if (target.dataset.remove) { const result = await bridge.removeManualGame(target.dataset.remove); state.games = result.games; closeGame(); render(); }
+    else if (target.dataset.remove) {
+      const game = byId(target.dataset.remove);
+      if (!await Nexo.confirm({ title: `Tirar ${game?.name || 'o jogo'} da biblioteca?`, body: 'Só sai da lista do Nexo. O jogo continua instalado e as sessões gravadas ficam guardadas.', confirmLabel: 'Tirar da biblioteca' })) return;
+      try { const result = await bridge.removeManualGame(target.dataset.remove); state.games = result.games; closeGame(); render(); } catch (error) { showToast(error.message || 'Não foi possível tirar o jogo.'); }
+    }
     else if (target.dataset.session) { Nexo.go('sessions'); Nexo.sessions.open(target.dataset.session); }
     else if (target.dataset.connectSteam) { try { state.connections = await bridge.connectSteam(target.dataset.connectSteam); showToast('Steam conectada. Atualizando a biblioteca…'); scan(); } catch (error) { showToast(error.message); } }
     else if (target.id === 'lib-connect') Nexo.openConnections?.();

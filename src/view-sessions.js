@@ -4,6 +4,7 @@
   const MAX_SECONDS = 4 * 3600;
   const bridge = desktopBridge;
   let rec = null;
+  let starting = false; // evita duas gravações ao mesmo tempo (clique duplo, ou jogo abrindo enquanto a caixa de diálogo está aberta)
   let timers = [];
   let stopProbeListener = null;
   const fps = { status: null, active: false, access: null };
@@ -34,7 +35,7 @@
     const status = fps.status;
     const where = status.source === 'escolhido' ? 'escolhido por você' : 'embutido no instalador';
     setText('fps-note', status.available ? `Componente: ${status.name} (${where}). Exige o grupo “Performance Log Users”.` : status.platform && status.platform !== 'win32' ? 'Disponível só no Windows.' : 'Componente não encontrado. Escolha o PresentMon em “Componentes”, mais abaixo.');
-    setText('fps-status-text', status.available ? `${status.name} · ${where}` : 'Não encontrado. Baixe na página oficial e aponte o arquivo, ou use o embutido quando o hash estiver fixado na build.');
+    setText('fps-status-text', status.available ? `${status.name} · ${where}` : 'Não encontrado nesta instalação. Reinstale o Nexo pela última versão, ou baixe o PresentMon no site oficial e escolha o arquivo.');
     document.getElementById('fps-clear').hidden = status.source !== 'escolhido';
     if (status.platform === 'linux') {
       setText('fps-note', status.available ? 'MangoHud instalado. Rode o jogo com a opção de inicialização (em Componentes) e o Nexo lê o FPS sozinho.' : 'Instale o MangoHud (pacote "mangohud" da sua distribuição) para medir FPS.');
@@ -76,7 +77,8 @@
     finally { setAppStatus('Monitoramento ativo'); refreshAccess(); }
   };
   Nexo.revokeFpsAccess = async function revokeFpsAccess() {
-    const result = await bridge.revokeFpsAccess();
+    let result;
+    try { result = await bridge.revokeFpsAccess(); } catch (error) { showToast(error.message || 'Não foi possível tirar o acesso.'); return false; }
     if (result.declined) { showToast('Você recusou a permissão no Windows; nada mudou.'); return false; }
     if (!result.ok) { showToast(`O Windows não aceitou: ${result.note || 'motivo desconhecido'}.`); return false; }
     refreshAccess();
@@ -159,7 +161,12 @@
   }
 
   async function start(options = {}) {
-    if (rec) return;
+    if (rec || starting) return;
+    starting = true;
+    try { await beginRecording(options); } finally { starting = false; }
+  }
+
+  async function beginRecording(options) {
     if (!bridge?.sampleSession) { showToast('As sessões estão disponíveis no aplicativo desktop.'); return; }
     if (Nexo.state.labRunning) { showToast('O laboratório está medindo agora; a sessão fica para depois.'); return; }
     const auto = options.auto === true;
@@ -186,10 +193,10 @@
     showLiveError('');
     renderRec();
     setText('live-fg', rec.useProbe ? 'Aguardando o primeiro plano…' : 'Observação detalhada desligada');
-    await bridge.sampleSession(); // marca o ponto de partida do uso por núcleo
+    await bridge.sampleSession().catch(() => null); // marca o ponto de partida do uso por núcleo
     if (rec.useProbe) {
       stopProbeListener = bridge.onProbe(onProbe);
-      const result = await bridge.startProbe();
+      const result = await bridge.startProbe().catch((error) => ({ ok: false, reason: error.message }));
       if (!result.ok) { rec.useProbe = false; showLiveError(result.reason || 'A sonda não pôde ser iniciada.'); }
     }
     timers = [setInterval(tick, 1000), setInterval(() => Nexo.refreshSensors?.(), 5000)];
