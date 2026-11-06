@@ -1,0 +1,124 @@
+<p align="center">
+  <img src="docs/images/banner.png" alt="Nexo Device Care" width="100%">
+</p>
+
+<p align="center">
+  <a href="README.md">🇧🇷 Português</a> · <b>🇺🇸 English</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Samuklvm/Project-Nexo/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/Samuklvm/Project-Nexo?style=for-the-badge&label=version&color=4cc9f0&labelColor=0b1430"></a>
+  <a href="https://github.com/Samuklvm/Project-Nexo/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Samuklvm/Project-Nexo/total?style=for-the-badge&label=downloads&color=7b8cff&labelColor=0b1430"></a>
+  <img alt="Windows and Linux" src="https://img.shields.io/badge/Windows%20%7C%20Linux-5eead4?style=for-the-badge&labelColor=0b1430">
+  <img alt="Free" src="https://img.shields.io/badge/free-a3e635?style=for-the-badge&labelColor=0b1430">
+</p>
+
+<h3 align="center">Care for your PC under the stars.</h3>
+
+<p align="center">
+  Nexo measures your computer, explains what is slowing it down and only changes<br>
+  something after you confirm. Everything stays on your PC, and everything can be undone.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Samuklvm/Project-Nexo/releases/latest"><b>⬇️ Download the latest version</b></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/home.jpg" alt="Nexo home screen: Nexo Index, live readings and system map" width="92%">
+</p>
+
+<p align="center"><sub>Screenshots show the app in Portuguese.</sub></p>
+
+---
+
+## ✨ Why Nexo is different
+
+| | |
+|---|---|
+| 📏 **Measures before it touches** | Every tweak can be measured before and after. If there is no real gain, Nexo tells you. |
+| ↩️ **Everything is reversible** | Every change goes into a Journal with the previous value and a **Revert** button. |
+| 🔒 **Stays on your PC** | No required account and no Nexo server. The analysis runs on your computer. |
+| 🧭 **Honest** | No “speed up your PC by 300%”. Nexo shows the evidence and the limits of every conclusion. |
+
+## 🎮 Built for gamers
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/library.jpg" alt="Game library"></td>
+    <td width="50%"><img src="docs/images/game.jpg" alt="Game page with achievements"></td>
+  </tr>
+  <tr>
+    <td><b>Complete library.</b> Every installed game (Steam, Epic, GOG, Xbox/Game Pass, EA, Ubisoft, Battle.net, Riot, Rockstar and the ones you add), with official covers.</td>
+    <td><b>A page for each game.</b> Description, screenshots, requirements, <b>your achievements</b> with global rarity, official news and updates, and the FPS of every session.</td>
+  </tr>
+</table>
+
+- **Observation sessions:** record your PC while you play and get a report that says whether the limit was the graphics card, a single CPU core, memory, heat or a background program. Measures **FPS, 1% low and frame time** (PresentMon on Windows, MangoHud on Linux).
+- **Automatic recording:** optionally, Nexo starts recording when a game opens and saves the report when it closes.
+- **Discord:** shows the game being measured on your profile, with the Nexo icon.
+
+## ⚡ Optimization backed by evidence
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/lab.jpg" alt="Extreme optimization (beta)"></td>
+    <td width="50%"><img src="docs/images/atlas.jpg" alt="Options Atlas"></td>
+  </tr>
+  <tr>
+    <td><b>Extreme optimization (beta).</b> A lab that tests hidden processor settings <b>on your PC</b>, in a temporary power plan, with a restore point first and A/B measurement against noise. It only adopts what the measurement confirmed.</td>
+    <td><b>Options Atlas.</b> The performance levers worth knowing, including the myths you should <b>not</b> follow and what Nexo refuses to do.</td>
+  </tr>
+</table>
+
+- **Safe cleanup:** old temporary files, crash reports and the Recycle Bin, with a preview of what goes and how much space comes back.
+- **Power plan, startup and maintenance:** switch power plans with a benchmark before and after, see programs that start with the system, optimize drives and check system files.
+- **Smart analysis:** compares the current moment with your routine and points to the likely cause **with the evidence**: slowdowns, the programs that get in the way most, a forecast of when your disk fills up and heat-related clock drops.
+
+> **About the “learning”:** it is not AI. Nexo keeps averages for every hour of the week, detects sustained episodes (high CPU, memory at its limit, heat), records who was consuming resources and adjusts its confidence in each suggestion based on your feedback. Simple and verifiable.
+
+## 🐧 Windows and Linux
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/linux.jpg" alt="Nexo running on Linux"></td>
+    <td width="50%"><img src="docs/images/installer.jpg" alt="Nexo installer"></td>
+  </tr>
+</table>
+
+The same screens on both systems. On Linux, Nexo uses `/proc` and kernel sensors, measures FPS through MangoHud, finds Steam (including Proton) and Heroic games and switches power-profiles-daemon profiles, all without root.
+
+| | Windows | Linux |
+|---|---|---|
+| **Install** | Visual installer or `Nexo-Setup` | AppImage (any distribution) or `.deb` |
+| **FPS** | PresentMon | MangoHud |
+| **Power** | Windows power plans | power-profiles-daemon |
+| **Library** | Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, Riot, Rockstar | Steam (native, Flatpak, Snap) and Heroic |
+
+## 📥 Installation
+
+1. Download from the [latest release](https://github.com/Samuklvm/Project-Nexo/releases/latest):
+   - **Windows:** `Nexo-Instalador-*.exe` (visual installer) or `Nexo-Setup-*.exe`.
+   - **Linux:** `Nexo-*-x86_64.AppImage` (any distribution) or `Nexo-*-amd64.deb` (Debian, Ubuntu, Mint, Pop!_OS).
+2. Open it and follow the installer. Updates arrive through the app itself, and you choose when to download them.
+
+**Linux, recommended packages:** `power-profiles-daemon`, `mangohud`, `x11-utils`, `lm-sensors`. On GNOME, the tray icon needs the AppIndicator extension.
+
+**Uninstalling** removes the program, its data, caches, shortcuts and the settings Nexo created. From the app (**Ajustes → Desinstalar o Nexo**, that is, Settings → Uninstall Nexo), it also clears the traces Windows keeps about it and shows anything it could not remove.
+
+## 🔒 Privacy
+
+- Nothing is sent to Nexo servers: **there is no Nexo server.**
+- The only external connections are the ones you use: update checks on GitHub, game covers and data from the official stores, and the accounts you connect (Google, Steam, Discord).
+- Nexo **never ends processes on its own**, does not install kernel drivers and does not read game memory.
+- Your data can be exported or deleted in **Ajustes** (Settings).
+
+Full inventory (in Portuguese): [PRIVACIDADE.md](PRIVACIDADE.md).
+
+## 📚 More
+
+- [What changed in each version](CHANGELOG.md) · [Release notes](docs/releases/)
+- [For developers](docs/DEVELOPMENT.md): run, test, build installers and publish versions
+- [Architecture](docs/ARQUITETURA.md) · [Game connections](docs/CONEXOES.md) · [Security](SECURITY.md)
+
+<p align="center"><sub>Made in Brazil 🇧🇷 · Recommendations are heuristics and do not guarantee a performance gain on every PC.</sub></p>
