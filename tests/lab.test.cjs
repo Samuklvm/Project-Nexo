@@ -54,7 +54,7 @@ test('espaço revisado: GUIDs válidos e únicos, valores inteiros dentro da fai
     assert.ok(!ids.has(knob.id), `id repetido: ${knob.id}`); ids.add(knob.id);
     assert.ok(!guids.has(knob.guid), `GUID repetido: ${knob.id}`); guids.add(knob.guid);
     assert.ok(['baixo', 'moderado', 'alto'].includes(knob.risk), knob.id);
-    assert.ok(['SUB_PROCESSOR', 'SUB_DISK', 'SUB_PCIEXPRESS'].includes(knob.sub), knob.id);
+    assert.ok(['SUB_PROCESSOR', 'SUB_DISK', 'SUB_PCIEXPRESS', 'SUB_AMDSLIDER', 'SUB_WIFI'].includes(knob.sub), knob.id);
     assert.match(knob.guid, GUID, knob.id);
     assert.match(knob.subGuid, GUID, knob.id);
     assert.match(knob.setting, /^[A-Z0-9]+$/);
@@ -79,7 +79,7 @@ test('risco alto só entra quando a pessoa libera "tudo"', () => {
 
 test('o que o PC informa corta o catálogo: faixa, índices e núcleos híbridos', () => {
   const knob = Lab.knob('perfcheck');
-  assert.deepEqual(Lab.supportedValues(knob, { min: 1, max: 20 }), [5, 10, 1, 15]);
+  assert.deepEqual(Lab.supportedValues(knob, { min: 1, max: 20 }), [5, 10, 1, 2, 8, 15, 20]);
   assert.deepEqual(Lab.supportedValues(Lab.knob('boostmode'), { indexes: [0, 1, 2] }), [2, 1, 0]);
   const baseline = { perfepp: 33, perfepp1: 33, schedpolicy: 5 };
   const plain = Lab.chooseCandidates({ baseline, count: 20, hybrid: false });
@@ -298,4 +298,32 @@ test('sanitizeMemory: combinação só com ajustes válidos e sem repetir ajuste
   const clean = Lab.sanitizeMemory({ 'combo:minstate=100+perfepp=0': { n: 1, mean: 4 }, 'combo:minstate=100+minstate=50': { n: 1 }, 'combo:hvci=0+perfepp=0': { n: 1 }, 'combo:perfepp=0': { n: 1 } }, ['combo:minstate=100+perfepp=0']);
   assert.deepEqual(Object.keys(clean.evidence), ['combo:minstate=100+perfepp=0']);
   assert.deepEqual(clean.tabu, ['combo:minstate=100+perfepp=0']);
+});
+
+test('testes que o PC não roda tiram os ajustes que só eles mediriam (ex.: Wi-Fi sem roteador)', () => {
+  const baseline = { wifipower: 3, perfepp: 33 };
+  const without = Lab.chooseCandidates({ baseline, count: 10, benchSupport: { network: false } });
+  assert.ok(without.every((arm) => arm.knob !== 'wifipower'));
+  const withNet = Lab.chooseCandidates({ baseline, count: 10, benchSupport: { network: true } });
+  assert.ok(withNet.some((arm) => arm.knob === 'wifipower' && arm.benches.includes('network')));
+});
+
+test('medição em ordem alternada (ABBA) e espera o processador sossegar antes de medir', async () => {
+  const { system, state } = fakeSystem();
+  const order = [];
+  let quietCalls = 0;
+  const realApply = system.apply;
+  system.apply = async (changes) => { await realApply(changes); order.push(state.config.cooling); };
+  system.quiet = async () => { quietCalls += 1; return { ok: true }; };
+  const baselineOnly = { ...system, readConfig: async () => ({ cooling: 1 }), preflight: async () => ({ platform: 'win32', onBattery: false, tempC: 50, cpuLoad: 8, pending: false, knobs: { cooling: { available: true, current: 1 } } }) };
+  const result = await Lab.run(baselineOnly, { consent: CONSENT, maxArms: 1, allowRisk: 'baixo', combos: 0 });
+  assert.equal(result.status, 'completed');
+  assert.ok(quietCalls >= 4, `quiet chamado ${quietCalls} vez(es)`);
+  // A B | B A: o 1º par aplica o candidato (0); o 2º começa pelo candidato (já aplicado) e volta à base (1).
+  assert.deepEqual(order, [0, 1]);
+});
+
+test('espaço com pelo menos 70 ajustes e 380 opções', () => {
+  const stats = Lab.spaceStats();
+  assert.ok(stats.knobs >= 70 && stats.options >= 380, JSON.stringify(stats));
 });

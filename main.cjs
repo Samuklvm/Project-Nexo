@@ -1014,7 +1014,96 @@ try {
   parentPort.postMessage({ samples: times.length, meanUs: mean, p50: times[Math.floor(times.length / 2)] || 0 });
 } finally { fs.closeSync(fd); }
 `;
+/*
+ * Ritmo de quadros: simula um jogo a 60 quadros por segundo. Cada quadro faz a mesma quantidade de trabalho e depois
+ * espera o próximo quadro (o processador fica livre e pode baixar a frequência, como num jogo de verdade).
+ * Pontuação: 1000 / percentil 95 do tempo de trabalho por quadro em ms (os quadros lentos é que dão engasgo).
+ */
+const FRAMES_WORKER = String.raw`
+const { parentPort, workerData } = require('worker_threads');
+const pause = new Int32Array(new SharedArrayBuffer(4));
+let x = 0x2545f491 | 0;
+const spin = (n) => { for (let i = 0; i < n; i += 1) { x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d); x ^= x >>> 12; } };
+if (workerData.calibrate) {
+  const start = performance.now(); let n = 0;
+  while (performance.now() - start < 250) { spin(20000); n += 20000; }
+  parentPort.postMessage({ perMs: n / (performance.now() - start) });
+} else {
+  const frames = [];
+  const end = performance.now() + workerData.ms;
+  let deadline = performance.now();
+  while (performance.now() < end) {
+    deadline += 1000 / 60;
+    const start = performance.now();
+    spin(workerData.work);
+    frames.push(performance.now() - start);
+    const left = deadline - performance.now();
+    if (left > 0) Atomics.wait(pause, 0, 0, left); else deadline = performance.now();
+  }
+  frames.sort((a, b) => a - b);
+  parentPort.postMessage({ frames: frames.length, p50: frames[Math.floor(frames.length / 2)] || 0, p95: frames[Math.min(frames.length - 1, Math.floor(frames.length * 0.95))] || 0, checksum: x >>> 0 });
+}
+`;
+/* Precisão do timer: pede para dormir 1 ms e mede quanto passou de verdade. Pontuação: 1000 / (atraso médio + p95) em ms. */
+const TIMER_WORKER = String.raw`
+const { parentPort, workerData } = require('worker_threads');
+const pause = new Int32Array(new SharedArrayBuffer(4));
+const over = [];
+const end = performance.now() + workerData.ms;
+while (performance.now() < end) {
+  const start = performance.now();
+  Atomics.wait(pause, 0, 0, 1);
+  over.push(Math.max(0, performance.now() - start - 1));
+}
+over.sort((a, b) => a - b);
+const mean = over.reduce((sum, value) => sum + value, 0) / Math.max(1, over.length);
+parentPort.postMessage({ samples: over.length, meanMs: mean, p95: over[Math.min(over.length - 1, Math.floor(over.length * 0.95))] || 0 });
+`;
+/* Latência da memória: percorre 32 MB em ordem aleatória (cada leitura depende da anterior, sem ajuda do cache). Pontuação: leituras por µs. */
+const MEMORY_WORKER = String.raw`
+const { parentPort, workerData } = require('worker_threads');
+const size = 8 * 1024 * 1024;
+const next = new Uint32Array(size);
+for (let i = 0; i < size; i += 1) next[i] = i;
+let seed = 0x9e3779b9 >>> 0;
+for (let i = size - 1; i > 0; i -= 1) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; const j = seed % i; const t = next[i]; next[i] = next[j]; next[j] = t; }
+let p = 0; let reads = 0;
+const start = performance.now();
+const end = start + workerData.ms;
+while (performance.now() < end) { for (let k = 0; k < 100000; k += 1) p = next[p]; reads += 100000; }
+parentPort.postMessage({ readsPerUs: reads / ((performance.now() - start) * 1000), p });
+`;
 let activeBench = null;
+let framesWork = 0;
+
+/* Rede: o tempo para abrir uma conexão com o próprio roteador (só rede local, IP privado), com pausas entre as tentativas
+   para o Wi-Fi poder cochilar. Nada sai da sua casa: é o roteador respondendo. */
+const PRIVATE_IP = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)\d{1,3}\.\d{1,3}(\.\d{1,3})?$/;
+let gatewayProbe = null;
+async function findGateway() {
+  if (gatewayProbe) return gatewayProbe;
+  gatewayProbe = (async () => {
+    if (process.platform !== 'win32') return null;
+    const result = await runCode('route', ['print', '-4', '0.0.0.0']).catch(() => ({ stdout: '' }));
+    const line = String(result.stdout).split(/\r?\n/).map((row) => row.trim().split(/\s+/)).find((cols) => cols[0] === '0.0.0.0' && cols[1] === '0.0.0.0' && PRIVATE_IP.test(cols[2] || ''));
+    if (!line) return null;
+    for (const port of [80, 443, 53]) if (Number.isFinite(await connectTime(line[2], port))) return { host: line[2], port };
+    return null;
+  })();
+  const found = await gatewayProbe;
+  if (!found) gatewayProbe = null; // sem roteador agora: tenta de novo na próxima vez
+  return found;
+}
+function connectTime(host, port) {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const socket = nodeNet.connect({ host, port });
+    const done = (value) => { socket.destroy(); resolve(value); };
+    socket.setTimeout(800, () => done(null));
+    socket.once('connect', () => done((performance.now() - start) * 1000));
+    socket.once('error', () => done(null));
+  });
+}
 
 function runWorker(source, workerData, state) {
   return new Promise((resolve, reject) => {
@@ -1028,7 +1117,7 @@ function runWorker(source, workerData, state) {
 
 /** Testes extras do laboratório. A pontuação segue a regra dos outros: maior é melhor. */
 async function runLabBench(mode, ms) {
-  if (mode !== 'latency' && mode !== 'disk') return runCpuBench(mode, ms);
+  if (!['latency', 'disk', 'frames', 'timer', 'memory', 'network'].includes(mode)) return runCpuBench(mode, ms);
   if (activeBench) throw new Error('Já existe um teste em andamento.');
   const state = { workers: [], cancelled: false };
   activeBench = state;
@@ -1040,6 +1129,36 @@ async function runLabBench(mode, ms) {
       await sleeper;
       const us = Math.max(0.05, (waker.p50 + waker.p90) / 2);
       return { mode, threads: 2, ms, mopsPerSec: 1e6 / us, detail: waker };
+    }
+    if (mode === 'frames') {
+      // Trabalho fixo por quadro (~5 ms neste PC): calibrado uma vez e igual em todas as medições da sessão.
+      if (!framesWork) framesWork = Math.max(20000, Math.round((await runWorker(FRAMES_WORKER, { calibrate: true }, state)).perMs * 5));
+      const result = await runWorker(FRAMES_WORKER, { ms, work: framesWork }, state);
+      return { mode, threads: 1, ms, mopsPerSec: 1000 / Math.max(0.01, result.p95), detail: result };
+    }
+    if (mode === 'timer') {
+      const result = await runWorker(TIMER_WORKER, { ms }, state);
+      return { mode, threads: 1, ms, mopsPerSec: 1000 / Math.max(0.01, result.meanMs + result.p95), detail: result };
+    }
+    if (mode === 'memory') {
+      const result = await runWorker(MEMORY_WORKER, { ms }, state);
+      return { mode, threads: 1, ms, mopsPerSec: result.readsPerUs, detail: result };
+    }
+    if (mode === 'network') {
+      const target = await findGateway();
+      if (!target) throw new Error('Sem roteador na rede local para medir.');
+      const times = [];
+      const end = performance.now() + ms;
+      while (performance.now() < end && !state.cancelled) {
+        const value = await connectTime(target.host, target.port);
+        if (Number.isFinite(value)) times.push(value);
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      times.sort((a, b) => a - b);
+      if (times.length < 3) throw new Error('O roteador parou de responder.');
+      const p50 = times[Math.floor(times.length / 2)];
+      const p90 = times[Math.min(times.length - 1, Math.floor(times.length * 0.9))];
+      return { mode, threads: 0, ms, mopsPerSec: 1e6 / Math.max(1, (p50 + p90) / 2), detail: { samples: times.length, p50, p90 } };
     }
     const dir = path.join(app.getPath('userData'), 'lab');
     await fs.mkdir(dir, { recursive: true });
@@ -1637,10 +1756,12 @@ async function readCpuTemperature() {
   return acpi.length ? Math.max(...acpi) : null;
 }
 const labState = { running: false, signal: null };
-const labBench = (mode) => runLabBench(mode, mode === 'disk' ? 2400 : 1200);
+const LAB_BENCH_MS = { disk: 2400, network: 2400, frames: 1500, memory: 1000 };
+const labBench = (mode) => runLabBench(mode, LAB_BENCH_MS[mode] || 1200);
+const labBenchSupport = async () => ({ network: Boolean(await findGateway().catch(() => null)) });
 const labSystem = IS_LINUX ? createLinuxLabSystem({ linux, run: runCode, bench: (mode) => runCpuBench(['single', 'multi', 'burst'].includes(mode) ? mode : 'burst', 1200), readTemp: () => readCpuTemperature(), cpuLoad: getCpuUsage, onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()), fs, path, dir: path.join(app.getPath('userData'), 'lab') }) : createLabSystem({
   run: runCode, runPowerShell: runPowerShellCode,
-  bench: labBench, isHybrid: isHybridCpu,
+  bench: labBench, isHybrid: isHybridCpu, benchSupport: labBenchSupport,
   readTemp: readCpuTemperature, cpuLoad: getCpuUsage, onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()),
   elevate, fs, path, dir: path.join(app.getPath('userData'), 'lab'), exePath: process.execPath, isPackaged: app.isPackaged
 });

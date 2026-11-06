@@ -35,14 +35,15 @@
   const PRIOR = { perfepp: 3, boostmode: 3, minstate: 3, idledisable: 3, idlestatemax: 3, autonomous: 2, latperf: 2, mincores: 2, incpol: 2, boostpol: 2, aspm: 2, nvmeidle: 2, ahcilpm: 2,
     schedpolicy: 2, shortschedpolicy: 2, perfepp1: 2, cpconcurrency: 2, dectime: 2, perfcheck: 2, maxcores: 1, cooling: 1, diskidle: 0, distributeutil: 0, perfhistory: 1, heteropolicy: 1 };
 
-  const BENCHES = ['single', 'multi', 'burst', 'latency', 'disk'];
-  const BENCH_LABEL = { single: 'um núcleo', multi: 'todos os núcleos', burst: 'rajadas curtas (resposta)', latency: 'latência para acordar um núcleo', disk: 'disco (gravações curtas com pausas)' };
+  const BENCHES = ['single', 'multi', 'burst', 'frames', 'latency', 'timer', 'memory', 'disk', 'network'];
+  const BENCH_LABEL = { single: 'um núcleo', multi: 'todos os núcleos', burst: 'rajadas curtas (resposta)', frames: 'ritmo de quadros (simulação de jogo)', latency: 'latência para acordar um núcleo',
+    timer: 'precisão do timer', memory: 'latência da memória', disk: 'disco (gravações curtas com pausas)', network: 'resposta do roteador' };
   /** Objetivo da sessão: o peso de cada teste no ganho composto. */
   const GOALS = {
-    jogos: { label: 'Jogos', weights: { single: 0.3, burst: 0.3, latency: 0.3, multi: 0.1, disk: 0.15 } },
-    geral: { label: 'Uso geral', weights: { single: 0.25, multi: 0.25, burst: 0.25, latency: 0.15, disk: 0.2 } },
-    pesado: { label: 'Trabalho pesado', weights: { multi: 0.55, single: 0.2, burst: 0.1, latency: 0.05, disk: 0.15 } },
-    resposta: { label: 'Resposta instantânea', weights: { burst: 0.35, latency: 0.45, single: 0.15, disk: 0.2 } }
+    jogos: { label: 'Jogos', weights: { single: 0.2, burst: 0.2, frames: 0.35, latency: 0.2, timer: 0.15, multi: 0.1, memory: 0.1, disk: 0.1, network: 0.2 } },
+    geral: { label: 'Uso geral', weights: { single: 0.2, multi: 0.2, burst: 0.2, frames: 0.1, latency: 0.15, timer: 0.05, memory: 0.1, disk: 0.2, network: 0.1 } },
+    pesado: { label: 'Trabalho pesado', weights: { multi: 0.5, single: 0.2, burst: 0.1, frames: 0.05, latency: 0.05, timer: 0.02, memory: 0.15, disk: 0.15, network: 0.05 } },
+    resposta: { label: 'Resposta instantânea', weights: { burst: 0.3, latency: 0.35, timer: 0.15, frames: 0.15, single: 0.1, memory: 0.05, disk: 0.2, network: 0.2 } }
   };
   const DEFAULT_LIMITS = { maxTempC: 88, maxTempRiseC: 12, minEffectPct: 3, maxNoisePct: 12, settleMs: 1500, screenPairs: 2, pairs: 3, confirmPairs: 5, budgetMs: 20 * 60 * 1000 };
   const CONSENT_PHRASE = 'ENTENDO O RISCO';
@@ -57,7 +58,8 @@
   const armKey = (arm) => `${arm.knob}=${arm.value}`;
   const comboKey = (keys) => `combo:${[...keys].sort().join('+')}`;
   const valueLabel = (knob, value) => (knob.names?.[value] ? `${knob.names[value]}` : `${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${knob.unit || ''}`);
-  const benchesOf = (knob) => (knob?.affects || ['single', 'multi', 'burst']).filter((bench) => BENCHES.includes(bench));
+  /** Testes que medem o ajuste; `benchSupport` tira os que este PC não consegue rodar (ex.: rede sem roteador). */
+  const benchesOf = (knob, benchSupport = null) => (knob?.affects || ['single', 'multi', 'burst']).filter((bench) => BENCHES.includes(bench) && (!benchSupport || benchSupport[bench] !== false));
 
   /** Valores que este PC aceita para o ajuste: o catálogo cortado pela faixa/índices que o próprio powercfg informou. */
   function supportedValues(knob, info) {
@@ -84,7 +86,7 @@
    * entre os grupos; depois UCB (ganho médio + bônus de incerteza). Tabu fica de fora.
    * support: { id: { indexes | min/max } } lido do PC; hybrid: false tira os ajustes de núcleos de eficiência.
    */
-  function chooseCandidates({ baseline = {}, evidence = {}, tabu = [], count = 4, allowRisk = 'moderado', support = null, hybrid = null } = {}) {
+  function chooseCandidates({ baseline = {}, evidence = {}, tabu = [], count = 4, allowRisk = 'moderado', support = null, hybrid = null, benchSupport = null } = {}) {
     const blocked = new Set(tabu);
     const maxRisk = RISK_RANK[allowRisk] || 1;
     const total = Object.entries(evidence).filter(([key]) => !key.startsWith('combo:')).reduce((sum, [, item]) => sum + (item?.n || 0), 0);
@@ -93,6 +95,8 @@
       if (!finite(baseline[knob.id])) continue;
       if ((RISK_RANK[knob.risk] || 9) > maxRisk) continue;
       if (knob.hybrid && hybrid === false) continue;
+      const benches = benchesOf(knob, benchSupport);
+      if (!benches.length) continue; // nenhum teste deste PC enxerga o efeito: testar seria às cegas
       supportedValues(knob, support?.[knob.id]).forEach((value, index) => {
         if (value === baseline[knob.id]) return;
         const arm = { knob: knob.id, value };
@@ -102,7 +106,7 @@
         const untested = !seen || !seen.n;
         const bonus = untested ? 0 : 3 * Math.sqrt(Math.log(total + 1) / seen.n);
         const score = untested ? 1000 - (RISK_RANK[knob.risk] || 1) * 10 + (knob.prior ?? PRIOR[knob.id] ?? 1) * 4 + (NOVELTY_BONUS[knob.novelty] || 0) - index * 0.5 : (seen.mean || 0) + bonus;
-        arms.push({ ...arm, key, untested, score, risk: knob.risk, group: knob.group, benches: benchesOf(knob), novelty: untested ? 'inedito-aqui' : knob.novelty });
+        arms.push({ ...arm, key, untested, score, risk: knob.risk, group: knob.group, benches, novelty: untested ? 'inedito-aqui' : knob.novelty });
       });
     }
     arms.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
@@ -278,10 +282,15 @@
       const base = previous?.raw.base || Object.fromEntries(benches.map((bench) => [bench, []]));
       const cand = previous?.raw.cand || Object.fromEntries(benches.map((bench) => [bench, []]));
       const temps = previous?.raw.temps || { base: [], cand: [] };
+      const offset = previous?.pairsDone || 0;
       for (let i = 0; i < pairs; i += 1) {
-        for (const side of ['base', 'cand']) {
+        // Ordem alternada (base→candidato, candidato→base…): aquecimento e deriva ao longo do teste se anulam.
+        const order = (offset + i) % 2 === 0 ? ['base', 'cand'] : ['cand', 'base'];
+        for (const side of order) {
           await applyConfig(system, current, side === 'base' ? result.baseline : config, result.baseline);
           await system.sleep(limits.settleMs);
+          // Outro programa pesando no processador estragaria a medição: espera ele sossegar (até alguns segundos).
+          if (typeof system.quiet === 'function') { const calm = await system.quiet(); if (calm && calm.ok === false) result.noisy = (result.noisy || 0) + 1; }
           for (const bench of benches) {
             const reading = await measure(bench, arm);
             (side === 'base' ? base : cand)[bench].push(reading.score);
@@ -297,7 +306,8 @@
     const strip = ({ raw, ...rest }) => rest;
     const describe = (keys) => keys.map((key) => { const [id, value] = key.split('='); const knob = KNOB.get(id); return `${knob?.label || id} → ${knob ? valueLabel(knob, Number(value)) : value}`; }).join(' + ');
     const configOf = (keys) => { const config = { ...result.baseline }; for (const key of keys) { const [id, value] = key.split('='); config[id] = Number(value); } return config; };
-    const benchesFor = (keys) => [...new Set(keys.flatMap((key) => benchesOf(KNOB.get(key.split('=')[0]))))].filter((bench) => BENCHES.includes(bench));
+    const benchesFor = (keys) => [...new Set(keys.flatMap((key) => benchesOf(KNOB.get(key.split('=')[0]), benchSupportRef.value)))];
+    const benchSupportRef = { value: null };
 
     try {
       stage('preflight', 'Conferindo se é seguro começar');
@@ -305,6 +315,8 @@
       const available = assertRunnable(pre, options.consent);
       startTemp = pre.tempC;
       const support = Object.fromEntries(Object.entries(pre.knobs || {}).filter(([, info]) => info?.available));
+      const benchSupport = pre.benches || null;
+      benchSupportRef.value = benchSupport;
       say(`Pré-checagem ok: na tomada, ${Math.round(pre.tempC)} °C, processador ${finite(pre.cpuLoad) ? `${Math.round(pre.cpuLoad)}%` : '?'} ocupado. Ajustes disponíveis neste PC: ${available.length}${pre.hybrid === true ? ' (processador híbrido)' : ''}. Objetivo: ${GOALS[goal].label}.`);
 
       stage('ponto', 'Criando ponto de restauração do Windows');
@@ -323,7 +335,7 @@
       result.stats = spaceStats({ baseline: result.baseline, support, hybrid: pre.hybrid ?? null, allowRisk: options.allowRisk || 'moderado', platform: pre.platform });
       say(`Ambiente de testes pronto: um clone do seu plano, que é apagado no fim. ${result.stats.knobs} ajustes e ${result.stats.options} opções liberados para este PC (cerca de 10^${result.stats.log10} combinações possíveis).`);
 
-      const candidates = chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: Math.max(1, Math.min(48, options.maxArms || 4)), allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null });
+      const candidates = chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: Math.max(1, Math.min(48, options.maxArms || 4)), allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null, benchSupport });
       const sessionBenches = [...new Set(candidates.flatMap((arm) => arm.benches))];
       stage('aquecer', 'Aquecendo para estabilizar a medição');
       for (const bench of sessionBenches.length ? sessionBenches : ['single']) await measure(bench, null);
@@ -357,7 +369,7 @@
       /* Combinações inéditas: ajustes que, sozinhos, deram sinal de ganho (ou ficaram neutros) podem render juntos.
          Na exploração radical, entram também ajustes que ninguém testou neste PC, de grupos diferentes. */
       const pool = result.arms.filter((arm) => ['melhorou', 'sem-diferenca'].includes(arm.verdict) && finite(arm.compositeDelta) && arm.compositeDelta > 0).sort((a, b) => b.compositeDelta - a.compositeDelta);
-      const wildPool = options.wild ? chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: 24, allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null }).filter((arm) => arm.untested) : [];
+      const wildPool = options.wild ? chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: 24, allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null, benchSupport }).filter((arm) => arm.untested) : [];
       const tried = new Set([...Object.keys(result.evidence).filter((key) => key.startsWith('combo:') && result.evidence[key]?.n), ...result.tabu]);
       const chosenKey = chosen.length > 1 ? comboKey(chosen.map((arm) => arm.key)) : null;
       const novel = [];

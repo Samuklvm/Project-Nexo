@@ -109,7 +109,7 @@ function interpretRestorePoint(elevated) {
 const settingArgs = (knob) => (knob.alias ? [knob.sub, knob.setting] : [knob.subGuid, knob.guid]);
 
 function createLabSystem(deps) {
-  const { run, runPowerShell, bench, readTemp, cpuLoad, onBattery, isHybrid = async () => null, elevate, fs, path, dir, exePath, isPackaged, platform = process.platform, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = deps;
+  const { run, runPowerShell, bench, readTemp, cpuLoad, onBattery, isHybrid = async () => null, benchSupport = async () => null, elevate, fs, path, dir, exePath, isPackaged, platform = process.platform, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = deps;
   const lockFile = path.join(dir, 'lab-lock.json');
   let session = null;
 
@@ -162,8 +162,8 @@ function createLabSystem(deps) {
     async preflight() {
       if (platform !== 'win32') return { platform, knobs: {} };
       const scheme = await active();
-      const [tempC, load, battery, pending, hybrid] = await Promise.all([readTemp(), cpuLoad(), onBattery(), system.hasPendingLock(), Promise.resolve(isHybrid()).catch(() => null)]);
-      return { platform, activeGuid: scheme, tempC, cpuLoad: load, onBattery: battery, pending, hybrid, knobs: await readKnobs(scheme) };
+      const [tempC, load, battery, pending, hybrid, benches] = await Promise.all([readTemp(), cpuLoad(), onBattery(), system.hasPendingLock(), Promise.resolve(isHybrid()).catch(() => null), Promise.resolve(benchSupport()).catch(() => null)]);
+      return { platform, activeGuid: scheme, tempC, cpuLoad: load, onBattery: battery, pending, hybrid, benches, knobs: await readKnobs(scheme) };
     },
     async createRestorePoint() {
       return interpretRestorePoint(await elevate('restore-point', { description: 'Nexo - antes do laboratório' }).catch((error) => ({ result: { ok: false, note: error.message } })));
@@ -199,6 +199,15 @@ function createLabSystem(deps) {
       await powercfg(['/setactive', session.labGuid]);
     },
     bench: async (mode) => (await bench(mode)).mopsPerSec,
+    /** Antes de medir: espera até 6 s o processador sossegar (outro programa pesando estragaria a comparação). */
+    async quiet() {
+      for (let i = 0; i < 4; i += 1) {
+        const load = await cpuLoad().catch(() => null);
+        if (!Number.isFinite(load) || load < 30) return { ok: true, load };
+        await sleep(1500);
+      }
+      return { ok: false };
+    },
     async sample() { const [tempC, battery, load] = await Promise.all([readTemp(), onBattery(), cpuLoad()]); return { tempC, onBattery: battery, cpuLoad: load }; },
     async errorEventsSince(since) {
       const providers = ERROR_PROVIDERS.map((name) => `'${name}'`).join(',');
