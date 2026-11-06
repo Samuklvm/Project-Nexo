@@ -48,6 +48,17 @@ const DRIVE_CACHE_TTL_MS = 30 * 1000;
 const TEMPERATURE_CACHE_TTL_MS = 15 * 1000;
 const trustedDocumentUrl = pathToFileURL(path.join(__dirname, 'index.html')).href;
 let mainWindow;
+
+// ---- Registro de erros local (fica neste PC; enviar é escolha da pessoa) ----
+const { createErrorLog } = require('./electron/error-log.cjs');
+const errorLog = createErrorLog({
+  fs, path, dir: path.join(app.getPath('userData'), 'logs'), version: app.getVersion(), home: os.homedir(),
+  user: (() => { try { return os.userInfo().username; } catch { return ''; } })()
+});
+process.on('uncaughtException', (error) => { errorLog.record({ source: 'principal', message: error?.message || String(error), stack: error?.stack }); });
+process.on('unhandledRejection', (reason) => { errorLog.record({ source: 'principal', message: reason?.message || String(reason), stack: reason?.stack }); });
+app.on('render-process-gone', (_event, _contents, details) => { errorLog.record({ source: 'processo', message: `A tela do Nexo fechou sozinha (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode } }); });
+app.on('child-process-gone', (_event, details) => { if (details?.reason !== 'clean-exit') errorLog.record({ source: 'processo', level: details?.type === 'GPU' ? 'aviso' : 'erro', message: `Processo ${details?.type || '?'} do Nexo caiu (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode, nome: details?.name } }); });
 let updateDownloaded = false;
 let updateAvailableVersion = null;
 let updateDownloadInProgress = false;
@@ -533,11 +544,17 @@ function publishUpdateStatus(state, details = {}) {
 }
 
 function registerIpcHandler(channel, handler) {
-  ipcMain.handle(channel, (event, ...args) => {
+  ipcMain.handle(channel, async (event, ...args) => {
     if (event.senderFrame?.url !== trustedDocumentUrl) {
       throw new Error('Origem não autorizada para esta operação.');
     }
-    return handler(event, ...args);
+    try {
+      return await handler(event, ...args);
+    } catch (error) {
+      // Falha de uma ação: vai para o registro como aviso (muitas são esperadas, como recusar o UAC), e a tela recebe o erro igual.
+      errorLog.record({ source: 'ipc', level: 'aviso', message: error?.message || String(error), stack: error?.stack, context: { acao: channel } });
+      throw error;
+    }
   });
 }
 
@@ -644,6 +661,7 @@ function createWindow() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.webContents.send('window:state', { maximized: mainWindow.isMaximized() });
   };
+  mainWindow.on('unresponsive', () => errorLog.record({ source: 'interface', level: 'aviso', message: 'A janela do Nexo parou de responder por alguns segundos', context: { tela: 'janela' } }));
   mainWindow.on('maximize', publishWindowState);
   mainWindow.on('unmaximize', publishWindowState);
   mainWindow.loadURL(trustedDocumentUrl);
@@ -651,6 +669,16 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// Registro de erros: a interface manda os erros dela; a tela de Ajustes lista, copia, abre a pasta e limpa.
+ipcMain.on('log:report', (event, payload) => {
+  if (event.senderFrame?.url !== trustedDocumentUrl || !payload || typeof payload !== 'object') return;
+  errorLog.record({ source: 'interface', level: payload.level === 'aviso' ? 'aviso' : 'erro', message: String(payload.message || '').slice(0, 600), stack: String(payload.stack || '').slice(0, 4000), context: payload.context && typeof payload.context === 'object' ? payload.context : undefined });
+});
+registerIpcHandler('log:list', async (_event, options) => errorLog.list({ limit: Math.min(500, Number(options?.limit) || 100) }));
+registerIpcHandler('log:export', async () => errorLog.exportText());
+registerIpcHandler('log:clear', async () => errorLog.clear());
+registerIpcHandler('log:open-folder', async () => { await fs.mkdir(errorLog.dir, { recursive: true }); const problem = await shell.openPath(errorLog.dir); return { ok: !problem }; });
 
 registerIpcHandler('window:minimize', () => {
   mainWindow?.minimize();

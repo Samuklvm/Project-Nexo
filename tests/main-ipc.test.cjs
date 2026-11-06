@@ -221,3 +221,15 @@ test('0.8.0: Raio-X e teste com reinício registrados e seguros fora do Windows'
   await assert.rejects(call('reboot:start', { changes: [{ id: 'priosep', before: [2], after: [38] }] }), /Windows/);
   assert.equal((await call('reboot:continue')).supported, false);
 });
+
+test('registro de erros: canais, falha de ação vira aviso e a tela recebe o erro igual', async () => {
+  for (const channel of ['log:list', 'log:export', 'log:clear', 'log:open-folder']) assert.ok(handlers.has(channel), `faltou ${channel}`);
+  await call('log:clear');
+  await assert.rejects(call('bench:cpu', { mode: 'turbo' }), /inválido/);
+  const list = await call('log:list');
+  const failure = list.groups.find((group) => group.source === 'ipc' && /inválido/.test(group.message));
+  assert.ok(failure, 'a falha da ação foi registrada');
+  assert.equal(failure.level, 'aviso');
+  assert.match(failure.context, /bench:cpu/);
+  assert.match(await call('log:export'), /Nexo Device Care/);
+});

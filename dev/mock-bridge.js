@@ -144,6 +144,12 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     signOut: async () => { account = { ...account, profile: null }; return account; }, importOAuthConfig: async () => account,
     getLabStatus: async () => ({ running: false, pending: false, platform: 'win32', space: NexoLab.SPACE }),
     scanSystem: async () => { await wait(500); return { supported: true, scannedAt: Date.now(), ...window.__scanPreview }; },
+    reportError: (payload) => { (window.__errors = window.__errors || []).push(payload); },
+    listErrors: async () => ({ total: 3, dir: 'C:\\Users\\<usuário>\\AppData\\Roaming\\nexo-device-care\\logs', groups: [
+      { signature: 'a1', level: 'erro', source: 'interface', message: "Cannot read properties of undefined (reading 'devices')", context: '{"tela":"hardware"}', count: 2, firstAt: Date.now() - 3600000, lastAt: Date.now() - 60000, versions: ['0.8.1'], stack: "TypeError: Cannot read properties of undefined (reading 'devices')\n    at renderSensorExplorer (view-hardware.js:62:20)" },
+      { signature: 'b2', level: 'aviso', source: 'ipc', message: 'Você recusou a permissão do Windows; os ajustes do sistema não foram aplicados.', context: '{"acao":"scan:apply"}', count: 1, firstAt: Date.now() - 7200000, lastAt: Date.now() - 7200000, versions: ['0.8.1'], stack: '' }] }),
+    exportErrors: async () => 'Nexo Device Care 0.8.1 (win32) · 3 ocorrência(s)',
+    clearErrors: async () => ({ ok: true }), openErrorFolder: async () => ({ ok: true }),
     applyTweaks: async () => { await wait(600); return { ok: true, failed: [], after: null }; },
     // Teste com reinício na prévia: o motor de verdade (src/reboot-test.js); "reiniciar" simula um boot medido.
     rebootStatus: async () => rebootView(),

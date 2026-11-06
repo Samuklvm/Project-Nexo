@@ -1,5 +1,17 @@
 /* Núcleo: utilitários globais, barramento de eventos, estado compartilhado e atividades. */
 const desktopBridge = window.nexoDesktop;
+
+/* Erros da interface vão para o registro local (Ajustes > Registro de erros). No máximo 40 por abertura do app. */
+(function watchErrors() {
+  let sent = 0;
+  const report = (message, stack) => {
+    if (sent >= 40 || !message) return;
+    sent += 1;
+    try { desktopBridge?.reportError?.({ message: String(message).slice(0, 600), stack: String(stack || '').slice(0, 4000), context: { tela: window.Nexo?.state?.view || null } }); } catch { /* o registro nunca derruba a tela */ }
+  };
+  window.addEventListener('error', (event) => report(event.message || event.error?.message, event.error?.stack || (event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : '')));
+  window.addEventListener('unhandledrejection', (event) => report(event.reason?.message || String(event.reason), event.reason?.stack));
+})();
 const Nexo = (window.Nexo = {
   state: { snapshot: null, sensors: null, processes: null, cleanup: null, power: null, view: 'home' },
   keys: {

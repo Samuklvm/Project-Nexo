@@ -442,6 +442,12 @@
             <div class="btn-row"><button class="btn sm" id="export-data" type="button">Exportar meus dados</button><button class="btn sm" id="erase-learning" type="button">Apagar aprendizado e histórico</button><button class="btn sm ghost" id="open-privacy" type="button">Política completa</button></div>
           </section>
         </div>
+        <section class="sheet errors-sheet" id="errors-sheet">
+          <div class="sheet-head"><div><h3>Registro de erros</h3><p class="muted">Quando algo dá errado, o Nexo anota aqui, só neste computador e sem o seu nome de usuário nem as suas pastas. Erros iguais ficam juntos, com quantas vezes aconteceram.</p></div><button class="btn sm ghost" id="errors-refresh" type="button">Atualizar</button></div>
+          <div class="errors-filters"><label class="toggle-line"><input type="checkbox" id="errors-warnings" /> Mostrar também avisos (ações que não deram certo, como uma permissão recusada)</label></div>
+          <div id="errors-body"><p class="muted">Carregando…</p></div>
+          <div class="btn-row"><button class="btn sm" id="errors-copy" type="button">Copiar relatório</button><button class="btn sm" id="errors-folder" type="button">Abrir a pasta</button><button class="btn sm ghost" id="errors-clear" type="button">Limpar o registro</button></div>
+        </section>
         <section class="sheet">
           <div class="sheet-head"><div><h3>Em segundo plano</h3><p class="muted">Tudo desligado por padrão. Ligue só o que você quer.</p></div></div>
           <div class="bg-grid">
@@ -497,6 +503,7 @@
   <script src="src/release-notes.js"></script>
   <script src="src/view-updates.js"></script>
   <script src="src/view-settings.js"></script>
+  <script src="src/view-errors.js"></script>
   <script src="src/view-library.js"></script>
   <script src="src/view-lab.js"></script>
   <script src="src/reboot-test.js"></script>
