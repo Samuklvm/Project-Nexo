@@ -55,10 +55,18 @@ const errorLog = createErrorLog({
   fs, path, dir: path.join(app.getPath('userData'), 'logs'), version: app.getVersion(), home: os.homedir(),
   user: (() => { try { return os.userInfo().username; } catch { return ''; } })()
 });
+// Diagnóstico do app por dia (canais IPC, quedas, travadas, erros por origem): só sai com a telemetria ligada.
+const { createDiag } = require('./electron/diag.cjs');
+const diag = createDiag({ fs, path, file: path.join(app.getPath('userData'), 'diag.json') });
+setInterval(() => diag.flush(), 5 * 60 * 1000).unref?.();
+{
+  const record = errorLog.record.bind(errorLog);
+  errorLog.record = (entry = {}) => { diag.count(`erro.${String(entry.source || 'outro').replace(/[^a-z]/gi, '') || 'outro'}`); return record(entry); };
+}
 process.on('uncaughtException', (error) => { errorLog.record({ source: 'principal', message: error?.message || String(error), stack: error?.stack }); });
 process.on('unhandledRejection', (reason) => { errorLog.record({ source: 'principal', message: reason?.message || String(reason), stack: reason?.stack }); });
-app.on('render-process-gone', (_event, _contents, details) => { errorLog.record({ source: 'processo', message: `A tela do Nexo fechou sozinha (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode } }); });
-app.on('child-process-gone', (_event, details) => { if (details?.reason !== 'clean-exit') errorLog.record({ source: 'processo', level: details?.type === 'GPU' ? 'aviso' : 'erro', message: `Processo ${details?.type || '?'} do Nexo caiu (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode, nome: details?.name } }); });
+app.on('render-process-gone', (_event, _contents, details) => { diag.count('telaFechou'); errorLog.record({ source: 'processo', message: `A tela do Nexo fechou sozinha (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode } }); });
+app.on('child-process-gone', (_event, details) => { if (details?.reason !== 'clean-exit') diag.count(details?.type === 'GPU' ? 'gpuCaiu' : 'processoCaiu'); if (details?.reason !== 'clean-exit') errorLog.record({ source: 'processo', level: details?.type === 'GPU' ? 'aviso' : 'erro', message: `Processo ${details?.type || '?'} do Nexo caiu (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode, nome: details?.name } }); });
 let updateDownloaded = false;
 let updateAvailableVersion = null;
 let updateDownloadInProgress = false;
@@ -562,9 +570,13 @@ function registerIpcHandler(channel, handler) {
     if (event.senderFrame?.url !== trustedDocumentUrl) {
       throw new Error('Origem não autorizada para esta operação.');
     }
+    const started = performance.now();
     try {
-      return await handler(event, ...args);
+      const result = await handler(event, ...args);
+      diag.ipc(channel, performance.now() - started, true);
+      return result;
     } catch (error) {
+      diag.ipc(channel, performance.now() - started, false);
       // Falha de uma ação: vai para o registro como aviso (muitas são esperadas, como recusar o UAC), e a tela recebe o erro igual.
       errorLog.record({ source: 'ipc', level: 'aviso', message: error?.message || String(error), stack: error?.stack, context: { acao: channel } });
       throw error;
@@ -675,6 +687,7 @@ function createWindow() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.webContents.send('window:state', { maximized: mainWindow.isMaximized() });
   };
+  mainWindow.on('unresponsive', () => diag.count('janelaTravou'));
   mainWindow.on('unresponsive', () => errorLog.record({ source: 'interface', level: 'aviso', message: 'A janela do Nexo parou de responder por alguns segundos', context: { tela: 'janela' } }));
   mainWindow.on('maximize', publishWindowState);
   mainWindow.on('unmaximize', publishWindowState);
@@ -2104,7 +2117,7 @@ async function telemetryHardware() {
   };
 }
 /** Só as partes conhecidas do resumo que a interface montou (o servidor confere de novo). */
-const TELEMETRY_PARTS = ['usage', 'features', 'app', 'perf', 'health', 'settings', 'library', 'lab'];
+const TELEMETRY_PARTS = ['usage', 'features', 'app', 'perf', 'health', 'settings', 'library', 'lab', 'feats'];
 registerIpcHandler('cloud:status', async () => (await withCloud()).status());
 registerIpcHandler('cloud:set', async (_event, options) => {
   const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
@@ -2160,7 +2173,8 @@ registerIpcHandler('cloud:telemetry', async (_event, packet) => {
   const summary = packet?.data && typeof packet.data === 'object' && !Array.isArray(packet.data) ? packet.data : {};
   const data = Object.fromEntries(TELEMETRY_PARTS.filter((key) => summary[key] && typeof summary[key] === 'object').map((key) => [key, summary[key]]));
   const extra = await telemetryHardware();
-  return target.sendTelemetry({ ...data, hw: extra.hw, sensors: extra.sensors, system: extra.system }, day);
+  diag.flush();
+  return target.sendTelemetry({ ...data, hw: extra.hw, sensors: extra.sensors, system: extra.system, diag: diag.summary(day) || undefined }, day);
 });
 registerIpcHandler('cloud:send-errors', async () => (await withCloud()).sendErrors());
 registerIpcHandler('cloud:admin', async () => {
@@ -2338,6 +2352,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+app.on('before-quit', () => diag.flush());
 app.on('before-quit', (event) => {
   app.isQuitting = true;
   discord.close();

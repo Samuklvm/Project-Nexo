@@ -111,6 +111,9 @@
     processes: { ttl: 45e3, load: () => bridge?.getTopProcesses?.().then((result) => { Nexo.state.processes = result; return result; }) }
   };
   const cache = {};
+  // Saúde dos recursos (para a telemetria, só números e ids do código): fontes que demoram ou falham,
+  // cartões que ficam sem dado e cartões cujo cálculo quebrou.
+  const health = { sources: {}, tiles: {}, crashed: new Set() };
   function source(name) {
     const spec = SOURCES[name];
     if (!spec) return undefined;
@@ -118,8 +121,10 @@
     const fresh = entry && Date.now() - entry.at < spec.ttl;
     if (!fresh && !entry?.loading && !Nexo.isIdle?.()) {
       cache[name] = { ...(entry || {}), loading: true, at: entry?.at || 0 };
-      Promise.resolve().then(() => spec.load()).then((value) => { cache[name] = { value, at: Date.now(), loading: false }; schedule(true); })
-        .catch((error) => { cache[name] = { value: entry?.value, error: String(error?.message || error), at: Date.now(), loading: false }; });
+      const started = performance.now();
+      const stat = health.sources[name] || (health.sources[name] = [0, 0, 0]); // certas, falhas, ms somados
+      Promise.resolve().then(() => spec.load()).then((value) => { stat[0] += 1; stat[2] += Math.round(performance.now() - started); cache[name] = { value, at: Date.now(), loading: false }; schedule(true); })
+        .catch((error) => { stat[1] += 1; stat[2] += Math.round(performance.now() - started); cache[name] = { value: entry?.value, error: String(error?.message || error), at: Date.now(), loading: false }; });
     }
     return entry?.value;
   }
@@ -243,8 +248,10 @@
 
   function tileHtml(def, ctx, pinned) {
     let out;
-    try { out = def.compute(ctx); } catch (error) { console.error(`[recurso ${def.view}/${def.id}]`, error); out = null; }
+    try { out = def.compute(ctx); } catch (error) { console.error(`[recurso ${def.view}/${def.id}]`, error); out = null; health.crashed.add(`${def.view}.${def.id}`); }
     const empty = !out || out.value === undefined || out.value === null || out.value === '';
+    // Só conta como "sem dado" quando as fontes do cartão já responderam (carregando não é falta de dado).
+    if (!empty || !(def.needs || []).some((name) => !cache[name] || cache[name].loading)) health.tiles[`${def.view}.${def.id}`] = empty ? 0 : 1;
     const value = empty ? (def.empty || 'Ainda sem dados') : out.value;
     const isText = empty || out.text || (typeof value === 'string' && value.length > 9 && !out.unit);
     const tone = empty ? '' : out.tone || '';
@@ -387,5 +394,7 @@
   Nexo.on('learned', () => schedule(true));
   Nexo.on('idle', (idle) => { if (!idle) schedule(true); });
 
-  window.NexoFeatures = { add, forView, render, refresh, helpers: H, icon, sources: SOURCES, makeContext, all: () => REG, invalidate };
+  window.NexoFeatures = { add, forView, render, refresh, helpers: H, icon, sources: SOURCES, makeContext, all: () => REG, invalidate,
+    /** Para a telemetria: fontes (certas, falhas, ms), cartões vistos e vazios por tela, e ids de cartões que quebraram. */
+    health: () => ({ sources: JSON.parse(JSON.stringify(health.sources)), tiles: { ...health.tiles }, crashed: [...health.crashed] }) };
 })();

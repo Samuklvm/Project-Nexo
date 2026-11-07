@@ -181,7 +181,14 @@ export const PANEL_JS = `
       + group('Monitores', [card('Quantos monitores', t.monitors), card('Resolução', t.resolutions), card('Taxa de atualização', t.refresh), card('Escala do Windows', t.scales)])
       + group('Como o Nexo está configurado', [card('Efeitos visuais', nice(t.effects)), card('Cor de destaque', t.accents), card('Quantidade no céu', t.skyDensity), card('Céu e aparência ligados', nice(t.skyFlags)), card('Perfil de uso', nice(t.profiles)), card('Ritmo das leituras', nice(t.liveRates)), card('Opções do app ligadas', nice(t.appFlags)), card('Jogos por loja (soma)', t.stores)])
       + group('Uso', [card('Telas mais abertas', nice(t.views)), card('Tempo em foco por tela (minutos)', minutes(t.viewTime)), card('Recursos usados', t.features), card('Botões dos cartões de recurso', t.actions), card('Atalhos e extras', nice(t.ui))])
-      + (numbers ? group('Desempenho e saúde', [numbers]) : '');
+      + (numbers ? group('Desempenho e saúde', [numbers]) : '')
+      + group('Diagnóstico do app', [
+        card('Ações internas que mais falham', t.ipcFails, 'Canal IPC e quantas falhas (muitas são esperadas, como recusar o UAC).'),
+        card('Ações internas mais lentas (ms, média)', t.ipcSlow), card('Pior tempo de cada ação (ms)', t.ipcMax),
+        card('Quedas, travadas e erros', t.events, 'telaFechou, gpuCaiu, processoCaiu, janelaTravou e erros por origem.'),
+        card('Cartões que ficam sem dado', t.featsEmpty, 'Quantos PCs viram o cartão vazio no dia: dado que falta ou leitura que não funciona ali.'),
+        card('Cartões cujo cálculo quebrou', t.featsCrashed), card('Fontes de dados que falham', t.sourceFails), card('Fontes mais lentas (ms, média)', t.sourceSlow)])
+      + group('Instalações', [card('Tempo de uso do Nexo', t.ageDays), card('De qual versão atualizou', t.updatedFrom)]);
     // A política de segurança do painel não aceita style="" no HTML: tamanhos entram pelo JavaScript.
     $('telemetry').querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; });
     $('telemetry').querySelectorAll('[data-h]').forEach((el) => { el.style.height = el.dataset.h + '%'; });

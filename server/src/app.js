@@ -524,6 +524,8 @@ export function aggregateTelemetry(rows) {
     if (set.liveRate) count('liveRates', set.liveRate);
     for (const flag of ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor', 'skyHour', 'wallpaper', 'autoClean', 'reducedMotion']) if (set[flag] === true) count('skyFlags', flag);
     for (const [store, n] of Object.entries(data.library?.stores || {})) if (num(n)) count('stores', store, n);
+    if (data.app?.previous) count('updatedFrom', `${data.app.previous} → ${row.version}`);
+    if (num(data.app?.ageDays) !== null) count('ageDays', data.app.ageDays < 1 ? 'menos de 1 dia' : data.app.ageDays < 7 ? '1 a 6 dias' : data.app.ageDays < 30 ? '1 a 4 semanas' : data.app.ageDays < 90 ? '1 a 3 meses' : 'mais de 3 meses');
   }
   // Somas de uso e números do dia: todos os resumos do período.
   const metrics = new Map();
@@ -532,6 +534,17 @@ export function aggregateTelemetry(rows) {
     for (const [name, source] of [['views', data.usage?.views], ['viewTime', data.usage?.viewTime], ['actions', data.usage?.actions], ['ui', data.usage?.ui], ['features', data.features]]) {
       for (const [key, value] of Object.entries(source || {})) if (num(value) !== null) count(name, key, value);
     }
+    // Diagnóstico: canais que falham e os mais lentos (média de ms ponderada pelas chamadas), quedas e travadas.
+    for (const [channel, row] of Object.entries(data.diag?.ipc || {})) {
+      if (num(row?.e)) count('ipcFails', channel, row.e);
+      if (num(row?.n)) count('ipcCalls', channel, row.n);
+      if (num(row?.n) && num(row?.ms)) { count('ipcMsSum', channel, row.ms * row.n); }
+      if (num(row?.max)) { const map = (maps.ipcMax ||= new Map()); map.set(channel, Math.max(map.get(channel) || 0, row.max)); }
+    }
+    for (const [event, n] of Object.entries(data.diag?.events || {})) if (num(n)) count('events', event, n);
+    for (const id of Array.isArray(data.feats?.empty) ? data.feats.empty : []) count('featsEmpty', id);
+    for (const id of Array.isArray(data.feats?.crashed) ? data.feats.crashed : []) count('featsCrashed', id);
+    for (const [name, row] of Object.entries(data.feats?.sources || {})) { if (num(row?.fail)) count('sourceFails', name, row.fail); if (num(row?.ok)) count('sourceOk', name, row.ok); if (num(row?.ms) && num(row?.ok) && num(row?.fail)) count('sourceMsSum', name, row.ms * (row.ok + row.fail)); }
     metric('Minutos com o Nexo em foco', data.app?.focusMin);
     metric('Minutos com o Nexo aberto', data.app?.openMin);
     metric('Aberturas no dia', data.app?.launches);
@@ -553,6 +566,11 @@ export function aggregateTelemetry(rows) {
   const top = (name) => [...(maps[name] || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n: Math.round(n * 10) / 10 }));
   const pick = (list, p) => list[Math.min(list.length - 1, Math.max(0, Math.ceil(p * list.length) - 1))];
   const numbers = [...metrics].map(([label, values]) => { const sorted = [...values].sort((a, b) => a - b); return { key: label, median: Math.round(pick(sorted, 0.5) * 10) / 10, p90: Math.round(pick(sorted, 0.9) * 10) / 10, n: sorted.length }; });
-  const names = ['versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
-  return { activeByDay: [...perDay].sort((a, b) => a[0].localeCompare(b[0])).map(([day, set]) => ({ day, n: set.size })), installs: latest.size, reports: parsed.length, numbers, ...Object.fromEntries(names.map((name) => [name, top(name)])) };
+  // Tempo médio por canal e por fonte: soma de ms ÷ chamadas, os mais lentos primeiro.
+  const slow = (sumName, callsName, extra) => [...(maps[sumName] || new Map())].map(([key, total]) => { const calls = (maps[callsName]?.get(key) || 0) + (extra ? (maps[extra]?.get(key) || 0) : 0); return { key, n: calls ? Math.round(total / calls) : 0 }; }).sort((a, b) => b.n - a.n);
+  const ipcSlow = slow('ipcMsSum', 'ipcCalls');
+  const sourceSlow = slow('sourceMsSum', 'sourceOk', 'sourceFails');
+  const ipcMax = [...(maps.ipcMax || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n }));
+  const names = ['updatedFrom', 'ageDays', 'ipcFails', 'events', 'featsEmpty', 'featsCrashed', 'sourceFails', 'versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
+  return { activeByDay: [...perDay].sort((a, b) => a[0].localeCompare(b[0])).map(([day, set]) => ({ day, n: set.size })), installs: latest.size, reports: parsed.length, numbers, ipcSlow, ipcMax, sourceSlow, ...Object.fromEntries(names.map((name) => [name, top(name)])) };
 }

@@ -27,7 +27,7 @@
 
   const empty = (day) => ({ day, views: {}, viewTime: {}, features: {}, actions: {}, ui: {}, app: { launches: 0, focusSec: 0, openSec: 0 },
     perf: { cpuFocus: [0, 0], cpuBack: [0, 0], memFocus: [0, 0], memMax: 0, skyFps: [0, 0], longTasks: 0, longTaskMs: 0, startMs: [0, 0] },
-    gpu: { completo: [0, 0], leve: [0, 0], fundo: [0, 0] }, sent: false });
+    gpu: { completo: [0, 0], leve: [0, 0], fundo: [0, 0] }, feats: { empty: {}, seen: {}, crashed: {} }, sources: {}, sent: false });
 
   let days = (() => { try { const v = JSON.parse(localStorage.getItem(KEY) || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; } })();
   let dirty = false;
@@ -74,6 +74,21 @@
     };
   }
 
+  /* ---------- Instalação: há quantos dias o Nexo está neste PC e de qual versão veio ---------- */
+  const FIRST_KEY = 'nexo-first-seen';
+  let firstSeen = Number(localStorage.getItem(FIRST_KEY));
+  if (!Number.isFinite(firstSeen) || firstSeen <= 0) {
+    // Quem já usava: a primeira versão anotada (ou o histórico local) dá uma data melhor que "hoje".
+    const seen = (readJSON('nexo-versions-seen', []) || []).map((v) => v.at).filter(Number.isFinite);
+    const oldest = (Nexo.store?.history?.() || [])[0]?.timestamp;
+    firstSeen = Math.min(Date.now(), ...seen, ...(Number.isFinite(oldest) ? [oldest] : []));
+    try { localStorage.setItem(FIRST_KEY, String(firstSeen)); } catch { /* fica para a próxima */ }
+  }
+  function install() {
+    const versions = (readJSON('nexo-versions-seen', []) || []).filter((v) => typeof v?.version === 'string');
+    return { ageDays: Math.floor((Date.now() - firstSeen) / 86400000), versionsSeen: versions.length, previous: versions.length > 1 ? versions[versions.length - 2].version.slice(0, 20) : null };
+  }
+
   /* ---------- Desempenho do próprio Nexo e do PC ---------- */
   add(bucket().app, 'launches');
   // Abertura: do início da página até a primeira leitura do PC chegar à tela.
@@ -98,6 +113,27 @@
     dirty = true;
     save();
   }, 60000);
+
+  /* Saúde dos recursos: quais cartões ficam sem dado neste PC, quais quebram e quais fontes falham ou demoram. */
+  let lastSources = {};
+  function collectFeatures() {
+    const h = window.NexoFeatures?.health?.();
+    if (!h) return;
+    const b = bucket();
+    b.feats ||= { empty: {}, seen: {}, crashed: {} };
+    b.sources ||= {};
+    for (const [id, ok] of Object.entries(h.tiles)) { b.feats.seen[id] = 1; if (!ok) b.feats.empty[id] = 1; else delete b.feats.empty[id]; }
+    for (const id of h.crashed) b.feats.crashed[id] = 1;
+    for (const [name, [ok, fail, ms]] of Object.entries(h.sources)) {
+      const prev = lastSources[name] || [0, 0, 0];
+      const row = b.sources[name] || (b.sources[name] = [0, 0, 0]);
+      row[0] += Math.max(0, ok - prev[0]); row[1] += Math.max(0, fail - prev[1]); row[2] += Math.max(0, ms - prev[2]);
+    }
+    lastSources = h.sources;
+    dirty = true;
+  }
+  setInterval(collectFeatures, 5 * 60000);
+  addEventListener('beforeunload', collectFeatures);
 
   // Custo do Nexo a cada 5 minutos (com e sem foco: o que ele pesa em segundo plano importa tanto quanto).
   setInterval(async () => {
@@ -156,6 +192,15 @@
     };
   }
 
+  function featsSummary(b) {
+    const f = b.feats || { empty: {}, seen: {}, crashed: {} };
+    const perView = {};
+    for (const id of Object.keys(f.seen)) { const view = id.split('.')[0]; const row = perView[view] || (perView[view] = [0, 0]); row[0] += 1; if (f.empty[id]) row[1] += 1; }
+    const sources = Object.fromEntries(Object.entries(b.sources || {}).map(([name, [ok, fail, ms]]) => [name, { ok, fail, ms: ok + fail ? Math.round(ms / (ok + fail)) : 0 }]));
+    return { seen: Object.keys(f.seen).length, perView: Object.fromEntries(Object.entries(perView).map(([v, [seen, emptyN]]) => [v, { seen, empty: emptyN }])),
+      empty: Object.keys(f.empty).slice(0, 40), crashed: Object.keys(f.crashed).slice(0, 40), sources };
+  }
+
   function summary(day) {
     const b = days[day];
     if (!b) return null;
@@ -163,7 +208,9 @@
     return {
       usage: { views: top(b.views, 20), viewTime: top(Object.fromEntries(Object.entries(b.viewTime).map(([k, v]) => [k, Math.round(v)])), 20), ui: b.ui, actions: top(b.actions, 40) },
       features: top(b.features, 30),
-      app: { launches: b.app.launches, focusMin: Math.round(b.app.focusSec / 60), openMin: Math.round(b.app.openSec / 60), startMs: avg(b.perf.startMs) },
+      app: { launches: b.app.launches, focusMin: Math.round(b.app.focusSec / 60), openMin: Math.round(b.app.openSec / 60), startMs: avg(b.perf.startMs), ...install() },
+      // Cartões de recurso: quantos foram vistos, os que ficaram sem dado (ids) e os que quebraram; fontes com falhas e tempo médio.
+      feats: featsSummary(b),
       perf: { cpuFocus: avg(b.perf.cpuFocus), cpuBack: avg(b.perf.cpuBack), memFocusMB: avg(b.perf.memFocus), memMaxMB: b.perf.memMax || null, skyFps: avg(b.perf.skyFps), longTasks: b.perf.longTasks, longTaskMs: b.perf.longTaskMs,
         gpuCompleto: avg(b.gpu.completo), gpuLeve: avg(b.gpu.leve), gpuFundo: avg(b.gpu.fundo) },
       health: health(day),

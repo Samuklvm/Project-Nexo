@@ -69,3 +69,14 @@ test('instalador: todo arquivo que o index.html carrega entra no pacote', () => 
   assert.ok(refs.length > 30);
   for (const ref of refs) assert.ok(covered(ref), `${ref} não está em build.files do package.json (ficaria fora do instalador)`);
 });
+
+test('animações: nada decorativo roda em loop de CSS (tudo anda no relógio único, a 30 quadros)', () => {
+  // Animação de CSS infinita roda na taxa do monitor (até 144 Hz) e faz a placa de vídeo refazer o desfoque dos
+  // painéis de vidro a cada quadro. Só ficam as que aparecem em estados curtos: carregando, gravando, sessão de risco,
+  // janela de novidades e o céu de estado vazio.
+  const allowed = new Set(['spin', 'shimmer', 'twinkle', 'recpulse', 'riskPulse', 'nvTwinkle', 'nvFloat']);
+  for (const file of ['style.css', 'theme.css']) {
+    const css = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const match of css.matchAll(/animation:\s*([A-Za-z-]+)[^;}]*\binfinite\b/g)) assert.ok(allowed.has(match[1]), `${file}: "${match[1]}" em loop infinito`);
+  }
+});
