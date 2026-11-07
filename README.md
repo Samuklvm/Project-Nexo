@@ -17,7 +17,11 @@
 
 <p align="center">
   O Nexo mede o seu computador, explica o que está pesando e só mexe em algo<br>
-  com a sua confirmação. Tudo fica no seu PC, e tudo pode ser desfeito.
+  com a sua confirmação. Tudo fica no seu PC, e quase tudo pode ser desfeito.
+</p>
+
+<p align="center">
+  <b>Grátis</b> · <b>sem conta obrigatória</b> · <b>nada muda sem você confirmar</b> · <b>sem promessa de “+50 FPS”</b>
 </p>
 
 <p align="center">
@@ -35,10 +39,10 @@
 | | |
 |---|---|
 | 📏 **Mede antes de mexer** | Cada ajuste pode ser medido antes e depois. Se não houver ganho real, o Nexo diz isso. |
-| ↩️ **Tudo é reversível** | Cada mudança vai para um Diário, com o valor anterior e um botão **Reverter**. |
+| ↩️ **Reversível** | Cada mudança vai para um Diário, com o valor anterior e, quando dá para desfazer, um botão **Reverter**. O que não tem volta (como esvaziar a Lixeira) avisa antes. |
 | 🔒 **Fica no seu PC** | Sem conta obrigatória. A análise acontece no seu computador; o servidor do Nexo (sincronização, erros e telemetria) é opcional e começa desligado. |
 | 🧭 **Honesto** | Nada de “acelere seu PC em 300%”. O Nexo mostra a evidência e os limites de cada conclusão. |
-| 🌌 **Bonito e leve** | Céu vivo com vagalumes e estrelas cadentes, sete cores de destaque e mais de 30 recursos em cada tela, sem pesar no PC. |
+| 🌌 **Bonito e leve** | Céu vivo com vagalumes e estrelas cadentes, sete cores de destaque e mais de 30 recursos em cada tela. As animações rodam a no máximo 30 quadros e param quando o app sai da frente. |
 
 ## 🎮 Feito para quem joga
 
@@ -55,6 +59,7 @@
 
 - **Sessões de observação:** grave o PC enquanto joga e receba um relatório que diz se o limite foi a placa de vídeo, um núcleo do processador, a memória, o calor ou um programa em segundo plano. Mede **FPS, 1% baixo e tempo de quadro** (PresentMon no Windows, MangoHud no Linux).
 - **Gravação automática:** opcionalmente, o Nexo começa a gravar quando um jogo abre e guarda o relatório quando ele fecha.
+- **Entrar com a Steam:** login oficial da Steam (o Nexo nunca vê a senha) que traz os jogos da conta, o tempo de jogo e as conquistas, sem precisar de chave e mesmo sem a Steam instalada.
 - **Discord:** mostra no seu perfil o jogo que está sendo medido, com o ícone do Nexo.
 
 ## ⚡ Otimização com evidência
@@ -70,6 +75,7 @@
   </tr>
 </table>
 
+- **Internet lenta? Diagnóstico de rede:** para quando a internet está boa, mas os sites demoram. Compara o DNS da sua rede com o da Cloudflare e do Google, testa IPv6, proxy, o cabo e um site de verdade, e sugere a correção (como trocar o DNS), com volta pelo Diário.
 - **Limpeza segura:** temporários antigos, relatórios de falha e Lixeira, com prévia do que sai e quanto espaço volta.
 - **Plano de energia, inicialização e manutenção:** troca do plano com benchmark antes e depois, programas que iniciam com o sistema, otimização de unidades e verificação de arquivos do sistema.
 - **Análise inteligente:** compara o momento atual com a sua rotina e aponta a causa provável **com a evidência**: lentidões, programas que mais atrapalham, previsão de disco cheio e queda de clock por calor.
@@ -100,6 +106,8 @@ As mesmas telas nos dois sistemas. No Linux, o Nexo usa `/proc` e os sensores do
    - **Windows:** `Nexo-Instalador-*.exe` (instalador visual) ou `Nexo-Setup-*.exe`.
    - **Linux:** `Nexo-*-x86_64.AppImage` (qualquer distribuição) ou `Nexo-*-amd64.deb` (Debian, Ubuntu, Mint, Pop!_OS).
 2. Abra e siga o instalador. As atualizações chegam pelo próprio app, e você escolhe quando baixar.
+
+> **“O Windows protegeu o seu PC”?** O Nexo ainda não tem certificado de assinatura digital (custa caro para um projeto gratuito), então o SmartScreen avisa na primeira vez. Clique em **Mais informações → Executar assim mesmo**. O instalador é gerado automaticamente pelo GitHub a partir deste código, e cada release lista os arquivos publicados.
 
 **Linux, pacotes recomendados:** `power-profiles-daemon`, `mangohud`, `x11-utils`, `lm-sensors`. No GNOME, o ícone da bandeja precisa da extensão AppIndicator.
 

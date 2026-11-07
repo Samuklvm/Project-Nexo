@@ -17,7 +17,11 @@
 
 <p align="center">
   Nexo measures your computer, explains what is slowing it down and only changes<br>
-  something after you confirm. Everything stays on your PC, and everything can be undone.
+  something after you confirm. Everything stays on your PC, and almost everything can be undone.
+</p>
+
+<p align="center">
+  <b>Free</b> · <b>no required account</b> · <b>nothing changes without your OK</b> · <b>no “+50 FPS” promises</b>
 </p>
 
 <p align="center">
@@ -37,7 +41,7 @@
 | | |
 |---|---|
 | 📏 **Measures before it touches** | Every tweak can be measured before and after. If there is no real gain, Nexo tells you. |
-| ↩️ **Everything is reversible** | Every change goes into a Journal with the previous value and a **Revert** button. |
+| ↩️ **Reversible** | Every change goes into a Journal with the previous value and, when it can be undone, a **Revert** button. What cannot be undone (like emptying the Recycle Bin) warns you first. |
 | 🔒 **Stays on your PC** | No required account. The analysis runs on your computer; the Nexo server (sync, error reports and telemetry) is optional and starts off. |
 | 🧭 **Honest** | No “speed up your PC by 300%”. Nexo shows the evidence and the limits of every conclusion. |
 | 🌌 **Beautiful and light** | A living sky with fireflies and shooting stars, seven accent colors and more than 30 features on every screen, without weighing down your PC. |
@@ -57,6 +61,7 @@
 
 - **Observation sessions:** record your PC while you play and get a report that says whether the limit was the graphics card, a single CPU core, memory, heat or a background program. Measures **FPS, 1% low and frame time** (PresentMon on Windows, MangoHud on Linux).
 - **Automatic recording:** optionally, Nexo starts recording when a game opens and saves the report when it closes.
+- **Sign in with Steam:** the official Steam login (Nexo never sees the password) brings your account's games, playtime and achievements, with no key needed and even without Steam installed.
 - **Discord:** shows the game being measured on your profile, with the Nexo icon.
 
 ## ⚡ Optimization backed by evidence
@@ -72,6 +77,7 @@
   </tr>
 </table>
 
+- **Slow internet? Network diagnosis:** for when the connection is fine but sites take long to open. It compares your network's DNS with Cloudflare's and Google's, tests IPv6, the proxy, the cable and a real site, and suggests the fix (like switching DNS), with undo from the Journal.
 - **Safe cleanup:** old temporary files, crash reports and the Recycle Bin, with a preview of what goes and how much space comes back.
 - **Power plan, startup and maintenance:** switch power plans with a benchmark before and after, see programs that start with the system, optimize drives and check system files.
 - **Smart analysis:** compares the current moment with your routine and points to the likely cause **with the evidence**: slowdowns, the programs that get in the way most, a forecast of when your disk fills up and heat-related clock drops.
@@ -102,6 +108,8 @@ The same screens on both systems. On Linux, Nexo uses `/proc` and kernel sensors
    - **Windows:** `Nexo-Instalador-*.exe` (visual installer) or `Nexo-Setup-*.exe`.
    - **Linux:** `Nexo-*-x86_64.AppImage` (any distribution) or `Nexo-*-amd64.deb` (Debian, Ubuntu, Mint, Pop!_OS).
 2. Open it and follow the installer. Updates arrive through the app itself, and you choose when to download them.
+
+> **“Windows protected your PC”?** Nexo does not have a code-signing certificate yet (it is expensive for a free project), so SmartScreen warns the first time. Click **More info → Run anyway**. The installer is built automatically by GitHub from this code, and each release lists the published files.
 
 **Linux, recommended packages:** `power-profiles-daemon`, `mangohud`, `x11-utils`, `lm-sensors`. On GNOME, the tray icon needs the AppIndicator extension.
 
