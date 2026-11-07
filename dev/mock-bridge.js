@@ -132,7 +132,15 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     reboot.busy = false;
     reboot.listeners.forEach((cb) => cb({ stage: next.type === 'finish' ? 'pronto' : 'aguardando', text: '', pct: 100 }));
   }
+  // Contas: Steam encontrada neste PC; "Entrar com a Steam" simula o login oficial.
+  const conn = { steam: { installed: true, connected: false, steamId: null, personaName: null, avatar: null, hasKey: false, owned: null, signedIn: false, visible: null, loginAvailable: true,
+    detected: [{ steamId: '76561198000000001', personaName: 'Viajante', avatar: null, mostRecent: true }] }, xbox: { configured: false, connected: false }, discord: { configured: true, enabled: false, showGame: true, showNexo: false, ready: false } };
   Object.assign(window.nexoDesktop, {
+    getConnections: async () => JSON.parse(JSON.stringify(conn)),
+    connectSteam: async (id) => { Object.assign(conn.steam, { connected: true, steamId: id, personaName: 'Viajante' }); return JSON.parse(JSON.stringify(conn)); },
+    disconnectSteam: async () => { Object.assign(conn.steam, { connected: false, signedIn: false, steamId: null, personaName: null, owned: null, visible: null }); return JSON.parse(JSON.stringify(conn)); },
+    signInSteam: async () => { await wait(800); Object.assign(conn.steam, { connected: true, signedIn: true, steamId: '76561198000000001', personaName: 'Viajante', owned: 214, visible: true }); return JSON.parse(JSON.stringify(conn)); },
+    setSteamKey: async () => JSON.parse(JSON.stringify(conn)),
     scanGames: async () => { await wait(500); return games; }, listGames: async () => games, launchGame: async () => ({ ok: true }), revealGame: async () => ({ ok: true }),
     setGameCover: async () => ({ canceled: true }), addGame: async () => ({ canceled: true }), removeManualGame: async () => ({ games }), onGamesUpdated: () => () => {},
     getSettings: async () => ({ ...settings }), setSettings: async (patch) => { Object.assign(settings, patch); listeners.settings.forEach((cb) => cb({ ...settings })); return { ...settings }; },

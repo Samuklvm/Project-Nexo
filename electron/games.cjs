@@ -265,9 +265,14 @@ function createLibrary({ fs, path, runPowerShell, getFileIcon, coversDir, manual
     }
     for (const owned of data.steamOwned || []) {
       const existing = out.find((item) => item.appid === owned.appid);
-      if (existing) { existing.playtimeMin = Math.max(existing.playtimeMin || 0, owned.playtimeMin || 0); continue; }
+      if (existing) {
+        existing.playtimeMin = Math.max(existing.playtimeMin || 0, owned.playtimeMin || 0);
+        if (owned.lastPlayed && (!existing.lastPlayed || owned.lastPlayed > existing.lastPlayed)) existing.lastPlayed = owned.lastPlayed;
+        if (owned.twoWeeksMin) existing.twoWeeksMin = owned.twoWeeksMin;
+        continue;
+      }
       if (NOT_A_GAME.test(owned.name)) continue;
-      const game = { id: `steam-${owned.appid}`, source: 'steam', name: owned.name, appid: owned.appid, installed: false, playtimeMin: owned.playtimeMin, lastPlayed: owned.lastPlayed, launchUri: `steam://install/${owned.appid}`, fromAccount: 'steam' };
+      const game = { id: `steam-${owned.appid}`, source: 'steam', name: owned.name, appid: owned.appid, installed: false, playtimeMin: owned.playtimeMin, lastPlayed: owned.lastPlayed, twoWeeksMin: owned.twoWeeksMin || 0, launchUri: `steam://install/${owned.appid}`, fromAccount: 'steam' };
       out.push(game); index.set(slug(game.name), game);
     }
     for (const title of data.xboxTitles || []) {

@@ -80,6 +80,17 @@
       if (done) { Nexo.journal.markReverted(id, 'usuário removido do grupo'); Nexo.emit('journal'); }
       return done;
     }
+    if (/^net-/.test(entry.actionId) && Nexo.revertNetwork) {
+      const check = Nexo.journal.canRevert(entry, null);
+      if (!check.ok) { showToast(check.reason); return false; }
+      try { return await Nexo.revertNetwork(entry); }
+      catch (error) {
+        Nexo.journal.update(id, { revertNote: `Falha ao reverter: ${error.message || 'erro desconhecido'}` });
+        showToast(error.message || 'Não foi possível reverter.');
+        Nexo.emit('journal');
+        return false;
+      }
+    }
     if (entry.actionId === 'registry-tweak') {
       const scan = await desktopBridge.scanSystem().catch(() => null);
       const now = scan?.items?.find((item) => item.id === entry.before.id);

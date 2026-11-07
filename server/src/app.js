@@ -6,6 +6,7 @@
  *  /v1/sync          uma cópia criptografada por PC; trazer dados de outro PC é escolha da pessoa no app
  *  /v1/errors        relatórios de erro agrupados (com o e-mail só de quem está logado e aceitou)
  *  /v1/telemetry     um pacote por dia, anônimo (código aleatório do PC), só para quem ligou
+ *  /v1/steam/*       "Entrar com a Steam" (OpenID oficial) e jogos/conquistas da conta pela chave do criador (src/steam.js)
  *  /painel           painel do criador (entrada por link de uso único gerado no app do criador)
  *
  * Nada aqui registra o conteúdo dos pedidos em log.
@@ -14,6 +15,7 @@ import { open, randomId, seal, sha256Hex, signToken, verifyToken } from './crypt
 import { verifyGoogleIdToken } from './google.js';
 import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTelemetry, compareVersions, dayOf, redact, text } from './validate.js';
 import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED } from './panel.js';
+import { createSteam } from './steam.js';
 
 const DAY = 24 * 3600 * 1000;
 const SESSION_DAYS = 365;
@@ -69,6 +71,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return true;
   }
   async function limit(env, key, max) { if (!await allow(env, key, max)) throw new HttpError(429, 'Muitos pedidos hoje. Tente amanhã.'); }
+  const steam = createSteam({ fetchImpl, now, limit, json });
   // O IP nunca é guardado: só um resumo com o segredo do servidor (sem ele, não dá para voltar ao IP), apagado em um dia.
   const ipKey = async (request, env) => `ip:${(await sha256Hex(`${env.SESSION_SECRET}|${request.headers.get('cf-connecting-ip') || 'local'}`)).slice(0, 20)}`;
 
@@ -444,6 +447,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     if (path === '/painel/app.js' && method === 'GET') return page(PANEL_JS, 'text/javascript; charset=utf-8');
     if (path === '/painel/app.css' && method === 'GET') return page(PANEL_CSS, 'text/css; charset=utf-8');
     if (path.startsWith('/painel/api/')) return adminApi(request, env, url, path.slice('/painel/api/'.length));
+    if (path.startsWith('/v1/steam/')) { const answer = await steam.route(request, env, url, path, method); if (answer) return answer; }
     throw new HttpError(404, 'Não encontrado.');
   }
 

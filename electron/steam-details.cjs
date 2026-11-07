@@ -77,6 +77,15 @@ function parseAchievements(schema, player, global) {
   return { state: 'ok', unlocked, total: list.length, list };
 }
 
+/** Resposta do servidor do Nexo ("Entrar com a Steam") → o mesmo formato de quando a pessoa usa a própria chave. */
+function fromServer(data) {
+  const defs = Array.isArray(data?.defs) ? data.defs : [];
+  if (!defs.length) return { state: 'none', unlocked: 0, total: 0, list: [] };
+  const schema = { game: { availableGameStats: { achievements: defs } } };
+  if (data.private) return { ...parseAchievements(schema, null, null), state: 'private' };
+  return parseAchievements(schema, { playerstats: { achievements: Array.isArray(data.mine) ? data.mine : [] } }, { achievementpercentages: { achievements: Array.isArray(data.rarity) ? data.rarity : [] } });
+}
+
 function createSteamDetails({ fetchJson, fs, path, cacheDir, now = Date.now }) {
   const memory = new Map();
   async function cached(key, ttl, load) {
@@ -95,8 +104,10 @@ function createSteamDetails({ fetchJson, fs, path, cacheDir, now = Date.now }) {
   const store = (appid) => cached(`store-${appid}`, TTL.store, async () => parseAppDetails(await fetchJson(`https://store.steampowered.com/api/appdetails?appids=${appid}&l=brazilian&cc=BR`), appid));
   const news = (appid) => cached(`news-${appid}`, TTL.news, async () => parseNews(await fetchJson(`https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=${appid}&count=12&maxlength=1200&format=json`)));
 
-  async function achievements(appid, steamId, key) {
+  /** `viaServer`: com o "Entrar com a Steam", busca pelo servidor do Nexo (sem chave da pessoa). */
+  async function achievements(appid, steamId, key, viaServer = null) {
     if (!steamId) return { state: 'needs-steam', unlocked: 0, total: 0, list: [] };
+    if (!key && viaServer) return cached(`ach-${steamId}-${appid}`, TTL.achievements, async () => fromServer(await viaServer(appid)));
     if (!key) return { state: 'needs-key', unlocked: 0, total: 0, list: [] };
     return cached(`ach-${steamId}-${appid}`, TTL.achievements, async () => {
       const base = 'https://api.steampowered.com/ISteamUserStats';
@@ -119,4 +130,4 @@ function createSteamDetails({ fetchJson, fs, path, cacheDir, now = Date.now }) {
   return { store, news, achievements, findAppid };
 }
 
-module.exports = { createSteamDetails, parseAppDetails, parseNews, parseAchievements, toText, safeImage, TTL };
+module.exports = { fromServer, createSteamDetails, parseAppDetails, parseNews, parseAchievements, toText, safeImage, TTL };

@@ -372,6 +372,11 @@
             <button class="btn primary" id="drive-optimize" type="button">Otimizar unidade</button>
           </section>
         </div>
+        <section class="sheet net-doctor" id="net-doctor">
+          <div class="sheet-head"><div><h3>Internet lenta? Diagnóstico de rede <button class="info" type="button" data-op="net-dns" aria-label="Detalhes da operação: diagnóstico de rede">i</button></h3><p class="muted">Para quando a internet está boa, mas os sites demoram para abrir. Mede o DNS, o IPv6, o proxy, o cabo e um site de verdade, e sugere a correção. Nada muda sem você confirmar.</p></div>
+            <button class="btn primary" id="net-run" type="button">Diagnosticar a rede</button></div>
+          <div id="net-result"><p class="muted">Leva uns 15 segundos e não muda nada no PC.</p></div>
+        </section>
       </section>
 
       <!-- ATIVIDADE -->
@@ -516,6 +521,7 @@
   <script src="src/view-settings.js"></script>
   <script src="src/view-errors.js"></script>
   <script src="src/telemetry.js"></script>
+  <script src="src/view-net.js"></script>
   <script src="src/view-cloud.js"></script>
   <script src="src/view-library.js"></script>
   <script src="src/view-lab.js"></script>

@@ -77,12 +77,22 @@
     const grid = document.getElementById('conn-grid');
     if (!c) { grid.innerHTML = '<p class="muted">Disponível no aplicativo desktop.</p>'; return; }
     const steam = c.steam;
-    const steamBody = !steam.installed ? '<p class="muted">A Steam não foi encontrada neste PC.</p>'
-      : steam.connected ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Lida da Steam deste PC, sem senha. Traz tempo de jogo e última vez jogado.</small></div></div>
-        <label class="field"><span>Chave da Steam Web API (opcional): inclui os jogos da conta que não estão instalados</span><div class="key-row"><input id="steam-key" type="password" placeholder="${steam.hasKey ? 'Chave salva (cifrada)' : '32 caracteres'}" autocomplete="off" spellcheck="false" /><button class="btn sm" type="button" data-conn="steam-key">${steam.hasKey ? 'Trocar' : 'Salvar'}</button></div></label>
-        <div class="btn-row"><button class="link" type="button" data-conn="steam-keypage">Onde pego a minha chave?</button>${steam.hasKey ? '<button class="link" type="button" data-conn="steam-clearkey">Apagar chave</button>' : ''}<button class="btn sm ghost" type="button" data-conn="steam-off">Desconectar</button></div>`
-      : steam.detected.length ? `<p class="muted">Contas que já entraram na Steam deste PC:</p><div class="conn-pick">${steam.detected.map((user) => `<button type="button" data-steam="${escapeHtml(user.steamId)}">${avatar(user.avatar)}<span><b>${escapeHtml(user.personaName)}</b><small>${user.mostRecent ? 'conta atual' : 'outra conta'}</small></span></button>`).join('')}</div>`
-      : '<p class="muted">Entre na Steam pelo menos uma vez neste PC para o Nexo encontrar a conta.</p>';
+    // "Entrar com a Steam": login oficial da Steam no navegador; jogos da conta e conquistas vêm pelo servidor do Nexo.
+    const steamLogin = steam.loginAvailable !== false ? `<button class="btn primary sm steam-in" type="button" data-conn="steam-in"><svg><use href="#i-game"/></svg>Entrar com a Steam</button>` : '';
+    const keyBlock = `<details class="steam-key"${steam.hasKey ? ' open' : ''}><summary>Usar a minha própria chave da Steam Web API (opcional)</summary>
+        <label class="field"><span>Só precisa dela se não quiser entrar com a Steam: ela traz os jogos da conta que não estão instalados.</span><div class="key-row"><input id="steam-key" type="password" placeholder="${steam.hasKey ? 'Chave salva (cifrada)' : '32 caracteres'}" autocomplete="off" spellcheck="false" /><button class="btn sm" type="button" data-conn="steam-key">${steam.hasKey ? 'Trocar' : 'Salvar'}</button></div></label>
+        <div class="btn-row"><button class="link" type="button" data-conn="steam-keypage">Onde pego a minha chave?</button>${steam.hasKey ? '<button class="link" type="button" data-conn="steam-clearkey">Apagar chave</button>' : ''}</div></details>`;
+    const hidden = steam.signedIn && steam.visible === false ? '<p class="notes-line warn">O seu perfil da Steam esconde os jogos. Para o Nexo ver a sua biblioteca e as conquistas, deixe “Detalhes de jogos” como Público. <button class="link" type="button" data-conn="steam-privacy">Abrir a privacidade da Steam</button></p>' : '';
+    const steamBody = steam.connected && steam.signedIn
+      ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Entrou com a Steam (login oficial, sem senha no Nexo).${steam.owned != null ? ` ${steam.owned} jogos na conta,` : ''} tempo de jogo e conquistas pelo servidor do Nexo.</small></div></div>${hidden}
+        <div class="btn-row"><button class="btn sm" type="button" data-conn="steam-in">Entrar de novo</button><button class="btn sm ghost" type="button" data-conn="steam-off">Sair da Steam</button></div>`
+      : steam.connected
+        ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Lida da Steam deste PC, sem senha. Traz tempo de jogo e última vez jogado.</small></div></div>
+          ${steamLogin ? `<p class="muted">Entre com a Steam para trazer também os jogos da conta que não estão instalados e as suas conquistas, sem precisar de chave.</p><div class="btn-row">${steamLogin}</div>` : ''}
+          ${keyBlock}<div class="btn-row"><button class="btn sm ghost" type="button" data-conn="steam-off">Desconectar</button></div>`
+        : `<p class="muted">Entre com a sua conta: abre a página oficial da Steam no navegador e o Nexo recebe só o ID da conta, nunca a senha. Traz os jogos da conta, o tempo de jogo e as conquistas, mesmo sem a Steam instalada aqui.</p>
+          ${steamLogin ? `<div class="btn-row">${steamLogin}</div>` : ''}
+          ${steam.installed && steam.detected.length ? `<p class="muted">Ou use uma conta que já entrou na Steam deste PC (só o que está neste PC):</p><div class="conn-pick">${steam.detected.map((user) => `<button type="button" data-steam="${escapeHtml(user.steamId)}">${avatar(user.avatar)}<span><b>${escapeHtml(user.personaName)}</b><small>${user.mostRecent ? 'conta atual' : 'outra conta'}</small></span></button>`).join('')}</div>` : ''}`;
     const xbox = c.xbox;
     const xboxBody = !xbox.configured ? '<p class="muted">O login com a conta Xbox chega numa próxima versão.</p>'
       : xbox.connected ? `<div class="conn-who">${avatar(xbox.avatar)}<div><b>${escapeHtml(xbox.gamertag)}</b><small>${xbox.titles} títulos no histórico · artes oficiais do Xbox nas capas</small></div></div><div class="btn-row"><button class="btn sm" type="button" data-conn="xbox-in">Atualizar</button><button class="btn sm ghost" type="button" data-conn="xbox-off">Desconectar</button></div>`
@@ -109,6 +119,17 @@
     const action = event.target.closest('[data-conn]')?.dataset.conn;
     try {
       if (pick) { changed(await bridge.connectSteam(pick.dataset.steam)); showToast('Steam conectada.'); }
+      if (action === 'steam-in') {
+        const button = event.target.closest('button');
+        setButtonBusy(button, true, 'Esperando a Steam…');
+        showToast('Continue no navegador, na página da Steam. O Nexo espera até 5 minutos.');
+        try {
+          changed(await bridge.signInSteam());
+          const s = connections.steam;
+          showToast(s.visible === false ? `Steam conectada: ${s.personaName}. O perfil esconde os jogos; veja o aviso no cartão.` : `Steam conectada: ${s.personaName}${s.owned != null ? `, ${s.owned} jogos na conta` : ''}.`);
+        } finally { setButtonBusy(button, false); }
+      }
+      if (action === 'steam-privacy') bridge.openLink('steamprivacy');
       if (action === 'steam-off') changed(await bridge.disconnectSteam());
       if (action === 'steam-keypage') bridge.openLink('steamkey');
       if (action === 'steam-clearkey') changed(await bridge.setSteamKey(''));

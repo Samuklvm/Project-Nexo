@@ -861,6 +861,14 @@ td.nowrap, table.exp td:nth-child(2) { white-space: nowrap; }
 .conn-pick span:last-child { display: grid; }
 .conn-pick small { color: var(--mist); font-size: 11.5px; }
 .key-row { display: flex; gap: 8px; }
+/* Entrar com a Steam: botão no tom da Steam e a chave própria recolhida em "detalhes". */
+.btn.steam-in { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #1b2838, #2a475e); border-color: rgba(102, 192, 244, 0.55); color: #e8f4ff; box-shadow: 0 0 18px rgba(102, 192, 244, 0.22); }
+.btn.steam-in svg { width: 16px; height: 16px; }
+.btn.steam-in:hover { box-shadow: 0 0 24px rgba(102, 192, 244, 0.4); }
+.steam-key { border-top: 1px solid var(--hair); padding-top: 10px; }
+.steam-key summary { cursor: pointer; color: var(--mist); font-size: 12.5px; }
+.steam-key[open] summary { margin-bottom: 8px; }
+.notes-line.warn .link { margin-left: 4px; }
 .key-row input { flex: 1; font-family: "Cascadia Code", Consolas, monospace; letter-spacing: 0.04em; }
 .conn-card .switch.compact { margin: 0; }
 .self-meter { display: grid; grid-template-columns: 1fr auto; gap: 8px 18px; align-items: center; padding: 14px 0 16px; border-bottom: 1px solid var(--hair); margin-bottom: 4px; }
@@ -1103,3 +1111,27 @@ body.lite .rise, body.lite .game-card, body.lite .modal-backdrop > * { animation
 .switch.sub { margin-left: 26px; }
 .switch input:disabled + i { opacity: 0.45; }
 .switch input:disabled ~ span { opacity: 0.6; }
+
+/* Diagnóstico de rede (Manutenção) */
+.net-doctor { margin-top: 18px; }
+.net-doctor .sheet-head { align-items: flex-start; gap: 16px; }
+.net-summary { font-size: 15px; font-weight: 650; margin: 4px 0 12px; }
+.net-summary small { font-weight: 500; color: var(--mist); margin-left: 6px; }
+.net-summary.good { color: var(--good); } .net-summary.warn { color: var(--warn); } .net-summary.bad { color: #ff7a95; }
+.net-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.net-checks li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 10px 12px; border: 1px solid var(--hair); border-radius: 14px; background: rgba(150, 175, 255, 0.04); }
+.net-checks li p { color: var(--mist); font-size: 13px; margin-top: 2px; }
+.net-dot { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: 13px; font-weight: 800; background: rgba(110, 242, 194, 0.15); color: var(--good); }
+.net-checks li[data-level="aviso"] .net-dot { background: rgba(255, 196, 107, 0.16); color: var(--warn); }
+.net-checks li[data-level="problema"] { border-color: rgba(255, 122, 149, 0.4); }
+.net-checks li[data-level="problema"] .net-dot { background: rgba(255, 122, 149, 0.18); color: #ff7a95; }
+.net-fixes { margin-top: 16px; display: grid; gap: 8px; }
+.net-fixes h4 { font-size: 14px; }
+.net-fix { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 12px; border: 1px solid var(--hair); border-radius: 14px; }
+.net-fix.danger { border-color: rgba(255, 122, 149, 0.3); }
+.net-fix p { font-size: 12.5px; margin-top: 2px; }
+.net-more { margin-top: 14px; }
+.net-more summary { cursor: pointer; color: var(--mist); font-size: 13px; margin-bottom: 8px; }
+.net-more .net-fix { margin-top: 8px; }
+.net-wait { display: flex; align-items: center; gap: 12px; color: var(--mist); padding: 8px 0; }
+.net-wait .spinner { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(150, 175, 255, 0.25); border-top-color: var(--neon, #5ad7ff); animation: spin 0.9s linear infinite; }

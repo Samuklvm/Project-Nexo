@@ -24,6 +24,7 @@ const { createWatcher } = require('./electron/watcher.cjs');
 const Account = require('./electron/account.cjs');
 const NexoLab = require('./src/lab.js');
 const Steam = require('./electron/steam-account.cjs');
+const SteamLogin = require('./electron/steam-login.cjs');
 const Covers = require('./electron/covers.cjs');
 const { createCoverResolver } = Covers;
 const { createSteamDetails } = require('./electron/steam-details.cjs');
@@ -1708,9 +1709,13 @@ const library = createLibrary({
     const steam = connections.steam;
     if (steam?.steamId) {
       out.steamPlaytime = await steamAccount.playtime(steamRoot, steam.steamId);
+      const fresh = ownedCache.key === steam.steamId && Date.now() - ownedCache.at < 6 * 3600 * 1000;
       if (steam.apiKey) {
-        const fresh = ownedCache.key === steam.steamId && Date.now() - ownedCache.at < 6 * 3600 * 1000;
         if (!fresh) ownedCache = { at: Date.now(), key: steam.steamId, games: await steamAccount.ownedGames(steam.apiKey, steam.steamId).catch(() => ownedCache.games) };
+        out.steamOwned = ownedCache.games;
+      } else if (steam.pass) {
+        // Entrou com a Steam: os jogos da conta vêm pelo servidor do Nexo (chave do criador), sem chave da pessoa.
+        if (!fresh) ownedCache = { at: Date.now(), key: steam.steamId, games: await steamServerLibrary().catch(() => (ownedCache.key === steam.steamId ? ownedCache.games : [])) };
         out.steamOwned = ownedCache.games;
       }
     }
@@ -1752,7 +1757,7 @@ registerIpcHandler('games:details', async (_event, id) => {
   const [store, news, achievements] = await Promise.all([
     steamDetails.store(appid).catch(() => null),
     steamDetails.news(appid).catch(() => []),
-    game.source === 'steam' ? steamDetails.achievements(appid, steam?.steamId, steam?.apiKey).catch(() => ({ state: 'error', unlocked: 0, total: 0, list: [] })) : Promise.resolve({ state: 'other-store', unlocked: 0, total: 0, list: [] })
+    game.source === 'steam' ? steamDetails.achievements(appid, steam?.steamId, steam?.apiKey, steam?.pass ? (id) => steamServer(`/v1/steam/achievements?appid=${id}`) : null).catch(() => ({ state: 'error', unlocked: 0, total: 0, list: [] })) : Promise.resolve({ state: 'other-store', unlocked: 0, total: 0, list: [] })
   ]);
   return { consent: true, appid, matched, store, news, achievements };
 });
@@ -1878,6 +1883,100 @@ registerIpcHandler('lab:run', async (_event, options) => {
     });
   } finally { labState.running = false; labState.signal = null; }
 });
+// ---- Diagnóstico de rede ("a internet está boa, mas os sites demoram") ----
+const NetDoctor = require('./electron/net-doctor.cjs');
+const netDoctor = NetDoctor.createNetDoctor({
+  dns: require('dns'), net: nodeNet, https: require('https'), os, fs, platform: process.platform, runPowerShell: runPowerShellCode,
+  resolveProxy: (url) => { try { return require('electron').session.defaultSession.resolveProxy(url); } catch { return Promise.resolve(null); } }
+});
+let netBusy = false;
+registerIpcHandler('net:diagnose', async () => {
+  if (netBusy) throw new Error('O diagnóstico de rede já está rodando.');
+  netBusy = true;
+  try {
+    const measured = await netDoctor.measure();
+    const result = NetDoctor.analyze(measured);
+    const info = measured.info || {};
+    return { ...result, at: Date.now(), platform: process.platform,
+      context: { ifIndex: Number(info.ifIndex) || null, adapter: info.adapter?.name || null, dnsV4: (info.dnsV4 || []).slice(0, 4), staticDns: [...(info.staticV4 || []), ...(info.staticV6 || [])].slice(0, 6), disabledComponents: info.disabledComponents ?? null, proxyEnable: info.proxyEnable ?? null, proxyServer: info.proxyServer || null, autoDetect: info.autoDetect ?? null } };
+  } finally { netBusy = false; }
+});
+const INTERNET_SETTINGS = String.raw`HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings`;
+/** Liga ou desliga o bit "Detectar configurações automaticamente" (byte 8, valor 8) do DefaultConnectionSettings. */
+const autoDetectScript = (on) => String.raw`
+$k = '${INTERNET_SETTINGS}\Connections'
+$b = (Get-ItemProperty -LiteralPath $k -Name DefaultConnectionSettings -ErrorAction Stop).DefaultConnectionSettings
+if ($b.Length -le 8) { throw 'formato desconhecido' }
+$b[8] = if (${on ? '$true' : '$false'}) { $b[8] -bor 8 } else { $b[8] -band (255 -bxor 8) }
+$b[4] = [byte](($b[4] + 1) % 256)
+Set-ItemProperty -LiteralPath $k -Name DefaultConnectionSettings -Value ([byte[]]$b) -ErrorAction Stop
+'ok'`;
+registerIpcHandler('net:fix', async (_event, request) => {
+  const id = String(request?.id || '');
+  if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
+  const windowsOnly = ['dns-publico', 'dns-voltar', 'preferir-ipv4', 'ipv4-voltar', 'desligar-proxy', 'proxy-voltar', 'desligar-autodetect', 'autodetect-voltar', 'abrir-proxy', 'reparo-profundo'];
+  if (process.platform !== 'win32' && windowsOnly.includes(id)) throw new Error('Esta correção é só para Windows.');
+  const declined = (answer) => (answer.declined ? { declined: true } : null);
+  if (id === 'limpar-dns') {
+    if (process.platform === 'win32') {
+      const plain = await runCode('ipconfig.exe', ['/flushdns'], 20000);
+      if (plain.code === 0) return { ok: true };
+      const answer = await elevate('net-flush', {});
+      return declined(answer) || { ok: Boolean(answer.result?.ok), note: answer.result?.note || '' };
+    }
+    const flushed = await runCode('resolvectl', ['flush-caches'], 20000);
+    return { ok: flushed.code === 0, note: flushed.code === 0 ? '' : 'Este Linux não tem um cache de DNS do sistema para limpar (ou ele pede senha).' };
+  }
+  if (id === 'abrir-proxy') { await shell.openExternal('ms-settings:network-proxy'); return { ok: true }; }
+  if (id === 'dns-publico') {
+    const provider = NetDoctor.PUBLIC[request?.provider] ? request.provider : 'cloudflare';
+    const info = await netDoctor.systemInfo();
+    const ifIndex = Number(info.ifIndex);
+    if (!ifIndex) throw new Error('Não achei a placa de rede que leva à internet.');
+    const before = { ifIndex, adapter: info.adapter?.name || null, dhcp: !(info.staticV4 || []).length && !(info.staticV6 || []).length, servers: [...(info.staticV4 || []), ...(info.staticV6 || [])].slice(0, 6) };
+    const servers = [...NetDoctor.PUBLIC[provider].v4, ...NetDoctor.PUBLIC[provider].v6];
+    const answer = await elevate('net-dns', { ifIndex, servers });
+    if (answer.declined) return { declined: true };
+    if (!answer.result?.ok) throw new Error(answer.result?.note || 'O Windows não aceitou trocar o DNS.');
+    return { ok: true, before, after: { provider, label: NetDoctor.PUBLIC[provider].label, servers } };
+  }
+  if (id === 'dns-voltar') {
+    const before = request?.before || {};
+    const ifIndex = Number(before.ifIndex);
+    const servers = Array.isArray(before.servers) ? before.servers.map(String).filter((ip) => nodeNet.isIP(ip)).slice(0, 6) : [];
+    const answer = await elevate('net-dns', before.dhcp || !servers.length ? { ifIndex, reset: true } : { ifIndex, servers });
+    if (answer.declined) return { declined: true };
+    if (!answer.result?.ok) throw new Error(answer.result?.note || 'O Windows não aceitou voltar o DNS.');
+    return { ok: true };
+  }
+  if (id === 'preferir-ipv4' || id === 'ipv4-voltar') {
+    const info = await netDoctor.systemInfo();
+    const current = Number.isInteger(info.disabledComponents) ? info.disabledComponents : null;
+    const value = id === 'preferir-ipv4' ? ((current || 0) | 0x20) : (request?.before?.value === null || request?.before?.value === undefined ? null : Number(request.before.value));
+    const answer = await elevate('net-ipv6', { value });
+    if (answer.declined) return { declined: true };
+    if (!answer.result?.ok) throw new Error(answer.result?.note || 'O Windows não aceitou a mudança.');
+    return { ok: true, restart: true, before: { value: current }, after: { value } };
+  }
+  if (id === 'desligar-proxy' || id === 'proxy-voltar') {
+    const on = id === 'proxy-voltar';
+    const result = await runPowerShellCode(`Set-ItemProperty -LiteralPath '${INTERNET_SETTINGS}' -Name ProxyEnable -Value ${on ? 1 : 0} -ErrorAction Stop; 'ok'`, 15000);
+    if (!/ok/.test(result.stdout)) throw new Error('O Windows não aceitou a mudança do proxy.');
+    return { ok: true, before: { proxyEnable: on ? 0 : 1 }, after: { proxyEnable: on ? 1 : 0 } };
+  }
+  if (id === 'desligar-autodetect' || id === 'autodetect-voltar') {
+    const on = id === 'autodetect-voltar';
+    const result = await runPowerShellCode(autoDetectScript(on), 15000);
+    if (!/ok/.test(result.stdout)) throw new Error('O Windows não aceitou a mudança da detecção de proxy.');
+    return { ok: true, before: { autoDetect: !on }, after: { autoDetect: on } };
+  }
+  if (id === 'reparo-profundo') {
+    const answer = await elevate('net-reset', {});
+    if (answer.declined) return { declined: true };
+    return { ok: Boolean(answer.result?.ok), restart: true, note: answer.result?.note || '' };
+  }
+  throw new Error('Correção desconhecida.');
+});
 // ---- Raio-X do PC (registro e sistema) ----
 const systemScan = createSystemScan({ runPowerShell: runPowerShellCode, run: runCode, elevate: (task, args) => elevate(task, args) });
 registerIpcHandler('scan:run', async () => systemScan.scan());
@@ -1941,7 +2040,8 @@ async function connectionsView() {
   const steam = connections.steam;
   const steamUser = steam ? detected.users.find((user) => user.steamId === steam.steamId) : null;
   return {
-    steam: { installed: Boolean(steamRoot), connected: Boolean(steam), steamId: steam?.steamId || null, personaName: steam?.personaName || null, avatar: fileUrl(steamUser?.avatarFile, 'a'), hasKey: Boolean(steam?.apiKey), owned: ownedCache.key === steam?.steamId ? ownedCache.games.length : null,
+    steam: { installed: Boolean(steamRoot), connected: Boolean(steam), steamId: steam?.steamId || null, personaName: steam?.personaName || null, avatar: fileUrl(steamUser?.avatarFile || steam?.avatarFile, 'a'), hasKey: Boolean(steam?.apiKey), owned: ownedCache.key === steam?.steamId ? ownedCache.games.length : null,
+      signedIn: Boolean(steam?.pass), visible: steam?.visible ?? null, loginAvailable: Boolean(await serverUrl().catch(() => null)),
       detected: detected.users.map((user) => ({ steamId: user.steamId, personaName: user.personaName, avatar: fileUrl(user.avatarFile, 'a'), mostRecent: user.mostRecent })) },
     xbox: { configured: Boolean(config.xboxClientId), connected: Boolean(connections.xbox), gamertag: connections.xbox?.gamertag || null, avatar: fileUrl(connections.xbox?.pictureFile, 'x'), titles: connections.xbox?.titles?.length || 0, at: connections.xbox?.at || null },
     discord: { configured: Boolean(config.discordAppId), ...connections.discord, ready: discord.isReady() }
@@ -1952,11 +2052,64 @@ registerIpcHandler('steam:connect', async (_event, steamId) => {
   const detected = await steamAccount.detect(library.steamRoot());
   const user = detected.users.find((item) => item.steamId === String(steamId));
   if (!user) throw new Error('Essa conta não entrou na Steam deste PC.');
-  connections.steam = { steamId: user.steamId, personaName: user.personaName, apiKey: connections.steam?.steamId === user.steamId ? connections.steam.apiKey : null, at: Date.now() };
+  const same = connections.steam?.steamId === user.steamId ? connections.steam : null;
+  connections.steam = { steamId: user.steamId, personaName: user.personaName, apiKey: same?.apiKey || null, pass: same?.pass || null, avatarFile: same?.avatarFile || null, visible: same?.visible ?? null, at: Date.now() };
   await saveConnections();
   return connectionsView();
 });
-registerIpcHandler('steam:disconnect', async () => { connections.steam = null; ownedCache = { at: 0, key: null, games: [] }; await saveConnections(); return connectionsView(); });
+registerIpcHandler('steam:disconnect', async () => {
+  if (connections.steam?.avatarFile) await fs.rm(connections.steam.avatarFile, { force: true }).catch(() => {});
+  connections.steam = null; ownedCache = { at: 0, key: null, games: [] }; await saveConnections(); return connectionsView();
+});
+
+// ---- Entrar com a Steam (login oficial pelo servidor do Nexo; jogos e conquistas pela chave do criador) ----
+let steamLoginBusy = false;
+async function steamServer(route) {
+  const steam = connections.steam;
+  if (!steam?.pass) throw new Error('Entre com a Steam primeiro.');
+  const base = await serverUrl();
+  try {
+    return await SteamLogin.api({ serverUrl: base, fetchImpl: (url, init) => net.fetch(url, init), pass: steam.pass, route, version: app.getVersion() });
+  } catch (error) {
+    // Passe vencido ou recusado: volta a ser a conta lida deste PC, e a tela pede para entrar de novo.
+    if (error.status === 401 && connections.steam === steam) { steam.pass = null; await saveConnections(); }
+    throw error;
+  }
+}
+async function steamServerLibrary() {
+  const data = await steamServer('/v1/steam/library');
+  if (connections.steam) connections.steam.visible = data.visible === true;
+  return (Array.isArray(data.games) ? data.games : []).filter((game) => /^\d{1,9}$/.test(String(game.appid)) && game.name).map((game) => ({
+    appid: String(game.appid), name: String(game.name).slice(0, 120), playtimeMin: Number(game.playtimeMin) || 0, lastPlayed: Number(game.lastPlayed) || null, twoWeeksMin: Number(game.twoWeeksMin) || 0
+  }));
+}
+registerIpcHandler('steam:sign-in', async () => {
+  if (steamLoginBusy) throw new Error('Já existe um login da Steam aberto no navegador.');
+  const base = await serverUrl();
+  if (!base) throw new Error('O servidor do Nexo não está configurado nesta versão.');
+  steamLoginBusy = true;
+  try {
+    const { pass, steamId } = await SteamLogin.signIn({ serverUrl: base, createServer: http.createServer, openExternal: (url) => shell.openExternal(url) });
+    const same = connections.steam?.steamId === steamId ? connections.steam : null;
+    connections.steam = { steamId, personaName: same?.personaName || 'Steam', apiKey: same?.apiKey || null, pass, avatarFile: same?.avatarFile || null, visible: null, at: Date.now() };
+    ownedCache = { at: 0, key: null, games: [] };
+    try {
+      const profile = await steamServer('/v1/steam/me');
+      if (profile.personaName) connections.steam.personaName = String(profile.personaName).slice(0, 64);
+      if (profile.avatar) {
+        const bytes = await fetchBytes(profile.avatar);
+        const ext = detectImageExtension(bytes);
+        if (ext) { await fs.mkdir(ACCOUNT_DIR(), { recursive: true }); const file = path.join(ACCOUNT_DIR(), `steam.${ext}`); await fs.writeFile(file, bytes); connections.steam.avatarFile = file; }
+      }
+    } catch { /* sem perfil agora: fica o nome da Steam deste PC, se houver */ }
+    const local = (await steamAccount.detect(library.steamRoot()).catch(() => ({ users: [] }))).users.find((user) => user.steamId === steamId);
+    if (local && connections.steam.personaName === 'Steam') connections.steam.personaName = local.personaName;
+    await saveConnections();
+    try { ownedCache = { at: Date.now(), key: steamId, games: await steamServerLibrary() }; await saveConnections(); } catch { /* a Biblioteca tenta de novo */ }
+    mainWindow?.show(); mainWindow?.focus();
+    return connectionsView();
+  } finally { steamLoginBusy = false; }
+});
 registerIpcHandler('steam:set-key', async (_event, key) => {
   if (!connections.steam) throw new Error('Conecte a conta Steam primeiro.');
   const clean = String(key || '').trim();

@@ -213,7 +213,7 @@
     if (!ach || ach.state === 'error') return notice('Conquistas indisponíveis agora', 'A Steam não respondeu. Tente atualizar daqui a pouco.');
     if (ach.state === 'other-store') return notice('Conquistas da outra loja', `Este jogo é da ${escapeHtml(game.sourceLabel)}. As conquistas dessa loja não têm uma forma oficial de leitura por apps de PC, então o Nexo mostra só as da Steam.`);
     if (ach.state === 'needs-steam') return notice('Conecte a sua Steam', 'As conquistas são da sua conta. Conecte a conta Steam deste PC em Ajustes → Contas e conexões.', '<button class="btn primary sm" type="button" data-open-connections>Conectar</button>');
-    if (ach.state === 'needs-key') return notice('Falta a sua chave da Steam Web API', `A Steam só entrega o seu progresso de conquistas pela Web API, com uma chave sua (grátis). Cole em Ajustes → Contas e conexões.${c?.personaName ? ` Conta: ${escapeHtml(c.personaName)}.` : ''}`, '<button class="btn primary sm" type="button" data-open-connections>Colar a chave</button>');
+    if (ach.state === 'needs-key') return notice('Entre com a Steam para ver as conquistas', `O seu progresso de conquistas vem da conta Steam. Entre com a Steam em Ajustes → Contas e conexões (login oficial, sem senha no Nexo).${c?.personaName ? ` Conta: ${escapeHtml(c.personaName)}.` : ''}`, '<button class="btn primary sm" type="button" data-open-connections>Entrar com a Steam</button>');
     if (ach.state === 'none') return notice('Sem conquistas', 'Este jogo não tem conquistas na Steam.');
     const pct = ach.total ? Math.round((ach.unlocked / ach.total) * 100) : 0;
     const privateNote = ach.state === 'private' ? '<p class="notes-line">O seu perfil da Steam está com “Detalhes do jogo” privado, então a Steam não mostra o que você já desbloqueou. Abaixo, a lista do jogo.</p>' : '';
@@ -360,9 +360,10 @@
   bridge?.onGamesUpdated?.((games) => { state.games = games; render(); });
   bridge?.onArtProgress?.((progress) => { state.art = progress; renderArtBanner(); });
   bridge?.onSettingsChanged?.((settings) => { document.getElementById('lib-auto').checked = settings.autoSession; });
-  Nexo.on('connections', (connections) => { state.connections = connections; details.clear(); if (Nexo.state.view === 'library') scan(); });
+  // Conta nova (ex.: "Entrar com a Steam"): a Biblioteca relê na hora se estiver aberta, ou na próxima vez que abrir.
+  Nexo.on('connections', (connections) => { state.connections = connections; details.clear(); if (Nexo.state.view === 'library') scan(); else state.stale = true; });
   Nexo.on('learned', () => { if (Nexo.state.view === 'library') render(); });
-  Nexo.on('view', (name) => { if (name === 'library') { syncAuto(); if (!state.loaded) scan(); else render(); } });
+  Nexo.on('view', (name) => { if (name === 'library') { syncAuto(); if (!state.loaded || state.stale) { state.stale = false; scan(); } else render(); } });
   Nexo.commands.push({ label: 'Abrir a biblioteca de jogos', hint: 'Jogos', run: () => Nexo.go('library') }, { label: 'Procurar jogos instalados de novo', hint: 'Jogos', run: () => { Nexo.go('library'); scan(); } });
   render();
 })();

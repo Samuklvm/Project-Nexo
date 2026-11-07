@@ -3,6 +3,7 @@
 #   CLOUDFLARE_API_TOKEN   token da Cloudflare com permissão de editar Workers e D1
 #   CLOUDFLARE_ACCOUNT_ID  ID da conta da Cloudflare
 #   NEXO_ADMIN_EMAILS      e-mail(s) que entram no painel do criador (vírgula separa vários)
+#   STEAM_API_KEY          (opcional) chave da Steam Web API do criador, para o "Entrar com a Steam" trazer jogos e conquistas
 # O ID do cliente Google (público) vem de config/google-client.json, o mesmo que as builds usam.
 # Os segredos do próprio servidor (SESSION_SECRET e DATA_KEY) são criados aqui na primeira vez e nunca aparecem no log.
 # NUNCA apague o DATA_KEY na Cloudflare: sem ele, os dados sincronizados não abrem mais.
@@ -87,6 +88,19 @@ jobs:
             openssl rand -base64 48 | tr -d '\n' | $WRANGLER secret put "$NAME" > /dev/null
             echo "$NAME criado."
           done
+      - name: Chave da Steam (copia do GitHub para o Worker)
+        if: steps.check.outputs.ready == 'true'
+        working-directory: server
+        env:
+          STEAM_API_KEY: ${{ secrets.STEAM_API_KEY }}
+        # Só a sequência de 32 caracteres hexadecimais segue (sobra de linha ou espaço colado junto fica de fora).
+        run: |
+          set -euo pipefail
+          KEY="$(printf '%s' "${STEAM_API_KEY:-}" | grep -Eo '[0-9A-Fa-f]{32}' | head -n 1 || true)"
+          if [ -z "$KEY" ]; then echo "Sem STEAM_API_KEY: o Entrar com a Steam funciona, mas sem jogos e conquistas pelo servidor."; exit 0; fi
+          echo "::add-mask::$KEY"
+          printf '%s' "$KEY" | $WRANGLER secret put STEAM_API_KEY > /dev/null
+          echo "STEAM_API_KEY atualizada no Worker."
       - name: Conferir no ar
         if: steps.check.outputs.ready == 'true' && steps.deploy.outputs.url != ''
         run: |

@@ -14,7 +14,8 @@ test('catálogo: toda técnica tem os campos obrigatórios e fonte coerente com 
     assert.ok(!ids.has(entry.id), `id duplicado ${entry.id}`);
     ids.add(entry.id);
     for (const fonte of entry.fontes) {
-      if (fonte.evidencia === 'oficial') assert.match(fonte.url || '', /^https:\/\/(learn|support)\.microsoft\.com\//, `${entry.id}: fonte oficial sem URL da Microsoft`);
+      // Oficial = documentação de quem faz a coisa: a Microsoft, ou o próprio serviço de DNS público (Cloudflare, Google).
+      if (fonte.evidencia === 'oficial') assert.match(fonte.url || '', /^https:\/\/((learn|support)\.microsoft\.com|developers\.cloudflare\.com|developers\.google\.com)\//, `${entry.id}: fonte oficial sem URL do fornecedor`);
       else assert.ok(['observada', 'hipotese'].includes(fonte.evidencia));
     }
     // 29.19: só declara reversível quem explica como reverter

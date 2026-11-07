@@ -7,9 +7,11 @@
     versions: [
       {
         version: '0.11.0', date: '2026-11-07', emoji: '🪐', title: 'Mais espaço e mais leve',
-        tagline: 'Recursos em grupos, cartões maiores, o céu bem mais leve na placa de vídeo e várias correções achadas num PC de verdade.',
+        tagline: 'Entrar com a Steam, diagnóstico de rede, recursos em grupos e o céu bem mais leve na placa de vídeo.',
         sections: [
           { emoji: '✨', title: 'Novidades', tone: 'new', items: [
+            { emoji: '🎮', title: 'Entrar com a Steam', text: 'Login oficial da Steam, sem senha no Nexo e sem precisar de chave: jogos da conta, tempo de jogo e conquistas, mesmo sem a Steam instalada. Em Ajustes > Contas e conexões.' },
+            { emoji: '🌐', title: 'Internet lenta? Diagnóstico de rede', text: 'Em Manutenção: mede o DNS, o IPv6, o proxy, o cabo e um site de verdade, e sugere a correção (como trocar o DNS), com volta pelo Diário.' },
             { emoji: '🗂️', title: 'Recursos em grupos', text: 'Fixados, Leituras, Ferramentas e Ações, cada grupo com duas linhas e um "ver mais". Cartões maiores, com mais respiro.' },
             { emoji: '🔄', title: 'Cor e céu viajam entre PCs', text: 'A sincronização agora leva a cor de destaque e as opções do céu junto das preferências.' },
             { emoji: '📊', title: 'Telemetria mais útil', text: 'O resumo do dia agora chega completo, depois que o dia acaba, e ajuda a achar o que falha e o que pesa. Sempre anônima e opcional; a lista está em Política completa.' }

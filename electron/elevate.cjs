@@ -164,7 +164,69 @@ ${steps.map((step) => `  ${step}`).join('\n')}
 ${WRITE_RESULT}`;
 }
 
+/* ---------- Rede (diagnóstico de rede: só o que o diagnóstico sugeriu, com dados validados aqui) ---------- */
+const { isIP } = require('node:net');
+const ifIndexOf = (value) => { const n = Number(value); if (!Number.isInteger(n) || n < 1 || n > 1000000) throw new Error('Placa de rede inválida.'); return n; };
+
+/** Troca os servidores de DNS de uma placa (ou volta para os da rede, com reset) e limpa o cache de DNS. */
+function netDnsBody(args) {
+  const index = ifIndexOf(args?.ifIndex);
+  const reset = args?.reset === true;
+  const servers = reset ? [] : (Array.isArray(args?.servers) ? args.servers : []).map(String);
+  if (!reset && (!servers.length || servers.length > 6 || servers.some((ip) => !isIP(ip)))) throw new Error('Servidores de DNS inválidos.');
+  const set = reset ? `Set-DnsClientServerAddress -InterfaceIndex ${index} -ResetServerAddresses -ErrorAction Stop` : `Set-DnsClientServerAddress -InterfaceIndex ${index} -ServerAddresses @(${servers.map(psQuote).join(', ')}) -ErrorAction Stop`;
+  return String.raw`
+$r = @{ ok = $false; note = '' }
+try {
+  ${set}
+  Clear-DnsClientCache -ErrorAction SilentlyContinue
+  $r.ok = $true
+} catch { $r.note = $_.Exception.Message }
+${WRITE_RESULT}`;
+}
+
+/** Preferência de IPv4 sobre IPv6 (DisabledComponents, documentado pela Microsoft). null tira o valor (padrão). */
+function netIpv6Body(args) {
+  const value = args?.value === null ? null : Number(args?.value);
+  if (value !== null && (!Number.isInteger(value) || value < 0 || value > 255)) throw new Error('Valor inválido.');
+  const key = String.raw`HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters`;
+  const write = value === null ? `Remove-ItemProperty -LiteralPath '${key}' -Name 'DisabledComponents' -ErrorAction SilentlyContinue` : `New-ItemProperty -LiteralPath '${key}' -Name 'DisabledComponents' -PropertyType DWord -Value ${value} -Force | Out-Null`;
+  return String.raw`
+$r = @{ ok = $false; note = '' }
+try {
+  ${write}
+  $r.ok = $true
+} catch { $r.note = $_.Exception.Message }
+${WRITE_RESULT}`;
+}
+
+/** Reparo profundo: Winsock e TCP/IP voltam ao padrão do Windows e o cache de DNS é limpo (vale depois de reiniciar). */
+function netResetBody() {
+  return String.raw`
+$r = @{ ok = $false; note = ''; steps = @() }
+try {
+  $w = & netsh.exe winsock reset 2>&1; $r.steps += @{ step = 'winsock'; code = $LASTEXITCODE }
+  $i = & netsh.exe int ip reset 2>&1; $r.steps += @{ step = 'ip'; code = $LASTEXITCODE }
+  $d = & ipconfig.exe /flushdns 2>&1; $r.steps += @{ step = 'dns'; code = $LASTEXITCODE }
+  $r.ok = ($r.steps | Where-Object { $_.code -ne 0 }).Count -eq 0
+  if (-not $r.ok) { $r.note = 'algum passo não terminou bem' }
+} catch { $r.note = $_.Exception.Message }
+${WRITE_RESULT}`;
+}
+
+/** Só limpa o cache de DNS (quando o ipconfig sem administrador não conseguiu). */
+function netFlushBody() {
+  return String.raw`
+$r = @{ ok = $false; note = '' }
+try { Clear-DnsClientCache -ErrorAction Stop; $r.ok = $true } catch { $r.note = $_.Exception.Message }
+${WRITE_RESULT}`;
+}
+
 const TASKS = {
+  'net-dns': (args) => netDnsBody(args),
+  'net-ipv6': (args) => netIpv6Body(args),
+  'net-reset': () => netResetBody(),
+  'net-flush': () => netFlushBody(),
   'restore-point': (args) => restorePointBody(String(args?.description || 'Nexo').slice(0, 64)),
   'perf-log-users': (args) => perfLogUsersBody(args?.action, args?.sid),
   'sensor-service': (args) => sensorServiceBody(args),
@@ -219,4 +281,4 @@ function createElevator({ runPowerShell, fs, path, dir, now = Date.now }) {
   };
 }
 
-module.exports = { PAWNIO, SENSOR_SERVICE, sensorServiceBody, createElevator, toolLauncher, TOOLS, linuxPrivileged, LINUX_TOOLS, restorePointBody, perfLogUsersBody, TASKS, SID_PERF_LOG_USERS, USER_SID, psQuote, encode };
+module.exports = { netDnsBody, netIpv6Body, netResetBody, PAWNIO, SENSOR_SERVICE, sensorServiceBody, createElevator, toolLauncher, TOOLS, linuxPrivileged, LINUX_TOOLS, restorePointBody, perfLogUsersBody, TASKS, SID_PERF_LOG_USERS, USER_SID, psQuote, encode };

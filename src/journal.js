@@ -56,6 +56,10 @@
         const changed = Array.isArray(current?.values) && JSON.stringify(current.values) !== JSON.stringify(entry.after?.values);
         return { ok: true, conflict: changed, reason: changed ? 'Esse ajuste mudou de novo depois do Nexo. Reverter volta ao valor que existia antes da alteração do Nexo.' : '' };
       }
+      if (['net-dns', 'net-ipv4-prefer', 'net-proxy-off', 'net-autodetect-off'].includes(entry.actionId)) {
+        if (!entry.before || typeof entry.before !== 'object') return { ok: false, conflict: false, reason: 'O valor anterior não foi guardado.' };
+        return { ok: true, conflict: false, reason: '' };
+      }
       return { ok: false, conflict: false, reason: 'Não há reversão automática para esta operação.' };
     }
 

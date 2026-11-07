@@ -7,6 +7,8 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ## Português
 
 ### 0.11.0: mais espaço e mais leve
+- Novo: entrar com a Steam (login oficial; jogos da conta e conquistas pelo servidor, sem chave da pessoa).
+- Novo: diagnóstico de rede em Manutenção (DNS, IPv6, proxy, cabo, site de verdade) com correções reversíveis pelo Diário.
 - Novo: recursos de cada tela em grupos (Fixados, Leituras, Ferramentas, Ações), cartões maiores e "ver mais".
 - Novo: a sincronização leva a cor de destaque e as opções do céu; telemetria com o resumo do dia completo, enviado depois que o dia acaba.
 - Melhoria: animações decorativas num relógio único de até 30 quadros e cartões sem desfoque próprio: o modo Completo pesa bem menos na placa de vídeo; o mapa do Início para com o app sem foco.
@@ -96,6 +98,8 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ## English
 
 ### 0.11.0: more room and lighter
+- New: sign in with Steam (official login; account games and achievements through the server, no personal key).
+- New: network diagnosis in Maintenance (DNS, IPv6, proxy, cable, real site) with fixes that can be undone from the Journal.
 - New: each screen's features in groups (Pinned, Readings, Tools, Actions), bigger cards and "see more".
 - New: sync carries the accent color and sky options; telemetry with the full day's summary, sent after the day ends.
 - Improvement: decorative animations on a single clock of up to 30 frames and cards without their own blur: Complete mode is much lighter on the graphics card; the Home map stops when the app is out of focus.
