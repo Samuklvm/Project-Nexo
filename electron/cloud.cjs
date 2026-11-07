@@ -152,14 +152,22 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     return { sent: groups.length };
   }
 
-  /** Telemetria do dia (uma vez). `data` já vem montado (hardware, uso das telas, recursos). */
-  async function sendTelemetry(data) {
+  /**
+   * Resumo de um dia, uma vez por dia: a interface manda cada dia depois que ele acaba (assim chegam as contagens
+   * do dia inteiro). Um dia já enviado não vai de novo; dias com mais de 6 dias ficam de fora.
+   */
+  async function sendTelemetry(data, day = dayOf(now())) {
     await load();
     if (!state.telemetry || !base) return { skipped: true };
-    const day = dayOf(now());
-    if (state.lastTelemetryDay === day) return { skipped: true, already: true };
+    const today = dayOf(now());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day)) || day > today) day = today;
+    if (day < dayOf(now() - 6 * 86400000)) return { skipped: true, old: true };
+    const sent = state.telemetryDays && typeof state.telemetryDays === 'object' ? state.telemetryDays : {};
+    if (sent[day] || (!state.telemetryDays && state.lastTelemetryDay === day)) return { skipped: true, already: true };
     await request('POST', '/v1/telemetry', { auth: false, body: { installId: state.installId, version, platform, day, data } });
-    state.lastTelemetryDay = day;
+    sent[day] = now();
+    state.telemetryDays = Object.fromEntries(Object.entries(sent).sort((a, b) => a[0].localeCompare(b[0])).slice(-14));
+    if (!state.lastTelemetryDay || day > state.lastTelemetryDay) state.lastTelemetryDay = day;
     await save();
     return { sent: true };
   }

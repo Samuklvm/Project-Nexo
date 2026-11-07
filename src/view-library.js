@@ -13,6 +13,18 @@
   const hours = (minutes) => (!Number.isFinite(minutes) ? null : minutes < 60 ? `${minutes} min` : `${(minutes / 60).toFixed(minutes < 600 ? 1 : 0).replace('.', ',')} h`);
   const sessionsOf = (game) => Nexo.sessions?.forGame?.(game.id, game.name) || [];
   const byId = (id) => state.games.find((game) => game.id === id);
+  /** Para a telemetria: quantos jogos por loja (instalados e da conta), nunca os nomes. */
+  Nexo.libraryStats = () => {
+    if (!state.loaded) return null;
+    const out = { installed: 0, account: 0, apps: 0, stores: {} };
+    for (const game of state.games) {
+      if (game.kind === 'app') { out.apps += 1; continue; }
+      if (game.installed) out.installed += 1; else out.account += 1;
+      const store = /^[a-z]{2,12}$/.test(String(game.source)) ? game.source : 'outra';
+      out.stores[store] = (out.stores[store] || 0) + 1;
+    }
+    return out;
+  };
 
   /* ---------- Peças visuais ---------- */
   function art(game, kind = 'card') {
@@ -82,6 +94,7 @@
       return;
     }
     artBox.innerHTML = `${hero.hero ? `<img class="hero-wide" src="${escapeHtml(hero.hero)}" alt="" />` : hero.cover ? `<img class="hero-bg" src="${escapeHtml(hero.cover)}" alt="" />` : `<div class="cover-gen hero-bg" style="--hue:${hero.hue}"></div>`}${hero.hero ? '' : `<div class="hero-cover">${art(hero, 'big')}</div>`}`;
+    if (hero.hero) Nexo.heroWake?.();
     const session = sessionsOf(hero)[0];
     setText('lib-hero-eyebrow', hero.lastPlayed ? `Jogado por último · ${when(hero.lastPlayed)}` : hero.sourceLabel);
     document.getElementById('lib-hero-title').innerHTML = titleArt(hero);

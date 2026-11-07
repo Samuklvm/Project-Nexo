@@ -438,9 +438,19 @@ $samples = Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
     memoryBytes = [long]$_.WorkingSet64
   }
 }
+$programs = @($samples | Group-Object name | ForEach-Object {
+  [pscustomobject]@{
+    name = [string]$_.Name
+    count = [int]$_.Count
+    cpuPercent = [Math]::Round([double](($_.Group | Measure-Object cpuPercent -Sum).Sum), 1)
+    memoryBytes = [long](($_.Group | Measure-Object memoryBytes -Sum).Sum)
+  }
+})
 $result = [pscustomobject]@{
   byCpu = @($samples | Sort-Object cpuPercent -Descending | Select-Object -First 5)
   byMemory = @($samples | Sort-Object memoryBytes -Descending | Select-Object -First 5)
+  programsByCpu = @($programs | Sort-Object cpuPercent -Descending | Select-Object -First 8)
+  programsByMemory = @($programs | Sort-Object memoryBytes -Descending | Select-Object -First 8)
 }
 $result | ConvertTo-Json -Depth 3 -Compress
 `;
@@ -454,9 +464,13 @@ $result | ConvertTo-Json -Depth 3 -Compress
     memoryPercent: os.totalmem() ? Math.round((Number(item.memoryBytes) || 0) / os.totalmem() * 100) : 0
   }));
 
+  // Programas: todos os processos com o mesmo nome somados (o Chrome e o Discord abrem dezenas).
+  const programs = (items) => normalize(items).map((item, index) => ({ ...item, processId: 0, count: Math.max(1, Number((Array.isArray(items) ? items : [items])[index]?.count) || 1) }));
   return {
     byCpu: normalize(result.byCpu),
-    byMemory: normalize(result.byMemory)
+    byMemory: normalize(result.byMemory),
+    programsByCpu: programs(result.programsByCpu),
+    programsByMemory: programs(result.programsByMemory)
   };
 }
 
@@ -2052,18 +2066,45 @@ const cloudReady = serverUrl().then(async (url) => {
   if (status.configured && !status.asked && (await readSharePreference()).shareWithCreator) await cloud.setOptions({ telemetry: true, errors: true, asked: true });
 }).catch(() => {});
 const withCloud = async () => { await cloudReady; return cloud; };
-/** Telemetria: o que dá para saber do hardware sem nada pessoal (fabricante e modelo do processador, núcleos, memória, vídeo, sistema). */
+/**
+ * Telemetria: o que dá para saber do PC sem nada pessoal. Hardware (fabricante e modelo do processador e da placa
+ * de vídeo, núcleos, memória), monitores (resolução, escala e taxa de atualização), discos (quantos e tamanho) e o
+ * estado dos sensores. Nada de nome do PC, do usuário, de pastas ou de programas.
+ */
 async function telemetryHardware() {
   const cpus = os.cpus();
   const model = String(cpus[0]?.model || '').replace(/\s+/g, ' ').trim().slice(0, 80);
   let gpuVendor = null;
+  let gpuModels = [];
+  let sensors = null;
   try {
-    const sensors = await getHardwareSensors();
-    const types = (sensors?.devices || []).map((device) => String(device.type));
+    const readings = await getHardwareSensors();
+    const devices = readings?.devices || [];
+    const types = devices.map((device) => String(device.type));
     gpuVendor = types.includes('GpuNvidia') ? 'NVIDIA' : types.includes('GpuAmd') ? 'AMD' : types.includes('GpuIntel') ? 'Intel' : null;
+    gpuModels = [...new Set(devices.filter((device) => /^Gpu/.test(String(device.type))).map((device) => String(device.name || '').replace(/\s+/g, ' ').trim().slice(0, 60)).filter(Boolean))].slice(0, 3);
+    const temps = devices.flatMap((device) => (device.sensors || []).filter((sensor) => sensor.type === 'Temperature' && Number.isFinite(sensor.value)).map(() => String(device.type)));
+    sensors = { status: String(readings?.status || 'desconhecido').slice(0, 20), source: String(readings?.source || '').slice(0, 20) || null, count: Number(readings?.sensorCount) || 0, devices: devices.length, cpuTemp: temps.includes('Cpu'), gpuTemp: temps.some((type) => /^Gpu/.test(type)), storageTemp: temps.includes('Storage') };
   } catch { gpuVendor = null; }
-  return { cpuVendor: /amd|ryzen/i.test(model) ? 'AMD' : /intel/i.test(model) ? 'Intel' : model ? 'Outro' : null, cpuModel: model || null, cores: cpus.length, ramGB: Math.round(os.totalmem() / 1024 ** 3), gpuVendor, osBuild: os.release(), arch: process.arch };
+  let displays = [];
+  try {
+    const { screen } = require('electron');
+    displays = screen.getAllDisplays().slice(0, 4).map((display) => ({ w: Math.round(display.size.width * display.scaleFactor), h: Math.round(display.size.height * display.scaleFactor), scale: Math.round(display.scaleFactor * 100) / 100, hz: Math.round(display.displayFrequency || 0) || null }));
+  } catch { displays = []; }
+  let drives = null;
+  try {
+    const snapshot = await getSystemSnapshot();
+    const list = Array.isArray(snapshot?.drives) ? snapshot.drives : [];
+    drives = { count: list.length, totalGB: Math.round(list.reduce((sum, drive) => sum + (Number(drive.sizeBytes) || 0), 0) / 1024 ** 3), systemUsedPct: Number.isFinite(snapshot?.primaryDrive?.usedPercent) ? Math.round(snapshot.primaryDrive.usedPercent) : null };
+  } catch { drives = null; }
+  return {
+    hw: { cpuVendor: /amd|ryzen/i.test(model) ? 'AMD' : /intel/i.test(model) ? 'Intel' : model ? 'Outro' : null, cpuModel: model || null, cores: cpus.length, ramGB: Math.round(os.totalmem() / 1024 ** 3), gpuVendor, gpuModels, osBuild: os.release(), arch: process.arch, displays, drives },
+    sensors,
+    system: { locale: String(app.getLocale?.() || '').slice(0, 12), electron: process.versions.electron, channel: IS_LINUX ? (process.env.APPIMAGE ? 'appimage' : 'deb') : app.isPackaged ? 'instalador' : 'dev', autostart: Boolean(settings.openAtLogin), tray: Boolean(settings.tray), autoSession: Boolean(settings.autoSession), onlineCovers: Boolean(settings.onlineCovers), uptimeH: Math.round(os.uptime() / 3600) }
+  };
 }
+/** Só as partes conhecidas do resumo que a interface montou (o servidor confere de novo). */
+const TELEMETRY_PARTS = ['usage', 'features', 'app', 'perf', 'health', 'settings', 'library', 'lab'];
 registerIpcHandler('cloud:status', async () => (await withCloud()).status());
 registerIpcHandler('cloud:set', async (_event, options) => {
   const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
@@ -2110,12 +2151,16 @@ registerIpcHandler('cloud:pull', async (_event, deviceId, only) => {
   return data;
 });
 registerIpcHandler('cloud:forget', async (_event, deviceId) => (await withCloud()).forget(String(deviceId || '')));
-registerIpcHandler('cloud:telemetry', async (_event, usage) => {
+registerIpcHandler('cloud:telemetry', async (_event, packet) => {
   const target = await withCloud();
   const status = await target.status();
   if (!status.telemetry) return { skipped: true };
-  const clean = usage && typeof usage === 'object' ? usage : {};
-  return target.sendTelemetry({ hw: await telemetryHardware(), usage: { views: clean.views || {} }, features: clean.features || {}, settings: { liveRate: String(clean.liveRate || '').slice(0, 12), profile: String(clean.profile || '').slice(0, 20) } });
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(packet?.day || '')) ? packet.day : null;
+  if (!day) throw new Error('Dia inválido.');
+  const summary = packet?.data && typeof packet.data === 'object' && !Array.isArray(packet.data) ? packet.data : {};
+  const data = Object.fromEntries(TELEMETRY_PARTS.filter((key) => summary[key] && typeof summary[key] === 'object').map((key) => [key, summary[key]]));
+  const extra = await telemetryHardware();
+  return target.sendTelemetry({ ...data, hw: extra.hw, sensors: extra.sensors, system: extra.system }, day);
 });
 registerIpcHandler('cloud:send-errors', async () => (await withCloud()).sendErrors());
 registerIpcHandler('cloud:admin', async () => {

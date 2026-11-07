@@ -46,9 +46,9 @@ test('saída do console do Windows: UTF-8 ou CP850, sem "�"', () => {
 });
 
 test('telemetria: todo título de atividade está na lista fixa de recursos (o resto vira "outro")', () => {
-  const cloud = fs.readFileSync(path.join(root, 'src', 'view-cloud.js'), 'utf8');
+  const cloud = fs.readFileSync(path.join(root, 'src', 'telemetry.js'), 'utf8');
   const list = cloud.match(/const FEATURES = new Set\(\[([^\]]+)\]\)/);
-  assert.ok(list, 'lista FEATURES em src/view-cloud.js');
+  assert.ok(list, 'lista FEATURES em src/telemetry.js');
   const features = new Set([...list[1].matchAll(/'([a-z0-9-]+)'/g)].map((match) => match[1]));
   const slug = (value) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 39);
   const titles = new Set();

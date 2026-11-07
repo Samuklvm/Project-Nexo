@@ -63,7 +63,7 @@
     root.append(backdrop);
     paint();
     open = close;
-    if (!Nexo.effectsLite) setTimeout(() => Nexo.sky?.shower?.(), 350);
+    if (!Nexo.effectsLite) setTimeout(() => Nexo.sky?.shower?.(true), 350);
   }
 
   /** Abre as novidades. Sem `force`, só se a versão mudou desde a última vez. */
@@ -71,7 +71,7 @@
     let version = Nexo.state.snapshot?.version;
     if (!version) { try { version = (await desktopBridge?.getAppInfo?.())?.version; } catch { version = null; } }
     if (!version) return;
-    if (force) { open?.(); show(version); return; }
+    if (force) { open?.(); show(version); Nexo.emit('telemetry-ui', 'novidades'); return; }
     remember(version);
     const seen = read(SEEN_KEY);
     if (seen === version) return;
@@ -81,6 +81,7 @@
     if (document.getElementById('modal-root')?.childElementCount || document.hidden) { if (tries < 40) setTimeout(() => Nexo.showNovidades({ tries: tries + 1 }), 4000); return; }
     write(SEEN_KEY, version);
     show(version);
+    Nexo.emit('telemetry-ui', 'novidades-sozinha');
   };
 
   setTimeout(() => Nexo.showNovidades(), 2500);

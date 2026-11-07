@@ -16,7 +16,23 @@
   const fin = Number.isFinite;
   const H = {
     fin,
-    nf: (value, digits = 0) => (fin(value) ? Number(value).toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '--'),
+    // Arredonda antes de formatar: -0,04 vira "0,0", nunca "-0,0".
+    nf: (value, digits = 0) => { if (!fin(value)) return '--'; let v = Number(Number(value).toFixed(digits)); if (v === 0) v = 0; return v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }); },
+    /** Programas (processos de mesmo nome somados), do serviço se ele já mandar, senão agrupados aqui. */
+    programs(result, by = 'cpu') {
+      const ready = by === 'cpu' ? result?.programsByCpu : result?.programsByMemory;
+      if (Array.isArray(ready) && ready.length) return ready;
+      const map = new Map();
+      for (const p of (by === 'cpu' ? result?.byCpu : result?.byMemory) || []) {
+        const key = String(p.name || '').toLowerCase();
+        const g = map.get(key) || { name: p.name, cpuPercent: 0, memoryBytes: 0, count: 0 };
+        g.cpuPercent += fin(p.cpuPercent) ? p.cpuPercent : 0; g.memoryBytes += fin(p.memoryBytes) ? p.memoryBytes : 0; g.count += 1;
+        map.set(key, g);
+      }
+      return [...map.values()].sort((a, b) => (by === 'cpu' ? b.cpuPercent - a.cpuPercent : b.memoryBytes - a.memoryBytes));
+    },
+    /** Número com sinal: "+1,2", "-0,8" ou "0,0" (sem "+0,0" nem "-0,0"). */
+    signed: (value, digits = 0) => { if (!fin(value)) return '--'; const v = Number(Number(value).toFixed(digits)); return `${v > 0 ? '+' : ''}${H.nf(v, digits)}`; },
     bytes(value) {
       if (!fin(value) || value < 0) return '--';
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -237,7 +253,7 @@
     return `<article class="feat${pinned ? ' pinned' : ''}" data-id="${def.id}" data-kind="${def.kind}"${tone ? ` data-tone="${tone}"` : ''}${empty ? ' data-state="empty"' : ''}>
       <div class="feat-top"><span class="feat-icon">${icon(def.icon)}</span><span class="feat-title">${escapeHtml(def.title)}</span><button class="feat-pin" type="button" data-pin="${def.id}" aria-pressed="${pinned}" title="${pinned ? 'Desafixar' : 'Fixar no topo'}" aria-label="${pinned ? 'Desafixar' : 'Fixar'} ${escapeHtml(def.title)}">★</button></div>
       <div class="feat-value${isText ? ' text' : ''}">${escapeHtml(String(value))}${!empty && out.unit ? `<small>${escapeHtml(out.unit)}</small>` : ''}</div>
-      <div class="feat-body">${!empty && out.list?.length ? `<div class="feat-list">${out.list.slice(0, 4).map(([k, v]) => `<span><em>${escapeHtml(String(k))}</em><b>${escapeHtml(String(v))}</b></span>`).join('')}</div>` : ''}${!empty && out.spark ? sparkSvg(out.spark) : ''}${!empty && fin(out.bar) ? `<div class="feat-bar"><i style="width:${(H.clamp(out.bar, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}<div class="feat-detail">${escapeHtml(empty ? (def.emptyDetail || def.hint || '') : (out.detail || def.hint || ''))}</div></div>
+      <div class="feat-body">${!empty && out.spark ? sparkSvg(out.spark) : ''}${!empty && fin(out.bar) ? `<div class="feat-bar"><i style="width:${(H.clamp(out.bar, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}<div class="feat-detail">${escapeHtml(empty ? (def.emptyDetail || def.hint || '') : (out.detail || def.hint || ''))}</div>${!empty && out.list?.length ? `<div class="feat-list">${out.list.slice(0, 4).map(([k, v]) => `<span><em>${escapeHtml(String(k))}</em><b>${escapeHtml(String(v))}</b></span>`).join('')}</div>` : ''}</div>
       <div class="feat-foot"><span class="feat-kind">${KINDS[def.kind] || ''}</span>${def.action && !actionHidden ? `<button class="feat-action" type="button" data-act="${def.id}">${escapeHtml(actionLabel)}</button>` : ''}</div>
     </article>`;
   }
@@ -257,6 +273,8 @@
     panel.append(section);
     section.addEventListener('click', (event) => onClick(view, event));
     section.querySelector('[data-feat-search]').addEventListener('input', (event) => { search[view] = event.target.value.trim().toLowerCase(); render(view); });
+    // Para a telemetria conta só QUE houve uma busca (nunca o texto buscado).
+    section.querySelector('[data-feat-search]').addEventListener('change', () => Nexo.emit('feat-use', { kind: 'busca', view }));
     section.addEventListener('pointermove', (event) => {
       const tile = event.target.closest('.feat');
       if (!tile) return;
@@ -324,17 +342,18 @@
 
   async function onClick(view, event) {
     const filter = event.target.closest('[data-filter]');
-    if (filter) { saveFilter(view, filter.dataset.filter); render(view); return; }
+    if (filter) { saveFilter(view, filter.dataset.filter); render(view); Nexo.emit('feat-use', { kind: 'filtro', view, id: filter.dataset.filter }); return; }
     const pin = event.target.closest('[data-pin]');
     if (pin) {
       const all = pins(); const list = all[view] || [];
       all[view] = list.includes(pin.dataset.pin) ? list.filter((id) => id !== pin.dataset.pin) : [pin.dataset.pin, ...list];
-      savePins(all); render(view); return;
+      savePins(all); render(view); Nexo.emit('feat-use', { kind: 'fixar', view, id: pin.dataset.pin }); return;
     }
     const act = event.target.closest('[data-act]');
     if (act) {
       const def = forView(view).find((item) => item.id === act.dataset.act);
       if (!def?.action) return;
+      Nexo.emit('feat-use', { kind: 'acao', view, id: def.id });
       act.disabled = true;
       try {
         const message = await def.action.run(makeContext(), act);

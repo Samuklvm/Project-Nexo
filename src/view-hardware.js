@@ -20,12 +20,21 @@
   const sensorMetricLabels = {
     Voltage: 'Tensão', Current: 'Corrente', Power: 'Potência', Clock: 'Clock', Temperature: 'Temperatura',
     Load: 'Uso', Frequency: 'Frequência', Fan: 'Ventoinha', Flow: 'Fluxo', Control: 'Controle', Level: 'Nível',
-    Factor: 'Fator', Data: 'Dados', Throughput: 'Transferência', TimeSpan: 'Tempo', Timing: 'Latência',
+    Factor: 'Fator', Data: 'Dados', SmallData: 'Dados', Throughput: 'Transferência', TimeSpan: 'Tempo', Timing: 'Latência',
     Energy: 'Energia', Noise: 'Ruído', Conductivity: 'Condutividade', Humidity: 'Umidade'
   };
 
+  /*
+   * Unidade pelo tipo do sensor: no LibreHardwareMonitor "Data" vem em GB e "SmallData" em MB. O serviço antigo
+   * mandava "B" para Data e nada para SmallData, e a memória aparecia como "12 B" em vez de 12 GB.
+   */
+  const unitOf = (sensor) => (sensor.type === 'Data' ? 'GB' : sensor.type === 'SmallData' ? 'MB' : sensor.unit || '');
+  Nexo.sensorUnit = unitOf;
+
   function formatSensorValue(value, unit = '') {
     if (!Number.isFinite(value)) return '—';
+    if (unit === 'GB') return formatBytes(value * 1024 ** 3);
+    if (unit === 'MB') return formatBytes(value * 1024 ** 2);
     // Porcentagem e temperatura com uma casa no máximo ("8,3 %", não "8,28 %"); tensões e afins precisam de mais.
     const coarse = unit === '%' || unit === '°C';
     const digits = Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 || coarse ? 1 : 2;
@@ -85,10 +94,10 @@
       const temp = sensor.type === 'Temperature';
       const noAccess = temp && sensor.value !== null && sensor.value <= 0;
       // 0 °C de mínimo/máximo é "ainda sem leitura" (o coletor começa em zero), não uma temperatura de verdade.
-      const extreme = (value) => (value === null || value === undefined || (temp && value <= 0) ? '—' : formatSensorValue(value, sensor.unit));
+      const extreme = (value) => (value === null || value === undefined || (temp && value <= 0) ? '—' : formatSensorValue(value, unitOf(sensor)));
       // Limites do fabricante (NVMe "Warning/Critical Temperature") são fixos: sem mínimo e máximo.
-      if (isLimit(sensor)) return [formatSensorValue(sensor.value, sensor.unit), '—', '—'];
-      return [sensor.value === null ? 'Indisponível' : noAccess ? 'Sem acesso ao sensor' : formatSensorValue(sensor.value, sensor.unit), extreme(sensor.min), extreme(sensor.max)];
+      if (isLimit(sensor)) return [formatSensorValue(sensor.value, unitOf(sensor)), '—', '—'];
+      return [sensor.value === null ? 'Indisponível' : noAccess ? 'Sem acesso ao sensor' : formatSensorValue(sensor.value, unitOf(sensor)), extreme(sensor.min), extreme(sensor.max)];
     };
     // Com leituras a cada 2 s, reconstruir centenas de linhas travaria a rolagem: se a estrutura é a mesma,
     // só os números mudam (o resto da tabela, a rolagem e a seleção ficam intactos).
@@ -211,7 +220,7 @@
     for (const device of Nexo.state.sensors?.devices || []) {
       for (const sensor of device.sensors || []) {
         rows.push([device.path || device.name, sensorTypeLabels[device.type] || device.type, sensor.name,
-          sensorMetricLabels[sensor.type] || sensor.type, csvNumber(sensor.value), sensor.unit || '', csvNumber(sensor.min), csvNumber(sensor.max), sensor.advanced ? 'Sim' : 'Não']);
+          sensorMetricLabels[sensor.type] || sensor.type, csvNumber(sensor.value), unitOf(sensor), csvNumber(sensor.min), csvNumber(sensor.max), sensor.advanced ? 'Sim' : 'Não']);
       }
     }
     if (rows.length === 1) {
