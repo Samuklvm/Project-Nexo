@@ -7,7 +7,6 @@
   const bridge = desktopBridge;
   if (!bridge?.cloudStatus) return;
   const body = () => document.getElementById('cloud-sync-body');
-  const USAGE_KEY = 'nexo-usage-day';
   const POLICY = 'O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera a telemetria apenas uma vez por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo.';
   const view = { status: null, account: null, devices: null, busy: false };
   const when = (at) => (at ? new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--');
@@ -18,11 +17,19 @@
   const SECTIONS = {
     preferencias: {
       // A limpeza automática não viaja: ela apaga arquivos, então cada PC confirma a sua.
-      label: 'Preferências', hint: 'efeitos visuais, velocidade das leituras, bandeja, sessões automáticas e capas online',
-      collect: () => ({ effects: lsGet(Nexo.keys.effects), liveRate: lsGet('nexo-live-rate') }),
+      label: 'Preferências', hint: 'efeitos visuais, cor de destaque, céu vivo, velocidade das leituras, bandeja, sessões automáticas e capas online',
+      collect: () => ({ effects: lsGet(Nexo.keys.effects), liveRate: lsGet('nexo-live-rate'), accent: lsGet('nexo-accent'), skyHour: lsGet('nexo-sky-hour'), sky: Nexo.sky?.prefs?.() || null }),
       apply: (data) => {
         if (['lite', 'full'].includes(data?.effects)) Nexo.setEffects?.(data.effects);
         if (['realtime', 'balanced', 'eco'].includes(data?.liveRate)) Nexo.setLiveRate?.(data.liveRate);
+        if (typeof data?.accent === 'string' && Nexo.accents?.some((item) => item.id === data.accent)) Nexo.setAccent?.(data.accent);
+        if (['on', 'off'].includes(data?.skyHour)) Nexo.setSkyHour?.(data.skyHour === 'on');
+        if (data?.sky && typeof data.sky === 'object') {
+          const patch = {};
+          for (const key of ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor']) if (typeof data.sky[key] === 'boolean') patch[key] = data.sky[key];
+          if (['pouco', 'normal', 'muito'].includes(data.sky.density)) patch.density = data.sky.density;
+          if (Object.keys(patch).length) { Nexo.sky?.set?.(patch); Nexo.renderSkySettings?.(); }
+        }
       }
     },
     perfil: {
@@ -66,32 +73,25 @@
     return out;
   }
 
-  /* ---------- Uso do dia (para a telemetria; fica só aqui até a pessoa ligar) ---------- */
-  const today = () => new Date().toISOString().slice(0, 10);
-  function usage() {
-    const stored = readJSON(USAGE_KEY, null);
-    return stored && stored.day === today() ? stored : { day: today(), views: {}, features: {} };
-  }
-  function bump(kind, key, allowed = null) {
-    const current = usage();
-    let slug = String(key).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 39);
-    if (allowed && !allowed.has(slug)) slug = 'outro';
-    if (!slug) return;
-    current[kind][slug] = (current[kind][slug] || 0) + 1;
-    writeJSON(USAGE_KEY, current);
-  }
-  // Só nomes fixos entram na contagem: as telas do app e os recursos desta lista (nunca o detalhe de uma atividade).
-  const VIEWS = new Set(['home', 'analysis', 'hardware', 'maintenance', 'optimize', 'sessions', 'library', 'atlas', 'lab', 'activity', 'settings', 'updates']);
-  const FEATURES = new Set(['analise-inteligente', 'verificacao-sfc', 'limpeza-automatica', 'raio-x-do-pc', 'experimento-de-energia', 'teste-com-reinicio', 'sincronizacao', 'plano-de-energia', 'leitura-completa-de-sensores',
-    'sessao-de-risco-laboratorio', 'sessao-de-observacao', 'jogo-aberto', 'instalacao-pedida', 'papel-de-parede', 'conta-google-conectada', 'dados-locais', 'limpeza-segura', 'otimizacao-de-unidade', 'acesso-ao-fps-liberado']);
-  Nexo.on('view', (name) => bump('views', name, VIEWS));
-  const original = window.recordActivity;
-  if (typeof original === 'function') window.recordActivity = function counted(title, detail) { bump('features', title, FEATURES); return original.call(this, title, detail); };
-
+  /* ---------- Telemetria: o resumo de cada dia sai uma vez, depois que o dia acaba (src/telemetry.js monta) ---------- */
+  let sending = false;
   async function sendTelemetry() {
-    if (!view.status?.telemetry) return;
-    const current = usage();
-    await bridge.cloudTelemetry({ views: current.views, features: current.features, liveRate: Nexo.liveRate, profile: Nexo.profile?.id || null }).catch(() => {});
+    const t = Nexo.telemetry;
+    if (!t || sending || !view.status?.configured) return;
+    sending = true;
+    try {
+      for (const day of t.pending()) {
+        // Desligada: o dia fica de fora de vez (o que foi juntado sem a sua permissão nunca sai depois).
+        // Mais de 6 dias: o servidor já não aceita.
+        if (!view.status?.telemetry || day < t.dayOf(Date.now() - 6 * 86400000)) { t.markSent(day); continue; }
+        const data = t.summary(day);
+        if (!data) { t.markSent(day); continue; }
+        const result = await bridge.cloudTelemetry({ day, data });
+        if (result?.sent || result?.already || result?.old) t.markSent(day);
+        else break;
+      }
+    } catch { /* sem internet ou servidor fora: tenta de novo mais tarde */ }
+    finally { sending = false; }
   }
   async function pushNow({ quiet = true } = {}) {
     if (!view.status?.connected || !view.status?.sync) return;
@@ -233,6 +233,7 @@
     setTimeout(sendTelemetry, 60000);
     setTimeout(() => pushNow(), 90000);
   });
-  setInterval(sendTelemetry, 3 * 3600 * 1000);
+  // De hora em hora: o dia (em UTC) que acabou sai logo, mesmo com o Nexo aberto o tempo todo na bandeja.
+  setInterval(sendTelemetry, 3600 * 1000);
   setInterval(() => pushNow(), 30 * 60 * 1000);
 })();

@@ -46,9 +46,9 @@ test('saída do console do Windows: UTF-8 ou CP850, sem "�"', () => {
 });
 
 test('telemetria: todo título de atividade está na lista fixa de recursos (o resto vira "outro")', () => {
-  const cloud = fs.readFileSync(path.join(root, 'src', 'view-cloud.js'), 'utf8');
+  const cloud = fs.readFileSync(path.join(root, 'src', 'telemetry.js'), 'utf8');
   const list = cloud.match(/const FEATURES = new Set\(\[([^\]]+)\]\)/);
-  assert.ok(list, 'lista FEATURES em src/view-cloud.js');
+  assert.ok(list, 'lista FEATURES em src/telemetry.js');
   const features = new Set([...list[1].matchAll(/'([a-z0-9-]+)'/g)].map((match) => match[1]));
   const slug = (value) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 39);
   const titles = new Set();
@@ -68,4 +68,15 @@ test('instalador: todo arquivo que o index.html carrega entra no pacote', () => 
   const refs = [...html.matchAll(/<(?:script|link)[^>]+(?:src|href)="([^"]+)"/g)].map((match) => match[1]).filter((ref) => !/^(https?:|data:|#)/.test(ref));
   assert.ok(refs.length > 30);
   for (const ref of refs) assert.ok(covered(ref), `${ref} não está em build.files do package.json (ficaria fora do instalador)`);
+});
+
+test('animações: nada decorativo roda em loop de CSS (tudo anda no relógio único, a 30 quadros)', () => {
+  // Animação de CSS infinita roda na taxa do monitor (até 144 Hz) e faz a placa de vídeo refazer o desfoque dos
+  // painéis de vidro a cada quadro. Só ficam as que aparecem em estados curtos: carregando, gravando, sessão de risco,
+  // janela de novidades e o céu de estado vazio.
+  const allowed = new Set(['spin', 'shimmer', 'twinkle', 'recpulse', 'riskPulse', 'nvTwinkle', 'nvFloat']);
+  for (const file of ['style.css', 'theme.css']) {
+    const css = fs.readFileSync(path.join(root, file), 'utf8');
+    for (const match of css.matchAll(/animation:\s*([A-Za-z-]+)[^;}]*\binfinite\b/g)) assert.ok(allowed.has(match[1]), `${file}: "${match[1]}" em loop infinito`);
+  }
 });

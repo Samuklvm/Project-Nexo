@@ -243,7 +243,7 @@ test('servidor do Nexo: canais registrados, tudo desligado por padrão e nada sa
   const status = await call('cloud:status');
   assert.equal(status.configured, true);
   for (const key of ['sync', 'telemetry', 'errors', 'connected', 'asked']) assert.equal(status[key], false, key);
-  assert.deepEqual(await call('cloud:telemetry', { views: { home: 1 } }), { skipped: true }, 'telemetria desligada não sai');
+  assert.deepEqual(await call('cloud:telemetry', { day: '2026-01-01', data: { usage: { views: { home: 1 } } } }), { skipped: true }, 'telemetria desligada não sai');
   assert.deepEqual(await call('cloud:send-errors'), { skipped: true }, 'relatórios desligados não saem');
   assert.equal((await call('cloud:set', { sync: true, extra: 'x' })).sync, false, 'sincronização só liga conectando');
   await assert.rejects(call('cloud:push', 'não é objeto'), /Nada para sincronizar/);
@@ -253,7 +253,7 @@ test('servidor do Nexo: canais registrados, tudo desligado por padrão e nada sa
   assert.equal(netCalls.length, before, 'nenhum pedido ao servidor');
   // Ligada, a telemetria vai para o endereço do servidor (e um erro do servidor não derruba nada).
   await call('cloud:set', { telemetry: true });
-  await assert.rejects(call('cloud:telemetry', { views: { home: 1 } }), /503/);
+  await assert.rejects(call('cloud:telemetry', { day: new Date().toISOString().slice(0, 10), data: { usage: { views: { home: 1 } } } }), /503/);
   assert.equal(netCalls.at(-1), `${shipped}/v1/telemetry`);
   await call('cloud:set', { telemetry: false });
 });

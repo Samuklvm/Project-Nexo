@@ -7,8 +7,9 @@
   const go = (view) => () => { Nexo.go(view); };
   const winSettings = (page) => async () => { await bridge.openWindowsSettings(page); };
   const facts = (c) => c.src('facts');
-  const topCpu = (c) => (c.src('processes')?.byCpu || []).filter((p) => !/^(idle|system|nexo.*|powershell|pwsh|conhost|registry)$/i.test(p.name));
-  const topMem = (c) => (c.src('processes')?.byMemory || []).filter((p) => !/^(idle|system|memory compression|nexo.*|registry)$/i.test(p.name));
+  // Por programa (processos de mesmo nome somados): o Claude ou o Chrome não aparecem três vezes na mesma lista.
+  const topCpu = (c) => H.programs(c.src('processes'), 'cpu').filter((p) => !/^(idle|system|nexo.*|powershell|pwsh|conhost|registry)$/i.test(p.name));
+  const topMem = (c) => H.programs(c.src('processes'), 'memory').filter((p) => !/^(idle|system|memory compression|nexo.*|registry)$/i.test(p.name));
   const lastActivity = (c, re) => c.activity.filter((a) => re.test(a.title)).sort((a, b) => b.timestamp - a.timestamp)[0] || null;
 
   /* ======================= Otimização ======================= */
@@ -73,7 +74,7 @@
     { id: 'horario', icon: 'clock', title: 'Horário em que você mais joga', compute: (c) => { if (c.sessions.length < 2) return null; const top = H.count(c.sessions, (s) => new Date(s.startedAt).getHours())[0]; return { value: `${String(top[0]).padStart(2, '0')}h`, text: true, detail: `${H.plural(top[1], 'sessão começou', 'sessões começaram')} nesse horário` }; } },
     { id: 'dia', icon: 'calendar', title: 'Dia favorito', compute: (c) => { if (c.sessions.length < 2) return null; const top = H.count(c.sessions, (s) => new Date(s.startedAt).getDay())[0]; return { value: H.weekday(top[0]), detail: H.plural(top[1], 'sessão', 'sessões') }; } },
     { id: 'fps-evolucao', icon: 'chart', title: 'FPS ao longo das sessões', empty: 'Sem FPS', compute: (c) => { const v = withFps(c).reverse().map((s) => s.report.fps.avgFps); if (v.length < 2) return null; return { value: H.nf(v[v.length - 1]), unit: 'FPS', detail: `de ${H.nf(v[0])} na primeira medição guardada`, spark: v }; } },
-    { id: 'mesmo-jogo', icon: 'target', title: 'Mesmo jogo, antes e agora', empty: 'Sem par', emptyDetail: 'Precisa de duas sessões com FPS do mesmo jogo.', compute: (c) => { const l = withFps(c); for (const s of l) { const prev = l.find((x) => x !== s && gameOf(x) === gameOf(s)); if (prev) { const d = ((s.report.fps.avgFps - prev.report.fps.avgFps) / prev.report.fps.avgFps) * 100; return { value: `${d >= 0 ? '+' : ''}${H.nf(d, 1)}`, unit: '%', detail: `${gameOf(s)}: ${H.nf(prev.report.fps.avgFps)} → ${H.nf(s.report.fps.avgFps)} FPS`, tone: d < -5 ? 'warn' : 'good' }; } } return null; } },
+    { id: 'mesmo-jogo', icon: 'target', title: 'Mesmo jogo, antes e agora', empty: 'Sem par', emptyDetail: 'Precisa de duas sessões com FPS do mesmo jogo.', compute: (c) => { const l = withFps(c); for (const s of l) { const prev = l.find((x) => x !== s && gameOf(x) === gameOf(s)); if (prev) { const d = ((s.report.fps.avgFps - prev.report.fps.avgFps) / prev.report.fps.avgFps) * 100; return { value: `${H.signed(d, 1)}`, unit: '%', detail: `${gameOf(s)}: ${H.nf(prev.report.fps.avgFps)} → ${H.nf(s.report.fps.avgFps)} FPS`, tone: d < -5 ? 'warn' : 'good' }; } } return null; } },
     { id: 'custo-medicao', icon: 'leaf', title: 'Custo da medição', compute: (c) => { const v = H.vals(c.sessions, (s) => s.report?.overhead?.cpuAvg); return v.length ? { value: H.nf(H.avg(v), 1), unit: '% CPU', detail: 'quanto o próprio Nexo gastou medindo' } : null; } },
     { id: 'perfis-usados', icon: 'user', title: 'Perfis nas sessões', compute: (c) => { const l = H.count(c.sessions, (s) => s.profile); return l.length ? { value: H.plural(l.length, 'perfil', 'perfis'), text: true, list: l.map(([k, v]) => [NexoProfiles?.get?.(k)?.nome || k, v]) } : null; } },
     { id: 'presentmon', icon: 'chart', title: 'Medidor de FPS', needs: ['fps'], compute: (c) => { const f = c.src('fps'); return f ? { value: f.available ? 'Pronto' : 'Faltando', detail: f.available ? `${f.name || 'PresentMon'} disponível.` : 'Configure aqui nas Sessões.', tone: f.available ? 'good' : 'warn' } : null; } },

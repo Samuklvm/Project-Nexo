@@ -1,6 +1,6 @@
 /*
  * Céu vivo: estrelas que piscam, vagalumes que vagam (e chegam perto do mouse), estrelas cadentes e, às vezes,
- * uma chuva de meteoros. Um único canvas, no máximo 30 quadros por segundo, com brilhos pré-desenhados.
+ * uma chuva de meteoros. Um único canvas, no máximo 30 quadros por segundo (o relógio único de fx.js), com brilhos pré-desenhados.
  * Para sozinho com o app fora de foco, no modo Leve, com "menos movimento" do sistema e quando os efeitos
  * do céu são desligados em Ajustes. Se um quadro custar caro, o céu se ajusta e desenha menos coisas.
  */
@@ -24,7 +24,7 @@
       Nexo.emit('sky', { ...prefs });
     },
     /** Chuva de meteoros agora (atalho e recurso de Ajustes). */
-    shower: () => { if (!still()) { shower(6); wake(); } },
+    shower: (auto = false) => { if (!still()) { shower(6); wake(); if (auto !== true) Nexo.emit('telemetry-ui', 'meteoros'); } },
     stats: () => ({ stars: stars.length, fireflies: flies.length, fps: Math.round(fps), budget: Math.round(scale * 100) })
   };
 
@@ -36,8 +36,6 @@
   let meteors = [];
   let scale = 1; // corte automático quando o quadro fica caro
   let running = false;
-  let last = 0;
-  let lastDraw = 0;
   let fps = 0;
   let costAvg = 0;
   let meteorTimer = null;
@@ -177,23 +175,38 @@
     context.globalAlpha = 1;
   }
 
-  function frame(time) {
-    if (still()) { running = false; drawStill(); return; }
-    const elapsed = time - lastDraw;
-    if (elapsed < 32) { requestAnimationFrame(frame); return; } // ~30 quadros por segundo bastam para o céu
-    const dt = Math.min(time - last, 100) / 16.7;
-    last = time;
-    lastDraw = time;
+  /*
+   * O que mais se mexe no app anda junto com o céu, no mesmo quadro: a aurora do fundo e o pontinho de
+   * "Monitoramento ativo". Antes eram animações de CSS na taxa do monitor (veja Nexo.clock em fx.js).
+   */
+  const auroraLayers = [...document.querySelectorAll('.aurora i')];
+  const AURORA = [{ period: 52000, to: [14, 9, 1.15] }, { period: 64000, to: [-12, 12, 0.9] }, { period: 70000, to: [10, -8, 1.2] }];
+  const pulseDot = document.querySelector('.status-pill .pulse');
+  function ambient(time) {
+    const vmax = Math.max(innerWidth, innerHeight) / 100;
+    auroraLayers.forEach((layer, i) => {
+      const a = AURORA[i];
+      if (!a) return;
+      const k = (1 - Math.cos((time / a.period) * Math.PI)) / 2; // vai e volta, devagar nas pontas
+      layer.style.transform = `translate3d(${(a.to[0] * vmax * k).toFixed(1)}px, ${(a.to[1] * vmax * k).toFixed(1)}px, 0) scale(${(1 + (a.to[2] - 1) * k).toFixed(4)})`;
+    });
+    if (pulseDot) pulseDot.style.setProperty('--pulse', (((time % 2400) / 2400) ** 0.8).toFixed(3));
+  }
+
+  function frame(time, elapsed) {
+    if (still()) { running = false; drawStill(); return false; }
+    const dt = Math.min(elapsed, 100) / 16.7;
     const start = performance.now();
     draw(time, dt);
+    ambient(time);
     const cost = performance.now() - start;
     costAvg = costAvg * 0.95 + cost * 0.05;
     fps = fps * 0.9 + (1000 / Math.max(elapsed, 1)) * 0.1;
     // Quadro caro (PC fraco ou janela enorme): desenha menos, sem travar o resto do app.
     if (costAvg > 5 && scale > 0.4) { scale = Math.max(0.4, scale - 0.15); costAvg = 0; build(); }
     const busy = stars.length || flies.length || meteors.length;
-    if (!busy) { running = false; return; }
-    requestAnimationFrame(frame);
+    if (!busy) { running = false; return false; }
+    return true;
   }
   /** Quadro parado (sem animação): só as estrelas, para o céu não ficar vazio no modo Leve ou com menos movimento. */
   function drawStill() {
@@ -206,8 +219,7 @@
     if (running) return;
     if (still()) { drawStill(); return; }
     running = true;
-    last = lastDraw = performance.now() - 40;
-    requestAnimationFrame(frame);
+    Nexo.clock.add(frame);
   }
 
   addEventListener('resize', () => { resize(); wake(); });

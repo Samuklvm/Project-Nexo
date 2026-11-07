@@ -46,19 +46,16 @@ body[data-tone="bad"] { --accent: #ff7a95; --accent-2: #ff5b7c; --aurora-1: rgba
   radial-gradient(130% 100% at 72% 38%, transparent 25%, rgba(4, 6, 20, 0.7) 100%); }
 .aurora { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 .aurora i { position: absolute; width: 68vmax; height: 68vmax; border-radius: 50%; will-change: transform; }
-.aurora i:nth-child(1) { left: -22vmax; top: -30vmax; background: radial-gradient(circle, var(--aurora-1), transparent 64%); animation: drift-a 52s ease-in-out infinite alternate; }
-.aurora i:nth-child(2) { right: -26vmax; top: 4vmax; background: radial-gradient(circle, var(--aurora-2), transparent 62%); animation: drift-b 64s ease-in-out infinite alternate; }
-.aurora i:nth-child(3) { left: 18vmax; bottom: -38vmax; background: radial-gradient(circle, var(--aurora-3), transparent 62%); animation: drift-c 70s ease-in-out infinite alternate; }
-@keyframes drift-a { to { transform: translate3d(14vmax, 9vmax, 0) scale(1.15); } }
-@keyframes drift-b { to { transform: translate3d(-12vmax, 12vmax, 0) scale(0.9); } }
-@keyframes drift-c { to { transform: translate3d(10vmax, -8vmax, 0) scale(1.2); } }
+.aurora i:nth-child(1) { left: -22vmax; top: -30vmax; background: radial-gradient(circle, var(--aurora-1), transparent 64%); }
+.aurora i:nth-child(2) { right: -26vmax; top: 4vmax; background: radial-gradient(circle, var(--aurora-2), transparent 62%); }
+.aurora i:nth-child(3) { left: 18vmax; bottom: -38vmax; background: radial-gradient(circle, var(--aurora-3), transparent 62%); }
+/* A aurora anda pelo relógio do céu (src/sky.js), a no máximo 30 quadros por segundo: nada de animação de CSS aqui. */
 .sky canvas { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; }
 .sky::after { content: ""; position: absolute; inset: 0; z-index: 4; pointer-events: none; opacity: 0.05; mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
-body.lite .sky canvas, body.lite .aurora i { animation: none; }
 body.lite .sky canvas { display: none; }
 body.lite .sky-art { transform: scale(1.02); }
-@media (prefers-reduced-motion: reduce) { .aurora i { animation: none; } .sky-art { transform: scale(1.02); } }
+@media (prefers-reduced-motion: reduce) { .sky-art { transform: scale(1.02); } }
 
 /* ---------- Estrutura ---------- */
 .app { position: relative; z-index: 1; height: 100vh; padding-left: var(--rail-w); display: grid; grid-template-rows: 48px 1fr; min-width: 0; }
@@ -67,8 +64,9 @@ body.lite .sky-art { transform: scale(1.02); }
 .page-title { font-size: 15px; font-weight: 600; letter-spacing: 0.01em; }
 .bar-spacer { flex: 1; }
 .status-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; background: rgba(10, 16, 44, 0.55); border: 1px solid var(--hair); color: var(--mist); font-size: 12.5px; }
-.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 0 rgba(110, 242, 194, 0.6); animation: pulse 2.4s infinite; }
-@keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(110, 242, 194, 0); } 100% { box-shadow: 0 0 0 0 rgba(110, 242, 194, 0); } }
+.pulse { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+/* O anel do pontinho cresce pelo relógio do céu (--pulse de 0 a 1); parado, ele some. */
+.pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; transform: scale(calc(1 + var(--pulse, 1) * 1.6)); opacity: calc(0.55 * (1 - var(--pulse, 1))); }
 .bar-button { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px 0 10px; border-radius: 10px; border: 1px solid var(--hair); background: rgba(10, 16, 44, 0.55); color: var(--mist); font-size: 12.5px; }
 .bar-button svg { width: 15px; height: 15px; }
 .bar-button kbd { font: 11px var(--font); padding: 1px 6px; border-radius: 6px; background: rgba(150, 175, 255, 0.12); color: var(--mist); }
@@ -449,7 +447,7 @@ body.lite .sheet::before, body.lite .sheet::after { display: none; }
 .btn.primary:hover:not(:disabled)::after { transform: translateX(130%); }
 
 /* Anel de saúde: marcas, órbita e brilho por tom */
-.ring-orbit { fill: none; stroke: color-mix(in srgb, var(--ring) 22%, transparent); stroke-width: 1; stroke-dasharray: 2 7; transform-origin: 120px 120px; animation: spin 120s linear infinite; }
+.ring-orbit { fill: none; stroke: color-mix(in srgb, var(--ring) 22%, transparent); stroke-width: 1; stroke-dasharray: 2 7; transform-origin: 120px 120px; } /* gira pelo relógio do mapa (src/orbit.js) */
 @keyframes spin { to { transform: rotate(360deg); } }
 .tick { stroke: rgba(150, 175, 255, 0.22); stroke-width: 1.4; stroke-linecap: round; transition: stroke 0.5s, opacity 0.5s; }
 .tick.major { stroke: rgba(150, 175, 255, 0.4); stroke-width: 2; }
@@ -457,7 +455,6 @@ body.lite .sheet::before, body.lite .sheet::after { display: none; }
 .tick.major.on { opacity: 1; }
 .health[data-tone="good"] { --ring: var(--accent); }
 .health { filter: drop-shadow(0 12px 40px color-mix(in srgb, var(--ring) 18%, transparent)); }
-body.lite .ring-orbit { animation: none; }
 
 /* Observações: ícone de severidade */
 .insight-head { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
@@ -629,8 +626,8 @@ table.exp small { color: var(--mist); font-size: 11px; margin-left: 2px; }
 .risk-banner i { width: 8px; height: 8px; border-radius: 50%; background: var(--risk); animation: riskPulse 1.2s infinite; }
 @keyframes riskPulse { 0% { box-shadow: 0 0 0 0 rgba(255, 91, 110, 0.7); } 80%, 100% { box-shadow: 0 0 0 8px rgba(255, 91, 110, 0); } }
 body.risk-session { --accent: #ff7a95; --aurora-1: rgba(255, 70, 100, 0.3); --aurora-2: rgba(255, 160, 80, 0.16); --aurora-3: rgba(190, 60, 120, 0.2); }
-body.risk-session .app::after { content: ""; position: fixed; inset: 0; z-index: 50; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(255, 91, 110, 0.55), inset 0 0 80px rgba(255, 60, 90, 0.18); animation: riskFrame 2.4s ease-in-out infinite; }
-@keyframes riskFrame { 50% { box-shadow: inset 0 0 0 2px rgba(255, 91, 110, 0.25), inset 0 0 40px rgba(255, 60, 90, 0.08); } }
+/* Moldura fixa: piscando, ela redesenhava a tela inteira a cada quadro justo enquanto o laboratório mede. */
+body.risk-session .app::after { content: ""; position: fixed; inset: 0; z-index: 50; pointer-events: none; box-shadow: inset 0 0 0 2px rgba(255, 91, 110, 0.5), inset 0 0 60px rgba(255, 60, 90, 0.14); }
 .rail-risk svg { color: #ff9aa9; filter: drop-shadow(0 0 6px rgba(255, 91, 110, 0.5)); }
 .rail-label em { font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 91, 110, 0.2); color: #ffb3bf; }
 .badge { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; }
@@ -642,8 +639,7 @@ body.risk-session .app::after { content: ""; position: fixed; inset: 0; z-index:
 .lib-view { --card-w: 172px; }
 .lib-hero { position: relative; display: flex; align-items: flex-end; min-height: 360px; margin: 10px 0 14px; border-radius: 30px; overflow: hidden; border: 1px solid rgba(150, 175, 255, 0.2); box-shadow: 0 34px 90px rgba(0, 0, 10, 0.5); isolation: isolate; background: #0b1130; }
 .lib-hero-art { position: absolute; inset: 0; z-index: -1; }
-.lib-hero-art .hero-wide { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; animation: heroDrift 26s ease-in-out infinite alternate; }
-@keyframes heroDrift { from { transform: scale(1.04); } to { transform: scale(1.1) translateX(-1.5%); } }
+.lib-hero-art .hero-wide { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; transform: scale(1.04); will-change: transform; } /* o zoom lento anda pelo relógio único (src/fx.js) */
 .lib-hero-art .hero-bg { position: absolute; inset: -40px; width: calc(100% + 80px); height: calc(100% + 80px); object-fit: cover; filter: blur(30px) saturate(1.4) brightness(0.7); }
 .lib-hero-art .hero-cover { position: absolute; z-index: 1; right: 52px; top: 50%; height: 270px; aspect-ratio: 2 / 3; border-radius: 16px; overflow: hidden; transform: translateY(-50%) perspective(900px) rotateY(-14deg) rotateZ(1.5deg); box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 50px rgba(90, 215, 255, 0.25); transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
 .lib-hero-art .hero-cover img { width: 100%; height: 100%; object-fit: cover; }
@@ -747,8 +743,9 @@ body.risk-session .app::after { content: ""; position: fixed; inset: 0; z-index:
 
 /* ---------- Otimização extrema (beta) ---------- */
 .hazard { position: relative; margin: 10px 0 18px; border-radius: 26px; overflow: hidden; border: 1px solid rgba(255, 91, 110, 0.45); background: radial-gradient(120% 140% at 0% 0%, rgba(255, 91, 110, 0.22), transparent 55%), radial-gradient(90% 120% at 100% 100%, rgba(255, 196, 107, 0.12), transparent 60%), linear-gradient(180deg, rgba(30, 10, 28, 0.82), rgba(12, 8, 26, 0.86)); backdrop-filter: blur(20px); box-shadow: 0 0 60px rgba(255, 60, 90, 0.18), 0 30px 70px rgba(0, 0, 10, 0.45); }
-.hazard-tape { height: 12px; background: repeating-linear-gradient(-45deg, var(--tape-a) 0 16px, var(--tape-b) 16px 32px); opacity: 0.9; animation: tape 1.6s linear infinite; background-size: 45.25px 100%; }
-@keyframes tape { to { background-position: 45.25px 0; } }
+/* A faixa anda pelo relógio único (src/fx.js): o deslocamento entra por --tape e só a camada da faixa se move. */
+.hazard-tape { position: relative; height: 12px; overflow: hidden; opacity: 0.9; }
+.hazard-tape::before { content: ""; position: absolute; inset: 0 0 0 -46px; background: repeating-linear-gradient(-45deg, var(--tape-a) 0 16px, var(--tape-b) 16px 32px); background-size: 45.25px 100%; transform: translate3d(var(--tape, 0px), 0, 0); will-change: transform; }
 .hazard-body { padding: 24px 30px 26px; }
 .hazard-badges { display: flex; gap: 8px; margin-bottom: 10px; }
 .hazard h2 { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; background: linear-gradient(90deg, #fff, #ffb3bf 60%, #ffcf4a); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -839,8 +836,7 @@ body.risk-session .app::after { content: ""; position: fixed; inset: 0; z-index:
   .atlas-stats { grid-template-columns: repeat(3, 1fr); }
   .lab-field { grid-template-columns: 1fr; gap: 6px; }
 }
-@media (prefers-reduced-motion: reduce) { .hazard-tape, .game-card, body.risk-session .app::after { animation: none; } }
-body.lite .hazard-tape { animation: none; }
+@media (prefers-reduced-motion: reduce) { .game-card { animation: none; } }
 td.nowrap, table.exp td:nth-child(2) { white-space: nowrap; }
 .checks li::before { content: none !important; } .modal .checks li { padding-left: 12px; }
 
@@ -892,7 +888,6 @@ p, .muted { text-wrap: pretty; }
 
 /* Leveza: janela sem foco ou escondida = nada de animação decorativa gastando GPU */
 body.idle *, body.idle *::before, body.idle *::after { animation-play-state: paused !important; }
-body.lite .lib-hero-art .hero-wide { animation: none; }
 body.lite .acc-chip, body.lite .gp-stats div, body.lite .src-badge, body.lite .fps-badge, body.lite .atlas-card, body.lite .atlas-stat, body.lite .hazard, body.lite .gp-back { backdrop-filter: none; }
 body.lite .game-card { animation: none; }
 body.lite .cover::after, body.lite .btn.primary::after { display: none; }
@@ -904,7 +899,7 @@ body.lite .lib-hero-art .hero-bg, body.lite .gp-backdrop img.blur, body.lite .ti
   .gp-head { grid-template-columns: 160px 1fr; }
   .gp-cover { width: 160px; }
 }
-@media (prefers-reduced-motion: reduce) { .lib-hero-art .hero-wide, .view.active { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .view.active { animation: none; } }
 .conn-card > .btn { justify-self: start; }
 
 /* ---------- Página do jogo completa (estilo loja) ---------- */

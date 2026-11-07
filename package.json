@@ -1,6 +1,6 @@
 {
   "name": "nexo-device-care",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "description": "Nexo Device Care: cuidado e otimização do seu PC (Windows e Linux), com análise local que aprende a sua rotina",
   "main": "main.cjs",
@@ -9,7 +9,7 @@
     "build:sensors": "dotnet publish sensor-host/Nexo.SensorHost.csproj -c Release -r win-x64 --self-contained true -o sensor-host/publish",
     "dist": "npm run build:sensors && electron-builder --win nsis",
     "release": "npm run build:sensors && electron-builder --win nsis --publish always",
-    "test": "node --test tests/brain.test.cjs tests/main-ipc.test.cjs tests/catalog-journal-experiment.test.cjs tests/session-fps.test.cjs tests/probe-fps-runner.test.cjs tests/lab.test.cjs tests/lab-system.test.cjs tests/library-account.test.cjs tests/connections.test.cjs tests/linux.test.cjs tests/release-notes.test.cjs tests/sensor-service.test.cjs tests/syntax.test.cjs tests/system-scan.test.cjs tests/reboot-test.test.cjs tests/fuzz.test.cjs tests/error-log.test.cjs tests/server.test.cjs tests/cloud.test.cjs tests/features.test.cjs",
+    "test": "node --test tests/brain.test.cjs tests/main-ipc.test.cjs tests/catalog-journal-experiment.test.cjs tests/session-fps.test.cjs tests/probe-fps-runner.test.cjs tests/lab.test.cjs tests/lab-system.test.cjs tests/library-account.test.cjs tests/connections.test.cjs tests/linux.test.cjs tests/release-notes.test.cjs tests/sensor-service.test.cjs tests/syntax.test.cjs tests/system-scan.test.cjs tests/reboot-test.test.cjs tests/fuzz.test.cjs tests/error-log.test.cjs tests/server.test.cjs tests/cloud.test.cjs tests/features.test.cjs tests/telemetry.test.cjs",
     "preview": "node dev/build-preview.cjs",
     "build:launcher": "npm --prefix installer-launcher install && npm --prefix installer-launcher run dist",
     "presentmon:hash": "node scripts/fetch-presentmon.cjs --print-hash",

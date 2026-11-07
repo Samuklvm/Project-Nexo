@@ -42,7 +42,7 @@ brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `net10.0` · LibreHardwareMonitorLib 0.9.6 · Node 20+ no CI (os testes foram rodados no Node 22). Windows 10/11 x64.
 
 ## 52.05 Estado dos testes
-`npm test` roda 20 arquivos, 219 testes, todos passando no Linux:
+`npm test` roda 21 arquivos, 226 testes, todos passando no Linux:
 
 - `linux.test.cjs` (9): montagens, `/proc/<pid>/stat`, powerprofilesctl, `.desktop`, xprop, detecção de jogos via Proton/Heroic, MangoHud em pedaços, laboratório com perfis de energia, biblioteca Steam+Heroic num HOME temporário, pkexec validado e leitura real do `/proc` e `/sys` desta máquina.
 - `brain.test.cjs` (8) e `catalog-journal-experiment.test.cjs` (13, incluindo os perfis).
@@ -56,7 +56,8 @@ Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `n
 - `fuzz.test.cjs` (7): milhares de entradas aleatórias com semente fixa contra o laboratório, o Raio-X (validação, reversão, script elevado) e o veredito do teste com reinício.
 - `error-log.test.cjs` (5): registro de erros local (limpeza de pastas e nome de usuário, agrupamento por assinatura, limite por hora, rotação).
 - `server.test.cjs` (13): servidor do Nexo (Cloudflare Worker) no Node, com D1 simulado em SQLite e um Google de teste: login só com id_token verdadeiro, sessões, sincronização cifrada e isolada por conta, erros agrupados com e-mail só da sessão, telemetria limpa, painel (link único, cookie, CSRF, papéis da equipe), chaves de ferramenta e limpeza diária.
-- `cloud.test.cjs` (7): o lado do app (`electron/cloud.cjs`) contra o servidor real em memória: nada sai sem ligar, cópia cifrada no banco, escolher o que trazer, outra conta não enxerga, sessão recusada desliga, erros só depois de ligar e sem nome de usuário, telemetria uma vez por dia e sem a conta.
+- `cloud.test.cjs` (8): o lado do app (`electron/cloud.cjs`) contra o servidor real em memória: nada sai sem ligar, cópia cifrada no banco, escolher o que trazer, outra conta não enxerga, sessão recusada desliga, erros só depois de ligar e sem nome de usuário, telemetria uma vez por dia e sem a conta, cada dia fechado sai uma vez com o próprio dia.
+- `telemetry.test.cjs` (4): o resumo do dia montado pela interface (`src/telemetry.js`) só com dias fechados, contagens do dia inteiro e nada pessoal; saúde dos recursos; diagnóstico do processo principal (`electron/diag.cjs`); e um dia cheio passa no servidor dentro do limite.
 - `features.test.cjs` (7): os recursos de cada tela num contexto isolado: pelo menos 30 por tela no Windows e no Linux, ids e ícones válidos, todo cálculo roda sem erro com o PC vazio e com um PC cheio de dados, e a versão atual tem notas na janela de novidades.
 - `connections.test.cjs` (12), `library-account.test.cjs` (20), `sensor-service.test.cjs` (5), `release-notes.test.cjs` (3) e `syntax.test.cjs` (7: todo script compila, nenhum carregado duas vezes, ordem de dependências, lista fixa de recursos da telemetria, todo arquivo da interface no instalador).
 

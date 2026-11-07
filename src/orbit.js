@@ -19,7 +19,7 @@
   let width = 0;
   let height = 0;
   function resize() {
-    const ratio = devicePixelRatio || 1;
+    const ratio = Math.min(devicePixelRatio || 1, 1.5); // nitidez de sobra sem multiplicar o tamanho do canvas em telas 4K
     const box = canvas.getBoundingClientRect();
     width = Math.max(1, Math.round(box.width));
     height = Math.max(1, Math.round(box.height));
@@ -57,6 +57,12 @@
     }
   }
 
+  /* Cor de destaque lida uma vez por mudança de tom ou de cor (ler o estilo a cada quadro forçava recálculo). */
+  let toneCache = null;
+  const accent = () => (toneCache ||= getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#5ad7ff');
+  new MutationObserver(() => { toneCache = null; }).observe(document.body, { attributes: true, attributeFilter: ['data-tone', 'style', 'class'] });
+  const ring = document.querySelector('.ring-orbit');
+
   function draw(time, delta) {
     context.clearRect(0, 0, width, height);
     const palette = Nexo.charts.palette();
@@ -64,7 +70,7 @@
     const cy = height / 2;
     const rx = width / 2 - 34;
     const ry = height / 2 - 18;
-    const tone = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#5ad7ff';
+    const tone = accent();
 
     context.lineWidth = 1;
     context.strokeStyle = 'rgba(150, 190, 255, 0.24)';
@@ -125,25 +131,27 @@
     placed.filter((item) => item.front).forEach(paint);
   }
 
-  let last = 0;
   let running = false;
-  const visible = () => Nexo.state.view === 'home' && !document.hidden;
-  function frame(now) {
-    if (!visible() || Nexo.effectsLite || matchMedia('(prefers-reduced-motion: reduce)').matches) { running = false; return; }
-    requestAnimationFrame(frame);
-    if (now - last < 32) return; // ~30 quadros por segundo bastam e poupam CPU/GPU
-    const delta = Math.min(now - last, 100);
-    last = now;
-    draw(now, delta);
+  // Janela sem foco (outro app na frente, um jogo no outro monitor) também para o mapa: antes ele seguia girando.
+  const visible = () => Nexo.state.view === 'home' && !document.hidden && !Nexo.isIdle?.();
+  const quiet = () => Nexo.effectsLite || matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* Anda no relógio único (fx.js), no mesmo quadro do céu: 30 por segundo no máximo. O anel da nota gira junto. */
+  function frame(now, elapsed) {
+    if (!visible() || quiet()) { running = false; return false; }
+    draw(now, Math.min(elapsed, 100));
+    if (ring) ring.style.transform = `rotate(${((now / 120000) * 360 % 360).toFixed(2)}deg)`;
+    return true;
   }
   function start() {
     resize();
-    if (Nexo.effectsLite || matchMedia('(prefers-reduced-motion: reduce)').matches) { draw(performance.now(), 0); return; }
-    if (!running && visible()) { running = true; last = performance.now(); requestAnimationFrame(frame); }
+    if (quiet()) { draw(performance.now(), 0); return; }
+    if (!running && visible()) { running = true; Nexo.clock.add(frame); }
   }
 
   Nexo.on('snapshot', () => { readValues(); if (!running && visible()) start(); });
   Nexo.on('view', (view) => { if (view === 'home') start(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) start(); });
+  Nexo.on('idle', (idle) => { if (!idle) start(); });
+  Nexo.on('effects', () => { if (Nexo.state.view === 'home') start(); });
   addEventListener('resize', () => { if (visible()) start(); });
 })();

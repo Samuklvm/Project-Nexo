@@ -14,7 +14,7 @@ O que cada parte guarda, por quanto tempo e como apagar está em [PRIVACIDADE.md
 
 ## Plano gratuito
 
-O plano grátis da Cloudflare dá 100 mil pedidos por dia, 10 ms de CPU por pedido e 5 GB no D1. O app faz poucos pedidos por PC: telemetria uma vez por dia, erros só quando há erro novo (no máximo a cada 30 min) e uma cópia da sincronização a cada 30 min, se ligada.
+O plano grátis da Cloudflare dá 100 mil pedidos por dia, 10 ms de CPU por pedido e 5 GB no D1. O app faz poucos pedidos por PC: telemetria: um resumo por dia, erros só quando há erro novo (no máximo a cada 30 min) e uma cópia da sincronização a cada 30 min, se ligada.
 
 ## Testar sem a Cloudflare
 

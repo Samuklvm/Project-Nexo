@@ -190,7 +190,7 @@ internal sealed class SensorReader : IDisposable
         SensorType.Temperature => "°C", SensorType.Voltage => "V", SensorType.Current => "A", SensorType.Power => "W",
         SensorType.Clock => "MHz", SensorType.Frequency => "Hz",
         SensorType.Load or SensorType.Control or SensorType.Level or SensorType.Humidity => "%",
-        SensorType.Fan => "RPM", SensorType.Flow => "L/h", SensorType.Data => "B", SensorType.Throughput => "B/s",
+        SensorType.Fan => "RPM", SensorType.Flow => "L/h", SensorType.Data => "GB", SensorType.SmallData => "MB", SensorType.Throughput => "B/s",
         SensorType.TimeSpan => "s", SensorType.Timing => "ns", SensorType.Energy => "mWh", SensorType.Noise => "dBA",
         SensorType.Conductivity => "µS/cm", _ => ""
     };

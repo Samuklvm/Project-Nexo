@@ -12,7 +12,7 @@ export const PLATFORMS = new Set(['win32', 'linux', 'darwin']);
 export const SOURCES = new Set(['principal', 'interface', 'ipc', 'servico', 'processo']);
 export const LEVELS = new Set(['erro', 'aviso']);
 export const STATUSES = new Set(['aberto', 'corrigido', 'ignorado', 'reaberto']);
-export const TELEMETRY_KEYS = new Set(['hw', 'usage', 'features', 'lab', 'perf', 'settings']);
+export const TELEMETRY_KEYS = new Set(['hw', 'usage', 'features', 'lab', 'perf', 'settings', 'app', 'health', 'library', 'sensors', 'system', 'diag', 'feats']);
 
 export const LIMITS = {
   body: 1_600_000,       // corpo de qualquer pedido
@@ -23,7 +23,7 @@ export const LIMITS = {
   message: 600,
   stack: 4000,
   context: 1500,
-  telemetry: 8192
+  telemetry: 16384
 };
 
 export const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');

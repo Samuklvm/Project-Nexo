@@ -16,7 +16,23 @@
   const fin = Number.isFinite;
   const H = {
     fin,
-    nf: (value, digits = 0) => (fin(value) ? Number(value).toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '--'),
+    // Arredonda antes de formatar: -0,04 vira "0,0", nunca "-0,0".
+    nf: (value, digits = 0) => { if (!fin(value)) return '--'; let v = Number(Number(value).toFixed(digits)); if (v === 0) v = 0; return v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }); },
+    /** Programas (processos de mesmo nome somados), do serviço se ele já mandar, senão agrupados aqui. */
+    programs(result, by = 'cpu') {
+      const ready = by === 'cpu' ? result?.programsByCpu : result?.programsByMemory;
+      if (Array.isArray(ready) && ready.length) return ready;
+      const map = new Map();
+      for (const p of (by === 'cpu' ? result?.byCpu : result?.byMemory) || []) {
+        const key = String(p.name || '').toLowerCase();
+        const g = map.get(key) || { name: p.name, cpuPercent: 0, memoryBytes: 0, count: 0 };
+        g.cpuPercent += fin(p.cpuPercent) ? p.cpuPercent : 0; g.memoryBytes += fin(p.memoryBytes) ? p.memoryBytes : 0; g.count += 1;
+        map.set(key, g);
+      }
+      return [...map.values()].sort((a, b) => (by === 'cpu' ? b.cpuPercent - a.cpuPercent : b.memoryBytes - a.memoryBytes));
+    },
+    /** Número com sinal: "+1,2", "-0,8" ou "0,0" (sem "+0,0" nem "-0,0"). */
+    signed: (value, digits = 0) => { if (!fin(value)) return '--'; const v = Number(Number(value).toFixed(digits)); return `${v > 0 ? '+' : ''}${H.nf(v, digits)}`; },
     bytes(value) {
       if (!fin(value) || value < 0) return '--';
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -95,6 +111,9 @@
     processes: { ttl: 45e3, load: () => bridge?.getTopProcesses?.().then((result) => { Nexo.state.processes = result; return result; }) }
   };
   const cache = {};
+  // Saúde dos recursos (para a telemetria, só números e ids do código): fontes que demoram ou falham,
+  // cartões que ficam sem dado e cartões cujo cálculo quebrou.
+  const health = { sources: {}, tiles: {}, crashed: new Set() };
   function source(name) {
     const spec = SOURCES[name];
     if (!spec) return undefined;
@@ -102,8 +121,10 @@
     const fresh = entry && Date.now() - entry.at < spec.ttl;
     if (!fresh && !entry?.loading && !Nexo.isIdle?.()) {
       cache[name] = { ...(entry || {}), loading: true, at: entry?.at || 0 };
-      Promise.resolve().then(() => spec.load()).then((value) => { cache[name] = { value, at: Date.now(), loading: false }; schedule(true); })
-        .catch((error) => { cache[name] = { value: entry?.value, error: String(error?.message || error), at: Date.now(), loading: false }; });
+      const started = performance.now();
+      const stat = health.sources[name] || (health.sources[name] = [0, 0, 0]); // certas, falhas, ms somados
+      Promise.resolve().then(() => spec.load()).then((value) => { stat[0] += 1; stat[2] += Math.round(performance.now() - started); cache[name] = { value, at: Date.now(), loading: false }; schedule(true); })
+        .catch((error) => { stat[1] += 1; stat[2] += Math.round(performance.now() - started); cache[name] = { value: entry?.value, error: String(error?.message || error), at: Date.now(), loading: false }; });
     }
     return entry?.value;
   }
@@ -212,6 +233,12 @@
   const pins = () => { try { const p = JSON.parse(localStorage.getItem(PIN_KEY) || '{}'); return p && typeof p === 'object' ? p : {}; } catch { return {}; } };
   const savePins = (value) => { try { localStorage.setItem(PIN_KEY, JSON.stringify(value)); } catch { /* só nesta sessão */ } };
   const filterOf = (view) => { try { return JSON.parse(localStorage.getItem(FILTER_KEY) || '{}')[view] || 'todos'; } catch { return 'todos'; } };
+  // Grupos da tela de recursos: cada um mostra duas linhas de cartões e guarda (por tela) quais estão abertos.
+  const GROUPS = [['leitura', 'Leituras', 'O que o Nexo mede agora e no seu histórico.'], ['ferramenta', 'Ferramentas', 'Atalhos para ver ou ajustar algo, sempre com confirmação.'], ['acao', 'Ações', 'Fazem algo na hora; quando mexem no PC, pedem confirmação antes.']];
+  const OPEN_KEY = 'nexo-feats-open';
+  const expandedOf = (view) => { try { const v = JSON.parse(localStorage.getItem(OPEN_KEY) || '{}')[view]; return Array.isArray(v) ? v : []; } catch { return []; } };
+  const saveExpanded = (view, value) => { try { const all = JSON.parse(localStorage.getItem(OPEN_KEY) || '{}'); all[view] = value; localStorage.setItem(OPEN_KEY, JSON.stringify(all)); } catch { /* só nesta sessão */ } };
+  const sectionOf = (view) => document.querySelector(`[data-feats="${view}"]`);
   const saveFilter = (view, value) => { try { const all = JSON.parse(localStorage.getItem(FILTER_KEY) || '{}'); all[view] = value; localStorage.setItem(FILTER_KEY, JSON.stringify(all)); } catch { /* só nesta sessão */ } };
   const search = {};
   const lastHtml = new WeakMap();
@@ -227,8 +254,10 @@
 
   function tileHtml(def, ctx, pinned) {
     let out;
-    try { out = def.compute(ctx); } catch (error) { console.error(`[recurso ${def.view}/${def.id}]`, error); out = null; }
+    try { out = def.compute(ctx); } catch (error) { console.error(`[recurso ${def.view}/${def.id}]`, error); out = null; health.crashed.add(`${def.view}.${def.id}`); }
     const empty = !out || out.value === undefined || out.value === null || out.value === '';
+    // Só conta como "sem dado" quando as fontes do cartão já responderam (carregando não é falta de dado).
+    if (!empty || !(def.needs || []).some((name) => !cache[name] || cache[name].loading)) health.tiles[`${def.view}.${def.id}`] = empty ? 0 : 1;
     const value = empty ? (def.empty || 'Ainda sem dados') : out.value;
     const isText = empty || out.text || (typeof value === 'string' && value.length > 9 && !out.unit);
     const tone = empty ? '' : out.tone || '';
@@ -237,7 +266,7 @@
     return `<article class="feat${pinned ? ' pinned' : ''}" data-id="${def.id}" data-kind="${def.kind}"${tone ? ` data-tone="${tone}"` : ''}${empty ? ' data-state="empty"' : ''}>
       <div class="feat-top"><span class="feat-icon">${icon(def.icon)}</span><span class="feat-title">${escapeHtml(def.title)}</span><button class="feat-pin" type="button" data-pin="${def.id}" aria-pressed="${pinned}" title="${pinned ? 'Desafixar' : 'Fixar no topo'}" aria-label="${pinned ? 'Desafixar' : 'Fixar'} ${escapeHtml(def.title)}">★</button></div>
       <div class="feat-value${isText ? ' text' : ''}">${escapeHtml(String(value))}${!empty && out.unit ? `<small>${escapeHtml(out.unit)}</small>` : ''}</div>
-      <div class="feat-body">${!empty && out.list?.length ? `<div class="feat-list">${out.list.slice(0, 4).map(([k, v]) => `<span><em>${escapeHtml(String(k))}</em><b>${escapeHtml(String(v))}</b></span>`).join('')}</div>` : ''}${!empty && out.spark ? sparkSvg(out.spark) : ''}${!empty && fin(out.bar) ? `<div class="feat-bar"><i style="width:${(H.clamp(out.bar, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}<div class="feat-detail">${escapeHtml(empty ? (def.emptyDetail || def.hint || '') : (out.detail || def.hint || ''))}</div></div>
+      <div class="feat-body">${!empty && out.spark ? sparkSvg(out.spark) : ''}${!empty && fin(out.bar) ? `<div class="feat-bar"><i style="width:${(H.clamp(out.bar, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}<div class="feat-detail">${escapeHtml(empty ? (def.emptyDetail || def.hint || '') : (out.detail || def.hint || ''))}</div>${!empty && out.list?.length ? `<div class="feat-list">${out.list.slice(0, 4).map(([k, v]) => `<span><em>${escapeHtml(String(k))}</em><b>${escapeHtml(String(v))}</b></span>`).join('')}</div>` : ''}</div>
       <div class="feat-foot"><span class="feat-kind">${KINDS[def.kind] || ''}</span>${def.action && !actionHidden ? `<button class="feat-action" type="button" data-act="${def.id}">${escapeHtml(actionLabel)}</button>` : ''}</div>
     </article>`;
   }
@@ -253,10 +282,12 @@
     section.innerHTML = `<header class="feats-head"><div><h2>Recursos ${VIEW_TITLE[view] || ''} <span class="feats-count"></span></h2><p>Leituras, ferramentas e atalhos desta tela. Fixe os seus favoritos com a estrela.</p></div>
       <div class="feats-tools"><div class="segmented sm" role="group" aria-label="Filtrar recursos">${[['todos', 'Todos'], ['leitura', 'Leituras'], ['ferramenta', 'Ferramentas'], ['acao', 'Ações'], ['fixados', 'Fixados']].map(([id, label]) => `<button type="button" data-filter="${id}" aria-pressed="false">${label}</button>`).join('')}</div>
       <input type="search" placeholder="Buscar recurso" aria-label="Buscar recurso" data-feat-search /></div></header>
-      <div class="feats-grid" role="list"></div>`;
+      <div class="feats-body"></div>`;
     panel.append(section);
     section.addEventListener('click', (event) => onClick(view, event));
     section.querySelector('[data-feat-search]').addEventListener('input', (event) => { search[view] = event.target.value.trim().toLowerCase(); render(view); });
+    // Para a telemetria conta só QUE houve uma busca (nunca o texto buscado).
+    section.querySelector('[data-feat-search]').addEventListener('change', () => Nexo.emit('feat-use', { kind: 'busca', view }));
     section.addEventListener('pointermove', (event) => {
       const tile = event.target.closest('.feat');
       if (!tile) return;
@@ -282,10 +313,33 @@
       .filter((def) => filter === 'todos' || (filter === 'fixados' ? pinned.includes(def.id) : def.kind === filter))
       .filter((def) => !query || `${def.title} ${def.hint || ''}`.toLowerCase().includes(query))
       .sort((a, b) => Number(pinned.includes(b.id)) - Number(pinned.includes(a.id)));
-    const grid = section.querySelector('.feats-grid');
-    const htmls = list.map((def) => tileHtml(def, ctx, pinned.includes(def.id)));
-    grid.innerHTML = list.length ? htmls.join('') : `<div class="feats-empty">${filter === 'fixados' ? 'Nenhum recurso fixado nesta tela. Passe o mouse num cartão e clique na estrela.' : 'Nenhum recurso com esse nome.'}</div>`;
-    [...grid.children].forEach((tile, i) => { if (htmls[i]) lastHtml.set(tile, htmls[i].trim()); });
+    const body = section.querySelector('.feats-body');
+    const htmlOf = new Map(list.map((def) => [def.id, tileHtml(def, ctx, pinned.includes(def.id)).trim()]));
+    const grid = (defs2) => `<div class="feats-grid" role="list">${defs2.map((def) => htmlOf.get(def.id)).join('')}</div>`;
+    if (!list.length) {
+      body.innerHTML = `<div class="feats-empty">${filter === 'fixados' ? 'Nenhum recurso fixado nesta tela. Passe o mouse num cartão e clique na estrela.' : 'Nenhum recurso com esse nome.'}</div>`;
+    } else if (filter !== 'todos' || query) {
+      // Filtro ou busca: tudo o que bate, numa grade só.
+      body.innerHTML = grid(list);
+    } else {
+      // Sem filtro: em grupos (fixados, leituras, ferramentas, ações), cada um mostrando 6 e o resto num "ver mais".
+      const open = expandedOf(view);
+      // Duas linhas cheias, quantas colunas couberem (3 numa tela comum, 4 numa larga).
+      const width = body.clientWidth || section.clientWidth;
+      const GROUP_LIMIT = width ? Math.max(2, Math.floor((width + 16) / (290 + 16))) * 2 : 6;
+      const groups = [['fixados', 'Fixados', 'Os seus favoritos desta tela.', list.filter((def) => pinned.includes(def.id))]]
+        .concat(GROUPS.map(([kind, title, text]) => [kind, title, text, list.filter((def) => def.kind === kind && !pinned.includes(def.id))]))
+        .filter(([, , , defs2]) => defs2.length);
+      body.innerHTML = groups.map(([kind, title, text, defs2]) => {
+        const all = kind === 'fixados' || open.includes(kind) || defs2.length <= GROUP_LIMIT + 2;
+        const shown = all ? defs2 : defs2.slice(0, GROUP_LIMIT);
+        const rest = defs2.length - GROUP_LIMIT;
+        const more = defs2.length > GROUP_LIMIT + 2 && kind !== 'fixados'
+          ? `<button class="feats-more-btn" type="button" data-more="${kind}" aria-expanded="${String(all)}">${all ? 'Mostrar menos' : `Ver mais ${rest} ${title.toLowerCase()}`}</button>` : '';
+        return `<div class="feats-group" data-group="${kind}"><div class="feats-group-head"><h3>${title} <span>${defs2.length}</span></h3><p>${text}</p></div>${grid(shown)}${more}</div>`;
+      }).join('');
+    }
+    body.querySelectorAll('.feat').forEach((tile) => { const html = htmlOf.get(tile.dataset.id); if (html) lastHtml.set(tile, html); });
   }
 
   /**
@@ -323,18 +377,29 @@
   }
 
   async function onClick(view, event) {
+    const more = event.target.closest('[data-more]');
+    if (more) {
+      const open = expandedOf(view);
+      const kind = more.dataset.more;
+      saveExpanded(view, open.includes(kind) ? open.filter((k) => k !== kind) : [...open, kind]);
+      render(view);
+      if (!open.includes(kind)) Nexo.emit('feat-use', { kind: 'expandir', view, id: kind });
+      else sectionOf(view)?.querySelector(`[data-group="${kind}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
     const filter = event.target.closest('[data-filter]');
-    if (filter) { saveFilter(view, filter.dataset.filter); render(view); return; }
+    if (filter) { saveFilter(view, filter.dataset.filter); render(view); Nexo.emit('feat-use', { kind: 'filtro', view, id: filter.dataset.filter }); return; }
     const pin = event.target.closest('[data-pin]');
     if (pin) {
       const all = pins(); const list = all[view] || [];
       all[view] = list.includes(pin.dataset.pin) ? list.filter((id) => id !== pin.dataset.pin) : [pin.dataset.pin, ...list];
-      savePins(all); render(view); return;
+      savePins(all); render(view); Nexo.emit('feat-use', { kind: 'fixar', view, id: pin.dataset.pin }); return;
     }
     const act = event.target.closest('[data-act]');
     if (act) {
       const def = forView(view).find((item) => item.id === act.dataset.act);
       if (!def?.action) return;
+      Nexo.emit('feat-use', { kind: 'acao', view, id: def.id });
       act.disabled = true;
       try {
         const message = await def.action.run(makeContext(), act);
@@ -368,5 +433,7 @@
   Nexo.on('learned', () => schedule(true));
   Nexo.on('idle', (idle) => { if (!idle) schedule(true); });
 
-  window.NexoFeatures = { add, forView, render, refresh, helpers: H, icon, sources: SOURCES, makeContext, all: () => REG, invalidate };
+  window.NexoFeatures = { add, forView, render, refresh, helpers: H, icon, sources: SOURCES, makeContext, all: () => REG, invalidate,
+    /** Para a telemetria: fontes (certas, falhas, ms), cartões vistos e vazios por tela, e ids de cartões que quebraram. */
+    health: () => ({ sources: JSON.parse(JSON.stringify(health.sources)), tiles: { ...health.tiles }, crashed: [...health.crashed] }) };
 })();

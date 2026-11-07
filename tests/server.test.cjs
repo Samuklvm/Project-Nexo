@@ -153,13 +153,20 @@ test('telemetria: anônima, só chaves conhecidas, um pacote por dia e limite di
   const data = JSON.parse(rows[0].data);
   assert.deepEqual(Object.keys(data).sort(), ['features', 'hw', 'usage']);
   assert.equal(data.hw.path, 'C:\\Users\\<usuário>\\x');
-  assert.equal((await call('POST', '/v1/telemetry', { body })).status, 200);
-  assert.equal((await call('POST', '/v1/telemetry', { body })).status, 429, 'no máximo 3 por dia');
-  // Textos longos são cortados (80) e listas, limitadas (40); o que ainda passar de 8 KB é recusado.
+  for (let i = 0; i < 8; i++) assert.equal((await call('POST', '/v1/telemetry', { body })).status, 200);
+  assert.equal((await call('POST', '/v1/telemetry', { body })).status, 429, 'no máximo 10 por dia');
+  // Dia: o app manda cada dia depois que ele acaba. Dia velho demais ou inválido é recusado (antes virava "hoje").
+  const day = (offset) => new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+  assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-04', day: day(2) } })).status, 200);
+  assert.equal(env.DB.raw.prepare("SELECT day FROM telemetry WHERE install_id = 'install-telemetria-04'").get().day, day(2));
+  assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-05', day: day(9) } })).status, 400, 'dia antigo demais');
+  assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-05', day: 'ontem' } })).status, 400, 'dia inválido');
+  // Textos longos são cortados (80) e listas, limitadas (40); o que ainda passar de 16 KB é recusado.
   const trimmed = await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-02', data: { usage: { views: { x: 'y'.repeat(9000) } } } } });
   assert.equal(trimmed.status, 200);
   assert.equal(JSON.parse(env.DB.raw.prepare("SELECT data FROM telemetry WHERE install_id = 'install-telemetria-02'").get().data).usage.views.x.length, 80);
-  const huge = { usage: { views: Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`tela${i}`, 'y'.repeat(79)])) }, lab: Array.from({ length: 40 }, () => ({ a: 'b'.repeat(79) })) };
+  const block = () => Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`chave${i}`, 'y'.repeat(79)]));
+  const huge = { usage: { views: block(), ui: block() }, features: block(), perf: block(), lab: Array.from({ length: 40 }, () => ({ a: 'b'.repeat(79) })) };
   assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-03', data: huge } })).status, 400, 'grande demais');
   env.DB.raw.prepare("DELETE FROM telemetry WHERE install_id != 'install-telemetria-01'").run();
   const agg = mod.aggregateTelemetry(env.DB.raw.prepare('SELECT * FROM telemetry').all());

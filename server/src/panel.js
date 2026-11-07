@@ -79,6 +79,14 @@ select, input[type=search], input[type=text] { padding: 7px 10px; border-radius:
 .card h3 { margin: 0 0 10px; font-size: 15px; }
 .days { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
 .days i { flex: 1; min-width: 3px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--star), #7b6cff); }
+h2.group { margin: 26px 0 10px; font-size: 16px; color: var(--mist); font-weight: 600; letter-spacing: .02em; }
+.card.wide { grid-column: 1 / -1; }
+.small { font-size: 12px; margin: -4px 0 8px; }
+table.nums { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.nums th, table.nums td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--hair); }
+table.nums th { color: var(--mist); font-weight: 600; }
+table.nums td:not(:first-child), table.nums th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.bar span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
 
 export const PANEL_JS = `
@@ -148,11 +156,39 @@ export const PANEL_JS = `
     const max = Math.max(1, ...items.map((i) => i.n));
     return '<div class="bars">' + (items.length ? items.slice(0, 12).map((i) => '<div class="bar"><span>' + esc(i.key) + '</span><i data-w="' + Math.max(2, (i.n / max) * 100) + '"></i><span>' + esc(i.n) + '</span></div>').join('') : '<p class="muted">Sem dados ainda.</p>') + '</div>';
   }
+  // Nomes legíveis para o que vem como código do app.
+  const LABEL = {
+    home: 'Início', analysis: 'Análise', hardware: 'Hardware', maintenance: 'Manutenção', optimize: 'Otimizar', sessions: 'Sessões', library: 'Jogos', atlas: 'Atlas', lab: 'Extremo', activity: 'Atividade', settings: 'Ajustes', updates: 'Atualizações',
+    completo: 'Completo', leve: 'Leve', realtime: 'Tempo real', balanced: 'Equilibrada', eco: 'Econômica', jogos: 'Jogos', trabalho: 'Trabalho e criação', geral: 'Uso geral',
+    busca: 'Buscou um recurso', filtro: 'Filtrou recursos', expandir: 'Abriu "ver mais" nos recursos', fixar: 'Fixou um recurso', acao: 'Botão de um recurso', paleta: 'Abriu a busca (Ctrl K)', novidades: 'Reabriu as novidades', 'novidades-sozinha': 'Viu as novidades depois de atualizar', meteoros: 'Pediu chuva de meteoros', tour: 'Fez o tour',
+    fireflies: 'Vagalumes', twinkle: 'Estrelas piscando', meteors: 'Estrelas cadentes', showers: 'Chuva de meteoros', cursor: 'Vagalumes curiosos', skyHour: 'Céu acompanha a hora', wallpaper: 'Papel de parede próprio', autoClean: 'Limpeza automática', reducedMotion: 'Sistema pede menos movimento',
+    autostart: 'Abre com o Windows', tray: 'Fica na bandeja', autoSession: 'Sessão automática', onlineCovers: 'Capas online',
+    instalador: 'Instalador do Windows', appimage: 'AppImage', deb: 'Pacote .deb'
+  };
+  const nice = (items, fmt) => (items || []).map((i) => ({ key: fmt ? fmt(i.key) : (LABEL[i.key] || i.key), n: i.n }));
+  const minutes = (items) => (items || []).map((i) => ({ key: LABEL[i.key] || i.key, n: Math.round(i.n / 60) }));
   async function loadTelemetry() {
     const t = await api('telemetria?dias=' + $('dias').value);
     const max = Math.max(1, ...t.activeByDay.map((d) => d.n));
-    $('telemetry').innerHTML = '<div class="card"><h3>PCs ativos por dia · ' + esc(t.installs) + ' PC(s) no período</h3><div class="days">' + t.activeByDay.map((d) => '<i title="' + esc(d.day + ': ' + d.n) + '" data-h="' + Math.max(3, (d.n / max) * 100) + '"></i>').join('') + '</div></div><div class="cols">'
-      + [['Versões', t.versions], ['Sistema', t.platforms], ['Processador', t.cpus], ['Memória', t.ram], ['Placa de vídeo', t.gpus], ['Telas mais usadas', t.views], ['Recursos usados', t.features]].map(([title, items]) => '<div class="card"><h3>' + esc(title) + '</h3>' + bars(items) + '</div>').join('') + '</div>';
+    const card = (title, items, note) => '<div class="card"><h3>' + esc(title) + '</h3>' + (note ? '<p class="muted small">' + esc(note) + '</p>' : '') + bars(items) + '</div>';
+    const group = (title, cards) => '<h2 class="group">' + esc(title) + '</h2><div class="cols">' + cards.join('') + '</div>';
+    const numbers = (t.numbers || []).length
+      ? '<div class="card wide"><h3>Números do dia (entre os resumos diários do período)</h3><table class="nums"><thead><tr><th>Medida</th><th>Mediana</th><th>9 em cada 10 até</th><th>Resumos</th></tr></thead><tbody>'
+        + t.numbers.map((m) => '<tr><td>' + esc(m.key) + '</td><td>' + esc(String(m.median).replace('.', ',')) + '</td><td>' + esc(String(m.p90).replace('.', ',')) + '</td><td>' + esc(m.n) + '</td></tr>').join('') + '</tbody></table></div>'
+      : '';
+    $('telemetry').innerHTML = '<div class="card"><h3>PCs ativos por dia · ' + esc(t.installs) + ' PC(s) e ' + esc(t.reports || 0) + ' resumo(s) diário(s) no período</h3><div class="days">' + t.activeByDay.map((d) => '<i title="' + esc(d.day + ': ' + d.n) + '" data-h="' + Math.max(3, (d.n / max) * 100) + '"></i>').join('') + '</div></div>'
+      + group('Os PCs', [card('Versões', t.versions), card('Sistema', t.platforms), card('Como instalou', nice(t.channels)), card('Idioma', t.locales), card('Processador', t.cpus), card('Modelo do processador', t.cpuModels), card('Threads', t.cores), card('Memória', t.ram), card('Placa de vídeo', t.gpus), card('Modelo da placa de vídeo', t.gpuModels), card('Sensores', t.sensors)])
+      + group('Monitores', [card('Quantos monitores', t.monitors), card('Resolução', t.resolutions), card('Taxa de atualização', t.refresh), card('Escala do Windows', t.scales)])
+      + group('Como o Nexo está configurado', [card('Efeitos visuais', nice(t.effects)), card('Cor de destaque', t.accents), card('Quantidade no céu', t.skyDensity), card('Céu e aparência ligados', nice(t.skyFlags)), card('Perfil de uso', nice(t.profiles)), card('Ritmo das leituras', nice(t.liveRates)), card('Opções do app ligadas', nice(t.appFlags)), card('Jogos por loja (soma)', t.stores)])
+      + group('Uso', [card('Telas mais abertas', nice(t.views)), card('Tempo em foco por tela (minutos)', minutes(t.viewTime)), card('Recursos usados', t.features), card('Botões dos cartões de recurso', t.actions), card('Atalhos e extras', nice(t.ui))])
+      + (numbers ? group('Desempenho e saúde', [numbers]) : '')
+      + group('Diagnóstico do app', [
+        card('Ações internas que mais falham', t.ipcFails, 'Canal IPC e quantas falhas (muitas são esperadas, como recusar o UAC).'),
+        card('Ações internas mais lentas (ms, média)', t.ipcSlow), card('Pior tempo de cada ação (ms)', t.ipcMax),
+        card('Quedas, travadas e erros', t.events, 'telaFechou, gpuCaiu, processoCaiu, janelaTravou e erros por origem.'),
+        card('Cartões que ficam sem dado', t.featsEmpty, 'Quantos PCs viram o cartão vazio no dia: dado que falta ou leitura que não funciona ali.'),
+        card('Cartões cujo cálculo quebrou', t.featsCrashed), card('Fontes de dados que falham', t.sourceFails), card('Fontes mais lentas (ms, média)', t.sourceSlow)])
+      + group('Instalações', [card('Tempo de uso do Nexo', t.ageDays), card('De qual versão atualizou', t.updatedFrom)]);
     // A política de segurança do painel não aceita style="" no HTML: tamanhos entram pelo JavaScript.
     $('telemetry').querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; });
     $('telemetry').querySelectorAll('[data-h]').forEach((el) => { el.style.height = el.dataset.h + '%'; });

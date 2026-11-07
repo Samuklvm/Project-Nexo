@@ -125,7 +125,7 @@
       ? shown.map((command, index) => `<li role="option" data-index="${index}" aria-selected="${index === selected}"><span>${escapeHtml(command.label)}</span><small>${escapeHtml(command.hint || '')}</small></li>`).join('')
       : '<li class="empty">Nada encontrado.</li>';
   }
-  function openPalette() { palette.hidden = false; input.value = ''; selected = 0; renderPalette(); input.focus(); }
+  function openPalette() { palette.hidden = false; input.value = ''; selected = 0; renderPalette(); input.focus(); Nexo.emit('telemetry-ui', 'paleta'); }
   function closePalette() { palette.hidden = true; }
   function runCommand(command) { closePalette(); command?.run(); }
 
@@ -150,6 +150,7 @@
     $$('[data-effects]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.effects === (lite ? 'lite' : 'full'))));
     try { localStorage.setItem(Nexo.keys.effects, lite ? 'lite' : 'full'); } catch { /* preferência só nesta sessão */ }
     Nexo.effectsLite = lite;
+    Nexo.emit?.('effects', lite ? 'lite' : 'full');
   };
 
   /* ---------- Velocidade das leituras ao vivo ---------- */

@@ -68,6 +68,11 @@
     if (event.target.closest?.('[data-sky-shower]')) { Nexo.sky.shower(); if (Nexo.effectsLite) showToast('O modo Leve está ligado: o céu fica parado.'); }
   });
 
+  /** Liga ou desliga o céu que acompanha a hora (também usado pela sincronização entre PCs). */
+  Nexo.setSkyHour = (on) => { write(HOUR_KEY, on ? 'on' : 'off'); applyHour(); renderSky(); };
+  // Preferências trazidas de outro PC: a tela de Ajustes mostra o que mudou.
+  Nexo.renderSkySettings = renderSky;
+
   Nexo.setAccent(read(ACCENT_KEY, 'estrela'), { save: false });
   applyHour();
   renderPicker();

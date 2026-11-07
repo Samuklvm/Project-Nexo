@@ -175,7 +175,18 @@ function createLinux({ fs, path, os, run, env = process.env }) {
       const cpuPercent = prev ? Math.max(0, ((proc.ticks - prev.ticks) / 100 / (waitMs / 1000) / cores) * 100) : 0;
       return { processId: proc.pid, name: proc.name, cpuPercent: Math.round(cpuPercent * 10) / 10, memoryBytes: proc.rssPages * page };
     });
-    return { byCpu: [...rows].sort((a, b) => b.cpuPercent - a.cpuPercent).slice(0, 5), byMemory: [...rows].sort((a, b) => b.memoryBytes - a.memoryBytes).slice(0, 5) };
+    // Programas: processos com o mesmo nome somados (navegadores e apps Electron abrem vários).
+    const groups = new Map();
+    for (const row of rows) {
+      const group = groups.get(row.name) || { processId: 0, name: row.name, cpuPercent: 0, memoryBytes: 0, count: 0 };
+      group.cpuPercent = Math.round((group.cpuPercent + row.cpuPercent) * 10) / 10; group.memoryBytes += row.memoryBytes; group.count += 1;
+      groups.set(row.name, group);
+    }
+    const programs = [...groups.values()];
+    return {
+      byCpu: [...rows].sort((a, b) => b.cpuPercent - a.cpuPercent).slice(0, 5), byMemory: [...rows].sort((a, b) => b.memoryBytes - a.memoryBytes).slice(0, 5),
+      programsByCpu: [...programs].sort((a, b) => b.cpuPercent - a.cpuPercent).slice(0, 8), programsByMemory: [...programs].sort((a, b) => b.memoryBytes - a.memoryBytes).slice(0, 8)
+    };
   }
 
   /** Programa em primeiro plano (X11/XWayland). No Wayland puro o sistema não revela a janela ativa a outros apps. */

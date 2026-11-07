@@ -236,6 +236,20 @@ test('telemetria: no máximo uma vez por dia, anônima e só com o que a lista p
   assert.notEqual(stored[0].install_id, (await cloud.status()).deviceId);
 });
 
+test('telemetria: cada dia fechado sai uma vez, com o próprio dia; dia velho demais fica de fora', async () => {
+  const { client, rows } = world();
+  const cloud = client();
+  await cloud.setOptions({ telemetry: true });
+  const day = (offset) => new Date(clock - offset * DAY).toISOString().slice(0, 10);
+  const data = { usage: { views: { home: 3 } } };
+  assert.deepEqual(await cloud.sendTelemetry(data, day(1)), { sent: true });
+  assert.deepEqual(await cloud.sendTelemetry(data, day(1)), { skipped: true, already: true }, 'o mesmo dia não vai duas vezes');
+  assert.deepEqual(await cloud.sendTelemetry(data, day(2)), { sent: true }, 'outro dia guardado vai');
+  assert.deepEqual(await cloud.sendTelemetry(data, day(9)), { skipped: true, old: true });
+  assert.deepEqual(rows('SELECT day FROM telemetry ORDER BY day').map((row) => row.day), [day(2), day(1)]);
+  assert.equal((await cloud.status()).telemetry, true);
+});
+
 test('painel: o link de entrada só sai para o e-mail do criador', async () => {
   const { client } = world();
   const visitor = client();

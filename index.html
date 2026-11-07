@@ -445,7 +445,7 @@
             <div class="sheet-head"><h3>Privacidade e dados</h3></div>
             <p class="muted">Tudo o que o Nexo aprende fica neste computador. Nada é enviado, exceto a consulta pública de atualizações ao GitHub e o que você ligar: login com o Google, capas da CDN da Steam, a sincronização e as opções abaixo.</p>
             <dl class="facts"><div><dt>Dados locais</dt><dd id="data-size">--</dd></div><div><dt>Pasta</dt><dd class="path" id="data-path">--</dd></div></dl>
-            <label class="switch"><input id="cloud-telemetry" type="checkbox" /><i></i><span><strong>Ajudar a melhorar o Nexo (telemetria)</strong><small>Desligado por padrão. Uma vez por dia, sem nada pessoal: versão, sistema, tipo de processador, memória e placa de vídeo, e quais telas e recursos foram usados. Vai com um código aleatório deste PC, nunca com o seu e-mail.</small></span></label>
+            <label class="switch"><input id="cloud-telemetry" type="checkbox" /><i></i><span><strong>Ajudar a melhorar o Nexo (telemetria)</strong><small>Desligado por padrão. Um resumo por dia, sem nada pessoal: versão, hardware e monitores, quanto o Nexo pesa no PC, médias do dia, ajustes do app, quais telas e recursos foram usados e o que falhou no app. Nada de nomes, pastas, programas ou e-mail; vai com um código aleatório deste PC.</small></span></label>
             <label class="switch"><input id="cloud-errors" type="checkbox" /><i></i><span><strong>Enviar relatórios de erro</strong><small>Desligado por padrão. Os erros do registro abaixo vão para o criador corrigir, sem o seu nome de usuário nem as suas pastas.</small></span></label>
             <label class="switch sub" id="cloud-email-row"><input id="cloud-error-email" type="checkbox" /><i></i><span><strong>Incluir meu e-mail nos relatórios</strong><small>Para o criador avisar você quando o erro for corrigido. Só funciona com a sincronização ligada (é ela que confirma o seu e-mail).</small></span></label>
             <div class="btn-row"><button class="btn sm" id="export-data" type="button">Exportar meus dados</button><button class="btn sm" id="erase-learning" type="button">Apagar aprendizado e histórico</button><button class="btn sm ghost" id="open-privacy" type="button">Política completa</button></div>
@@ -515,6 +515,7 @@
   <script src="src/view-updates.js"></script>
   <script src="src/view-settings.js"></script>
   <script src="src/view-errors.js"></script>
+  <script src="src/telemetry.js"></script>
   <script src="src/view-cloud.js"></script>
   <script src="src/view-library.js"></script>
   <script src="src/view-lab.js"></script>

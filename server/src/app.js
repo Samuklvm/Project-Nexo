@@ -241,11 +241,14 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const body = await readJson(request);
     const installId = String(body.installId || '');
     if (!RE.installId.test(installId)) throw new HttpError(400, 'Instalação inválida.');
-    await limit(env, `tel:${installId}`, 3);
+    // Um resumo por dia; o app manda cada dia depois que ele acaba (e pode ter dias guardados de quando estava sem internet).
+    await limit(env, `tel:${installId}`, 10);
     const data = cleanTelemetry(body.data);
     if (!data) throw new HttpError(400, 'Telemetria inválida.');
     const today = dayOf(now());
-    const day = RE.day.test(String(body.day || '')) && body.day <= today && body.day >= dayOf(now() - 3 * DAY) ? body.day : today;
+    if (body.day !== undefined && !RE.day.test(String(body.day))) throw new HttpError(400, 'Dia inválido.');
+    const day = body.day && body.day <= today ? body.day : today;
+    if (day < dayOf(now() - 7 * DAY)) throw new HttpError(400, 'Dia antigo demais.');
     const version = RE.version.test(String(body.version || '')) ? body.version : '0.0.0';
     const platform = PLATFORMS.has(body.platform) ? body.platform : 'win32';
     await env.DB.prepare('INSERT INTO telemetry (install_id, day, version, platform, data, received_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(install_id, day) DO UPDATE SET version = excluded.version, platform = excluded.platform, data = excluded.data, received_at = excluded.received_at')
@@ -473,34 +476,101 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   };
 }
 
-/** Agregados para o painel: instalações ativas por dia, versões, sistemas, hardware e uso das telas. */
+/**
+ * Agregados para o painel: instalações ativas por dia, versões, sistemas, hardware, monitores, ajustes, uso das telas
+ * e dos recursos, e os números do dia (mediana e p90 entre os resumos diários). Tudo vem de dados anônimos.
+ */
 export function aggregateTelemetry(rows) {
   const perDay = new Map();
   const latest = new Map();
-  for (const row of rows) {
+  const parsed = rows.map((row) => { let data = {}; try { data = JSON.parse(row.data) || {}; } catch { data = {}; } return { ...row, data }; });
+  for (const row of parsed) {
     if (!perDay.has(row.day)) perDay.set(row.day, new Set());
     perDay.get(row.day).add(row.install_id);
     const previous = latest.get(row.install_id);
     if (!previous || previous.day <= row.day) latest.set(row.install_id, row);
   }
-  const count = (map, key) => map.set(key, (map.get(key) || 0) + 1);
-  const versions = new Map(); const platforms = new Map(); const cpus = new Map(); const ram = new Map(); const gpus = new Map();
-  const views = new Map(); const features = new Map();
+  const maps = {};
+  const count = (name, key, n = 1) => { if (key === null || key === undefined || key === '') return; const map = (maps[name] ||= new Map()); map.set(String(key), (map.get(String(key)) || 0) + n); };
+  const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  // Um voto por PC: o resumo mais recente de cada instalação.
   for (const row of latest.values()) {
-    count(versions, row.version);
-    count(platforms, row.platform);
-    let data = {};
-    try { data = JSON.parse(row.data); } catch { data = {}; }
-    if (data.hw?.cpuVendor) count(cpus, String(data.hw.cpuVendor));
-    if (Number.isFinite(data.hw?.ramGB)) count(ram, data.hw.ramGB <= 8 ? 'até 8 GB' : data.hw.ramGB <= 16 ? '9–16 GB' : data.hw.ramGB <= 32 ? '17–32 GB' : 'mais de 32 GB');
-    if (data.hw?.gpuVendor) count(gpus, String(data.hw.gpuVendor));
+    const { data } = row;
+    count('versions', row.version);
+    count('platforms', row.platform);
+    const hw = data.hw || {};
+    if (hw.cpuVendor) count('cpus', hw.cpuVendor);
+    if (hw.cpuModel) count('cpuModels', hw.cpuModel);
+    if (num(hw.ramGB) !== null) count('ram', hw.ramGB <= 8 ? 'até 8 GB' : hw.ramGB <= 16 ? '9–16 GB' : hw.ramGB <= 32 ? '17–32 GB' : 'mais de 32 GB');
+    if (num(hw.cores) !== null) count('cores', `${hw.cores} threads`);
+    if (hw.gpuVendor) count('gpus', hw.gpuVendor);
+    for (const model of Array.isArray(hw.gpuModels) ? hw.gpuModels : []) count('gpuModels', model);
+    const displays = Array.isArray(hw.displays) ? hw.displays : [];
+    if (displays.length) count('monitors', `${displays.length} monitor${displays.length > 1 ? 'es' : ''}`);
+    for (const display of displays) {
+      if (num(display.w) && num(display.h)) count('resolutions', `${display.w}×${display.h}`);
+      if (num(display.hz)) count('refresh', `${display.hz} Hz`);
+      if (num(display.scale)) count('scales', `${Math.round(display.scale * 100)}%`);
+    }
+    if (data.system?.locale) count('locales', data.system.locale);
+    if (data.system?.channel) count('channels', data.system.channel);
+    for (const flag of ['autostart', 'tray', 'autoSession', 'onlineCovers']) if (data.system?.[flag] === true) count('appFlags', flag);
+    if (data.sensors?.status) count('sensors', `${data.sensors.status}${data.sensors.cpuTemp ? ' · com temperatura do processador' : ''}`);
+    const set = data.settings || {};
+    if (set.effects) count('effects', set.effects);
+    if (set.accent) count('accents', set.accent);
+    if (set.skyDensity) count('skyDensity', set.skyDensity);
+    if (set.profile) count('profiles', set.profile);
+    if (set.liveRate) count('liveRates', set.liveRate);
+    for (const flag of ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor', 'skyHour', 'wallpaper', 'autoClean', 'reducedMotion']) if (set[flag] === true) count('skyFlags', flag);
+    for (const [store, n] of Object.entries(data.library?.stores || {})) if (num(n)) count('stores', store, n);
+    if (data.app?.previous) count('updatedFrom', `${data.app.previous} → ${row.version}`);
+    if (num(data.app?.ageDays) !== null) count('ageDays', data.app.ageDays < 1 ? 'menos de 1 dia' : data.app.ageDays < 7 ? '1 a 6 dias' : data.app.ageDays < 30 ? '1 a 4 semanas' : data.app.ageDays < 90 ? '1 a 3 meses' : 'mais de 3 meses');
   }
-  for (const row of rows) {
-    let data = {};
-    try { data = JSON.parse(row.data); } catch { data = {}; }
-    for (const [key, value] of Object.entries(data.usage?.views || {})) if (Number.isFinite(value)) views.set(key, (views.get(key) || 0) + value);
-    for (const [key, value] of Object.entries(data.features || {})) if (Number.isFinite(value)) features.set(key, (features.get(key) || 0) + value);
+  // Somas de uso e números do dia: todos os resumos do período.
+  const metrics = new Map();
+  const metric = (label, value) => { const v = num(value); if (v === null) return; if (!metrics.has(label)) metrics.set(label, []); metrics.get(label).push(v); };
+  for (const { data } of parsed) {
+    for (const [name, source] of [['views', data.usage?.views], ['viewTime', data.usage?.viewTime], ['actions', data.usage?.actions], ['ui', data.usage?.ui], ['features', data.features]]) {
+      for (const [key, value] of Object.entries(source || {})) if (num(value) !== null) count(name, key, value);
+    }
+    // Diagnóstico: canais que falham e os mais lentos (média de ms ponderada pelas chamadas), quedas e travadas.
+    for (const [channel, row] of Object.entries(data.diag?.ipc || {})) {
+      if (num(row?.e)) count('ipcFails', channel, row.e);
+      if (num(row?.n)) count('ipcCalls', channel, row.n);
+      if (num(row?.n) && num(row?.ms)) { count('ipcMsSum', channel, row.ms * row.n); }
+      if (num(row?.max)) { const map = (maps.ipcMax ||= new Map()); map.set(channel, Math.max(map.get(channel) || 0, row.max)); }
+    }
+    for (const [event, n] of Object.entries(data.diag?.events || {})) if (num(n)) count('events', event, n);
+    for (const id of Array.isArray(data.feats?.empty) ? data.feats.empty : []) count('featsEmpty', id);
+    for (const id of Array.isArray(data.feats?.crashed) ? data.feats.crashed : []) count('featsCrashed', id);
+    for (const [name, row] of Object.entries(data.feats?.sources || {})) { if (num(row?.fail)) count('sourceFails', name, row.fail); if (num(row?.ok)) count('sourceOk', name, row.ok); if (num(row?.ms) && num(row?.ok) && num(row?.fail)) count('sourceMsSum', name, row.ms * (row.ok + row.fail)); }
+    metric('Minutos com o Nexo em foco', data.app?.focusMin);
+    metric('Minutos com o Nexo aberto', data.app?.openMin);
+    metric('Aberturas no dia', data.app?.launches);
+    metric('Tempo de abertura (ms)', data.app?.startMs);
+    metric('CPU do Nexo em foco (%)', data.perf?.cpuFocus);
+    metric('CPU do Nexo em segundo plano (%)', data.perf?.cpuBack);
+    metric('Memória do Nexo em foco (MB)', data.perf?.memFocusMB);
+    metric('Pico de memória do Nexo (MB)', data.perf?.memMaxMB);
+    metric('Quadros do céu por segundo', data.perf?.skyFps);
+    metric('Travadas da interface no dia', data.perf?.longTasks);
+    metric('Vídeo com o Nexo na frente, Completo (%)', data.perf?.gpuCompleto);
+    metric('Vídeo com o Nexo na frente, Leve (%)', data.perf?.gpuLeve);
+    metric('Vídeo com o Nexo em segundo plano (%)', data.perf?.gpuFundo);
+    metric('Processador do PC, média do dia (%)', data.health?.cpu);
+    metric('Memória do PC, média do dia (%)', data.health?.mem);
+    metric('Vídeo do PC, média do dia (%)', data.health?.gpu);
+    metric('Maior temperatura do dia (°C)', data.health?.tempMax);
   }
-  const top = (map) => [...map].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n }));
-  return { activeByDay: [...perDay].sort((a, b) => a[0].localeCompare(b[0])).map(([day, set]) => ({ day, n: set.size })), installs: latest.size, versions: top(versions), platforms: top(platforms), cpus: top(cpus), ram: top(ram), gpus: top(gpus), views: top(views), features: top(features) };
+  const top = (name) => [...(maps[name] || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n: Math.round(n * 10) / 10 }));
+  const pick = (list, p) => list[Math.min(list.length - 1, Math.max(0, Math.ceil(p * list.length) - 1))];
+  const numbers = [...metrics].map(([label, values]) => { const sorted = [...values].sort((a, b) => a - b); return { key: label, median: Math.round(pick(sorted, 0.5) * 10) / 10, p90: Math.round(pick(sorted, 0.9) * 10) / 10, n: sorted.length }; });
+  // Tempo médio por canal e por fonte: soma de ms ÷ chamadas, os mais lentos primeiro.
+  const slow = (sumName, callsName, extra) => [...(maps[sumName] || new Map())].map(([key, total]) => { const calls = (maps[callsName]?.get(key) || 0) + (extra ? (maps[extra]?.get(key) || 0) : 0); return { key, n: calls ? Math.round(total / calls) : 0 }; }).sort((a, b) => b.n - a.n);
+  const ipcSlow = slow('ipcMsSum', 'ipcCalls');
+  const sourceSlow = slow('sourceMsSum', 'sourceOk', 'sourceFails');
+  const ipcMax = [...(maps.ipcMax || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n }));
+  const names = ['updatedFrom', 'ageDays', 'ipcFails', 'events', 'featsEmpty', 'featsCrashed', 'sourceFails', 'versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
+  return { activeByDay: [...perDay].sort((a, b) => a[0].localeCompare(b[0])).map(([day, set]) => ({ day, n: set.size })), installs: latest.size, reports: parsed.length, numbers, ipcSlow, ipcMax, sourceSlow, ...Object.fromEntries(names.map((name) => [name, top(name)])) };
 }

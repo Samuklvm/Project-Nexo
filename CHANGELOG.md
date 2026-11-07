@@ -6,6 +6,12 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.0: mais espaço e mais leve
+- Novo: recursos de cada tela em grupos (Fixados, Leituras, Ferramentas, Ações), cartões maiores e "ver mais".
+- Novo: a sincronização leva a cor de destaque e as opções do céu; telemetria com o resumo do dia completo, enviado depois que o dia acaba.
+- Melhoria: animações decorativas num relógio único de até 30 quadros e cartões sem desfoque próprio: o modo Completo pesa bem menos na placa de vídeo; o mapa do Início para com o app sem foco.
+- Correção: memória do Hardware em "B" e sensores "SmallData"; barra da memória livre invertida; limpezas contando como alteração ativa; programa repetido nos cartões; "-0,0".
+
 ### 0.10.0: noite viva
 - Novo: céu vivo (estrelas piscando, estrelas cadentes, chuva de meteoros) e vagalumes, com opções em Ajustes > Aparência.
 - Novo: sete cores de destaque e tom do céu que acompanha a hora.
@@ -88,6 +94,12 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.0: more room and lighter
+- New: each screen's features in groups (Pinned, Readings, Tools, Actions), bigger cards and "see more".
+- New: sync carries the accent color and sky options; telemetry with the full day's summary, sent after the day ends.
+- Improvement: decorative animations on a single clock of up to 30 frames and cards without their own blur: Complete mode is much lighter on the graphics card; the Home map stops when the app is out of focus.
+- Fix: Hardware memory shown in "B" and "SmallData" sensors; inverted free-memory bar; cleanups counted as active changes; repeated program in cards; "-0.0".
 
 ### 0.10.0: living night
 - New: living sky (twinkling stars, shooting stars, meteor showers) and fireflies, with options in Settings > Appearance.
