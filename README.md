@@ -107,7 +107,7 @@ As mesmas telas nos dois sistemas. No Linux, o Nexo usa `/proc` e os sensores do
 
 ## 🔒 Privacidade
 
-- O Nexo tem um servidor para **sincronizar a conta entre PCs, coletar erros e telemetria**. Tudo é opcional e **vem desligado**. A telemetria sai no máximo uma vez por dia e não leva nada pessoal; peço que você deixe ligada para o app melhorar em outras máquinas.
+- O Nexo tem um servidor para **sincronizar a conta entre PCs, coletar erros e telemetria**. Tudo é opcional e **vem desligado**. A telemetria é um resumo anônimo por dia (hardware, quanto o Nexo pesa, médias do dia, telas e recursos usados e o que falhou no app), sem nada pessoal; peço que você deixe ligada para o app melhorar em outras máquinas.
 - A sincronização usa o seu login do Google como chave de acesso, guarda cada PC criptografado e só traz dados de outro PC quando você escolhe qual PC e o quê.
 - As outras conexões externas são só as que você usa: verificação de atualizações no GitHub, capas e dados de jogos das lojas oficiais e as contas que você conectar (Google, Steam, Discord).
 - O Nexo **nunca encerra processos sozinho** e não lê a memória dos jogos.

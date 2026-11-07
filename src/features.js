@@ -233,6 +233,12 @@
   const pins = () => { try { const p = JSON.parse(localStorage.getItem(PIN_KEY) || '{}'); return p && typeof p === 'object' ? p : {}; } catch { return {}; } };
   const savePins = (value) => { try { localStorage.setItem(PIN_KEY, JSON.stringify(value)); } catch { /* só nesta sessão */ } };
   const filterOf = (view) => { try { return JSON.parse(localStorage.getItem(FILTER_KEY) || '{}')[view] || 'todos'; } catch { return 'todos'; } };
+  // Grupos da tela de recursos: cada um mostra duas linhas de cartões e guarda (por tela) quais estão abertos.
+  const GROUPS = [['leitura', 'Leituras', 'O que o Nexo mede agora e no seu histórico.'], ['ferramenta', 'Ferramentas', 'Atalhos para ver ou ajustar algo, sempre com confirmação.'], ['acao', 'Ações', 'Fazem algo na hora; quando mexem no PC, pedem confirmação antes.']];
+  const OPEN_KEY = 'nexo-feats-open';
+  const expandedOf = (view) => { try { const v = JSON.parse(localStorage.getItem(OPEN_KEY) || '{}')[view]; return Array.isArray(v) ? v : []; } catch { return []; } };
+  const saveExpanded = (view, value) => { try { const all = JSON.parse(localStorage.getItem(OPEN_KEY) || '{}'); all[view] = value; localStorage.setItem(OPEN_KEY, JSON.stringify(all)); } catch { /* só nesta sessão */ } };
+  const sectionOf = (view) => document.querySelector(`[data-feats="${view}"]`);
   const saveFilter = (view, value) => { try { const all = JSON.parse(localStorage.getItem(FILTER_KEY) || '{}'); all[view] = value; localStorage.setItem(FILTER_KEY, JSON.stringify(all)); } catch { /* só nesta sessão */ } };
   const search = {};
   const lastHtml = new WeakMap();
@@ -276,7 +282,7 @@
     section.innerHTML = `<header class="feats-head"><div><h2>Recursos ${VIEW_TITLE[view] || ''} <span class="feats-count"></span></h2><p>Leituras, ferramentas e atalhos desta tela. Fixe os seus favoritos com a estrela.</p></div>
       <div class="feats-tools"><div class="segmented sm" role="group" aria-label="Filtrar recursos">${[['todos', 'Todos'], ['leitura', 'Leituras'], ['ferramenta', 'Ferramentas'], ['acao', 'Ações'], ['fixados', 'Fixados']].map(([id, label]) => `<button type="button" data-filter="${id}" aria-pressed="false">${label}</button>`).join('')}</div>
       <input type="search" placeholder="Buscar recurso" aria-label="Buscar recurso" data-feat-search /></div></header>
-      <div class="feats-grid" role="list"></div>`;
+      <div class="feats-body"></div>`;
     panel.append(section);
     section.addEventListener('click', (event) => onClick(view, event));
     section.querySelector('[data-feat-search]').addEventListener('input', (event) => { search[view] = event.target.value.trim().toLowerCase(); render(view); });
@@ -307,10 +313,33 @@
       .filter((def) => filter === 'todos' || (filter === 'fixados' ? pinned.includes(def.id) : def.kind === filter))
       .filter((def) => !query || `${def.title} ${def.hint || ''}`.toLowerCase().includes(query))
       .sort((a, b) => Number(pinned.includes(b.id)) - Number(pinned.includes(a.id)));
-    const grid = section.querySelector('.feats-grid');
-    const htmls = list.map((def) => tileHtml(def, ctx, pinned.includes(def.id)));
-    grid.innerHTML = list.length ? htmls.join('') : `<div class="feats-empty">${filter === 'fixados' ? 'Nenhum recurso fixado nesta tela. Passe o mouse num cartão e clique na estrela.' : 'Nenhum recurso com esse nome.'}</div>`;
-    [...grid.children].forEach((tile, i) => { if (htmls[i]) lastHtml.set(tile, htmls[i].trim()); });
+    const body = section.querySelector('.feats-body');
+    const htmlOf = new Map(list.map((def) => [def.id, tileHtml(def, ctx, pinned.includes(def.id)).trim()]));
+    const grid = (defs2) => `<div class="feats-grid" role="list">${defs2.map((def) => htmlOf.get(def.id)).join('')}</div>`;
+    if (!list.length) {
+      body.innerHTML = `<div class="feats-empty">${filter === 'fixados' ? 'Nenhum recurso fixado nesta tela. Passe o mouse num cartão e clique na estrela.' : 'Nenhum recurso com esse nome.'}</div>`;
+    } else if (filter !== 'todos' || query) {
+      // Filtro ou busca: tudo o que bate, numa grade só.
+      body.innerHTML = grid(list);
+    } else {
+      // Sem filtro: em grupos (fixados, leituras, ferramentas, ações), cada um mostrando 6 e o resto num "ver mais".
+      const open = expandedOf(view);
+      // Duas linhas cheias, quantas colunas couberem (3 numa tela comum, 4 numa larga).
+      const width = body.clientWidth || section.clientWidth;
+      const GROUP_LIMIT = width ? Math.max(2, Math.floor((width + 16) / (290 + 16))) * 2 : 6;
+      const groups = [['fixados', 'Fixados', 'Os seus favoritos desta tela.', list.filter((def) => pinned.includes(def.id))]]
+        .concat(GROUPS.map(([kind, title, text]) => [kind, title, text, list.filter((def) => def.kind === kind && !pinned.includes(def.id))]))
+        .filter(([, , , defs2]) => defs2.length);
+      body.innerHTML = groups.map(([kind, title, text, defs2]) => {
+        const all = kind === 'fixados' || open.includes(kind) || defs2.length <= GROUP_LIMIT + 2;
+        const shown = all ? defs2 : defs2.slice(0, GROUP_LIMIT);
+        const rest = defs2.length - GROUP_LIMIT;
+        const more = defs2.length > GROUP_LIMIT + 2 && kind !== 'fixados'
+          ? `<button class="feats-more-btn" type="button" data-more="${kind}" aria-expanded="${String(all)}">${all ? 'Mostrar menos' : `Ver mais ${rest} ${title.toLowerCase()}`}</button>` : '';
+        return `<div class="feats-group" data-group="${kind}"><div class="feats-group-head"><h3>${title} <span>${defs2.length}</span></h3><p>${text}</p></div>${grid(shown)}${more}</div>`;
+      }).join('');
+    }
+    body.querySelectorAll('.feat').forEach((tile) => { const html = htmlOf.get(tile.dataset.id); if (html) lastHtml.set(tile, html); });
   }
 
   /**
@@ -348,6 +377,16 @@
   }
 
   async function onClick(view, event) {
+    const more = event.target.closest('[data-more]');
+    if (more) {
+      const open = expandedOf(view);
+      const kind = more.dataset.more;
+      saveExpanded(view, open.includes(kind) ? open.filter((k) => k !== kind) : [...open, kind]);
+      render(view);
+      if (!open.includes(kind)) Nexo.emit('feat-use', { kind: 'expandir', view, id: kind });
+      else sectionOf(view)?.querySelector(`[data-group="${kind}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
     const filter = event.target.closest('[data-filter]');
     if (filter) { saveFilter(view, filter.dataset.filter); render(view); Nexo.emit('feat-use', { kind: 'filtro', view, id: filter.dataset.filter }); return; }
     const pin = event.target.closest('[data-pin]');

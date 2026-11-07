@@ -6,6 +6,28 @@
   root.NexoNovidades = {
     versions: [
       {
+        version: '0.11.0', date: '2026-11-07', emoji: '🪐', title: 'Mais espaço e mais leve',
+        tagline: 'Recursos em grupos, cartões maiores, o céu bem mais leve na placa de vídeo e várias correções achadas num PC de verdade.',
+        sections: [
+          { emoji: '✨', title: 'Novidades', tone: 'new', items: [
+            { emoji: '🗂️', title: 'Recursos em grupos', text: 'Fixados, Leituras, Ferramentas e Ações, cada grupo com duas linhas e um "ver mais". Cartões maiores, com mais respiro.' },
+            { emoji: '🔄', title: 'Cor e céu viajam entre PCs', text: 'A sincronização agora leva a cor de destaque e as opções do céu junto das preferências.' },
+            { emoji: '📊', title: 'Telemetria mais útil', text: 'O resumo do dia agora chega completo, depois que o dia acaba, e ajuda a achar o que falha e o que pesa. Sempre anônima e opcional; a lista está em Política completa.' }
+          ] },
+          { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
+            { emoji: '🎮', title: 'Bem mais leve na placa de vídeo', text: 'A aurora, o anel do índice e outros detalhes animados agora andam junto com o céu, a no máximo 30 quadros, e os cartões não usam mais desfoque próprio. Numa placa integrada, o modo Completo pesava uns 30% de uso.' },
+            { emoji: '🌙', title: 'Mapa do sistema descansa', text: 'Com outro app na frente, o mapa do Início para de girar, como o resto do céu.' },
+            { emoji: '🧮', title: 'Programas somados', text: '"Programa que mais pesa" e "Quem mais ocupa memória" somam os processos de mesmo nome (o Chrome e o Discord abrem vários).' }
+          ] },
+          { emoji: '🛠️', title: 'Correções', tone: 'fix', items: [
+            { emoji: '💾', title: 'Memória no Hardware', text: 'A memória aparecia como "12 B" em vez de 12 GB, e alguns sensores apareciam como "SmallData".' },
+            { emoji: '📉', title: 'Memória livre', text: 'A barra mostrava a parte usada; agora mostra a livre, com a porcentagem.' },
+            { emoji: '🧷', title: 'Alterações ativas', text: 'Esvaziar a Lixeira e limpar temporários não contam mais como alteração ativa (não há o que desfazer).' },
+            { emoji: '➖', title: 'Sem "-0,0"', text: 'Tendências quase paradas aparecem como 0,0.' }
+          ] }
+        ]
+      },
+      {
         version: '0.10.0', date: '2026-11-07', emoji: '🌌', title: 'Noite viva',
         tagline: 'O Nexo ganhou vida: céu animado, cores à sua escolha e mais de 370 recursos novos espalhados pelas telas.',
         sections: [

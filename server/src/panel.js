@@ -160,7 +160,7 @@ export const PANEL_JS = `
   const LABEL = {
     home: 'Início', analysis: 'Análise', hardware: 'Hardware', maintenance: 'Manutenção', optimize: 'Otimizar', sessions: 'Sessões', library: 'Jogos', atlas: 'Atlas', lab: 'Extremo', activity: 'Atividade', settings: 'Ajustes', updates: 'Atualizações',
     completo: 'Completo', leve: 'Leve', realtime: 'Tempo real', balanced: 'Equilibrada', eco: 'Econômica', jogos: 'Jogos', trabalho: 'Trabalho e criação', geral: 'Uso geral',
-    busca: 'Buscou um recurso', filtro: 'Filtrou recursos', fixar: 'Fixou um recurso', acao: 'Botão de um recurso', paleta: 'Abriu a busca (Ctrl K)', novidades: 'Reabriu as novidades', 'novidades-sozinha': 'Viu as novidades depois de atualizar', meteoros: 'Pediu chuva de meteoros', tour: 'Fez o tour',
+    busca: 'Buscou um recurso', filtro: 'Filtrou recursos', expandir: 'Abriu "ver mais" nos recursos', fixar: 'Fixou um recurso', acao: 'Botão de um recurso', paleta: 'Abriu a busca (Ctrl K)', novidades: 'Reabriu as novidades', 'novidades-sozinha': 'Viu as novidades depois de atualizar', meteoros: 'Pediu chuva de meteoros', tour: 'Fez o tour',
     fireflies: 'Vagalumes', twinkle: 'Estrelas piscando', meteors: 'Estrelas cadentes', showers: 'Chuva de meteoros', cursor: 'Vagalumes curiosos', skyHour: 'Céu acompanha a hora', wallpaper: 'Papel de parede próprio', autoClean: 'Limpeza automática', reducedMotion: 'Sistema pede menos movimento',
     autostart: 'Abre com o Windows', tray: 'Fica na bandeja', autoSession: 'Sessão automática', onlineCovers: 'Capas online',
     instalador: 'Instalador do Windows', appimage: 'AppImage', deb: 'Pacote .deb'

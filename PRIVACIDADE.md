@@ -99,11 +99,21 @@ O servidor roda na **Cloudflare** (Workers e banco D1), num endereço `*.workers
 
 - **Na primeira abertura**, o app pergunta uma vez (com o texto acima) se você quer ligar a telemetria e os relatórios de erro. “Agora não” deixa tudo desligado. Quem marcou **“Ajudar a melhorar o Nexo”** no instalador já respondeu: as duas ficam ligadas e o app não pergunta de novo.
 
-### Telemetria (no máximo uma vez por dia)
+### Telemetria (um resumo por dia)
 
-- **O que vai:** versão do app, sistema (Windows ou Linux, versão do sistema, arquitetura), fabricante e modelo do processador, quantidade de núcleos, memória total arredondada em GB, fabricante da placa de vídeo, a contagem do dia de **quais telas** foram abertas e **quais recursos** foram usados (de uma lista fixa de nomes, como “raio-x-do-pc” ou “limpeza-segura”; nunca o detalhe de uma atividade, nome de jogo ou arquivo) e duas preferências (velocidade das leituras e perfil de uso).
+- **Quando:** o app monta, neste PC, o resumo de cada dia (em horário UTC) e manda **uma vez, depois que o dia acaba** (na hora seguinte, ou na próxima vez que o Nexo abrir). Assim chegam as contagens do dia inteiro. Dias de quando a telemetria estava desligada nunca saem, e um dia com mais de 6 dias fica de fora.
+- **O que vai:**
+  - **App:** versão, sistema (Windows ou Linux, versão do sistema, arquitetura), idioma do sistema, como foi instalado (instalador, AppImage ou .deb), há quantos dias o Nexo está neste PC, de qual versão atualizou, quantas vezes abriu no dia e por quantos minutos ficou aberto e em foco, e quanto demorou para abrir.
+  - **Hardware:** fabricante e modelo do processador, núcleos, memória total em GB, fabricante e modelo da placa de vídeo, monitores (resolução, escala e taxa de atualização), quantos discos e o tamanho somado, e se os sensores funcionam (sem os valores).
+  - **Quanto o próprio Nexo pesa:** uso médio de processador e memória do app (com e sem foco), pico de memória, quadros por segundo do céu, travadas da interface e o uso médio da placa de vídeo com o Nexo na frente (Completo ou Leve) e em segundo plano.
+  - **Médias do dia do PC:** processador, memória, placa de vídeo e disco (médias e picos) e a maior temperatura, tiradas do histórico local de 1 leitura por minuto.
+  - **Ajustes do app:** efeitos visuais, cor de destaque, opções do céu, velocidade das leituras, perfil de uso, se usa papel de parede próprio (não a imagem), limpeza automática, bandeja, abrir com o sistema, sessões automáticas, capas online e quantos recursos estão fixados.
+  - **Uso:** quantas vezes cada **tela** foi aberta e o tempo em foco nela; quais **recursos** foram usados (de uma lista fixa de nomes, como “raio-x-do-pc”); quais **botões dos cartões de recurso** foram usados (pelo id do cartão no código); e se usou a busca, os filtros, a busca rápida (Ctrl K), a janela de novidades e a chuva de meteoros (só a contagem, **nunca o texto buscado**).
+  - **Saúde do app:** quais cartões de recurso ficaram sem dado ou quebraram neste PC (ids do código), quais fontes de dados falharam e quanto demoraram, quantas vezes cada ação interna do app rodou, falhou e demorou (pelo nome fixo da ação), e quantas vezes um processo do Nexo caiu, a janela travou ou houve erro, por origem (só a contagem; o conteúdo dos erros só vai pelos relatórios de erro, abaixo, se você ligar).
+  - **Biblioteca e laboratório:** quantos jogos por loja e quantos instalados (**sem os nomes**), quantas sessões gravadas e com FPS, e quantas alterações do Diário foram aplicadas ou revertidas no dia (pelo nome fixo da ação).
+- **O que nunca vai:** nome do computador ou do usuário, e-mail, conta, pastas, nomes de arquivos, de programas ou de jogos, texto digitado, endereço de rede e os valores lidos dos sensores um a um.
 - **Com o quê:** um código aleatório criado neste PC. **Sem e-mail, sem conta, sem nome do computador**, mesmo se você estiver com a sincronização ligada (a telemetria nunca leva a sessão).
-- **Retenção:** 120 dias. O painel do criador mostra só somas (instalações por dia, versões, sistemas, hardware e telas mais usadas).
+- **Retenção:** 120 dias. O painel do criador mostra só somas e medianas entre os PCs.
 
 ### Relatórios de erro
 
@@ -115,7 +125,7 @@ O servidor roda na **Cloudflare** (Workers e banco D1), num endereço `*.workers
 ### Sincronização entre PCs
 
 - **A “senha” é o seu login do Google:** ao ligar, o navegador confirma o login e o servidor recebe do Google só o identificador da conta, o e-mail e o nome. O Nexo não guarda o token do Google; o servidor devolve uma sessão própria (válida por até um ano), que fica cifrada no PC.
-- **O que vai, de cada PC:** o nome do computador e uma cópia de: preferências (efeitos visuais, velocidade das leituras, bandeja, sessões automáticas e capas online), perfil de uso, as sessões de jogo gravadas (até 10, o que couber em 1 MB) e o histórico de atividades (até 20). **Não vão:** o Diário de alterações, o aprendizado, o laboratório, a biblioteca de jogos, contas de jogos, a limpeza automática (ela apaga arquivos, então cada PC confirma a sua), o papel de parede e qualquer arquivo pessoal.
+- **O que vai, de cada PC:** o nome do computador e uma cópia de: preferências (efeitos visuais, cor de destaque, opções do céu, velocidade das leituras, bandeja, sessões automáticas e capas online), perfil de uso, as sessões de jogo gravadas (até 10, o que couber em 1 MB) e o histórico de atividades (até 20). **Não vão:** o Diário de alterações, o aprendizado, o laboratório, a biblioteca de jogos, contas de jogos, a limpeza automática (ela apaga arquivos, então cada PC confirma a sua), o papel de parede e qualquer arquivo pessoal.
 - **Trazer dados de outro PC** é sempre uma escolha sua: você vê os PCs da sua conta, escolhe um e marca o que trazer. Preferências e perfil substituem os deste PC; sessões e atividades se juntam às daqui. Nada entra sozinho.
 - **Criptografia, sem exagero:** cada cópia (e o nome do PC) é cifrada no servidor com AES-256-GCM, com uma chave própria da sua conta, derivada de uma chave mestra que só existe como segredo do servidor; o banco guarda só o texto cifrado, então um vazamento do banco não revela o conteúdo. **Como a “senha” é o login do Google, e não uma senha só sua, o servidor consegue abrir as cópias para entregá-las a você** — e, em tese, quem opera o servidor também conseguiria. O painel do criador mostra só **quantas contas** usam a sincronização no total; **não mostra** quem são, os PCs de cada uma nem o conteúdo, e nenhuma ferramenta do painel lê essas cópias.
 - **Limites e retenção:** até 20 PCs por conta. A cópia de um PC que não é atualizada há um ano é apagada, e a conta sem sessão nem cópia some depois de 30 dias.

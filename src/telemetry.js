@@ -23,7 +23,7 @@
   const VIEWS = new Set(['home', 'analysis', 'hardware', 'maintenance', 'optimize', 'sessions', 'library', 'atlas', 'lab', 'activity', 'settings', 'updates']);
   const FEATURES = new Set(['analise-inteligente', 'verificacao-sfc', 'limpeza-automatica', 'raio-x-do-pc', 'experimento-de-energia', 'teste-com-reinicio', 'sincronizacao', 'plano-de-energia', 'leitura-completa-de-sensores',
     'sessao-de-risco-laboratorio', 'sessao-de-observacao', 'jogo-aberto', 'instalacao-pedida', 'papel-de-parede', 'conta-google-conectada', 'dados-locais', 'limpeza-segura', 'otimizacao-de-unidade', 'acesso-ao-fps-liberado']);
-  const UI = new Set(['busca', 'filtro', 'fixar', 'acao', 'paleta', 'novidades', 'novidades-sozinha', 'meteoros', 'tour']);
+  const UI = new Set(['busca', 'filtro', 'fixar', 'acao', 'expandir', 'paleta', 'novidades', 'novidades-sozinha', 'meteoros', 'tour']);
 
   const empty = (day) => ({ day, views: {}, viewTime: {}, features: {}, actions: {}, ui: {}, app: { launches: 0, focusSec: 0, openSec: 0 },
     perf: { cpuFocus: [0, 0], cpuBack: [0, 0], memFocus: [0, 0], memMax: 0, skyFps: [0, 0], longTasks: 0, longTaskMs: 0, startMs: [0, 0] },
