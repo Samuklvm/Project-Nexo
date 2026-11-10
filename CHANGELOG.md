@@ -6,6 +6,14 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.1: revisão completa
+- Novo: relatórios de erro sempre ligados (só os erros de depois da atualização, sem nome de usuário, pastas ou texto digitado); o e-mail da conta Google vai junto e desmarcar em Ajustes tira o e-mail também dos relatórios já enviados. Telemetria e sincronização continuam opcionais.
+- Novo: as sessões dizem o que limitou o PC (processador, um núcleo, placa de vídeo por energia, calor, memória de vídeo ou clock baixo, memória, limite de quadros); telemetria com o resumo parcial do dia em curso e o que limitou o PC; registro de erros com ações lentas, travadas, interrupções e a trilha antes de cada erro.
+- Novo: painel do criador com usuários novos (sem contar atualizações), o que limita os PCs e visual novo.
+- Melhoria: sensores não congelam sem foco; carga da placa pelo núcleo 3D e motivos do clock baixo pelo nvidia-smi; FPS da sessão inteira e "1% baixo" como média do pior 1%; jogos com anticheat reconhecidos; sonda mais leve; régua do clock pelos minutos com carga; aprendizado salvo antes do histórico.
+- Melhoria: revisão de segurança e qualidade com SonarCloud, CodeAnt e três auditorias (programas do sistema pelo caminho completo, sem código a partir de texto, política de segurança fechada, login com prazo, regex sem retrocesso, acessibilidade).
+- Correção: modo extremo abortava no começo pelo próprio aquecimento; erro antigo do Windows culpava o ajuste seguinte; pico de 1 s de RAM marcava a sessão; registro de erros perdia contagem e podia crescer além do limite; diagnóstico do app não era salvo; servidor aceitava dia futuro e dava erro interno com login malformado; aviso do Linux dizia que o Nexo não envia telemetria.
+
 ### 0.11.0: mais espaço e mais leve
 - Novo: entrar com a Steam (login oficial; jogos da conta e conquistas pelo servidor, sem chave da pessoa).
 - Novo: diagnóstico de rede em Manutenção (DNS, IPv6, proxy, cabo, site de verdade) com correções reversíveis pelo Diário.
@@ -96,6 +104,14 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.1: a complete review
+- New: error reports always on (only errors from after the update, without user name, folders or typed text); the Google account email goes along and unchecking it in Settings also removes it from reports already sent. Telemetry and sync are still optional.
+- New: sessions say what limited the PC (processor, a single core, graphics card by power, heat, video memory or low clock, memory, frame cap); telemetry with the current day's partial summary and what limited the PC; error log with slow actions, freezes, interruptions and the trail before each error.
+- New: creator panel with new users (updates do not count), what limits PCs and a new look.
+- Improvement: sensors do not freeze out of focus; graphics load from the 3D engine and low-clock reasons from nvidia-smi; FPS for the whole session and "1% low" as the average of the worst 1%; games with anti-cheat recognized; lighter probe; clock ruler from loaded minutes; learning saved before the history.
+- Improvement: security and quality review with SonarCloud, CodeAnt and three audits (system programs by full path, no code from text, closed security policy, sign-in with expiry, no-backtracking regex, accessibility).
+- Fix: extreme mode aborted at the start because of its own warm-up; an old Windows error blamed the next tweak; a 1 s RAM spike marked the session; the error log lost counts and could grow past its limit; app diagnostics were not saved; the server accepted future days and gave an internal error on malformed sign-in; the Linux notice said Nexo does not send telemetry.
 
 ### 0.11.0: more room and lighter
 - New: sign in with Steam (official login; account games and achievements through the server, no personal key).
