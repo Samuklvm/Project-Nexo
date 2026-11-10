@@ -207,7 +207,7 @@ let lastCpuSample = null;
 async function getCpuUsage() {
   const reusable = lastCpuSample && Date.now() - lastCpuSample.at >= 400 && Date.now() - lastCpuSample.at < 10000;
   const before = reusable ? lastCpuSample : { ...getCpuSample(), at: Date.now() };
-  if (!reusable) await new Promise((resolve) => setTimeout(resolve, 250));
+  if (!reusable) await new Promise((resolve) => { setTimeout(resolve, 250); });
   const after = { ...getCpuSample(), at: Date.now() };
   lastCpuSample = after;
   const totalDelta = after.total - before.total;
@@ -1213,7 +1213,7 @@ async function runLabBench(mode, ms) {
       while (performance.now() < end && !state.cancelled) {
         const value = await connectTime(target.host, target.port);
         if (Number.isFinite(value)) times.push(value);
-        await new Promise((resolve) => setTimeout(resolve, 120));
+        await new Promise((resolve) => { setTimeout(resolve, 120); });
       }
       times.sort((a, b) => a - b);
       if (times.length < 3) throw new Error('O roteador parou de responder.');

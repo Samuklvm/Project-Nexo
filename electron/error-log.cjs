@@ -35,8 +35,8 @@ function makeRedactor({ home = '', user = '' } = {}) {
   // A pasta pessoal em qualquer grafia de barra (C:\Users\x, C:/Users/x).
   if (home && home.length > 3) rules.push([new RegExp(String(home).split(/[\\/]+/).filter(Boolean).map(escapeRegex).join(String.raw`[\\/]+`), 'gi'), '~']);
   // Pasta de outro usuário: o nome pode ter espaços quando vem seguido de outra pasta.
-  rules.push([/([A-Za-z]:[\\/]+Users[\\/]+)[^\\/"'`:*?<>|\r\n]+(?=[\\/])/gi, '$1<usuário>']);
-  rules.push([/([A-Za-z]:[\\/]+Users[\\/]+)(?!<usuário>)[^\\/\s"'`:*?<>|]+/gi, '$1<usuário>']);
+  rules.push([/([a-z]:[\\/]+Users[\\/]+)[^\\/"'`:*?<>|\r\n]+(?=[\\/])/gi, '$1<usuário>']);
+  rules.push([/([a-z]:[\\/]+Users[\\/]+)(?!<usuário>)[^\\/\s"'`:*?<>|]+/gi, '$1<usuário>']);
   rules.push([/(\/(?:home|Users)\/)[^/\s"'`]+/g, '$1<usuário>']);
   if (user && user.length > 2) rules.push([new RegExp(String.raw`\b${escapeRegex(user)}\b`, 'gi'), '<usuário>']);
   // Segredos em URL/texto (nome=valor) e em JSON ("nome": "valor" ou "nome": 123).

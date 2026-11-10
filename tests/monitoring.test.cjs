@@ -169,7 +169,7 @@ test('A22: no Linux, leitura que termina depois de parar não emite nem reconstr
   probe.start();
   probe.stop();
   release({ pid: 7, name: 'jogo', path: '/home/x/.steam/steamapps/common/jogo' });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await new Promise((resolve) => { setTimeout(resolve, 20); });
   assert.equal(emitted.length, 0);
   const starts = [];
   let releaseFg;

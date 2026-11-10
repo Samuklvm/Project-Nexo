@@ -25,7 +25,7 @@ $out.processes = @(Get-Process).Count
 $out.services = @(Get-Service | Where-Object { $_.Status -eq 'Running' }).Count
 [Console]::Out.Write(($out | ConvertTo-Json -Compress))`;
 
-function createRebootTest({ fs, path, dir, run, runPowerShell, apply, validate, bench, cpuLoad, memory, onBattery, uptime, exePath, isPackaged, platform = process.platform, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), emit = () => {}, onProblem = () => {} }) {
+function createRebootTest({ fs, path, dir, run, runPowerShell, apply, validate, bench, cpuLoad, memory, onBattery, uptime, exePath, isPackaged, platform = process.platform, now = Date.now, sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }), emit = () => {}, onProblem = () => {} }) {
   /* Interrupções vão para o registro de erros do app (sem os valores medidos). Nunca derrubam o teste. */
   const problem = (kind, message) => { try { onProblem(kind, String(message || '').slice(0, 200)); } catch { /* registro indisponível */ } };
   const file = path.join(dir, 'state.json');

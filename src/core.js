@@ -97,7 +97,10 @@ const Nexo = (window.Nexo = {
     lab: 'nexo-lab-v1'
   },
   listeners: {},
-  on(event, handler) { (this.listeners[event] ||= []).push(handler); },
+  on(event, handler) {
+    this.listeners[event] ??= [];
+    this.listeners[event].push(handler);
+  },
   emit(event, payload) { for (const handler of this.listeners[event] || []) { try { handler(payload); } catch (error) { console.error(error); } } }
 });
 

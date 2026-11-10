@@ -2,7 +2,7 @@
 (function () {
   const REPS = 3;
   const BENCH_MS = 1200;
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
   const num = (value) => (Number.isFinite(value) ? value.toFixed(1).replace('.', ',') : '--');
   const signed = (value) => (Number.isFinite(value) ? `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')}%` : '--');
   const CANCELLED = Symbol('cancelado');

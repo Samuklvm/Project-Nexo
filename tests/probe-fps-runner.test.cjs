@@ -11,7 +11,7 @@ function fakeChild() {
   child.kill = () => { child.killed = true; child.emit('exit', 0); };
   return child;
 }
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 test('sonda: normaliza, classifica o jogo e NUNCA deixa o caminho sair', () => {
   const sample = normalizeProbe({ t: 5, fg: { pid: 77, name: 'eldenring', path: 'C:\\Games\\Steam\\steamapps\\common\\ELDEN RING\\eldenring.exe' },

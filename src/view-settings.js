@@ -18,7 +18,7 @@
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);
     canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.86));
+    const blob = await new Promise((resolve) => { canvas.toBlob(resolve, 'image/webp', 0.86); });
     return blob ? blob.arrayBuffer() : file.arrayBuffer();
   }
 

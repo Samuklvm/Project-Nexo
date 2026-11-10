@@ -52,9 +52,9 @@ async function dirSize(dir) {
 }
 
 // O instalador (installer.nsh) lê esta chave no customInit; no modo silencioso as páginas não aparecem.
-const setTelemetry = on => new Promise(r => execFile(path.join(SYSTEM32, 'reg.exe'),
+const setTelemetry = on => new Promise(r => { execFile(path.join(SYSTEM32, 'reg.exe'),
   ['add', 'HKCU\\Software\\NexoDeviceCare\\Privacy', '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', on ? '1' : '0', '/f'],
-  () => r()));
+  () => r()); });
 
 ipcMain.handle('info', () => ({ defaultDir: DEFAULT_DIR, version: app.getVersion() }));
 

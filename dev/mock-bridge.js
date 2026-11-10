@@ -54,7 +54,7 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     setPowerPlan: async (guid) => { plans.forEach((plan) => { plan.active = plan.guid === guid; }); return { ok: true, plans: plans.map((plan) => ({ ...plan })) }; },
     getPowerSource: async () => ({ onBattery: false }),
     cancelCpuBench: async () => ({ ok: true }),
-    runCpuBench: async ({ mode, ms }) => { await new Promise((resolve) => setTimeout(resolve, ms > 500 ? 220 : 80)); const boost = plans.find((plan) => plan.active)?.guid === 'b' ? 1.09 : 1; return { mode, threads: mode === 'single' ? 1 : 7, ms, mopsPerSec: (mode === 'single' ? 152 : 880) * boost * (1 + (Math.random() - 0.5) * 0.024) }; },
+    runCpuBench: async ({ mode, ms }) => { await new Promise((resolve) => { setTimeout(resolve, ms > 500 ? 220 : 80); }); const boost = plans.find((plan) => plan.active)?.guid === 'b' ? 1.09 : 1; return { mode, threads: mode === 'single' ? 1 : 7, ms, mopsPerSec: (mode === 'single' ? 152 : 880) * boost * (1 + (Math.random() - 0.5) * 0.024) }; },
     openDoc: async () => ({ ok: true }),
     listStartupItems: async () => [{ name: 'Discord', command: 'C:\\Users\\voce\\AppData\\Local\\Discord\\Update.exe --processStart Discord.exe' }, { name: 'SecurityHealth', command: '%windir%\\system32\\SecurityHealthSystray.exe' }, { name: 'Steam', command: '"C:\\Program Files (x86)\\Steam\\steam.exe" -silent' }, { name: 'GoogleDriveFS', command: '"C:\\Program Files\\Google\\Drive File Stream\\129.0.1.0\\GoogleDriveFS.exe" --startup_mode --some-very-long-argument-that-keeps-going-and-going-forever' }],
     openWindowsSettings: async () => ({ ok: true }), getAppInfo: async () => ({ version: '0.5.0', packaged: false, userDataPath: 'C:\\Users\\voce\\AppData\\Roaming\\nexo-device-care', userDataBytes: 1.4e6 }),
@@ -102,7 +102,7 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
   const settings = { autoSession: false, tray: false, openAtLogin: false, onlineCovers: false, packaged: true, platform: 'win32' };
   let account = { configured: true, configSource: 'build', encrypted: true, profile: null, avatar: null };
   let cancelled = false;
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
   const reboot = { state: null, history: [], listeners: new Set(), busy: false };
   const rebootView = () => {
     const state = reboot.state;

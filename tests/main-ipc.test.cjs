@@ -140,7 +140,7 @@ test('benchmark de CPU: valida o modo, mede em um e vários núcleos e pode ser 
   const multi = await call('bench:cpu', { mode: 'multi', ms: 200 });
   assert.ok(multi.threads >= 1 && multi.mopsPerSec > 1);
   const pending = call('bench:cpu', { mode: 'single', ms: 3000 });
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await new Promise((resolve) => { setTimeout(resolve, 150); });
   await assert.rejects(() => call('bench:cpu', { mode: 'single', ms: 200 }), /em andamento/);
   await call('bench:cancel');
   await assert.rejects(() => pending, /cancelado/);
@@ -150,7 +150,7 @@ test('benchmark de CPU: valida o modo, mede em um e vários núcleos e pode ser 
 test('sessão: amostra do sistema por núcleo, sonda e FPS têm retorno seguro fora do Windows', async () => {
   const first = await call('session:sample');
   assert.equal(first.cpu, null, 'a primeira leitura só marca o ponto de partida');
-  await new Promise((resolve) => setTimeout(resolve, 60));
+  await new Promise((resolve) => { setTimeout(resolve, 60); });
   const second = await call('session:sample');
   assert.ok(Number.isFinite(second.cpu) && second.cpu >= 0 && second.cpu <= 100);
   assert.ok(second.maxCore >= second.cpu - 1e-9);

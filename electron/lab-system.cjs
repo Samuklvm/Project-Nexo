@@ -111,7 +111,7 @@ function interpretRestorePoint(elevated) {
 const settingArgs = (knob) => (knob.alias ? [knob.sub, knob.setting] : [knob.subGuid, knob.guid]);
 
 function createLabSystem(deps) {
-  const { run, runPowerShell, bench, readTemp, cpuLoad, onBattery, isHybrid = async () => null, benchSupport = async () => null, elevate, fs, path, dir, exePath, isPackaged, platform = process.platform, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = deps;
+  const { run, runPowerShell, bench, readTemp, cpuLoad, onBattery, isHybrid = async () => null, benchSupport = async () => null, elevate, fs, path, dir, exePath, isPackaged, platform = process.platform, now = Date.now, sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }) } = deps;
   const lockFile = path.join(dir, 'lab-lock.json');
   let session = null;
 

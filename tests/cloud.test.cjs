@@ -97,7 +97,8 @@ test('sincronização: cada PC manda a sua cópia criptografada e o outro PC esc
   // O token do servidor não aparece no arquivo (fica com o cofre do sistema) e o id_token do Google não é guardado.
   const file = fs.readFileSync(path.join(dirA, 'cloud.json'), 'utf8');
   assert.ok(!file.includes(tokens[0]), 'token cifrado no disco');
-  assert.ok(!file.includes('eyJ'), 'nada de JWT no disco');
+  // Um JWT tem cara de "eyJ….….": procurar só "eyJ" falhava por acaso quando o texto cifrado (aleatório) continha isso.
+  assert.ok(!/eyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{5,}/.test(file), 'nada de JWT no disco');
 
   const sections = { perfil: 'jogos', preferencias: { effects: 'lite', liveRate: 'eco' }, atividade: [{ title: 'Raio-X aplicado', detail: '3 ajustes', timestamp: clock }] };
   const pushed = await pcA.push({ name: 'PC-DA-SALA', sections });

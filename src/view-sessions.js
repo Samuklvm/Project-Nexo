@@ -202,7 +202,7 @@
       const choice = await new Promise((resolve) => {
         const dialog = Nexo.dialog({ title: 'Liberar a medição de FPS?', html: `<p>O PresentMon só lê os quadros se o seu usuário estiver no grupo “Performance Log Users”. O Nexo pode fazer isso agora, sozinho: o Windows vai pedir a sua permissão (UAC). ${fps.access.needsRelogin ? 'Você já está no grupo, mas precisa sair e entrar de novo no Windows para valer.' : 'Depois é preciso sair e entrar de novo no Windows.'}</p>`,
           actions: [{ id: 'nofps', label: 'Gravar sem FPS', onClick: () => resolve('nofps') }, ...(fps.access.needsRelogin ? [] : [{ id: 'grant', label: 'Liberar automaticamente', tone: 'primary', onClick: () => resolve('grant') }])] });
-        dialog.done.then((answer) => resolve(answer === 'dismiss' ? 'cancel' : answer));
+        dialog.done.then((answer) => { resolve(answer === 'dismiss' ? 'cancel' : answer); return answer; }).catch(() => resolve('cancel'));
       });
       if (choice === 'cancel') return;
       if (choice === 'grant') await Nexo.grantFpsAccess();
@@ -332,14 +332,15 @@
       { id: 'delete', label: 'Excluir', tone: 'danger' }, { id: 'close', label: 'Fechar', tone: 'primary' }] });
     requestAnimationFrame(() => drawReportCharts(record));
     dialog.done.then(async (answer) => {
-      if (answer !== 'delete') return;
+      if (answer !== 'delete') return false;
       const confirmed = await Nexo.confirm({ title: 'Excluir esta sessão?', body: 'O relatório e a linha do tempo serão apagados deste computador.', confirmLabel: 'Excluir', tone: 'danger' });
-      if (!confirmed) { openReport(id); return; }
+      if (!confirmed) { openReport(id); return false; }
       persist(load().filter((session) => session.id !== id));
       renderList();
       Nexo.emit('learned');
       showToast('Sessão excluída.');
-    });
+      return true;
+    }).catch((error) => console.error('[sessões] não consegui excluir', error));
   }
 
   function renderList() {

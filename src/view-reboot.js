@@ -201,7 +201,7 @@
     if (!working) refresh();
   });
   bridge.onRebootStatus?.((status) => { view.status = status; render(); journalIfNeeded(); });
-  bridge.onRebootShow?.(() => { Nexo.go('lab'); view.hidden = false; refresh().then(() => el()?.scrollIntoView({ behavior: 'smooth', block: 'center' })); });
+  bridge.onRebootShow?.(() => { Nexo.go('lab'); view.hidden = false; refresh().then(() => { el()?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return true; }).catch((error) => console.error('[teste com reinício] não abriu', error)); });
   Nexo.on?.('view', (name) => { if (name === 'lab') refresh(); });
   if (Nexo.platform !== 'linux') refresh();
 })();

@@ -262,7 +262,12 @@
   }
 
   Nexo.on('view', (name) => { if (name === 'settings') refresh(); });
-  Nexo.on('account', (account) => { view.account = account; bridge.cloudStatus().then((status) => { view.status = status; render(); }).catch(() => render()); });
+  Nexo.on('account', (account) => {
+    view.account = account;
+    bridge.cloudStatus().then((status) => { view.status = status; return status; }).catch(() => view.status).finally(() => {
+      try { render(); } catch (error) { console.error('[privacidade] não desenhou', error); }
+    });
+  });
   Nexo.cloudPolicy = POLICY;
   refresh().finally(() => {
     setTimeout(askOnce, 20000);

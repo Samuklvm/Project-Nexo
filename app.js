@@ -45,7 +45,7 @@
   Nexo.go('home');
   Nexo.checkForUpdates();
   Nexo.loadPower();
-  refreshSnapshot().then(() => Nexo.refreshHome());
+  refreshSnapshot().then(() => Nexo.refreshHome()).catch((error) => console.error('[início] primeira leitura falhou', error));
   Nexo.refreshSensors?.();
   // Laços com setTimeout encadeado: o próximo só é marcado quando o anterior acabou (nunca empilham).
   const loop = (fn, delay) => { const tick = async () => { try { await fn(); } catch { /* segue */ } setTimeout(tick, delay()); }; setTimeout(tick, delay()); };
@@ -75,7 +75,7 @@
           <li>Para medir FPS, o Nexo lê o log do MangoHud; para detectar o jogo em primeiro plano, usa o xprop (X11 e XWayland).</li>
           <li>O compartilhamento opcional com o criador começa desativado, e nesta versão o Nexo não envia telemetria.</li></ul>`,
         actions: [{ id: 'policy', label: 'Política completa', keepOpen: true, onClick: () => desktopBridge.openLink?.('privacy') }, { id: 'ok', label: 'Entendi', tone: 'primary' }] });
-      dialog.done.then(() => { try { localStorage.setItem('nexo-linux-notice', '1'); } catch { /* sem armazenamento */ } });
+      dialog.done.then(() => { try { localStorage.setItem('nexo-linux-notice', '1'); } catch { /* sem armazenamento */ } return true; }).catch(() => {});
     }, 900);
   }
 })();

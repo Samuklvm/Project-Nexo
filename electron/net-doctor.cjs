@@ -175,7 +175,7 @@ function createNetDoctor({ dns, net, https, os, fs, platform = process.platform,
     if (resolveProxy) {
       const start = now();
       let answer = null;
-      try { answer = await Promise.race([resolveProxy('https://www.google.com/'), new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 12000))]); } catch { answer = null; }
+      try { answer = await Promise.race([resolveProxy('https://www.google.com/'), new Promise((resolve) => { setTimeout(() => resolve('TIMEOUT'), 12000); })]); } catch { answer = null; }
       results.proxyLookup = { ms: round(now() - start), result: String(answer || '').slice(0, 80) };
     }
     results.http = [];

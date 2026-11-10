@@ -195,11 +195,12 @@
     lastCaptureAt = Date.now();
     const startedIn = generation;
     desktopBridge.getTopProcesses().then((result) => {
-      if (startedIn !== generation) return; // o aprendizado foi apagado enquanto a captura rodava
+      if (startedIn !== generation) return null; // o aprendizado foi apagado enquanto a captura rodava
       Nexo.state.processes = result;
       lastProcesses = { at: Date.now(), cpu: pickName(result.byCpu, 'cpuPercent', 5), memory: pickName(result.byMemory, 'memoryBytes', 0) };
       Nexo.emit('processes', result);
-    }).catch(() => {}).finally(() => { capturing = false; });
+      return result;
+    }).catch(() => null).finally(() => { capturing = false; });
   }
 
   function commitMinute(now) {

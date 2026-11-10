@@ -122,9 +122,19 @@
     if (!fresh && !entry?.loading && !Nexo.isIdle?.()) {
       cache[name] = { ...(entry || {}), loading: true, at: entry?.at || 0 };
       const started = performance.now();
-      const stat = health.sources[name] || (health.sources[name] = [0, 0, 0]); // certas, falhas, ms somados
-      Promise.resolve().then(() => spec.load()).then((value) => { stat[0] += 1; stat[2] += Math.round(performance.now() - started); cache[name] = { value, at: Date.now(), loading: false }; schedule(true); })
-        .catch((error) => { stat[1] += 1; stat[2] += Math.round(performance.now() - started); cache[name] = { value: entry?.value, error: String(error?.message || error), at: Date.now(), loading: false }; });
+      health.sources[name] ??= [0, 0, 0]; // certas, falhas, ms somados
+      const stat = health.sources[name];
+      Promise.resolve().then(() => spec.load()).then((value) => {
+        stat[0] += 1;
+        stat[2] += Math.round(performance.now() - started);
+        cache[name] = { value, at: Date.now(), loading: false };
+        schedule(true);
+        return value;
+      }).catch((error) => {
+        stat[1] += 1;
+        stat[2] += Math.round(performance.now() - started);
+        cache[name] = { value: entry?.value, error: String(error?.message || error), at: Date.now(), loading: false };
+      });
     }
     return entry?.value;
   }

@@ -164,7 +164,7 @@ function createLinux({ fs, path, os, run, env = process.env }) {
     }
     return snapshot;
   }
-  async function topProcesses(waitMs = 1000, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))) {
+  async function topProcesses(waitMs = 1000, sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); })) {
     const before = await processSample();
     await sleep(waitMs);
     const after = await processSample();

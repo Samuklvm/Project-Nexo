@@ -147,12 +147,14 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   async function listDevices(request, env) {
     const who = await session(request, env);
     const { results = [] } = await env.DB.prepare('SELECT device_id, name_enc, sections, size, app_version, updated_at FROM snapshots WHERE uid = ? ORDER BY updated_at DESC').bind(who.uid).all();
-    const devices = [];
-    for (const row of results) {
+    // Os nomes são decifrados em paralelo (cada um é independente); um nome ou lista ilegível não derruba a lista.
+    const devices = await Promise.all(results.map(async (row) => {
       let name = 'PC';
       try { name = await open(row.name_enc, { dataKey: env.DATA_KEY, uid: who.uid }); } catch { /* nome ilegível: segue */ }
-      devices.push({ deviceId: row.device_id, name, sections: JSON.parse(row.sections || '[]'), size: row.size, appVersion: row.app_version, updatedAt: row.updated_at, current: row.device_id === who.deviceId });
-    }
+      let sections = [];
+      try { sections = JSON.parse(row.sections || '[]'); } catch { /* lista ilegível: segue vazia */ }
+      return { deviceId: row.device_id, name, sections: Array.isArray(sections) ? sections : [], size: row.size, appVersion: row.app_version, updatedAt: row.updated_at, current: row.device_id === who.deviceId };
+    }));
     return json({ devices });
   }
 
@@ -213,7 +215,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     if (body.includeEmail === true) email = (await session(request, env, { required: false }).catch(() => null))?.email || null;
     if (!email && body.includeEmail === true && typeof body.contactEmail === 'string') {
       const contact = body.contactEmail.trim().toLowerCase().slice(0, 254);
-      if (EMAIL.test(contact)) { email = contact; verified = 0; }
+      if (EMAIL.test(contact)) {
+        email = contact;
+        verified = 0;
+      }
     }
     const reports = Array.isArray(body.reports) ? body.reports.slice(0, LIMITS.reportsPerPost) : [];
     const at = now();
@@ -496,7 +501,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     // Papel de parede do painel (público como o CSS: é só arte, sem dado nenhum).
     if (path === '/painel/fundo.svg' && method === 'GET') return page(PANEL_WALLPAPER, 'image/svg+xml; charset=utf-8', 200, { 'cache-control': 'public, max-age=86400' });
     if (path.startsWith('/painel/api/')) return adminApi(request, env, url, path.slice('/painel/api/'.length));
-    if (path.startsWith('/v1/steam/')) { const answer = await steam.route(request, env, url, path, method); if (answer) return answer; }
+    if (path.startsWith('/v1/steam/')) {
+      const answer = await steam.route(request, env, url, path, method);
+      if (answer) return answer;
+    }
     throw new HttpError(404, 'Não encontrado.');
   }
 

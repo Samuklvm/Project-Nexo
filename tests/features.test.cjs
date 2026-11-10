@@ -93,7 +93,7 @@ function load(platform, { full = false } = {}) {
   return context;
 }
 
-const settle = () => new Promise((resolve) => setImmediate(resolve));
+const settle = () => new Promise((resolve) => { setImmediate(resolve); });
 
 for (const platform of ['win32', 'linux']) {
   test(`recursos (${platform}): pelo menos 30 por tela, sem repetir, com título, ícone e tipo válidos`, () => {

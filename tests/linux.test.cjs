@@ -117,7 +117,7 @@ test('Linux: pkexec só com comandos fixos e caminho de montagem validado', () =
 });
 
 test('Linux de verdade (esta máquina de testes): /proc, montagens e sensores respondem sem quebrar', { skip: process.platform !== 'linux' }, async () => {
-  const run = (file, args) => new Promise((resolve) => require('node:child_process').execFile(file, args, (error, stdout) => resolve({ code: error ? 1 : 0, stdout: String(stdout || '') })));
+  const run = (file, args) => new Promise((resolve) => { require('node:child_process').execFile(file, args, (error, stdout) => resolve({ code: error ? 1 : 0, stdout: String(stdout || '') })); });
   const linux = L.createLinux({ fs: fsp, path, os, run });
   const drives = await linux.drives();
   assert.ok(Array.isArray(drives));

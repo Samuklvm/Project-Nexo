@@ -6,7 +6,7 @@
  */
 const Lab = require('../src/lab.js');
 
-function createLinuxLabSystem({ linux, run, bench, readTemp, cpuLoad, onBattery, fs, path, dir, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
+function createLinuxLabSystem({ linux, run, bench, readTemp, cpuLoad, onBattery, fs, path, dir, now = Date.now, sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }) }) {
   const lockFile = path.join(dir, 'lab-lock.json');
   const order = linux.PROFILE_ORDER;
   let session = null;

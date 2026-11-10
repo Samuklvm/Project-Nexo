@@ -36,8 +36,8 @@ const SECRET_JSON = new RegExp(String.raw`(["'])(${SECRET_NAMES})\1(\s*:\s*)(?:"
 export function redact(value) {
   return String(value ?? '')
     // Pasta de usuário do Windows: com o nome seguido de outra pasta (pode ter espaço) ou no fim do texto.
-    .replace(/([A-Za-z]:[\\/]+Users[\\/]+)[^\\/"'`:*?<>|\r\n]+(?=[\\/])/gi, '$1<usuário>')
-    .replace(/([A-Za-z]:[\\/]+Users[\\/]+)(?!<usuário>)[^\\/\s"'`:*?<>|]+/gi, '$1<usuário>')
+    .replace(/([a-z]:[\\/]+Users[\\/]+)[^\\/"'`:*?<>|\r\n]+(?=[\\/])/gi, '$1<usuário>')
+    .replace(/([a-z]:[\\/]+Users[\\/]+)(?!<usuário>)[^\\/\s"'`:*?<>|]+/gi, '$1<usuário>')
     .replace(/(\/(?:home|Users)\/)[^/\s"'`]+/g, '$1<usuário>')
     .replace(SECRET_PAIR, '$1=<oculto>')
     .replace(SECRET_JSON, '$1$2$1$3"<oculto>"')
