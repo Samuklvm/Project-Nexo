@@ -36,7 +36,7 @@
   function renderPicker() {
     const box = document.getElementById('accent-picker');
     if (!box) return;
-    box.innerHTML = ACCENTS.map((item) => `<button type="button" data-accent="${item.id}" style="--a:${item.a};--b:${item.b}" title="${item.label}" aria-label="${item.label}" aria-pressed="${String((Nexo.accent || 'estrela') === item.id)}"></button>`).join('');
+    box.innerHTML = ACCENTS.map((item) => `<button type="button" data-accent="${item.id}" data-css="--a:${item.a};--b:${item.b}" title="${item.label}" aria-label="${item.label}" aria-pressed="${String((Nexo.accent || 'estrela') === item.id)}"></button>`).join('');
     box.addEventListener('click', (event) => { const button = event.target.closest('button[data-accent]'); if (button) { Nexo.setAccent(button.dataset.accent); showToast(`Destaque: ${button.title}.`); } });
   }
 

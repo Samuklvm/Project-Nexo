@@ -84,7 +84,7 @@
         <div class="btn-row"><button class="link" type="button" data-conn="steam-keypage">Onde pego a minha chave?</button>${steam.hasKey ? '<button class="link" type="button" data-conn="steam-clearkey">Apagar chave</button>' : ''}</div></details>`;
     const hidden = steam.signedIn && steam.visible === false ? '<p class="notes-line warn">O seu perfil da Steam esconde os jogos. Para o Nexo ver a sua biblioteca e as conquistas, deixe “Detalhes de jogos” como Público. <button class="link" type="button" data-conn="steam-privacy">Abrir a privacidade da Steam</button></p>' : '';
     const steamBody = steam.connected && steam.signedIn
-      ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Entrou com a Steam (login oficial, sem senha no Nexo).${steam.owned != null ? ` ${steam.owned} jogos na conta,` : ''} tempo de jogo e conquistas pelo servidor do Nexo.</small></div></div>${hidden}
+      ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Entrou com a Steam (login oficial, sem senha no Nexo).${(steam.owned ?? null) !== null ? ` ${steam.owned} jogos na conta,` : ''} tempo de jogo e conquistas pelo servidor do Nexo.</small></div></div>${hidden}
         <div class="btn-row"><button class="btn sm" type="button" data-conn="steam-in">Entrar de novo</button><button class="btn sm ghost" type="button" data-conn="steam-off">Sair da Steam</button></div>`
       : steam.connected
         ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Lida da Steam deste PC, sem senha. Traz tempo de jogo e última vez jogado.</small></div></div>
@@ -126,7 +126,7 @@
         try {
           changed(await bridge.signInSteam());
           const s = connections.steam;
-          showToast(s.visible === false ? `Steam conectada: ${s.personaName}. O perfil esconde os jogos; veja o aviso no cartão.` : `Steam conectada: ${s.personaName}${s.owned != null ? `, ${s.owned} jogos na conta` : ''}.`);
+          showToast(s.visible === false ? `Steam conectada: ${s.personaName}. O perfil esconde os jogos; veja o aviso no cartão.` : `Steam conectada: ${s.personaName}${(s.owned ?? null) !== null ? `, ${s.owned} jogos na conta` : ''}.`);
         } finally { setButtonBusy(button, false); }
       }
       if (action === 'steam-privacy') bridge.openLink('steamprivacy');

@@ -46,9 +46,9 @@ async function signIn({ clientId, createServer, openExternal, fetch }) {
   const token = await json(`${AUTHORITY}/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: verifier, scope: SCOPE }).toString() });
   const user = await json('https://user.auth.xboxlive.com/user/authenticate', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'x-xbl-contract-version': '1' },
-    body: JSON.stringify({ RelyingParty: 'http://auth.xboxlive.com', TokenType: 'JWT', Properties: { AuthMethod: 'RPS', SiteName: 'user.auth.xboxlive.com', RpsTicket: `d=${token.access_token}` } }) });
+    body: JSON.stringify({ RelyingParty: 'http://auth.xboxlive.com', /* NOSONAR: identificador fixo exigido pela Xbox Live, não URL acessada */ TokenType: 'JWT', Properties: { AuthMethod: 'RPS', SiteName: 'user.auth.xboxlive.com', RpsTicket: `d=${token.access_token}` } }) });
   const xsts = await json('https://xsts.auth.xboxlive.com/xsts/authorize', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'x-xbl-contract-version': '1' },
-    body: JSON.stringify({ RelyingParty: 'http://xboxlive.com', TokenType: 'JWT', Properties: { SandboxId: 'RETAIL', UserTokens: [user.Token] } }) });
+    body: JSON.stringify({ RelyingParty: 'http://xboxlive.com', /* NOSONAR: idem */ TokenType: 'JWT', Properties: { SandboxId: 'RETAIL', UserTokens: [user.Token] } }) });
   const claims = xsts.DisplayClaims?.xui?.[0] || {};
   if (!claims.uhs || !claims.xid) throw new Error('A Xbox Live não devolveu a identificação da conta (a conta precisa ter um perfil Xbox).');
   const auth = { Authorization: `XBL3.0 x=${claims.uhs};${xsts.Token}`, 'x-xbl-contract-version': '2', Accept: 'application/json', 'Accept-Language': 'pt-BR' };

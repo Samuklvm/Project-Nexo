@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: blob: https://*.steamstatic.com https://steamcdn-a.akamaihd.net; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: blob: https://shared.akamai.steamstatic.com https://shared.cloudflare.steamstatic.com https://shared.fastly.steamstatic.com https://cdn.akamai.steamstatic.com https://cdn.cloudflare.steamstatic.com https://cdn.fastly.steamstatic.com https://clan.akamai.steamstatic.com https://clan.cloudflare.steamstatic.com https://clan.fastly.steamstatic.com https://store.akamai.steamstatic.com https://store.cloudflare.steamstatic.com https://store.fastly.steamstatic.com https://avatars.steamstatic.com https://avatars.akamai.steamstatic.com https://avatars.cloudflare.steamstatic.com https://avatars.fastly.steamstatic.com https://community.akamai.steamstatic.com https://community.cloudflare.steamstatic.com https://community.fastly.steamstatic.com https://steamcdn-a.akamaihd.net; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="theme-color" content="#060919" />
   <title>Nexo Device Care</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="theme.css" />
 </head>
 <body>
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
     <defs>
       <linearGradient id="g-star" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#5ad7ff"/></linearGradient>
       <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z" fill="currentColor"/></symbol>
@@ -110,11 +110,11 @@
         </div>
 
         <div class="live" aria-label="Medições ao vivo">
-          <div class="metric"><span class="metric-label">Processador</span><strong id="cpu-usage-value">--%</strong><small id="cpu-usage-state">Aguardando leitura</small><canvas class="spark" data-spark="cpu" aria-hidden="true"></canvas></div>
-          <div class="metric"><span class="metric-label">Memória</span><strong id="memory-usage-value">--%</strong><small id="memory-usage-state">Aguardando leitura</small><canvas class="spark" data-spark="memory" aria-hidden="true"></canvas></div>
-          <div class="metric"><span class="metric-label">Armazenamento</span><strong id="disk-usage-value">--%</strong><small id="disk-usage-state">Aguardando leitura</small><canvas class="spark" data-spark="disk" aria-hidden="true"></canvas></div>
-          <div class="metric"><span class="metric-label">Placa de vídeo</span><strong id="gpu-usage-value">--</strong><small id="gpu-usage-state">Sensor não detectado</small><canvas class="spark" data-spark="gpu" aria-hidden="true"></canvas></div>
-          <div class="metric"><span class="metric-label">Temperatura</span><strong id="system-temperature-value">--</strong><small id="system-temperature-state">Sem sensor compatível</small><canvas class="spark" data-spark="temp" aria-hidden="true"></canvas></div>
+          <div class="metric"><span class="metric-label">Processador</span><strong id="cpu-usage-value">--%</strong><small id="cpu-usage-state">Aguardando leitura</small><span class="aria-skip" aria-hidden="true"><canvas class="spark" data-spark="cpu"></canvas></span></div>
+          <div class="metric"><span class="metric-label">Memória</span><strong id="memory-usage-value">--%</strong><small id="memory-usage-state">Aguardando leitura</small><span class="aria-skip" aria-hidden="true"><canvas class="spark" data-spark="memory"></canvas></span></div>
+          <div class="metric"><span class="metric-label">Armazenamento</span><strong id="disk-usage-value">--%</strong><small id="disk-usage-state">Aguardando leitura</small><span class="aria-skip" aria-hidden="true"><canvas class="spark" data-spark="disk"></canvas></span></div>
+          <div class="metric"><span class="metric-label">Placa de vídeo</span><strong id="gpu-usage-value">--</strong><small id="gpu-usage-state">Sensor não detectado</small><span class="aria-skip" aria-hidden="true"><canvas class="spark" data-spark="gpu"></canvas></span></div>
+          <div class="metric"><span class="metric-label">Temperatura</span><strong id="system-temperature-value">--</strong><small id="system-temperature-state">Sem sensor compatível</small><span class="aria-skip" aria-hidden="true"><canvas class="spark" data-spark="temp"></canvas></span></div>
           <div class="metric"><span class="metric-label">Ligado há</span><strong id="uptime-value">--</strong><small id="uptime-detail">Desde a última inicialização</small></div>
         </div>
 
@@ -124,7 +124,7 @@
             <p>Cada planeta é um componente do seu PC. Quanto mais carga, maior ele fica e mais rápido gira. Planetas que esquentam ficam avermelhados.</p>
             <ul class="orbit-legend" id="orbit-legend"></ul>
           </div>
-          <canvas id="orbit-canvas" role="img" aria-label="Mapa em órbitas do uso de cada componente"></canvas>
+          <div class="aria-skip" role="img" aria-label="Mapa em órbitas do uso de cada componente"><canvas id="orbit-canvas"></canvas></div>
         </section>
 
         <div class="section-head">
@@ -137,11 +137,11 @@
           </div>
         </div>
         <div class="chart-grid">
-          <article class="sheet chart span-7"><header><h3>Processador</h3><strong id="chart-cpu-value">--%</strong></header><div class="chart-body"><canvas id="chart-cpu" role="img" aria-label="Histórico de uso do processador"></canvas></div><footer><span id="chart-cpu-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
-          <article class="sheet chart span-5"><header><h3>Memória</h3><strong id="chart-memory-value">--%</strong></header><div class="chart-body"><canvas id="chart-memory" role="img" aria-label="Histórico de uso da memória"></canvas></div><footer><span id="chart-memory-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
-          <article class="sheet chart span-6"><header><h3>Temperatura</h3><strong id="chart-temperature-value">--</strong></header><div class="chart-legend"><span><i style="background:var(--c-cpu)"></i>Processador</span><span><i style="background:var(--c-gpu)"></i>Vídeo</span><span><i style="background:var(--c-acpi)"></i>Zona ACPI</span></div><div class="chart-body"><canvas id="chart-temperature" role="img" aria-label="Histórico de temperaturas"></canvas></div><footer><span id="chart-temperature-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
-          <article class="sheet chart span-3"><header><h3>Vídeo</h3><strong id="chart-gpu-value">--</strong></header><div class="chart-body"><canvas id="chart-gpu" role="img" aria-label="Histórico de uso da placa de vídeo"></canvas></div><footer><span id="chart-gpu-summary">Sensor indisponível</span><span data-history-window>5 min</span></footer></article>
-          <article class="sheet chart span-3"><header><h3 id="chart-disk-name">Disco</h3><strong id="chart-disk-value">--%</strong></header><div class="chart-body"><canvas id="chart-disk" role="img" aria-label="Histórico de ocupação do disco"></canvas></div><footer><span id="chart-disk-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-7"><header><h3>Processador</h3><strong id="chart-cpu-value">--%</strong></header><div class="chart-body" role="img" aria-label="Histórico de uso do processador"><canvas id="chart-cpu"></canvas></div><footer><span id="chart-cpu-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-5"><header><h3>Memória</h3><strong id="chart-memory-value">--%</strong></header><div class="chart-body" role="img" aria-label="Histórico de uso da memória"><canvas id="chart-memory"></canvas></div><footer><span id="chart-memory-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-6"><header><h3>Temperatura</h3><strong id="chart-temperature-value">--</strong></header><div class="chart-legend"><span><i data-css="background:var(--c-cpu)"></i>Processador</span><span><i data-css="background:var(--c-gpu)"></i>Vídeo</span><span><i data-css="background:var(--c-acpi)"></i>Zona ACPI</span></div><div class="chart-body" role="img" aria-label="Histórico de temperaturas"><canvas id="chart-temperature"></canvas></div><footer><span id="chart-temperature-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-3"><header><h3>Vídeo</h3><strong id="chart-gpu-value">--</strong></header><div class="chart-body" role="img" aria-label="Histórico de uso da placa de vídeo"><canvas id="chart-gpu"></canvas></div><footer><span id="chart-gpu-summary">Sensor indisponível</span><span data-history-window>5 min</span></footer></article>
+          <article class="sheet chart span-3"><header><h3 id="chart-disk-name">Disco</h3><strong id="chart-disk-value">--%</strong></header><div class="chart-body" role="img" aria-label="Histórico de ocupação do disco"><canvas id="chart-disk"></canvas></div><footer><span id="chart-disk-summary">Aguardando amostras</span><span data-history-window>5 min</span></footer></article>
         </div>
 
         <div class="section-head"><div><h2>O que o Nexo notou</h2><p>Observações baseadas na sua rotina, com a evidência de cada uma.</p></div><button class="link" type="button" data-goto="analysis">Ver análise completa</button></div>
@@ -200,7 +200,7 @@
               <div><span>FPS</span><strong id="live-fps">--</strong></div>
             </div>
             <div class="live-fg"><span class="chip" id="live-fg">Aguardando o primeiro plano…</span><button class="btn sm ghost" id="live-mark-game" type="button" hidden>Marcar como jogo</button><button class="btn sm ghost" id="live-fps-now" type="button" hidden>Medir FPS deste programa</button></div>
-            <div class="chart-body live-chart"><canvas id="live-chart" role="img" aria-label="Últimos dois minutos da sessão"></canvas></div>
+            <div class="chart-body live-chart" role="img" aria-label="Últimos dois minutos da sessão"><canvas id="live-chart"></canvas></div>
             <p class="muted" id="live-overhead">Custo do Nexo: medindo…</p>
             <p class="notes-line" id="live-error" hidden></p>
           </div>
@@ -239,7 +239,7 @@
           <section class="shelf" id="shelf-top" hidden><header><h3>Mais jogados</h3><span class="muted">pelo tempo de jogo da sua conta</span></header><div class="shelf-row" id="shelf-top-row"></div></section>
           <div class="lib-toolbar">
             <h3 class="lib-count" id="lib-count">Biblioteca</h3>
-            <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="lib-search" type="search" placeholder="Buscar na biblioteca" autocomplete="off" /></label>
+            <label class="search"><span class="sr-only">Buscar na biblioteca</span><svg aria-hidden="true"><use href="#i-search"/></svg><input id="lib-search" type="search" placeholder="Buscar na biblioteca" autocomplete="off" /></label>
             <div class="segmented sm" role="group" aria-label="Ordenar"><button type="button" data-lib-sort="recent" aria-pressed="true">Recentes</button><button type="button" data-lib-sort="playtime" aria-pressed="false">Mais jogados</button><button type="button" data-lib-sort="name" aria-pressed="false">A–Z</button><button type="button" data-lib-sort="size" aria-pressed="false">Tamanho</button></div>
             <div class="bar-spacer"></div>
             <button class="btn sm" id="lib-add" type="button"><svg><use href="#i-plus"/></svg>Adicionar jogo</button>
@@ -328,7 +328,7 @@
       <section class="view" data-view-panel="atlas">
         <header class="page-head"><div><h2>Atlas de opções</h2><p>Todas as alavancas de desempenho que valem conhecer: as famosas, as que quase ninguém mexe e os boatos. Para cada uma, o que o Nexo faz e por quê, e o que ele já conferiu neste PC.</p></div><div class="page-actions"><button class="btn" id="atlas-refresh" type="button">Conferir este PC</button></div></header>
         <div class="atlas-stats" id="atlas-stats"></div>
-        <div class="atlas-filters"><label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="atlas-search" type="search" placeholder="Buscar opção" autocomplete="off" /></label><div class="chips" id="atlas-status" role="group" aria-label="Filtrar"></div></div>
+        <div class="atlas-filters"><label class="search"><span class="sr-only">Buscar opção</span><svg aria-hidden="true"><use href="#i-search"/></svg><input id="atlas-search" type="search" placeholder="Buscar opção" autocomplete="off" /></label><div class="chips" id="atlas-status" role="group" aria-label="Filtrar"></div></div>
         <div class="atlas-grid" id="atlas-grid"></div>
       </section>
 
@@ -345,7 +345,7 @@
           <button class="btn primary sm" id="sensor-service-install" type="button" hidden>Ativar leitura completa</button>
         </section>
         <div class="sensor-toolbar">
-          <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="sensor-search" type="search" placeholder="Buscar componente ou sensor" autocomplete="off" /></label>
+          <label class="search"><span class="sr-only">Buscar componente ou sensor</span><svg aria-hidden="true"><use href="#i-search"/></svg><input id="sensor-search" type="search" placeholder="Buscar componente ou sensor" autocomplete="off" /></label>
           <label class="switch compact"><input id="sensor-advanced" type="checkbox" /><i></i><span>Incluir sensores avançados</span></label>
           <span class="muted" id="sensor-updated-at">Aguardando leitura</span>
         </div>
@@ -366,7 +366,7 @@
           <section class="sheet drive-panel">
             <div class="sheet-head"><div><h3>Unidades de armazenamento <button class="info" type="button" data-op="drive-optimize" aria-label="Detalhes da operação: otimizar unidade">i</button></h3><p class="muted"><span data-only="win32">Otimização feita pelo Windows (TRIM em SSD, desfragmentação em HD).</span><span data-only="linux">TRIM pelo fstrim do sistema; pede a sua senha (pkexec).</span></p></div><label class="select"><span class="sr-only">Unidade</span><select id="drive-select"><option value="">Carregando unidades…</option></select></label></div>
             <div class="drive-head"><span class="drive-type" id="drive-type">Unidade local</span><strong id="drive-model">Carregando…</strong></div>
-            <div class="capacity"><div class="capacity-labels"><span>Espaço usado</span><strong><span id="drive-used-capacity">--</span> <small>de <span id="drive-total-capacity">--</span></small></strong></div><div class="capacity-track"><span id="drive-capacity-bar" style="width:0%"></span></div><div class="capacity-legend"><span id="drive-used-label">-- usados</span><span id="drive-free-label">-- livres</span></div></div>
+            <div class="capacity"><div class="capacity-labels"><span>Espaço usado</span><strong><span id="drive-used-capacity">--</span> <small>de <span id="drive-total-capacity">--</span></small></strong></div><div class="capacity-track"><span id="drive-capacity-bar" data-css="width:0%"></span></div><div class="capacity-legend"><span id="drive-used-label">-- usados</span><span id="drive-free-label">-- livres</span></div></div>
             <dl class="facts"><div><dt>Formato</dt><dd id="drive-format">--</dd></div><div><dt>Temperatura</dt><dd id="drive-temp">Não medida</dd></div><div><dt>Estado</dt><dd id="drive-state">Aguardando leitura</dd></div></dl>
             <div class="drive-op"><div><strong id="drive-operation-title">Otimização do Windows</strong><p class="muted" id="drive-operation-description">O Windows seleciona a operação adequada para a unidade.</p></div><span class="pill" id="drive-method">Otimizar</span></div>
             <button class="btn primary" id="drive-optimize" type="button">Otimizar unidade</button>
@@ -439,7 +439,7 @@
         <div class="split even">
           <section class="sheet">
             <div class="sheet-head"><h3>Aparência</h3></div>
-            <div class="wall-row"><div class="wall-preview" id="wall-preview" aria-hidden="true"></div><div><strong>Papel de parede</strong><p class="muted">Imagens PNG, JPEG ou WebP. O Nexo reduz o tamanho antes de guardar.</p><div class="btn-row"><button class="btn sm" id="choose-wallpaper" type="button">Escolher imagem</button><button class="btn sm ghost" id="reset-wallpaper" type="button" hidden>Restaurar padrão</button></div><input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" hidden /></div></div>
+            <div class="wall-row"><div class="wall-preview" id="wall-preview" aria-hidden="true"></div><div><strong>Papel de parede</strong><p class="muted">Imagens PNG, JPEG ou WebP. O Nexo reduz o tamanho antes de guardar.</p><div class="btn-row"><button class="btn sm" id="choose-wallpaper" type="button">Escolher imagem</button><button class="btn sm ghost" id="reset-wallpaper" type="button" hidden>Restaurar padrão</button></div><label class="sr-only" for="wallpaper-file">Imagem do papel de parede</label><input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Imagem do papel de parede" hidden /></div></div>
             <div class="self-meter"><div><strong>Custo do Nexo agora</strong><p class="muted">Medido pelo próprio Electron. Com a janela sem foco, animações param e as leituras ficam 6× mais espaçadas.</p></div><dl><div><dt>CPU</dt><dd id="self-cpu">--</dd></div><div><dt>Memória</dt><dd id="self-mem">--</dd></div><div><dt>Processos</dt><dd id="self-proc">--</dd></div></dl><div class="progress-track slim"><span id="self-bar"></span></div></div>
             <div class="setting-row"><div><strong>Efeitos visuais</strong><p class="muted">O modo leve desliga o desfoque de vidro e as animações de fundo para poupar GPU e bateria.</p></div><div class="segmented sm" role="group" aria-label="Efeitos visuais"><button type="button" data-effects="full" aria-pressed="true">Completo</button><button type="button" data-effects="lite" aria-pressed="false">Leve</button></div></div>
             <div class="setting-row"><div><strong>Cor de destaque</strong><p class="muted">Muda o neon do app inteiro: botões, brilhos, barra lateral e gráficos de destaque.</p></div><div class="accent-picker" id="accent-picker" role="group" aria-label="Cor de destaque"></div></div>
@@ -483,7 +483,7 @@
   <div class="modal-root" id="modal-root"></div>
   <div class="palette" id="palette" hidden>
     <div class="palette-box" role="dialog" aria-modal="true" aria-label="Buscar comandos">
-      <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="palette-input" type="text" placeholder="Digite um comando ou página…" autocomplete="off" /></label>
+      <label class="search"><span class="sr-only">Comando ou página</span><svg aria-hidden="true"><use href="#i-search"/></svg><input id="palette-input" type="text" placeholder="Digite um comando ou página…" autocomplete="off" /></label>
       <ul id="palette-list" role="listbox"></ul>
     </div>
   </div>

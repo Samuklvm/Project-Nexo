@@ -89,7 +89,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   async function session(request, env, { required = true } = {}) {
     const header = request.headers.get('authorization') || '';
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
-    if (!token) { if (required) throw new HttpError(401, 'Entre com a sua conta Google no Nexo.'); return null; }
+    if (!token) {
+      if (required) throw new HttpError(401, 'Entre com a sua conta Google no Nexo.');
+      return null;
+    }
     const payload = await verifyToken(token, env.SESSION_SECRET, now());
     if (!payload?.sid) throw new HttpError(401, 'Sessão inválida. Entre de novo.');
     const row = await env.DB.prepare('SELECT s.sid, s.uid, s.device_id, s.expires_at, s.revoked, u.email, u.name FROM sessions s JOIN users u ON u.uid = s.uid WHERE s.sid = ?').bind(payload.sid).first();
@@ -376,7 +379,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       const body = await readJson(request);
       const status = STATUSES.has(body.status) ? body.status : null;
       if (!status) throw new HttpError(400, 'Status inválido.');
-      const fixedIn = status === 'corrigido' ? (RE.version.test(String(body.fixedIn || '')) ? body.fixedIn : null) : null;
+      const validVersion = RE.version.test(String(body.fixedIn || '')) ? body.fixedIn : null;
+      const fixedIn = status === 'corrigido' ? validVersion : null;
       if (status === 'corrigido' && !fixedIn) throw new HttpError(400, 'Diga em qual versão foi corrigido (ex.: 0.8.2).');
       await env.DB.prepare('UPDATE error_groups SET status = ?, fixed_in = ?, note = ? WHERE signature = ?').bind(status, fixedIn, text(body.note, 500) || null, detail[1]).run();
       return json({ ok: true });
@@ -541,7 +545,16 @@ export function aggregateTelemetry(rows) {
     if (!previous || previous.day <= row.day) latest.set(row.install_id, row);
   }
   const maps = {};
-  const count = (name, key, n = 1) => { if (key === null || key === undefined || key === '') return; const map = (maps[name] ||= new Map()); map.set(String(key), (map.get(String(key)) || 0) + n); };
+  const count = (name, key, n = 1) => {
+    if (key === null || key === undefined || key === '') return;
+    maps[name] ??= new Map();
+    const map = maps[name];
+    map.set(String(key), (map.get(String(key)) || 0) + n);
+  };
+  // Faixas para os gráficos (em vez de ternários encadeados).
+  const band = (value, limits) => limits.find(([max]) => value < max)?.[1] ?? limits.at(-1)[1];
+  const RAM_BANDS = [[8.5, 'até 8 GB'], [16.5, '9–16 GB'], [32.5, '17–32 GB'], [Infinity, 'mais de 32 GB']];
+  const AGE_BANDS = [[1, 'menos de 1 dia'], [7, '1 a 6 dias'], [30, '1 a 4 semanas'], [90, '1 a 3 meses'], [Infinity, 'mais de 3 meses']];
   const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
   // Um voto por PC: o resumo mais recente de cada instalação.
   for (const row of latest.values()) {
@@ -551,7 +564,7 @@ export function aggregateTelemetry(rows) {
     const hw = data.hw || {};
     if (hw.cpuVendor) count('cpus', hw.cpuVendor);
     if (hw.cpuModel) count('cpuModels', hw.cpuModel);
-    if (num(hw.ramGB) !== null) count('ram', hw.ramGB <= 8 ? 'até 8 GB' : hw.ramGB <= 16 ? '9–16 GB' : hw.ramGB <= 32 ? '17–32 GB' : 'mais de 32 GB');
+    if (num(hw.ramGB) !== null) count('ram', band(hw.ramGB, RAM_BANDS));
     if (num(hw.cores) !== null) count('cores', `${hw.cores} threads`);
     if (hw.gpuVendor) count('gpus', hw.gpuVendor);
     for (const model of Array.isArray(hw.gpuModels) ? hw.gpuModels : []) count('gpuModels', model);
@@ -575,11 +588,16 @@ export function aggregateTelemetry(rows) {
     for (const flag of ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor', 'skyHour', 'wallpaper', 'autoClean', 'reducedMotion']) if (set[flag] === true) count('skyFlags', flag);
     for (const [store, n] of Object.entries(data.library?.stores || {})) if (num(n)) count('stores', store, n);
     if (data.app?.previous) count('updatedFrom', `${data.app.previous} → ${row.version}`);
-    if (num(data.app?.ageDays) !== null) count('ageDays', data.app.ageDays < 1 ? 'menos de 1 dia' : data.app.ageDays < 7 ? '1 a 6 dias' : data.app.ageDays < 30 ? '1 a 4 semanas' : data.app.ageDays < 90 ? '1 a 3 meses' : 'mais de 3 meses');
+    if (num(data.app?.ageDays) !== null) count('ageDays', band(data.app.ageDays, AGE_BANDS));
   }
   // Somas de uso e números do dia: todos os resumos do período.
   const metrics = new Map();
-  const metric = (label, value) => { const v = num(value); if (v === null) return; if (!metrics.has(label)) metrics.set(label, []); metrics.get(label).push(v); };
+  const metric = (label, value) => {
+    const v = num(value);
+    if (v === null) return;
+    if (!metrics.has(label)) metrics.set(label, []);
+    metrics.get(label).push(v);
+  };
   for (const { data } of parsed) {
     for (const [name, source] of [['views', data.usage?.views], ['viewTime', data.usage?.viewTime], ['actions', data.usage?.actions], ['ui', data.usage?.ui], ['features', data.features]]) {
       for (const [key, value] of Object.entries(source || {})) if (num(value) !== null) count(name, key, value);
@@ -589,12 +607,19 @@ export function aggregateTelemetry(rows) {
       if (num(row?.e)) count('ipcFails', channel, row.e);
       if (num(row?.n)) count('ipcCalls', channel, row.n);
       if (num(row?.n) && num(row?.ms)) { count('ipcMsSum', channel, row.ms * row.n); }
-      if (num(row?.max)) { const map = (maps.ipcMax ||= new Map()); map.set(channel, Math.max(map.get(channel) || 0, row.max)); }
+      if (num(row?.max)) {
+        maps.ipcMax ??= new Map();
+        maps.ipcMax.set(channel, Math.max(maps.ipcMax.get(channel) || 0, row.max));
+      }
     }
     for (const [event, n] of Object.entries(data.diag?.events || {})) if (num(n)) count('events', event, n);
     for (const id of Array.isArray(data.feats?.empty) ? data.feats.empty : []) count('featsEmpty', id);
     for (const id of Array.isArray(data.feats?.crashed) ? data.feats.crashed : []) count('featsCrashed', id);
-    for (const [name, row] of Object.entries(data.feats?.sources || {})) { if (num(row?.fail)) count('sourceFails', name, row.fail); if (num(row?.ok)) count('sourceOk', name, row.ok); if (num(row?.ms) && num(row?.ok) && num(row?.fail)) count('sourceMsSum', name, row.ms * (row.ok + row.fail)); }
+    for (const [name, row] of Object.entries(data.feats?.sources || {})) {
+      if (num(row?.fail)) count('sourceFails', name, row.fail);
+      if (num(row?.ok)) count('sourceOk', name, row.ok);
+      if (num(row?.ms) && num(row?.ok) && num(row?.fail)) count('sourceMsSum', name, row.ms * (row.ok + row.fail));
+    }
     metric('Minutos com o Nexo em foco', data.app?.focusMin);
     metric('Minutos com o Nexo aberto', data.app?.openMin);
     metric('Aberturas no dia', data.app?.launches);

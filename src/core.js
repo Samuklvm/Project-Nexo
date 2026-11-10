@@ -58,6 +58,29 @@ const desktopBridge = window.nexoDesktop;
   // Trilha: cada troca de tela vai para o processo principal (só o nome da tela).
   setTimeout(() => window.Nexo?.on?.('view', (name) => { try { desktopBridge?.crumb?.('tela', name); } catch { /* sem ponte */ } }), 0);
 })();
+/*
+ * Estilos dinâmicos sem 'unsafe-inline' na política de segurança: o HTML gerado pelo app usa data-css="prop: valor; …"
+ * e isto aplica pelo CSSOM (que a política permite), logo que o elemento entra na página — antes de a tela ser pintada.
+ */
+(function dynamicStyles() {
+  const apply = (element) => {
+    const text = element.getAttribute('data-css');
+    if (text === null) return;
+    element.removeAttribute('data-css');
+    for (const part of text.split(';')) {
+      const colon = part.indexOf(':');
+      if (colon > 0) element.style.setProperty(part.slice(0, colon).trim(), part.slice(colon + 1).trim());
+    }
+  };
+  const scan = (node) => { if (node.nodeType !== 1) return; apply(node); node.querySelectorAll('[data-css]').forEach(apply); };
+  new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === 'attributes') apply(record.target);
+      else record.addedNodes.forEach(scan);
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-css'] });
+  scan(document.documentElement);
+})();
 const Nexo = (window.Nexo = {
   state: { snapshot: null, sensors: null, processes: null, cleanup: null, power: null, view: 'home' },
   keys: {

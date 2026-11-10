@@ -260,8 +260,8 @@
     if (finite(memAvg)) add('memory', 'Memória', clamp((memAvg - 70) / 30, 0, 1) * 22, `Média de ${Math.round(memAvg)}% em uso`);
     if (finite(ctx.disk)) {
       const f = ctx.forecast;
-      const soon = f?.daysToFull != null ? (f.daysToFull <= 3 ? 10 : f.daysToFull <= 14 ? 6 : 0) : 0;
-      add('disk', 'Armazenamento', clamp((ctx.disk - 80) / 20, 0, 1) * 18 + soon, f?.daysToFull != null && soon ? `${Math.round(ctx.disk)}% ocupado; cheio em cerca de ${pl(Math.max(1, Math.round(f.daysToFull)), 'dia', 'dias')} no ritmo atual` : `${Math.round(ctx.disk)}% ocupado`);
+      const soon = (f?.daysToFull ?? null) !== null ? (f.daysToFull <= 3 ? 10 : f.daysToFull <= 14 ? 6 : 0) : 0;
+      add('disk', 'Armazenamento', clamp((ctx.disk - 80) / 20, 0, 1) * 18 + soon, (f?.daysToFull ?? null) !== null && soon ? `${Math.round(ctx.disk)}% ocupado; cheio em cerca de ${pl(Math.max(1, Math.round(f.daysToFull)), 'dia', 'dias')} no ritmo atual` : `${Math.round(ctx.disk)}% ocupado`);
     }
     if (finite(ctx.temp)) add('thermal', 'Temperatura', clamp((ctx.temp - 75) / 20, 0, 1) * 18, `${Math.round(ctx.temp)} °C reportados`);
     const day = 24 * 60 * MIN;
@@ -336,15 +336,15 @@
     }
     const disk = s.primaryDrive?.usedPercent;
     const forecast = ctx.forecast ?? forecastDisk(history, now);
-    if (finite(disk) && (disk >= 90 || (forecast?.daysToFull != null && forecast.daysToFull <= 21))) {
+    if (finite(disk) && (disk >= 90 || ((forecast?.daysToFull ?? null) !== null && forecast.daysToFull <= 21))) {
       const evidence = [`Unidade ${s.primaryDrive.driveLetter}: com ${Math.round(disk)}% ocupado e ${fmtBytes(s.primaryDrive.freeBytes)} livres.`];
-      if (forecast?.daysToFull != null) evidence.push(`No ritmo dos últimos ${comma(forecast.spanDays)} dias (+${comma(forecast.slopePerDay, 2)} ponto por dia), o disco enche em cerca de ${pl(Math.max(1, Math.round(forecast.daysToFull)), 'dia', 'dias')}.`);
+      if ((forecast?.daysToFull ?? null) !== null) evidence.push(`No ritmo dos últimos ${comma(forecast.spanDays)} dias (+${comma(forecast.slopePerDay, 2)} ponto por dia), o disco enche em cerca de ${pl(Math.max(1, Math.round(forecast.daysToFull)), 'dia', 'dias')}.`);
       if (ctx.cleanup?.bytes > 0) evidence.push(`${fmtBytes(ctx.cleanup.bytes)} podem ser liberados com a limpeza segura.`);
       push({
-        id: 'disk-space', category: 'disk', severity: disk >= 95 || (forecast?.daysToFull != null && forecast.daysToFull <= 5) ? 'bad' : 'warn',
-        title: forecast?.daysToFull != null && disk < 90 ? 'O disco está enchendo' : 'Pouco espaço livre no disco',
+        id: 'disk-space', category: 'disk', severity: disk >= 95 || ((forecast?.daysToFull ?? null) !== null && forecast.daysToFull <= 5) ? 'bad' : 'warn',
+        title: (forecast?.daysToFull ?? null) !== null && disk < 90 ? 'O disco está enchendo' : 'Pouco espaço livre no disco',
         summary: 'Discos muito cheios perdem desempenho e deixam de receber atualizações e arquivos temporários.',
-        evidence, actions: ctx.cleanup?.bytes > 0 ? [{ type: 'goto-optimize', label: 'Abrir limpeza' }] : [], confidence: forecast?.daysToFull != null ? clamp(Math.round(55 + forecast.r2 * 35), 55, 90) : 70
+        evidence, actions: ctx.cleanup?.bytes > 0 ? [{ type: 'goto-optimize', label: 'Abrir limpeza' }] : [], confidence: (forecast?.daysToFull ?? null) !== null ? clamp(Math.round(55 + forecast.r2 * 35), 55, 90) : 70
       });
     }
     const hotLimit = ctx.sensors?.cpuTemperature ?? ctx.sensors?.gpuTemperature ?? ctx.temp;
@@ -362,7 +362,7 @@
       push({
         id: 'throttle', category: 'throttle', severity: 'warn', title: 'O processador reduziu a velocidade por calor',
         summary: 'Houve momentos de carga alta com a frequência bem abaixo do máximo já observado e temperatura alta: indício de limitação térmica.',
-        evidence: [`${pl(throttled.length, 'ocorrência', 'ocorrências')} nas últimas 24 h; a última durou ${last.minutes} min.`, last.peak != null ? `Menor frequência registrada: ${last.peak}% do máximo.` : 'Frequência abaixo de 78% do máximo observado.'],
+        evidence: [`${pl(throttled.length, 'ocorrência', 'ocorrências')} nas últimas 24 h; a última durou ${last.minutes} min.`, (last.peak ?? null) !== null ? `Menor frequência registrada: ${last.peak}% do máximo.` : 'Frequência abaixo de 78% do máximo observado.'],
         actions: [], confidence: 58
       });
     }

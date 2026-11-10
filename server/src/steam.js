@@ -14,8 +14,10 @@
 import { signToken, verifyToken } from './crypto.js';
 
 const OPENID = 'https://steamcommunity.com/openid/login';
-const NS = 'http://specs.openid.net/auth/2.0';
-const SELECT = 'http://specs.openid.net/auth/2.0/identifier_select';
+// Identificadores fixos da especificação OpenID 2.0 (são nomes, não endereços acessados): a Steam exige exatamente
+// estes textos com "http://". Nenhuma conexão é feita a eles.
+const NS = 'http://specs.openid.net/auth/2.0'; // NOSONAR: identificador da especificação, não URL acessada
+const SELECT = 'http://specs.openid.net/auth/2.0/identifier_select'; // NOSONAR: idem
 const CLAIMED = /^https:\/\/steamcommunity\.com\/openid\/id\/(7656119\d{10})$/;
 const STATE = /^[A-Za-z0-9_-]{16,64}$/;
 const API = 'https://api.steampowered.com';

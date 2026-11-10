@@ -161,7 +161,7 @@
     const mid = samples[Math.floor(samples.length / 2)];
     const peak = (key) => { const values = samples.map((sample) => sample[key]).filter(Number.isFinite); return values.length ? Math.max(...values) : null; };
     if (bucket.rows.length < BN_MAX_ROWS) bucket.rows.push([kind, r1(peak('cpu')), r1(peak('maxCore')), r1(peak('mem')), r1(peak('gpu')), r1(mid.gpuClockRatio), r1(mid.gpuPowerPct), r1(peak('vramPct')), r1(peak('gpuTemp')), r1(peak('cpuTemp')), r1(mid.cpuClockRatio), r1(mid.gpu3d), mid.gpuLimits?.thermal ? 1 : 0, mid.gpuLimits?.power ? 1 : 0]);
-    bnDays = Object.fromEntries(Object.keys(bnDays).sort().slice(-BN_KEEP_DAYS).map((key) => [key, bnDays[key]]));
+    bnDays = Object.fromEntries(Object.keys(bnDays).sort((a, b) => a.localeCompare(b)).slice(-BN_KEEP_DAYS).map((key) => [key, bnDays[key]]));
   }
   /** Resumo de um dia (formato da telemetria "bottleneck"). */
   function bottleneckDay(day) {
@@ -310,7 +310,7 @@
     },
     /** O que limitou o PC num dia (resumo para a telemetria e para a tela). */
     bottleneck: (day) => bottleneckDay(day),
-    bottleneckDays: () => Object.keys(bnDays).sort(),
+    bottleneckDays: () => Object.keys(bnDays).sort((a, b) => a.localeCompare(b)),
     exportAll() {
       return {
         exportedAt: new Date().toISOString(), app: 'Nexo Device Care',

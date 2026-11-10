@@ -156,7 +156,7 @@ function runPowerShell(script, timeout = 15000) {
     throw new Error('Esta operação está disponível somente no Windows.');
   }
 
-  return execFileAsync(systemTool('powershell'), [
+  return execFileAsync(systemTool('powershell.exe'), [
     '-NoLogo',
     '-NoProfile',
     '-NonInteractive',
@@ -173,7 +173,7 @@ function runPowerShell(script, timeout = 15000) {
 function runPowerShellCode(script, timeout = 15000) {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') { resolve({ code: -1, stdout: '' }); return; }
-    execFile(systemTool('powershell'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PS_UTF8_OUTPUT + script], { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
+    execFile(systemTool('powershell.exe'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PS_UTF8_OUTPUT + script], { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
       if (error) notePowerShellTimeout(error, script, timeout);
       resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || '') });
     });
@@ -2483,7 +2483,7 @@ registerIpcHandler('app:uninstall', async () => {
   const uninstallerName = names.find((name) => /^Uninstall .*\.exe$/i.test(name));
   if (!uninstallerName) throw new Error('Não encontrei o desinstalador desta instalação.');
   const script = buildRemovalScript({ installDir, uninstaller: path.join(installDir, uninstallerName), pid: process.pid });
-  const helper = spawn(systemTool('powershell'), ['-NoLogo', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', script], {
+  const helper = spawn(systemTool('powershell.exe'), ['-NoLogo', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', script], {
     detached: true, stdio: 'ignore', windowsHide: true
   });
   helper.unref();
@@ -2542,6 +2542,7 @@ app.on('before-quit', (event) => {
   }
   watcher.stop();
   probe.stop();
-  fpsRunner.stop();
+  // stop() do FPS é assíncrono: a falha ao fechar não pode virar rejeição sem tratamento na saída do app.
+  Promise.resolve(fpsRunner.stop()).catch(() => {});
   sensorHost?.kill();
 });

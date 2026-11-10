@@ -19,6 +19,10 @@ on:
   schedule:
     - cron: '44 4 * * 4'
 
+# Padrão do token: só leitura (o job pede o que precisa logo abaixo).
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})

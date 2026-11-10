@@ -190,7 +190,7 @@ table.nums td:not(:first-child), table.nums th:not(:first-child) { text-align: r
 export const PANEL_JS = `
 (function () {
   const $ = (id) => document.getElementById(id);
-  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const esc = (v) => String((v ?? null) === null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const when = (ms) => ms ? new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--';
   const STATUS = { aberto: 'aberto', reaberto: 'voltou depois de corrigido', corrigido: 'corrigido', ignorado: 'ignorado' };
   const SOURCE = { principal: 'processo principal', interface: 'interface', ipc: 'ação do app', servico: 'serviço', processo: 'processo do app' };

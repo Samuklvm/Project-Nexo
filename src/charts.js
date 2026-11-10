@@ -87,7 +87,7 @@
       context.setLineDash(step === 0 ? [] : [3, 5]);
       context.beginPath(); context.moveTo(pad.left, y); context.lineTo(width - pad.right, y); context.stroke();
       context.textAlign = 'right';
-      context.fillText(`${Math.round(value)}${unit === '%' ? '' : ''}`, pad.left - 8, y);
+      context.fillText(String(Math.round(value)), pad.left - 8, y);
     }
     context.setLineDash([]);
     context.textAlign = 'left'; context.textBaseline = 'alphabetic';
@@ -184,7 +184,7 @@
       const box = state.tip;
       if (!box || !info || !info.readings.length) { if (box) box.hidden = true; return; }
       const unit = state.options.unit || '';
-      box.innerHTML = `<b>${new Date(info.t).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</b> ${info.readings.map(({ serie, point }) => `<span style="color:${serie.color}">●</span> ${escapeHtml(serie.label)} ${point[1].toFixed(unit === '°C' ? 0 : 0)}${unit}`).join(' · ')}`;
+      box.innerHTML = `<b>${new Date(info.t).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</b> ${info.readings.map(({ serie, point }) => `<span data-css="color:${escapeHtml(serie.color)}">●</span> ${escapeHtml(serie.label)} ${escapeHtml(point[1].toFixed(0))}${escapeHtml(unit)}`).join(' · ')}`;
       box.hidden = false;
       box.style.left = `${Math.min(rect.width - 80, Math.max(80, info.x))}px`;
       box.style.top = '14px';

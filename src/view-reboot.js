@@ -65,7 +65,7 @@
     const config = state.order[state.step];
     let body = '';
     if (status.busy && progress) {
-      body = `<p><strong>Medindo o boot ${state.step + 1} de ${state.order.length} (${escapeHtml(CONFIG[config])}).</strong> Não use o PC até terminar.</p><div class="progress-track"><span style="width:${Math.max(3, progress.pct)}%"></span></div><p class="muted">${escapeHtml(progress.text || '')}</p>`;
+      body = `<p><strong>Medindo o boot ${state.step + 1} de ${state.order.length} (${escapeHtml(CONFIG[config])}).</strong> Não use o PC até terminar.</p><div class="progress-track"><span data-css="width:${Math.max(3, progress.pct)}%"></span></div><p class="muted">${escapeHtml(progress.text || '')}</p>`;
     } else if (status.busy) {
       body = `<p class="muted">${escapeHtml(view.progress?.text || 'Trabalhando…')}</p>`;
     } else if (status.action === 'switch') {

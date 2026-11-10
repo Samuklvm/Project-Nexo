@@ -143,7 +143,7 @@
   function renderPower() {
     const box = document.getElementById('power-list');
     const plans = Nexo.state.power?.plans || [];
-    box.innerHTML = plans.length ? plans.map((plan) => `<button class="power-item" type="button" role="radio" aria-checked="${plan.active}" data-guid="${plan.guid}"><span class="radio"></span><span><strong>${escapeHtml(plan.name)}</strong><small>${planNote(plan.name)}</small></span></button>`).join('')
+    box.innerHTML = plans.length ? plans.map((plan) => `<button class="power-item" type="button" role="radio" aria-checked="${plan.active === true}" data-guid="${escapeHtml(plan.guid)}"><span class="radio"></span><span><strong>${escapeHtml(plan.name)}</strong><small>${planNote(plan.name)}</small></span></button>`).join('')
       : '<p class="empty">O Windows não informou planos de energia neste computador.</p>';
   }
 

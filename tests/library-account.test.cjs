@@ -156,10 +156,11 @@ test('login sem configuração falha com mensagem clara', async () => {
 });
 
 test('ferramentas elevadas: só defrag com letra válida e sfc', () => {
-  assert.match(Elevate.toolLauncher('defrag', 'C'), /'defrag\.exe' -ArgumentList @\('C:', '\/O', '\/U', '\/V'\)/);
+  // Caminho completo em System32 (montado pelo PowerShell a partir do Windows instalado), nunca procurado no PATH.
+  assert.match(Elevate.toolLauncher('defrag', 'C'), /\(Join-Path \$env:SystemRoot 'System32\\defrag\.exe'\) -ArgumentList @\('C:', '\/O', '\/U', '\/V'\)/);
   assert.throws(() => Elevate.toolLauncher('defrag', 'C:; rm'));
   assert.throws(() => Elevate.toolLauncher('cmd'));
-  assert.match(Elevate.toolLauncher('sfc'), /'sfc\.exe'/);
+  assert.match(Elevate.toolLauncher('sfc'), /'System32\\sfc\.exe'/);
 });
 
 test('Atlas: cada item tem status e área válidos; mitos e bloqueios não apontam para ações', () => {

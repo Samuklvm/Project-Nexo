@@ -21,8 +21,8 @@
     const rows = [...byId.values()].sort((a, b) => Math.max(b.cpuPercent, b.memoryPercent) - Math.max(a.cpuPercent, a.memoryPercent)).slice(0, 6);
     list.innerHTML = rows.length ? rows.map((p) => `<div class="process-row">
       <div class="process-identity"><strong>${escapeHtml(p.name)}</strong><small>PID ${p.processId}</small></div>
-      <div class="process-metric"><span>CPU ${Math.round(p.cpuPercent)}%</span><span class="process-track"><i style="width:${Math.min(100, p.cpuPercent)}%"></i></span></div>
-      <div class="process-metric"><span>RAM ${formatBytes(p.memoryBytes)}</span><span class="process-track memory-track"><i style="width:${Math.min(100, p.memoryPercent)}%"></i></span></div></div>`).join('')
+      <div class="process-metric"><span>CPU ${Math.round(p.cpuPercent)}%</span><span class="process-track"><i data-css="width:${Math.min(100, p.cpuPercent)}%"></i></span></div>
+      <div class="process-metric"><span>RAM ${formatBytes(p.memoryBytes)}</span><span class="process-track memory-track"><i data-css="width:${Math.min(100, p.memoryPercent)}%"></i></span></div></div>`).join('')
       : '<p class="empty">Nenhum programa em destaque nesta amostra.</p>';
   }
 
@@ -37,14 +37,14 @@
 
   function renderEpisodes() {
     const episodes = Nexo.store.brain.recentEpisodes(14 * 24 * 3600e3).slice(0, 8);
-    document.getElementById('episode-list').innerHTML = episodes.length ? episodes.map((e) => `<li data-kind="${e.kind}"><i class="dot"></i><div><strong>${KIND_LABEL[e.kind] || e.kind}${e.ongoing ? ' · em andamento' : ''}</strong><small>${e.peak != null ? `${e.kind === 'throttle' ? 'mínimo' : 'pico'} ${Math.round(e.peak)}${e.kind === 'thermal' ? ' °C' : '%'} · ` : ''}${e.minutes} min${e.culprit ? ` · ${escapeHtml(e.culprit)}` : ''}</small></div><time>${formatRelative(e.start)}</time></li>`).join('')
+    document.getElementById('episode-list').innerHTML = episodes.length ? episodes.map((e) => `<li data-kind="${escapeHtml(e.kind)}"><i class="dot"></i><div><strong>${escapeHtml(KIND_LABEL[e.kind] || e.kind)}${e.ongoing ? ' · em andamento' : ''}</strong><small>${(e.peak ?? null) !== null ? `${e.kind === 'throttle' ? 'mínimo' : 'pico'} ${Math.round(e.peak)}${e.kind === 'thermal' ? ' °C' : '%'} · ` : ''}${e.minutes} min${e.culprit ? ` · ${escapeHtml(e.culprit)}` : ''}</small></div><time>${formatRelative(e.start)}</time></li>`).join('')
       : `<li class="empty-art">${Nexo.constellation()}<span>Nenhuma lentidão sustentada registrada. Quando houver, ela aparece aqui com o programa que mais pesou.</span></li>`;
   }
 
   function renderLedger() {
     const ledger = Nexo.store.brain.ledger().slice(0, 6);
     const top = ledger[0]?.minutes || 1;
-    document.getElementById('ledger-list').innerHTML = ledger.length ? ledger.map((e) => `<li><div class="row"><strong>${escapeHtml(e.name)}</strong><span>${e.events} episódio${e.events > 1 ? 's' : ''} · ${e.minutes} min</span></div><div class="bar"><i style="width:${Math.max(6, (e.minutes / top) * 100)}%"></i></div></li>`).join('')
+    document.getElementById('ledger-list').innerHTML = ledger.length ? ledger.map((e) => `<li><div class="row"><strong>${escapeHtml(e.name)}</strong><span>${e.events} episódio${e.events > 1 ? 's' : ''} · ${e.minutes} min</span></div><div class="bar"><i data-css="width:${Math.max(6, (e.minutes / top) * 100)}%"></i></div></li>`).join('')
       : `<li class="empty-art">${Nexo.constellation()}<span>Ainda não identifiquei programas recorrentes. Isso depende de acontecerem lentidões enquanto o Nexo observa.</span></li>`;
   }
 
@@ -59,7 +59,7 @@
         const value = grid[day][hour];
         const isNow = day === now.getDay() && hour === now.getHours();
         const alpha = value === null ? 0.05 : 0.14 + Math.min(1, value / Math.max(40, max)) * 0.78;
-        html += `<span class="cell${isNow ? ' now' : ''}" style="background:rgba(${rgb},${alpha.toFixed(2)})" title="${DAY_SHORT[day]} ${String(hour).padStart(2, '0')}h — ${value === null ? 'sem dados ainda' : `média ${Math.round(value)}%`}"></span>`;
+        html += `<span class="cell${isNow ? ' now' : ''}" data-css="background:rgba(${rgb},${alpha.toFixed(2)})" title="${DAY_SHORT[day]} ${String(hour).padStart(2, '0')}h — ${value === null ? 'sem dados ainda' : `média ${Math.round(value)}%`}"></span>`;
       }
     }
     document.getElementById('habit-grid').innerHTML = html;

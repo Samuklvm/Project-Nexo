@@ -7,7 +7,15 @@
  * Textos vindos da Steam são reduzidos a texto puro antes de chegar à interface.
  */
 const TTL = { store: 7 * 24 * 3600e3, news: 3 * 3600e3, achievements: 10 * 60e3 };
-const STEAM_IMAGE = /^https:\/\/([\w-]+\.)*(steamstatic\.com|akamaihd\.net)\//;
+/*
+ * Servidores de imagem da Steam aceitos (lista fechada, a MESMA da política de segurança do index.html — um teste
+ * confere): sem curinga, então nenhum outro subdomínio consegue colocar imagem na tela.
+ */
+const STEAM_IMAGE_HOSTS = ['shared.akamai.steamstatic.com', 'shared.cloudflare.steamstatic.com', 'shared.fastly.steamstatic.com', 'cdn.akamai.steamstatic.com', 'cdn.cloudflare.steamstatic.com', 'cdn.fastly.steamstatic.com',
+  'clan.akamai.steamstatic.com', 'clan.cloudflare.steamstatic.com', 'clan.fastly.steamstatic.com', 'store.akamai.steamstatic.com', 'store.cloudflare.steamstatic.com', 'store.fastly.steamstatic.com',
+  'avatars.steamstatic.com', 'avatars.akamai.steamstatic.com', 'avatars.cloudflare.steamstatic.com', 'avatars.fastly.steamstatic.com', 'community.akamai.steamstatic.com', 'community.cloudflare.steamstatic.com',
+  'community.fastly.steamstatic.com', 'steamcdn-a.akamaihd.net'];
+const STEAM_IMAGE = { test: (url) => { try { const parsed = new URL(url); return parsed.protocol === 'https:' && !parsed.port && STEAM_IMAGE_HOSTS.includes(parsed.hostname); } catch { return false; } } };
 
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
 /** HTML/BBCode da Steam → texto puro, com quebras de linha nos lugares certos. */
@@ -130,4 +138,4 @@ function createSteamDetails({ fetchJson, fs, path, cacheDir, now = Date.now }) {
   return { store, news, achievements, findAppid };
 }
 
-module.exports = { fromServer, createSteamDetails, parseAppDetails, parseNews, parseAchievements, toText, safeImage, TTL };
+module.exports = { STEAM_IMAGE_HOSTS, fromServer, createSteamDetails, parseAppDetails, parseNews, parseAchievements, toText, safeImage, TTL };

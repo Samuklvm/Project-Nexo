@@ -266,7 +266,7 @@
     return `<article class="feat${pinned ? ' pinned' : ''}" data-id="${def.id}" data-kind="${def.kind}"${tone ? ` data-tone="${tone}"` : ''}${empty ? ' data-state="empty"' : ''}>
       <div class="feat-top"><span class="feat-icon">${icon(def.icon)}</span><span class="feat-title">${escapeHtml(def.title)}</span><button class="feat-pin" type="button" data-pin="${def.id}" aria-pressed="${pinned}" title="${pinned ? 'Desafixar' : 'Fixar no topo'}" aria-label="${pinned ? 'Desafixar' : 'Fixar'} ${escapeHtml(def.title)}">★</button></div>
       <div class="feat-value${isText ? ' text' : ''}">${escapeHtml(String(value))}${!empty && out.unit ? `<small>${escapeHtml(out.unit)}</small>` : ''}</div>
-      <div class="feat-body">${!empty && out.spark ? sparkSvg(out.spark) : ''}${!empty && fin(out.bar) ? `<div class="feat-bar"><i style="width:${(H.clamp(out.bar, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}<div class="feat-detail">${escapeHtml(empty ? (def.emptyDetail || def.hint || '') : (out.detail || def.hint || ''))}</div>${!empty && out.list?.length ? `<div class="feat-list">${out.list.slice(0, 4).map(([k, v]) => `<span><em>${escapeHtml(String(k))}</em><b>${escapeHtml(String(v))}</b></span>`).join('')}</div>` : ''}</div>
+      <div class="feat-body">${!empty && out.spark ? sparkSvg(out.spark) : ''}${!empty && fin(out.bar) ? `<div class="feat-bar"><i data-css="width:${(H.clamp(out.bar, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}<div class="feat-detail">${escapeHtml(empty ? (def.emptyDetail || def.hint || '') : (out.detail || def.hint || ''))}</div>${!empty && out.list?.length ? `<div class="feat-list">${out.list.slice(0, 4).map(([k, v]) => `<span><em>${escapeHtml(String(k))}</em><b>${escapeHtml(String(v))}</b></span>`).join('')}</div>` : ''}</div>
       <div class="feat-foot"><span class="feat-kind">${KINDS[def.kind] || ''}</span>${def.action && !actionHidden ? `<button class="feat-action" type="button" data-act="${def.id}">${escapeHtml(actionLabel)}</button>` : ''}</div>
     </article>`;
   }
@@ -357,7 +357,9 @@
     const queue = [...section.querySelectorAll('.feat')];
     const step = (deadline) => {
       if (token !== pass) return; // outra atualização começou: esta para
-      while (queue.length && (sync || !deadline || deadline.timeRemaining() > 2)) {
+      // Tempo do quadro: atualização síncrona (ou sem requestIdleCallback) vai até o fim; senão, até sobrar 2 ms.
+      const hasTime = () => sync || !deadline || deadline.timeRemaining() > 2;
+      while (queue.length && hasTime()) {
         const tile = queue.shift();
         if (!tile.isConnected || (tile.contains(document.activeElement) && document.activeElement.matches('.feat-action'))) continue;
         const def = forView(view).find((item) => item.id === tile.dataset.id);

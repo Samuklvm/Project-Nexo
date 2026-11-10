@@ -56,7 +56,7 @@
   const median = (list) => { const v = list.filter(finite).sort((a, b) => a - b); if (!v.length) return null; const m = Math.floor(v.length / 2); return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
   const round1 = (value) => Math.round(value * 10) / 10;
   const armKey = (arm) => `${arm.knob}=${arm.value}`;
-  const comboKey = (keys) => `combo:${[...keys].sort().join('+')}`;
+  const comboKey = (keys) => `combo:${[...keys].sort((a, b) => (a < b ? -1 : Number(a > b))).join('+')}`;
   const valueLabel = (knob, value) => (knob.names?.[value] ? `${knob.names[value]}` : `${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${knob.unit || ''}`);
   /** Testes que medem o ajuste; `benchSupport` tira os que este PC não consegue rodar (ex.: rede sem roteador). */
   const benchesOf = (knob, benchSupport = null) => (knob?.affects || ['single', 'multi', 'burst']).filter((bench) => BENCHES.includes(bench) && (!benchSupport || benchSupport[bench] !== false));

@@ -37,7 +37,7 @@
     return days[day];
   }
   function prune() {
-    const keep = Object.keys(days).sort().slice(-KEEP_DAYS);
+    const keep = Object.keys(days).sort((a, b) => a.localeCompare(b)).slice(-KEEP_DAYS);
     days = Object.fromEntries(keep.map((day) => [day, days[day]]));
   }
   function save() {
@@ -242,7 +242,7 @@
 
   Nexo.telemetry = {
     /** Dias fechados (antes de hoje) que ainda não foram enviados, do mais antigo para o mais novo. */
-    pending: () => Object.keys(days).filter((day) => day < dayOf() && !days[day].sent).sort(),
+    pending: () => Object.keys(days).filter((day) => day < dayOf() && !days[day].sent).sort((a, b) => a.localeCompare(b)),
     summary,
     markSent(day) { if (days[day]) { days[day].sent = true; dirty = true; save(); } },
     today: () => summary(dayOf()),

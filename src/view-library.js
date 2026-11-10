@@ -30,15 +30,15 @@
   function art(game, kind = 'card') {
     if (game.cover) return `<img class="cover-img" src="${escapeHtml(game.cover)}" alt="" loading="lazy" decoding="async" />`;
     if (game.header) return `<div class="cover-header"><img src="${escapeHtml(game.header)}" alt="" loading="lazy" decoding="async" /><span>${escapeHtml(game.name)}</span></div>`;
-    return `<div class="cover-gen" style="--hue:${Number(game.hue) || 220}">${game.icon ? `<img class="cover-icon" src="${escapeHtml(game.icon)}" alt="" />` : ''}<b>${escapeHtml(initials(game.name))}</b>${kind === 'card' ? `<span>${escapeHtml(game.name)}</span>` : ''}</div>`;
+    return `<div class="cover-gen" data-css="--hue:${Number(game.hue) || 220}">${game.icon ? `<img class="cover-icon" src="${escapeHtml(game.icon)}" alt="" />` : ''}<b>${escapeHtml(initials(game.name))}</b>${kind === 'card' ? `<span>${escapeHtml(game.name)}</span>` : ''}</div>`;
   }
-  const wideArt = (game) => (game.hero ? `<img src="${escapeHtml(game.hero)}" alt="" loading="lazy" decoding="async" />` : game.header ? `<img src="${escapeHtml(game.header)}" alt="" loading="lazy" decoding="async" />` : game.cover ? `<img class="blur" src="${escapeHtml(game.cover)}" alt="" loading="lazy" decoding="async" />` : `<div class="cover-gen" style="--hue:${game.hue}"></div>`);
+  const wideArt = (game) => (game.hero ? `<img src="${escapeHtml(game.hero)}" alt="" loading="lazy" decoding="async" />` : game.header ? `<img src="${escapeHtml(game.header)}" alt="" loading="lazy" decoding="async" />` : game.cover ? `<img class="blur" src="${escapeHtml(game.cover)}" alt="" loading="lazy" decoding="async" />` : `<div class="cover-gen" data-css="--hue:${game.hue}"></div>`);
   const titleArt = (game, tag = 'h2') => (game.logo ? `<img class="game-logo" src="${escapeHtml(game.logo)}" alt="${escapeHtml(game.name)}" />` : `<${tag}>${escapeHtml(game.name)}</${tag}>`);
 
   function card(game, index) {
     const session = sessionsOf(game)[0];
     const meta = !game.installed ? (game.fromAccount === 'xbox' ? 'No histórico da conta Xbox' : 'Na sua conta · não instalado') : game.lastPlayed ? `Jogado em ${short(game.lastPlayed)}` : game.sizeBytes ? formatBytes(game.sizeBytes) : game.sourceLabel;
-    return `<button class="game-card${game.installed ? '' : ' not-installed'}" type="button" data-game="${escapeHtml(game.id)}" style="--i:${Math.min(index, 24)}">
+    return `<button class="game-card${game.installed ? '' : ' not-installed'}" type="button" data-game="${escapeHtml(game.id)}" data-css="--i:${Math.min(index, 24)}">
       <div class="cover">${art(game)}<span class="src-badge">${escapeHtml(game.sourceLabel)}</span>${session?.report?.fps ? `<span class="fps-badge">${dec(session.report.fps.avgFps)} FPS</span>` : ''}
         <div class="cover-info">${hours(game.playtimeMin) ? `<b>${hours(game.playtimeMin)}</b><span>jogadas</span>` : `<span>${game.installed ? 'Pronto para jogar' : 'Não instalado'}</span>`}</div></div>
       <div class="game-meta"><strong>${escapeHtml(game.name)}</strong><span>${escapeHtml(meta)}</span></div></button>`;
@@ -93,7 +93,7 @@
       setText('lib-hero-sub', state.loaded ? 'O Nexo procura em Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, Riot e Rockstar. Se o seu jogo veio de outro lugar, use “Adicionar jogo”.' : 'Steam, Epic, GOG, Xbox, EA, Ubisoft, Battle.net, Riot, Rockstar e os que você adicionar.');
       return;
     }
-    artBox.innerHTML = `${hero.hero ? `<img class="hero-wide" src="${escapeHtml(hero.hero)}" alt="" />` : hero.cover ? `<img class="hero-bg" src="${escapeHtml(hero.cover)}" alt="" />` : `<div class="cover-gen hero-bg" style="--hue:${hero.hue}"></div>`}${hero.hero ? '' : `<div class="hero-cover">${art(hero, 'big')}</div>`}`;
+    artBox.innerHTML = `${hero.hero ? `<img class="hero-wide" src="${escapeHtml(hero.hero)}" alt="" />` : hero.cover ? `<img class="hero-bg" src="${escapeHtml(hero.cover)}" alt="" />` : `<div class="cover-gen hero-bg" data-css="--hue:${Number(hero.hue) || 220}"></div>`}${hero.hero ? '' : `<div class="hero-cover">${art(hero, 'big')}</div>`}`;
     if (hero.hero) Nexo.heroWake?.();
     const session = sessionsOf(hero)[0];
     setText('lib-hero-eyebrow', hero.lastPlayed ? `Jogado por último · ${when(hero.lastPlayed)}` : hero.sourceLabel);
@@ -199,7 +199,7 @@
       </div>
       <aside class="gp-side">
         ${store.header ? `<img class="gp-header" src="${escapeHtml(store.header)}" alt="" loading="lazy" />` : ''}
-        ${store.metacritic ? `<div class="meta-score" data-tone="${store.metacritic >= 75 ? 'good' : store.metacritic >= 50 ? 'warn' : 'bad'}"><b>${store.metacritic}</b><span>Metacritic</span></div>` : ''}
+        ${store.metacritic ? `<div class="meta-score" data-tone="${store.metacritic >= 75 ? 'good' : store.metacritic >= 50 ? 'warn' : 'bad'}"><b>${Number(store.metacritic) || 0}</b><span>Metacritic</span></div>` : ''}
         <dl class="facts">${facts.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>
         <button class="btn sm" type="button" data-store-url="https://store.steampowered.com/app/${escapeHtml(store.appid)}/">Página na loja Steam</button>
         ${info.matched ? '<p class="muted">Dados da página da Steam com o mesmo nome deste jogo.</p>' : ''}
@@ -217,17 +217,17 @@
     if (ach.state === 'none') return notice('Sem conquistas', 'Este jogo não tem conquistas na Steam.');
     const pct = ach.total ? Math.round((ach.unlocked / ach.total) * 100) : 0;
     const privateNote = ach.state === 'private' ? '<p class="notes-line">O seu perfil da Steam está com “Detalhes do jogo” privado, então a Steam não mostra o que você já desbloqueou. Abaixo, a lista do jogo.</p>' : '';
-    return `<section class="sheet ach-head"><div class="ach-ring" style="--p:${pct}"><b>${pct}%</b></div><div><h3>${ach.unlocked} de ${ach.total} conquistas</h3><div class="progress-track"><span style="width:${pct}%"></span></div>
+    return `<section class="sheet ach-head"><div class="ach-ring" data-css="--p:${pct}"><b>${pct}%</b></div><div><h3>${ach.unlocked} de ${ach.total} conquistas</h3><div class="progress-track"><span data-css="width:${pct}%"></span></div>
         <p class="muted">${ach.unlocked === ach.total && ach.total ? 'Platinou! Todas desbloqueadas.' : `Faltam ${ach.total - ach.unlocked}. A porcentagem de cada uma é quantos jogadores no mundo têm.`}</p>${privateNote}</div></section>
       <ul class="ach-list">${ach.list.map((item) => `<li class="${item.achieved ? 'got' : 'locked'}">${item.icon ? `<img src="${escapeHtml(item.icon)}" alt="" loading="lazy" decoding="async" />` : '<span class="ach-blank"></span>'}
         <div><strong>${escapeHtml(item.name)}</strong><span>${item.description ? escapeHtml(item.description) : item.hidden ? 'Conquista oculta' : ''}</span></div>
-        <div class="ach-meta">${item.achieved && item.unlockedAt ? `<small>${when(item.unlockedAt)}</small>` : ''}${item.percent != null ? `<em class="${item.percent < 5 ? 'rare' : ''}">${String(item.percent).replace('.', ',')}%</em>` : ''}</div></li>`).join('')}</ul>`;
+        <div class="ach-meta">${item.achieved && item.unlockedAt ? `<small>${when(item.unlockedAt)}</small>` : ''}${(item.percent ?? null) !== null ? `<em class="${item.percent < 5 ? 'rare' : ''}">${String(item.percent).replace('.', ',')}%</em>` : ''}</div></li>`).join('')}</ul>`;
   }
 
   function newsTab(game, info) {
     const news = info?.news || [];
     if (!news.length) return '<p class="muted gp-empty">Sem novidades publicadas na Steam para este jogo.</p>';
-    return `<ol class="news">${news.map((item) => { const [label, tone] = KIND[item.kind] || KIND.noticia; return `<li class="news-item" data-kind="${item.kind}"><div class="news-head"><span class="chip ${tone}">${label}</span><span class="muted">${item.date ? when(item.date) : ''} · ${escapeHtml(item.source)}</span></div>
+    return `<ol class="news">${news.map((item) => { const [label, tone] = KIND[item.kind] || KIND.noticia; return `<li class="news-item" data-kind="${escapeHtml(item.kind)}"><div class="news-head"><span class="chip ${tone}">${label}</span><span class="muted">${item.date ? when(item.date) : ''} · ${escapeHtml(item.source)}</span></div>
       <h4>${escapeHtml(item.title)}</h4><p>${escapeHtml(item.summary)}</p>${item.url ? `<button class="link" type="button" data-store-url="${escapeHtml(item.url)}">Ler completo na Steam</button>` : ''}</li>`; }).join('')}</ol>`;
   }
 
@@ -237,7 +237,7 @@
         ${sessions.length ? `<ul class="game-sessions">${sessions.slice(0, 6).map((session) => `<li><button class="link" type="button" data-session="${escapeHtml(session.id)}">${when(session.startedAt)}</button><span>${session.report?.fps ? `${dec(session.report.fps.avgFps)} FPS · 1% baixo ${dec(session.report.fps.p1LowFps)}` : 'sem FPS'}</span><small>${escapeHtml(session.report?.conclusion || '')}</small></li>`).join('')}</ul>` : ''}</section>
       <section class="sheet"><div class="sheet-head"><h3>Sobre esta cópia</h3></div><dl class="facts">
         <div><dt>Loja</dt><dd>${escapeHtml(game.sourceLabel)}</dd></div><div><dt>Situação</dt><dd>${game.installed ? 'Instalado neste PC' : game.fromAccount === 'xbox' ? 'No histórico da conta Xbox' : 'Na sua conta, não instalado'}</dd></div>
-        <div><dt>Capa</dt><dd>${escapeHtml(game.coverSource || 'arte gerada pelo Nexo')}</dd></div>${game.playtimeMin != null ? `<div><dt>Tempo de jogo</dt><dd>${escapeHtml(hours(game.playtimeMin))} (da conta)</dd></div>` : ''}</dl>
+        <div><dt>Capa</dt><dd>${escapeHtml(game.coverSource || 'arte gerada pelo Nexo')}</dd></div>${(game.playtimeMin ?? null) !== null ? `<div><dt>Tempo de jogo</dt><dd>${escapeHtml(hours(game.playtimeMin))} (da conta)</dd></div>` : ''}</dl>
         <p class="muted">O Nexo reconhece este jogo em primeiro plano pela pasta de instalação; o caminho não sai do processo principal.</p></section></div>`;
   }
 

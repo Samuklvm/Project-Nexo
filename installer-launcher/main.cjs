@@ -10,6 +10,17 @@ const LOCAL = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Lo
 const DEFAULT_DIR = path.join(LOCAL, 'Programs', PRODUCT);
 
 let win, installing = false, lastExe = null;
+// Pasta escolhida na janela do Windows (pick-dir). A instalação só aceita ESTA ou a padrão: o que a tela manda é só
+// um "use a escolhida", nunca um caminho que vá direto para a linha de comando do instalador.
+let pickedDir = null;
+const SYSTEM32 = path.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32');
+/** Pasta de instalação segura para ir no /D= do NSIS: absoluta, local (C:\…), sem aspas nem caracteres de controle. */
+function safeInstallDir(dir) {
+  if (typeof dir !== 'string' || dir.length < 4 || dir.length > 240) return null;
+  const normal = path.win32.normalize(dir);
+  if (!/^[A-Za-z]:\\/.test(normal) || /["%\r\n\t\0*?<>|]/.test(normal) || normal.includes('..')) return null;
+  return normal;
+}
 if (!app.requestSingleInstanceLock()) app.quit();
 
 const setupPath = () => path.join(app.isPackaged ? process.resourcesPath : __dirname, 'payload', 'Nexo-Setup.exe');
@@ -41,7 +52,7 @@ async function dirSize(dir) {
 }
 
 // O instalador (installer.nsh) lê esta chave no customInit; no modo silencioso as páginas não aparecem.
-const setTelemetry = on => new Promise(r => execFile('reg',
+const setTelemetry = on => new Promise(r => execFile(path.join(SYSTEM32, 'reg.exe'),
   ['add', 'HKCU\\Software\\NexoDeviceCare\\Privacy', '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', on ? '1' : '0', '/f'],
   () => r()));
 
@@ -51,20 +62,26 @@ ipcMain.handle('pick-dir', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], defaultPath: path.dirname(DEFAULT_DIR) });
   if (r.canceled || !r.filePaths[0]) return null;
   const d = r.filePaths[0];
-  return path.basename(d) === PRODUCT ? d : path.join(d, PRODUCT);
+  const chosen = safeInstallDir(path.basename(d) === PRODUCT ? d : path.join(d, PRODUCT));
+  if (!chosen) return null;
+  pickedDir = chosen;
+  return chosen;
 });
 
-ipcMain.handle('install', async (_e, o) => {
+ipcMain.handle('install', async (_e, input) => {
+  const o = input && typeof input === 'object' ? input : {};
   const setup = setupPath();
   if (!fs.existsSync(setup)) return { ok: false, code: 'setup ausente' };
-  const target = o.dir || DEFAULT_DIR;
+  // Só a pasta que o próprio processo principal guardou (pick-dir); qualquer outro texto vindo da tela é ignorado.
+  const custom = o.dir && pickedDir && o.dir === pickedDir ? pickedDir : null;
+  const target = custom || DEFAULT_DIR;
   const lnk = path.join(app.getPath('desktop'), PRODUCT + '.lnk');
   const hadLnk = fs.existsSync(lnk);
   installing = true;
   await setTelemetry(!!o.telemetry);
 
   const args = ['/S'];
-  if (o.dir) args.push('/D=' + o.dir);   // NSIS: /D= precisa ser o último argumento e sem aspas
+  if (custom) args.push('/D=' + custom);   // NSIS: /D= precisa ser o último argumento e sem aspas
 
   // O NSIS silencioso não informa progresso: estimamos pelo tamanho da pasta de destino.
   const t0 = Date.now();
@@ -92,14 +109,16 @@ ipcMain.handle('install', async (_e, o) => {
   if (code !== 0) return { ok: false, code };
 
   if (!o.desktop && !hadLnk) fs.rmSync(lnk, { force: true });
-  lastExe = path.join(target, PRODUCT + '.exe');
+  lastExe = path.join(target, PRODUCT + '.exe'); // pasta conferida acima + nome fixo do produto
   return { ok: true };
 });
 
 ipcMain.handle('open-app', () => {
-  if (lastExe && fs.existsSync(lastExe)) spawn(lastExe, [], { detached: true, stdio: 'ignore' }).unref();
+  // Abre só o executável que esta instalação acabou de colocar (caminho montado aqui, sem nada vindo da tela).
+  const exe = lastExe && [DEFAULT_DIR, pickedDir].filter(Boolean).some((dir) => path.dirname(lastExe) === dir) ? lastExe : null;
+  if (exe && fs.existsSync(exe)) spawn(exe, [], { detached: true, stdio: 'ignore' }).unref();
   app.quit();
 });
 const LINKS = { privacy: 'https://github.com/Samuklvm/Project-Nexo/blob/main/PRIVACIDADE.md', repo: 'https://github.com/Samuklvm/Project-Nexo' };
-ipcMain.handle('open-link', (_e, key) => { if (LINKS[key]) return shell.openExternal(LINKS[key]); });
+ipcMain.handle('open-link', (_e, key) => { if (Object.hasOwn(LINKS, String(key))) return shell.openExternal(LINKS[key]); });
 ipcMain.on('win', (_e, a) => { if (a === 'min') win.minimize(); else win.close(); });

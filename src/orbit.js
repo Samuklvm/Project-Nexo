@@ -14,7 +14,7 @@
     { key: 'temp', name: 'Temperatura', note: 'maior sensor', orbit: 0.94, speed: 0.4, color: 'acpi', hot: true }
   ].map((planet, index) => ({ ...planet, angle: (index / 5) * Math.PI * 2 + 0.6, value: null, shown: 0, trail: [] }));
 
-  if (legend) legend.innerHTML = PLANETS.map((planet) => `<li data-key="${planet.key}"><i style="color:var(--c-${planet.color === 'acpi' ? 'acpi' : planet.color === 'mem' ? 'mem' : planet.color})"></i><span>${planet.name} · ${planet.note}</span><b>--</b></li>`).join('');
+  if (legend) legend.innerHTML = PLANETS.map((planet) => `<li data-key="${planet.key}"><i data-css="color:var(--c-${planet.color === 'acpi' ? 'acpi' : planet.color === 'mem' ? 'mem' : planet.color})"></i><span>${planet.name} · ${planet.note}</span><b>--</b></li>`).join('');
 
   let width = 0;
   let height = 0;

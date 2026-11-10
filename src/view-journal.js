@@ -30,10 +30,10 @@
       const info = NexoCatalog.get(entry.actionId);
       const canRevert = entry.status === 'applied' && entry.reversible === true;
       const measured = measureLine(entry.measure);
-      return `<li class="j-item" data-id="${escapeHtml(entry.id)}" data-status="${entry.status}">
+      return `<li class="j-item" data-id="${escapeHtml(entry.id)}" data-status="${escapeHtml(entry.status)}">
         <div class="j-head"><strong>${escapeHtml(entry.title)}</strong>
           <span class="chip risk-${escapeHtml(entry.risk)}">${escapeHtml(NexoCatalog.RISK_LABEL[entry.risk] || entry.risk)}</span>
-          <span class="chip status-${entry.status}">${STATUS[entry.status] || entry.status}</span>${entry.riskSession ? '<span class="chip risk-alto">sessão de risco</span>' : ''}</div>
+          <span class="chip status-${escapeHtml(entry.status)}">${escapeHtml(STATUS[entry.status] || entry.status)}</span>${entry.riskSession ? '<span class="chip risk-alto">sessão de risco</span>' : ''}</div>
         <div class="j-meta">${when(entry.at)} · ${escapeHtml(summaryOf(entry))}${entry.revertedAt ? ` · revertida em ${when(entry.revertedAt)}` : ''}</div>
         ${measured ? `<div class="j-measure">Medição: ${escapeHtml(measured)}</div>` : ''}
         ${entry.revertNote && entry.status !== 'reverted' ? `<div class="j-meta">${escapeHtml(entry.revertNote)}</div>` : ''}

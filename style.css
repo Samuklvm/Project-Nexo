@@ -1135,3 +1135,8 @@ body.lite .rise, body.lite .game-card, body.lite .modal-backdrop > * { animation
 .net-more .net-fix { margin-top: 8px; }
 .net-wait { display: flex; align-items: center; gap: 12px; color: var(--mist); padding: 8px 0; }
 .net-wait .spinner { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(150, 175, 255, 0.25); border-top-color: var(--neon, #5ad7ff); animation: spin 0.9s linear infinite; }
+
+/* Definições de SVG escondidas (antes era style embutido; a política de segurança não aceita mais). */
+.svg-defs { position: absolute; }
+/* Embrulho só para acessibilidade (aria-hidden ou role="img" sem mexer no canvas): não participa do layout. */
+.aria-skip { display: contents; }

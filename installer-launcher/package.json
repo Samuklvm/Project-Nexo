@@ -8,6 +8,10 @@
     "start": "node scripts/prepare.cjs && electron .",
     "dist": "node scripts/prepare.cjs && electron-builder --win portable --publish never"
   },
+  "overrides": {
+    "minimatch": "^11.0.5",
+    "http-cache-semantics": "^4.3.0"
+  },
   "devDependencies": {
     "electron": "45.2.3",
     "electron-builder": "26.18.0"
@@ -20,6 +24,7 @@
     },
     "files": [
       "index.html",
+      "styles.css",
       "renderer.js",
       "main.cjs",
       "preload.cjs",

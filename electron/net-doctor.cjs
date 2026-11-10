@@ -14,9 +14,13 @@
  * Nada aqui muda o PC: as correções ficam em main.cjs/elevate.cjs, com confirmação e registro no Diário.
  */
 const NAMES = ['www.google.com', 'www.youtube.com', 'www.wikipedia.org', 'www.microsoft.com', 'www.cloudflare.com', 'www.amazon.com'];
+/*
+ * DNS públicos oficiais (Cloudflare e Google). Os endereços fixos são de propósito: são o serviço público documentado
+ * por cada empresa, usados para comparar com o DNS da sua rede e, se você escolher, como DNS do PC (reversível).
+ */
 const PUBLIC = Object.freeze({
-  cloudflare: { label: 'Cloudflare', v4: ['1.1.1.1', '1.0.0.1'], v6: ['2606:4700:4700::1111', '2606:4700:4700::1001'] },
-  google: { label: 'Google', v4: ['8.8.8.8', '8.8.4.4'], v6: ['2001:4860:4860::8888', '2001:4860:4860::8844'] }
+  cloudflare: { label: 'Cloudflare', v4: ['1.1.1.1', '1.0.0.1'], v6: ['2606:4700:4700::1111', '2606:4700:4700::1001'] }, // NOSONAR: DNS público oficial (https://1.1.1.1)
+  google: { label: 'Google', v4: ['8.8.8.8', '8.8.4.4'], v6: ['2001:4860:4860::8888', '2001:4860:4860::8844'] } // NOSONAR: DNS público oficial (https://developers.google.com/speed/public-dns)
 });
 const HTTP_PROBES = ['https://www.google.com/generate_204', 'https://cp.cloudflare.com/generate_204'];
 
