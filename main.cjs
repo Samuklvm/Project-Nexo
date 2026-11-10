@@ -2288,7 +2288,12 @@ async function telemetryHardware() {
 }
 /** Só as partes conhecidas do resumo que a interface montou (o servidor confere de novo). */
 const TELEMETRY_PARTS = ['usage', 'features', 'app', 'perf', 'health', 'settings', 'library', 'lab', 'feats', 'bottleneck'];
-registerIpcHandler('cloud:status', async () => (await withCloud()).status());
+registerIpcHandler('cloud:status', async () => {
+  const target = await withCloud();
+  // Entrou ou saiu da equipe do painel depois do login: confere sem segurar a tela e avisa se mudou.
+  target.refreshRole().then((changed) => { if (changed) sendToWindow('cloud:changed', {}); return changed; }).catch(() => {});
+  return target.status();
+});
 registerIpcHandler('cloud:set', async (_event, options) => {
   const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
   // O Registro acompanha a escolha, para o instalador mostrar a caixa certa numa reinstalação.

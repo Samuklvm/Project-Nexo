@@ -13,6 +13,7 @@
 const crypto = require('crypto');
 
 const DAY = 24 * 3600 * 1000;
+const ROLE_CHECK_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 20000;
 const PARTIAL_EVERY_MS = 3 * 3600 * 1000;
 const ERROR_BATCHES = 5;
@@ -301,7 +302,25 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
 
   async function adminLink() { await load(); return request('POST', '/v1/admin/link'); }
 
-  return { status, setOptions, connect, disconnect, deleteRemote, push, devices, pull, forget, sendErrors, sendTelemetry, adminLink, get configured() { return Boolean(base); } };
+  /**
+   * Confere no servidor se esta conta está na equipe do painel do criador (o papel pode mudar depois do login: o dono
+   * adiciona ou tira a pessoa). No máximo a cada 10 min; sem conexão, fica o que já se sabia. Devolve true se mudou.
+   */
+  let roleCheckedAt = 0;
+  async function refreshRole() {
+    await load();
+    if (!base || !token() || now() - roleCheckedAt < ROLE_CHECK_MS) return false;
+    roleCheckedAt = now();
+    let data;
+    try { data = await request('GET', '/v1/me'); } catch { return false; }
+    const admin = data?.admin === true;
+    if (!state.session || state.session.admin === admin) return false;
+    state.session.admin = admin;
+    await save().catch(() => {});
+    return true;
+  }
+
+  return { status, setOptions, connect, disconnect, deleteRemote, push, devices, pull, forget, sendErrors, sendTelemetry, adminLink, refreshRole, get configured() { return Boolean(base); } };
 }
 
 /**

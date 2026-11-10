@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   cloudTelemetry: (usage) => call('cloud:telemetry', usage),
   cloudSendErrors: () => call('cloud:send-errors'),
   cloudAdmin: () => call('cloud:admin'),
+  onCloudChanged: subscribe('cloud:changed'),
   listErrors: (options) => call('log:list', options),
   exportErrors: () => call('log:export'),
   clearErrors: () => call('log:clear'),

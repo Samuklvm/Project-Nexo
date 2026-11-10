@@ -270,6 +270,8 @@
   }
 
   Nexo.on('view', (name) => { if (name === 'settings') refresh(); });
+  // O papel no painel do criador mudou no servidor (entrou ou saiu da equipe): redesenha com o botão certo.
+  bridge?.onCloudChanged?.(() => { if (Nexo.state.view === 'settings') refresh(); });
   Nexo.on('account', (account) => {
     view.account = account;
     bridge.cloudStatus().catch(() => view.status).then((status) => {

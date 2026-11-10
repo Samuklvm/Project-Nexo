@@ -158,4 +158,9 @@ test('novidades: a versão do package.json tem notas, com emojis, seções e ite
     assert.ok(v.title && v.emoji && v.sections.length, v.version);
     for (const s of v.sections) { assert.ok(['new', 'up', 'fix'].includes(s.tone), `${v.version}: tom ${s.tone}`); assert.ok(s.items.length > 0); for (const item of s.items) assert.ok(item.emoji && item.title && item.text, `${v.version}: item incompleto`); }
   }
+  // As novidades são para quem usa: nada dos bastidores do criador (painel, testes, ferramentas de análise do código).
+  const BACKSTAGE = /painel do criador|\bteste(s)? (novo|automático|automáticos)|\bCI\b|SonarCloud|SonarQube|CodeAnt|Devin|CodeQL|workflow|auditoria/i;
+  for (const v of versions) {
+    for (const text of [v.title, v.tagline, ...v.sections.flatMap((s) => s.items.flatMap((item) => [item.title, item.text]))]) assert.doesNotMatch(String(text || ''), BACKSTAGE, `${v.version}: "${text}" é coisa de bastidor`);
+  }
 });

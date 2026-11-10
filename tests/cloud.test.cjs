@@ -262,6 +262,36 @@ test('painel: o link de entrada só sai para o e-mail do criador', async () => {
   assert.match(link.url, /^https:\/\/nexo-api\.exemplo\.workers\.dev\/painel\/entrar\?c=[A-Za-z0-9_-]+$/);
 });
 
+test('painel: quem entra ou sai da equipe depois do login vê (ou deixa de ver) o botão sem entrar de novo', async () => {
+  const { client, env, calls } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const member = client(dir);
+  assert.equal((await member.connect(await idToken({ sub: 'sub-amiga', email: 'amiga@exemplo.com' }))).admin, false);
+  env.DB.raw.prepare('INSERT INTO team (email, role, added_by, added_at) VALUES (?, ?, ?, ?)').run('amiga@exemplo.com', 'leitura', 'criador@exemplo.com', clock);
+  assert.equal(await member.refreshRole(), true, 'o servidor diz que agora está na equipe');
+  assert.equal((await member.status()).admin, true);
+  assert.equal((await client(dir).status()).admin, true, 'fica gravado');
+  await member.adminLink();
+  const before = calls.length;
+  assert.equal(await member.refreshRole(), false, 'no máximo a cada 10 minutos');
+  assert.equal(calls.length, before, 'sem pedido ao servidor dentro dos 10 minutos');
+  clock += 11 * 60 * 1000;
+  env.DB.raw.prepare('DELETE FROM team WHERE email = ?').run('amiga@exemplo.com');
+  assert.equal(await member.refreshRole(), true);
+  assert.equal((await member.status()).admin, false, 'tirada da equipe: o botão some');
+  await assert.rejects(member.adminLink(), (error) => error.status === 403);
+  // Sem conexão: fica o que já se sabia, sem erro.
+  clock += 11 * 60 * 1000;
+  const offline = createCloud({ fs: fs.promises, path, dir, serverUrl: SERVER, fetchImpl: async () => { throw new Error('sem rede'); }, safeStorage: fakeSafeStorage, version: '0.9.0', now: () => clock });
+  assert.equal(await offline.refreshRole(), false);
+  assert.equal((await offline.status()).admin, false);
+  // Sem sincronização ligada não há conta no servidor: nada é pedido.
+  const loose = client();
+  const asked = calls.length;
+  assert.equal(await loose.refreshRole(), false);
+  assert.equal(calls.length, asked);
+});
+
 test('A07: quem tinha desligado os erros (antes da 0.11.1) só manda o que acontecer depois da atualização', async () => {
   const { client, rows } = world();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));

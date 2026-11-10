@@ -1,6 +1,8 @@
 /*
  * Novidades de cada versão, para a janela que abre uma vez depois de atualizar (src/view-novidades.js).
  * A versão mais nova vem primeiro. Toda versão publicada precisa de uma entrada aqui (o teste confere).
+ * É para quem USA o Nexo: só o que muda para a pessoa. Bastidores do criador (painel do criador, testes, ferramentas de
+ * análise do código, servidor por dentro) ficam no CHANGELOG, não aqui (o teste também confere).
  */
 (function (root) {
   root.NexoNovidades = {
@@ -20,8 +22,7 @@
             { emoji: '🎞️', title: 'FPS da sessão inteira', text: 'Sessões longas são medidas até o fim (antes, só os primeiros minutos), e o "1% baixo" é a média do pior 1%, como no CapFrameX.' },
             { emoji: '🎯', title: 'Jogos com anticheat', text: 'Jogo em tela cheia com o caminho protegido agora é reconhecido, e a sessão automática começa em uns 3 segundos.' },
             { emoji: '🧠', title: 'Aprendizado que não volta atrás', text: 'O aprendizado é salvo antes do histórico, e um turbo de um núcleo só não vira mais a régua do clock.' },
-            { emoji: '🔒', title: 'Mais seguro', text: 'Revisão completa com SonarCloud, CodeAnt e auditorias: programas do sistema pelo caminho completo, nada de código montado a partir de texto, política de segurança das telas fechada e login com prazo e uso único.' },
-            { emoji: '👥', title: 'Painel do criador', text: 'Mostra quantos PCs novos começaram a usar o Nexo (atualizar não conta) e o que mais limita os PCs, num céu noturno próprio.' }
+            { emoji: '🔒', title: 'Mais seguro', text: 'O app inteiro passou por uma revisão de segurança: os programas do Windows são chamados sempre pelo caminho oficial, as telas não rodam nenhum código de fora do Nexo e o login com o Google tem prazo e vale uma vez só.' }
           ] },
           { emoji: '🛠️', title: 'Correções', tone: 'fix', items: [
             { emoji: '🧪', title: 'Modo extremo não aborta no começo', text: 'Cada ajuste é comparado com a temperatura normal do mesmo teste no plano original. Antes, o próprio aquecimento contava como culpa do ajuste e o teste parava sem ter mudado nada.' },
@@ -70,8 +71,7 @@
           ] },
           { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
             { emoji: '🪟', title: 'Interface repaginada', text: 'Vidro mais profundo, títulos com brilho, botões novos e uma barra lateral com neon.' },
-            { emoji: '🚀', title: 'Leve de verdade', text: 'O céu desenha no máximo 30 quadros por segundo, para com o app fora de foco e se ajusta sozinho em PCs mais fracos.' },
-            { emoji: '📦', title: 'Instalador conferido', text: 'Um teste novo garante que todo arquivo da interface entra no instalador.' }
+            { emoji: '🚀', title: 'Leve de verdade', text: 'O céu desenha no máximo 30 quadros por segundo, para com o app fora de foco e se ajusta sozinho em PCs mais fracos.' }
           ] }
         ]
       },
@@ -91,7 +91,7 @@
         ]
       },
       {
-        version: '0.8.1', date: '2026-11-05', emoji: '🩹', title: 'Correções do teste num PC de verdade',
+        version: '0.8.1', date: '2026-11-05', emoji: '🩹', title: 'Correções',
         tagline: 'Temperaturas, laboratório, Atlas, Manutenção e notas da atualização.',
         sections: [
           { emoji: '🛠️', title: 'Correções', tone: 'fix', items: [
