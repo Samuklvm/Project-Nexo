@@ -42,7 +42,7 @@
 |---|---|
 | 📏 **Measures before it touches** | Every tweak can be measured before and after. If there is no real gain, Nexo tells you. |
 | ↩️ **Reversible** | Every change goes into a Journal with the previous value and, when it can be undone, a **Revert** button. What cannot be undone (like emptying the Recycle Bin) warns you first. |
-| 🔒 **Stays on your PC** | No required account. The analysis runs on your computer; the Nexo server (sync, error reports and telemetry) is optional and starts off. |
+| 🔒 **Stays on your PC** | No required account. The analysis runs on your computer; on the Nexo server, sync and telemetry are optional and start off, and only error reports are always sent, with nothing personal. |
 | 🧭 **Honest** | No “speed up your PC by 300%”. Nexo shows the evidence and the limits of every conclusion. |
 | 🌌 **Beautiful and light** | A living sky with fireflies and shooting stars, seven accent colors and more than 30 features on every screen, without weighing down your PC. |
 
@@ -117,7 +117,8 @@ The same screens on both systems. On Linux, Nexo uses `/proc` and kernel sensors
 
 ## 🔒 Privacy
 
-- Nexo has a server to **sync your account between PCs, collect errors and telemetry**. All of it is optional and **off by default**. Telemetry is one anonymous summary per day (hardware, how heavy Nexo is, daily averages, screens and features used and what failed in the app), with nothing personal; please leave it on so the app can improve on other machines.
+- Nexo has a server to **sync your account between PCs, collect errors and telemetry**. Sync and telemetry are optional and **off by default**. Telemetry is one anonymous summary per day (hardware, how heavy Nexo is, daily averages, what limited the PC, screens and features used and what failed in the app), with nothing personal; please leave it on so the app can improve on other machines.
+- **Error reports are always sent** (since 0.11.1) so problems get fixed: the error message and the app's last steps before it, without your user name, your folders or anything you typed. The email of the Google account signed in to Nexo goes along so the creator can tell you when it is fixed, and you can untick it in Settings (it is also removed from reports already sent).
 - Sync uses your Google sign-in as the key, stores each PC encrypted and only brings data from another PC when you choose which PC and what.
 - The other external connections are only the ones you use: update checks on GitHub, game covers and data from the official stores, and the accounts you connect (Google, Steam, Discord).
 - Nexo **never ends processes on its own** and does not read game memory.

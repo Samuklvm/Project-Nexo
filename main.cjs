@@ -2221,7 +2221,7 @@ registerIpcHandler('account:get', accountView);
 let signingIn = false;
 let freshIdToken = null;
 
-// ---- Servidor do Nexo: sincronização, relatórios de erro e telemetria (tudo desligado por padrão) ----
+// ---- Servidor do Nexo: sincronização e telemetria (desligadas por padrão) e relatórios de erro (sempre ligados) ----
 async function serverUrl() {
   if (process.env.NEXO_SERVER_URL) return process.env.NEXO_SERVER_URL;
   const candidates = [path.join(app.getPath('userData'), 'server.json'), app.isPackaged ? path.join(process.resourcesPath, 'config', 'server.json') : path.join(__dirname, 'config', 'server.json')];

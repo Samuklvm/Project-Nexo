@@ -40,7 +40,7 @@
 |---|---|
 | 📏 **Mede antes de mexer** | Cada ajuste pode ser medido antes e depois. Se não houver ganho real, o Nexo diz isso. |
 | ↩️ **Reversível** | Cada mudança vai para um Diário, com o valor anterior e, quando dá para desfazer, um botão **Reverter**. O que não tem volta (como esvaziar a Lixeira) avisa antes. |
-| 🔒 **Fica no seu PC** | Sem conta obrigatória. A análise acontece no seu computador; o servidor do Nexo (sincronização, erros e telemetria) é opcional e começa desligado. |
+| 🔒 **Fica no seu PC** | Sem conta obrigatória. A análise acontece no seu computador; do servidor do Nexo, a sincronização e a telemetria são opcionais e começam desligadas, e só os relatórios de erro vão sempre, sem nada pessoal. |
 | 🧭 **Honesto** | Nada de “acelere seu PC em 300%”. O Nexo mostra a evidência e os limites de cada conclusão. |
 | 🌌 **Bonito e leve** | Céu vivo com vagalumes e estrelas cadentes, sete cores de destaque e mais de 30 recursos em cada tela. As animações rodam a no máximo 30 quadros e param quando o app sai da frente. |
 
@@ -115,7 +115,8 @@ As mesmas telas nos dois sistemas. No Linux, o Nexo usa `/proc` e os sensores do
 
 ## 🔒 Privacidade
 
-- O Nexo tem um servidor para **sincronizar a conta entre PCs, coletar erros e telemetria**. Tudo é opcional e **vem desligado**. A telemetria é um resumo anônimo por dia (hardware, quanto o Nexo pesa, médias do dia, telas e recursos usados e o que falhou no app), sem nada pessoal; peço que você deixe ligada para o app melhorar em outras máquinas.
+- O Nexo tem um servidor para **sincronizar a conta entre PCs, coletar erros e telemetria**. A sincronização e a telemetria são opcionais e **vêm desligadas**. A telemetria é um resumo anônimo por dia (hardware, quanto o Nexo pesa, médias do dia, o que limitou o PC, telas e recursos usados e o que falhou no app), sem nada pessoal; peço que você deixe ligada para o app melhorar em outras máquinas.
+- Os **relatórios de erro vão sempre** (desde a 0.11.1), para os problemas serem corrigidos: a mensagem do erro e os últimos passos do app antes dele, sem o seu nome de usuário, as suas pastas ou o que você digitou. O e-mail da conta Google entrada no Nexo vai junto para o criador avisar quando corrigir, e dá para desmarcar em Ajustes (sai também dos relatórios que já foram).
 - A sincronização usa o seu login do Google como chave de acesso, guarda cada PC criptografado e só traz dados de outro PC quando você escolhe qual PC e o quê.
 - As outras conexões externas são só as que você usa: verificação de atualizações no GitHub, capas e dados de jogos das lojas oficiais e as contas que você conectar (Google, Steam, Discord).
 - O Nexo **nunca encerra processos sozinho** e não lê a memória dos jogos.

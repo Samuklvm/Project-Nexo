@@ -1,13 +1,14 @@
 /*
  * Nexo na nuvem, pela interface: sincronização entre PCs (com o login do Google), telemetria diária anônima e
- * relatórios de erro. Tudo desligado por padrão; a pessoa liga cada parte. Trazer dados de outro PC é sempre uma
- * escolha explícita: qual PC e quais partes.
+ * relatórios de erro. Sincronização e telemetria começam desligadas e a pessoa liga; os relatórios de erro vão sempre
+ * (desde a 0.11.1), sem nada pessoal, e o e-mail neles é opcional. Trazer dados de outro PC é sempre uma escolha
+ * explícita: qual PC e quais partes.
  */
 (function () {
   const bridge = desktopBridge;
   if (!bridge?.cloudStatus) return;
   const body = () => document.getElementById('cloud-sync-body');
-  const POLICY = 'O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera a telemetria apenas uma vez por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo.';
+  const POLICY = 'O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera um resumo por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. Os relatórios de erro vão sempre, também sem nada pessoal, para os problemas serem corrigidos.';
   const view = { status: null, account: null, devices: null, busy: false };
   const when = (at) => (at ? new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--');
   const size = (bytes) => (bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
@@ -124,6 +125,7 @@
     if (s.telemetry) parts.push(s.lastTelemetryAt ? `Telemetria enviada pela última vez em ${when(s.lastTelemetryAt)}.` : 'Telemetria ligada: o primeiro resumo sai em alguns minutos.');
     if (s.telemetryProblem) parts.push(`Último problema da telemetria: ${s.telemetryProblem.message}`);
     if (s.errors && s.errorsProblem) parts.push(`Último problema ao mandar erros: ${s.errorsProblem.message}`);
+    if (s.forgetEmailPending) parts.push('O seu e-mail ainda vai sair dos relatórios já enviados: o Nexo tenta de novo quando houver conexão.');
     if (s.saveProblem) parts.push(`Não consegui gravar as escolhas no disco (${s.saveProblem.code}).`);
     line.textContent = parts.join(' ');
   }
@@ -167,11 +169,9 @@
   function syncToggles() {
     const s = view.status;
     const telemetry = document.getElementById('cloud-telemetry');
-    const errors = document.getElementById('cloud-errors');
     const email = document.getElementById('cloud-error-email');
     const disabled = !s?.configured;
     if (telemetry) { telemetry.checked = Boolean(s?.telemetry); telemetry.disabled = disabled; }
-    if (errors) { errors.checked = Boolean(s?.errors); errors.disabled = disabled; }
     // O e-mail vai com a sincronização ligada (confirmado pelo servidor) OU com a conta Google entrada no app.
     const hasEmail = Boolean(s?.connected || view.account?.profile?.email);
     if (email) { email.checked = Boolean(s?.errorEmail && hasEmail); email.disabled = disabled || !s?.errors || !hasEmail; }
@@ -251,19 +251,18 @@
     render();
     if (patch.telemetry) sendTelemetry();
   }
-  document.getElementById('cloud-telemetry')?.addEventListener('change', (event) => setOption({ telemetry: event.target.checked }, event.target.checked ? 'Obrigado! A telemetria vai uma vez por dia, sem nada pessoal.' : 'Telemetria desligada.'));
-  document.getElementById('cloud-errors')?.addEventListener('change', (event) => setOption({ errors: event.target.checked }, event.target.checked ? 'Relatórios de erro ligados. Só os erros novos vão.' : 'Relatórios de erro desligados.'));
-  document.getElementById('cloud-error-email')?.addEventListener('change', (event) => setOption({ errorEmail: event.target.checked }, event.target.checked ? 'O seu e-mail vai junto com os erros.' : 'Os erros vão sem o seu e-mail.'));
+  document.getElementById('cloud-telemetry')?.addEventListener('change', (event) => setOption({ telemetry: event.target.checked }, event.target.checked ? 'Obrigado! A telemetria manda um resumo por dia, sem nada pessoal.' : 'Telemetria desligada.'));
+  document.getElementById('cloud-error-email')?.addEventListener('change', (event) => setOption({ errorEmail: event.target.checked }, event.target.checked ? 'O seu e-mail vai junto com os erros.' : 'Os erros vão sem o seu e-mail, e ele sai dos relatórios que já foram.'));
 
   /** Primeira vez: pergunta uma vez só, com tudo desligado como resposta padrão. */
   async function askOnce(tries = 0) {
     if (!view.status?.configured || view.status.asked) return;
     // Não passa por cima de outra janela (escolha do perfil, tour, confirmações): espera ela fechar.
     if (document.getElementById('modal-root')?.childElementCount || document.hidden) { if (tries < 40) setTimeout(() => askOnce(tries + 1), 15000); return; }
-    const dialog = Nexo.dialog({ title: 'Ajudar a melhorar o Nexo?', html: `<p>${escapeHtml(POLICY)}</p><p class="muted">Ligar aqui liga as duas coisas: a telemetria (uma vez por dia, anônima) e os relatórios de erro (sem o seu nome de usuário nem as suas pastas). Dá para mudar cada uma quando quiser em Ajustes &gt; Privacidade e dados.</p>`,
-      actions: [{ id: 'no', label: 'Agora não' }, { id: 'yes', label: 'Ligar telemetria e erros', tone: 'primary' }] });
+    const dialog = Nexo.dialog({ title: 'Ajudar a melhorar o Nexo?', html: `<p>${escapeHtml(POLICY)}</p><p class="muted">Ligar aqui liga a telemetria (um resumo anônimo por dia). Os relatórios de erro já vão sempre, sem o seu nome de usuário nem as suas pastas; se você estiver com a conta Google entrada no Nexo, o e-mail dela vai junto para o criador avisar quando o erro for corrigido. Dá para mudar a telemetria e tirar o e-mail quando quiser em Ajustes &gt; Privacidade e dados.</p>`,
+      actions: [{ id: 'no', label: 'Agora não' }, { id: 'yes', label: 'Ligar a telemetria', tone: 'primary' }] });
     const choice = (await dialog.done) === 'yes';
-    view.status = await bridge.cloudSet({ asked: true, telemetry: choice, errors: choice }).catch(() => view.status);
+    view.status = await bridge.cloudSet({ asked: true, telemetry: choice }).catch(() => view.status);
     render();
     if (choice) sendTelemetry();
   }
