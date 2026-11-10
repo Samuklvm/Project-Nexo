@@ -57,7 +57,18 @@
     };
   }
 
-  /** Resumo de um conjunto de quadros. 1% baixo = FPS do percentil 99 do tempo de quadro. */
+  /** Média dos `fraction` maiores tempos de quadro (o "pior 1%"), já ordenados do menor para o maior. */
+  function worstMean(sorted, fraction) {
+    const n = Math.max(1, Math.ceil(sorted.length * fraction));
+    let sum = 0;
+    for (let i = sorted.length - n; i < sorted.length; i += 1) sum += sorted[i];
+    return sum / n;
+  }
+
+  /**
+   * Resumo de um conjunto de quadros. "1% baixo" = FPS da MÉDIA do pior 1% dos quadros (como o CapFrameX e os
+   * overlays); o percentil 99 continua disponível como p1Fps. Idem para 0,1%.
+   */
   function summarize(frames) {
     const valid = frames.filter((frame) => finite(frame.ms) && frame.ms > 0);
     if (valid.length < 10) return null;
@@ -72,8 +83,10 @@
     return {
       frames: valid.length,
       avgFps: 1000 / mean,
-      p1LowFps: 1000 / p99,
-      p01LowFps: 1000 / p999,
+      p1LowFps: 1000 / worstMean(times, 0.01),
+      p01LowFps: 1000 / worstMean(times, 0.001),
+      p1Fps: 1000 / p99,
+      p01Fps: 1000 / p999,
       frameMs: { p50: median, p95: percentile(times, 95), p99, max: times[times.length - 1] },
       stutterCount: valid.filter((frame) => frame.ms > stutterLimit).length,
       droppedShare: valid.filter((frame) => frame.dropped).length / valid.length,
@@ -108,5 +121,76 @@
     };
   }
 
-  return { createFrameParser, summarize, perSecond, createRolling, percentile };
+  /*
+   * Acumulador sem limite de quadros (sessão de horas): histograma fino dos tempos de quadro (0,05 ms até 200 ms;
+   * 1 ms até 60 s) com a soma exata por faixa, contadores e a série por segundo. Memória fixa (~760 KB), e o resumo
+   * cobre a sessão INTEIRA — antes os quadros paravam de ser guardados em 400 mil (≈ 28 min a 240 FPS).
+   */
+  const FINE = 4000;          // 0 a 200 ms em passos de 0,05 ms
+  const BINS = FINE + 59800;  // 200 ms a 60 s em passos de 1 ms
+  const binOf = (ms) => (ms < 200 ? Math.floor(ms * 20) : Math.min(BINS - 1, FINE + Math.floor(ms - 200)));
+  function createAccumulator({ seriesLimit = 7200 } = {}) {
+    const counts = new Uint32Array(BINS);
+    const sums = new Float64Array(BINS);
+    let count = 0; let total = 0; let max = 0; let dropped = 0;
+    let busy = 0; let gpuBound = 0; let cpuBound = 0;
+    const series = []; let acc = 0; let inSecond = 0;
+    function push(frame) {
+      if (!frame || !finite(frame.ms) || frame.ms <= 0) return;
+      const bin = binOf(frame.ms);
+      counts[bin] += 1; sums[bin] += frame.ms;
+      count += 1; total += frame.ms; if (frame.ms > max) max = frame.ms;
+      if (frame.dropped) dropped += 1;
+      if (finite(frame.cpuBusy) && finite(frame.gpuBusy)) {
+        busy += 1;
+        if (frame.gpuBusy >= 0.9 * frame.ms) gpuBound += 1;
+        if (frame.cpuBusy >= 0.9 * frame.ms && frame.gpuBusy < 0.8 * frame.ms) cpuBound += 1;
+      }
+      acc += frame.ms; inSecond += 1;
+      if (acc >= 1000) { series.push(Math.round((inSecond * 1000) / acc * 10) / 10); acc = 0; inSecond = 0; }
+    }
+    /** Tempo de quadro no percentil p (pela faixa: média da faixa onde ele cai). */
+    function quantile(p) {
+      const rank = Math.min(count, Math.max(1, Math.ceil((p / 100) * count)));
+      let seen = 0;
+      for (let i = 0; i < BINS; i += 1) { seen += counts[i]; if (seen >= rank) return sums[i] / counts[i]; }
+      return max;
+    }
+    /** Média do pior `fraction` dos quadros (soma exata das faixas de cima; a faixa da borda entra pela média dela). */
+    function worst(fraction) {
+      let need = Math.max(1, Math.ceil(count * fraction));
+      const n = need;
+      let sum = 0;
+      for (let i = BINS - 1; i >= 0 && need > 0; i -= 1) {
+        if (!counts[i]) continue;
+        const take = Math.min(need, counts[i]);
+        sum += take === counts[i] ? sums[i] : (sums[i] / counts[i]) * take;
+        need -= take;
+      }
+      return sum / n;
+    }
+    function summary() {
+      if (count < 10) return null;
+      const median = quantile(50);
+      const stutterLimit = Math.max(2 * median, 30);
+      let stutters = 0;
+      for (let i = binOf(stutterLimit); i < BINS; i += 1) stutters += counts[i];
+      return {
+        frames: count, avgFps: 1000 / (total / count), p1LowFps: 1000 / worst(0.01), p01LowFps: 1000 / worst(0.001), p1Fps: 1000 / quantile(99), p01Fps: 1000 / quantile(99.9),
+        frameMs: { p50: median, p95: quantile(95), p99: quantile(99), max },
+        stutterCount: stutters, droppedShare: dropped / count,
+        gpuBoundShare: busy ? gpuBound / busy : null, cpuBoundShare: busy ? cpuBound / busy : null, hasBusy: busy > 0
+      };
+    }
+    function perSecondSeries() {
+      if (series.length <= seriesLimit) return series.slice();
+      const size = Math.ceil(series.length / seriesLimit);
+      const compact = [];
+      for (let i = 0; i < series.length; i += size) { const slice = series.slice(i, i + size); compact.push(slice.reduce((a, v) => a + v, 0) / slice.length); }
+      return compact;
+    }
+    return { push, summary, series: perSecondSeries, get count() { return count; } };
+  }
+
+  return { createFrameParser, summarize, perSecond, createRolling, createAccumulator, percentile };
 });

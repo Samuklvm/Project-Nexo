@@ -408,7 +408,22 @@ function createLibrary({ fs, path, runPowerShell, getFileIcon, coversDir, manual
     return null;
   }
 
-  return { scan, fetchOfficialArt, matchPath, steamRoot: () => steamRoot, get: (id) => byId.get(id) || null, list: () => games.map(publicView) };
+  /**
+   * Pelo NOME do processo (quando o Windows esconde o caminho: anticheat, jogos da loja): o executável conhecido do
+   * jogo com o mesmo nome. Só jogos instalados e só nome exato (sem a extensão), para não confundir.
+   */
+  function matchName(processName) {
+    const name = String(processName || '').toLowerCase().replace(/\.exe$/, '');
+    if (name.length < 3) return null;
+    for (const game of games) {
+      if (!game.installed || !game.exe) continue;
+      const base = String(game.exe).split(/[\\/]/).pop().toLowerCase().replace(/\.exe$/, '');
+      if (base === name) return game;
+    }
+    return null;
+  }
+
+  return { scan, fetchOfficialArt, matchPath, matchName, steamRoot: () => steamRoot, get: (id) => byId.get(id) || null, list: () => games.map(publicView) };
 }
 
 module.exports = { NOT_A_GAME, STEAM_APPS, createLibrary, parseVdf, steamLibraries, parseAppManifest, parseEpicManifest, parseMicrosoftGameConfig, classifyUninstall, mergeGames, publicView, slug, hueOf, SOURCE_LABEL, GAME_FOLDER, REGISTRY_SCRIPT };

@@ -188,7 +188,8 @@
     return {
       library: stores,
       sessions: { saved: Array.isArray(sessions) ? sessions.length : 0, today: Array.isArray(sessions) ? sessions.filter((s) => inDay(s.startedAt)).length : 0, withFps: Array.isArray(sessions) ? sessions.filter((s) => s.report?.fps).length : 0 },
-      journal: { active: journal.filter((e) => e.status === 'applied' && e.reversible).length, today: top(byAction, 20) }
+      journal: { active: journal.filter((e) => e.status === 'applied' && e.reversible).length, today: top(byAction, 20) },
+      labRuns: (readJSON(Nexo.keys.lab, null)?.runs || []).filter((run) => inDay(run?.at)).length
     };
   }
 
@@ -216,7 +217,26 @@
       health: health(day),
       settings: settings(),
       library: extra.library,
-      lab: { sessions: extra.sessions, journal: extra.journal }
+      lab: { sessions: extra.sessions, journal: extra.journal, runs: extra.labRuns },
+      bottleneck: bottleneck(day)
+    };
+  }
+
+  /**
+   * O que limitou o PC no dia: minutos com carga classificados (store.js) + o veredito de cada sessão de jogo.
+   * Só classes fixas e números: nada de nomes de jogos ou programas.
+   */
+  function bottleneck(day) {
+    const daily = Nexo.store?.bottleneck?.(day) || null;
+    const sessions = (readJSON(Nexo.keys.sessions, []) || []).filter((item) => fin(item?.startedAt) && dayOf(item.startedAt) === day);
+    const sessionLimiter = {};
+    for (const item of sessions) { const verdict = item.report?.bottleneck?.verdict; if (typeof verdict === 'string' && /^[a-z-]{2,30}$/.test(verdict)) sessionLimiter[verdict] = (sessionLimiter[verdict] || 0) + 1; }
+    const withFps = sessions.map((item) => item.report?.fps).find((value) => value && fin(value.avgFps));
+    if (!daily && !sessions.length) return null;
+    return {
+      minutes: daily?.minutes || 0, limiter: daily?.limiter || {}, sessions: sessions.length, sessionLimiter,
+      gpu: daily?.gpu || {}, cpu: daily?.cpu || {},
+      fps: withFps ? { avg: Math.round(withFps.avgFps), p1Low: fin(withFps.p1LowFps) ? Math.round(withFps.p1LowFps) : undefined, refreshHz: Nexo.refreshHz?.() ?? undefined } : undefined
     };
   }
 

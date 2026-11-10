@@ -11,7 +11,21 @@
   const FPS_PREF = 'nexo-sess-fps';
 
   const load = () => { const stored = readJSON(Nexo.keys.sessions, []); return Array.isArray(stored) ? stored : []; };
-  const persist = (list) => { if (!writeJSON(Nexo.keys.sessions, list.slice(0, MAX_SESSIONS))) showToast('Não foi possível guardar a sessão neste computador.'); };
+  /*
+   * Sessões têm orçamento próprio no armazenamento local (1,5 MB): se passar, saem primeiro as séries de FPS das mais
+   * antigas e depois as sessões mais antigas — assim nunca disputam o espaço do histórico e do aprendizado.
+   */
+  const SESSIONS_BUDGET = 1.5 * 1024 * 1024;
+  const persist = (list) => {
+    let kept = list.slice(0, MAX_SESSIONS);
+    const size = () => JSON.stringify(kept).length;
+    for (let i = kept.length - 1; i > 0 && size() > SESSIONS_BUDGET; i -= 1) if (kept[i].fpsSeries) kept[i] = { ...kept[i], fpsSeries: null };
+    while (kept.length > 1 && size() > SESSIONS_BUDGET) kept = kept.slice(0, -1);
+    let ok = writeJSON(Nexo.keys.sessions, kept);
+    while (!ok && kept.length > 1) { kept = kept.slice(0, -1); ok = writeJSON(Nexo.keys.sessions, kept); }
+    if (!ok) showToast('Não foi possível guardar a sessão neste computador.');
+    else if (kept.length < Math.min(list.length, MAX_SESSIONS)) console.warn('[sessões] espaço local cheio: as sessões mais antigas saíram', { guardadas: kept.length });
+  };
   const clock = (total) => { const s = Math.max(0, Math.round(total)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const r = s % 60; return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0').padStart(2, '0')}:${String(r).padStart(2, '0')}`; };
   const pct = (value) => (Number.isFinite(value) ? `${Math.round(value)}%` : '--');
   const dec = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits).replace('.', ',') : '--');
@@ -141,8 +155,13 @@
     try {
       const raw = await bridge.sampleSession();
       const deep = Nexo.store.deepMetrics();
-      const temps = [deep.cpuTemperature, deep.gpuTemperature].filter(Number.isFinite);
-      const sample = { t: raw.t, cpu: raw.cpu, maxCore: raw.maxCore, mem: raw.mem, gpu: Number.isFinite(deep.gpuLoad) ? deep.gpuLoad : null, temp: temps.length ? Math.max(...temps) : null, clockRatio: Nexo.store.brain.clockRatio(deep.cpuClock), fps: rec.lastFps ?? null };
+      // Detalhes da GPU (clock x máximo, energia x limite, memória de vídeo, motivo do driver) da leitura mais recente.
+      const last = Nexo.store.fresh(Nexo.store.live().slice(-1)[0], 5000) || {};
+      // temp = PROCESSADOR (o alarme de queda de clock da CPU não pode disparar por uma GPU quente); a GPU fica em gpuTemp.
+      const cpuTemp = Number.isFinite(deep.cpuTemperature) ? deep.cpuTemperature : (Number.isFinite(last.acpiTemperature) ? last.acpiTemperature : null);
+      const sample = { t: raw.t, cpu: raw.cpu, maxCore: raw.maxCore, mem: raw.mem, gpu: Number.isFinite(deep.gpuLoad) ? deep.gpuLoad : (Number.isFinite(last.gpu) ? last.gpu : null), temp: cpuTemp,
+        gpuTemp: Number.isFinite(deep.gpuTemperature) ? deep.gpuTemperature : (last.gpuTemperature ?? null), clockRatio: Nexo.store.brain.clockRatio(deep.cpuClock), fps: rec.lastFps ?? null,
+        gpu3d: last.gpu3d ?? null, gpuClockRatio: last.gpuClockRatio ?? null, gpuPowerPct: last.gpuPowerPct ?? null, gpuLimits: last.gpuLimits ?? null, gpuHot: last.gpuHot ?? null, vramPct: last.vramPct ?? null };
       if (Number.isFinite(raw.cpu)) rec.samples.push(sample);
       rec.overheadCpu.push((raw.appCpu || 0) + (rec.probeSelf?.cpu || 0));
       rec.overheadMem.push((raw.appMemMB || 0) + (rec.probeSelf?.memMB || 0));
@@ -150,7 +169,7 @@
       setText('live-cpu', pct(sample.cpu)); setText('live-core', pct(sample.maxCore)); setText('live-gpu', pct(sample.gpu)); setText('live-mem', pct(sample.mem));
       setText('live-temp', Number.isFinite(sample.temp) ? `${Math.round(sample.temp)} °C` : '--');
       setText('live-fps', Number.isFinite(rec.lastFps) ? dec(rec.lastFps, 0) : '--');
-      setText('live-overhead', `Custo do Nexo nesta sessão: ${dec(avg(rec.overheadCpu), 1)}% da CPU e ${dec(avg(rec.overheadMem), 0)} MB (inclui a sonda; não inclui o PresentMon).`);
+      setText('live-overhead', `Custo do Nexo nesta sessão: ${dec(avg(rec.overheadCpu), 1)}% da CPU e ${dec(avg(rec.overheadMem), 0)} MB (inclui a sonda e o serviço WMI que ela consulta; não inclui o PresentMon).`);
       drawLive();
       if (rec.samples.length >= MAX_SECONDS) stop();
     } catch (error) { showLiveError(error.message || 'Falha ao ler o sistema.'); }
@@ -229,13 +248,14 @@
     if (finished.useProbe) await bridge.stopProbe().catch(() => {});
     const endedAt = Date.now();
     const memory = finished.overheadMem.filter(Number.isFinite);
-    const overhead = { cpuAvg: avg(finished.overheadCpu), cpuMax: finished.overheadCpu.length ? Math.max(...finished.overheadCpu) : null, memMB: avg(memory), note: 'Inclui o Nexo e a sonda; não inclui o PresentMon.' };
+    const overhead = { cpuAvg: avg(finished.overheadCpu), cpuMax: finished.overheadCpu.length ? Math.max(...finished.overheadCpu) : null, memMB: avg(memory), note: 'Inclui o Nexo, a sonda e o serviço WMI que responde a ela; não inclui o PresentMon.' };
     const report = NexoSession.analyze({ name: finished.name, profile: finished.profile, startedAt: finished.startedAt, endedAt, samples: finished.samples, probes: finished.probes, fps: fpsResult?.summary || null,
-      overhead, hasGpuSensor: finished.samples.some((sample) => Number.isFinite(sample.gpu)), forcedGame: finished.forcedGame });
+      overhead, hasGpuSensor: finished.samples.some((sample) => Number.isFinite(sample.gpu)), forcedGame: finished.forcedGame, refreshHz: Nexo.refreshHz?.() ?? null });
     const label = finished.name || (report.game ? `${report.game.name}` : `Sessão de ${when(finished.startedAt)}`);
     const probeGame = (() => { const counts = new Map(); for (const probe of finished.probes) if (probe.fg?.gameId) counts.set(probe.fg.gameId, (counts.get(probe.fg.gameId) || 0) + 1); return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || null; })();
     const record = { id: finished.id, name: label, startedAt: finished.startedAt, endedAt, profile: finished.profile, report, auto: finished.auto, gameId: finished.gameId || probeGame,
-      timeline: NexoSession.compactTimeline(finished.samples, finished.startedAt, 5), fpsSeries: fpsResult?.series?.slice(0, 2000) || null };
+      // Linha do tempo com no máximo ~600 pontos (sessão longa fica com pontos de 10 s, 20 s…), para caber no orçamento.
+      timeline: NexoSession.compactTimeline(finished.samples, finished.startedAt, Math.max(5, Math.ceil((endedAt - finished.startedAt) / 1000 / 600))), fpsSeries: fpsResult?.series?.slice(0, 2000) || null };
     const list = load(); list.unshift(record); persist(list);
     renderList();
     recordActivity('Sessão de observação', `${label} · ${clock(report.meta.durationS)}`);

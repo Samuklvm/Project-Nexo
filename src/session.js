@@ -4,26 +4,32 @@
  * Funções puras; a coleta fica na interface e no processo principal.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./profiles.js'));
-  else root.NexoSession = factory(root.NexoProfiles);
-})(typeof self !== 'undefined' ? self : this, function (Profiles) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./profiles.js'), require('./bottleneck.js'));
+  else root.NexoSession = factory(root.NexoProfiles, root.NexoBottleneck);
+})(typeof self !== 'undefined' ? self : this, function (Profiles, Bottleneck) {
   const finite = (value) => typeof value === 'number' && Number.isFinite(value);
   const round1 = (value) => Math.round(value * 10) / 10;
   const comma = (value, digits = 0) => value.toFixed(digits).replace('.', ',');
-  const IGNORED_PROCESSES = /^(idle|system|registry|memory compression|powershell|pwsh|conhost|nexo.*|dwm|csrss|svchost|audiodg|searchhost|runtimebroker)$/i;
+  // WmiPrvSE responde às consultas da própria sonda do Nexo: não é "programa pesando em segundo plano".
+  const IGNORED_PROCESSES = /^(idle|system|registry|memory compression|powershell|pwsh|conhost|nexo.*|dwm|csrss|svchost|audiodg|searchhost|runtimebroker|wmiprvse)$/i;
 
   /* ---------- Detecção de jogo (heurística por pasta de biblioteca; nunca lê a memória do jogo) ---------- */
   const GAME_FOLDERS = [/\\steamapps\\common\\/i, /\\epic games\\(?!launcher)/i, /\\gog galaxy\\games\\/i, /\\gog games\\/i, /\\riot games\\/i,
     /\\ubisoft game launcher\\games\\/i, /\\ea games\\/i, /\\origin games\\/i, /\\xboxgames\\/i, /\\rockstar games\\/i, /\\blizzard\\/i,
     /\/steamapps\/common\//i, /\/games\/heroic\//i, /\/heroic\/(legendary|gog)?/i, /\/lutris\//i, /\/games\/(epic|gog)\//i];
-  const NOT_GAMES = /^(steam|steamwebhelper|heroic|lutris|gamescope|wineserver|explorer\.exe|epicgameslauncher|galaxyclient|riotclientservices|riotclientux|battle\.net|ubisoftconnect|upc|eadesktop|origin|xboxapp|gamingservices|chrome|msedge|firefox|explorer|discord|code|devenv|obs64|launcher)$/i;
+  const NOT_GAMES = /^(steam|steamwebhelper|heroic|lutris|gamescope|wineserver|explorer\.exe|epicgameslauncher|galaxyclient|riotclientservices|riotclientux|battle\.net|ubisoftconnect|upc|eadesktop|origin|xboxapp|gamingservices|chrome|msedge|firefox|brave|opera|vivaldi|explorer|discord|code|devenv|obs64|launcher|vlc|mpc-hc64|mpc-hc|mpc-be64|potplayermini64|mpv|wmplayer|video\.ui|microsoft\.media\.player|netflix|spotify|powerpnt|winword|excel|acrord32|acrobat|applicationframehost|msedgewebview2|lockapp|searchapp|shellexperiencehost|startmenuexperiencehost|textinputhost|taskmgr|mstsc|vmware|virtualboxvm|teams|ms-teams|zoom)$/i;
 
+  /**
+   * Jogo ou não. Sem caminho (o Windows esconde o executável de jogos com anticheat e de alguns da loja), um programa
+   * em TELA CHEIA que não é navegador, player ou ferramenta conhecida conta como jogo — antes ele simplesmente não existia.
+   */
   function classifyForeground(foreground) {
     if (!foreground || !foreground.name) return { isGame: false, reason: 'sem programa em primeiro plano' };
     const name = String(foreground.name);
     if (NOT_GAMES.test(name.replace(/\.exe$/i, ''))) return { isGame: false, reason: 'programa conhecido que não é jogo' };
     if (foreground.path && GAME_FOLDERS.some((pattern) => pattern.test(String(foreground.path)))) return { isGame: true, reason: 'está numa pasta de biblioteca de jogos' };
-    return { isGame: false, reason: 'não está numa pasta de biblioteca de jogos' };
+    if (!foreground.path && foreground.fullscreen === true) return { isGame: true, reason: 'em tela cheia, com o caminho protegido pelo sistema (anticheat ou loja)' };
+    return { isGame: false, reason: foreground.path ? 'não está numa pasta de biblioteca de jogos' : 'caminho protegido e fora de tela cheia' };
   }
 
   /* ---------- Estatística ---------- */
@@ -101,7 +107,7 @@
   const LIMIT_NO_FPS = 'Sem FPS medido, não dá para afirmar se houve queda de quadros.';
 
   function analyze(input) {
-    const { name = '', profile = 'geral', startedAt, endedAt, samples = [], probes = [], fps = null, overhead = null, hasGpuSensor = false, forcedGame = null } = input;
+    const { name = '', profile = 'geral', startedAt, endedAt, samples = [], probes = [], fps = null, overhead = null, hasGpuSensor = false, forcedGame = null, refreshHz = null } = input;
     const durationS = Math.max(0, Math.round((endedAt - startedAt) / 1000));
     const foreground = foregroundSummary(probes);
     const gameEntry = forcedGame ? foreground.find((entry) => entry.name === forcedGame) || { name: forcedGame, seconds: 0, isGame: true } : foreground.find((entry) => entry.isGame && entry.seconds >= 20);
@@ -115,7 +121,9 @@
       if (active.length < 15) active = samples;
     }
     const col = (key, list = active) => list.map((sample) => sample[key]);
-    const summary = { cpu: stats(col('cpu', samples)), maxCore: stats(col('maxCore', samples)), mem: stats(col('mem', samples)), gpu: stats(col('gpu', samples)), temp: stats(col('temp', samples)) };
+    const summary = { cpu: stats(col('cpu', samples)), maxCore: stats(col('maxCore', samples)), mem: stats(col('mem', samples)), gpu: stats(col('gpu', samples)), temp: stats(col('temp', samples)), gpuTemp: stats(col('gpuTemp', samples)) };
+    // O que limitou (cruza carga do núcleo 3D, clock e energia da GPU, núcleo mais ocupado, FPS x monitor e o PresentMon).
+    const limit = Bottleneck ? Bottleneck.summarize(active.map((sample) => ({ ...sample, cpuTemp: sample.temp, cpuClockRatio: sample.clockRatio, refreshHz })), { fps, refreshHz }) : null;
     const activeSeconds = active.length;
     const findings = [];
     const add = (finding) => findings.push({ confidence: 60, limits: [], ...finding });
@@ -131,9 +139,28 @@
       const cpuAvg = summary.cpu?.avg ?? 0;
       const fpsLimit = fps ? [] : [LIMIT_NO_FPS];
 
-      if (hasGpuSensor && gpuShare >= 0.5 && coreShare < 0.3) {
-        add({ id: 'gpu-limited', severity: 'warn', title: 'A placa de vídeo ficou no limite', detail: 'A GPU trabalhou no máximo na maior parte do tempo enquanto o processador tinha folga. Reduzir resolução ou qualidade gráfica tende a ajudar mais do que mexer no processador.',
-          evidence: [`GPU em 95% ou mais em ${comma(gpuShare * 100)}% do tempo.`, `Núcleo mais ocupado em 95% ou mais em ${comma(coreShare * 100)}% do tempo; uso médio da CPU ${comma(cpuAvg)}%.`], limits: fpsLimit, confidence: fps?.gpuBoundShare >= 0.5 ? 82 : 68 });
+      // Achados da placa de vídeo usam o lado da GPU (a RAM no limite ao mesmo tempo não apaga o da GPU).
+      const verdict = limit?.verdict === 'limite-de-quadros' ? 'limite-de-quadros' : limit?.gpuVerdict;
+      const gpuEvidence = [`GPU em 95% ou mais em ${comma(gpuShare * 100)}% do tempo.`, `Núcleo mais ocupado em 95% ou mais em ${comma(coreShare * 100)}% do tempo; uso médio da CPU ${comma(cpuAvg)}%.`];
+      if (finite(limit?.gpu?.clockRatioP50)) gpuEvidence.push(`Clock da GPU com carga: ${comma(limit.gpu.clockRatioP50 * 100)}% do máximo dela.`);
+      if (finite(limit?.gpu?.powerPctP50)) gpuEvidence.push(`Energia da GPU com carga: ${comma(limit.gpu.powerPctP50)}% do limite.`);
+      if (finite(limit?.gpu?.frameBoundShare)) gpuEvidence.push(`Quadros segurados pela GPU (PresentMon): ${comma(limit.gpu.frameBoundShare * 100)}%.`);
+      if (hasGpuSensor && verdict === 'gpu-baixo-clock') {
+        add({ id: 'gpu-low-clock', severity: 'warn', title: 'A GPU marcou 100%, mas trabalhou em clock baixo', detail: 'O contador de uso diz "ocupada", mas a placa estava longe da frequência dela: não é falta de potência. Costuma ser modo de economia de energia, limite do driver, notebook na bateria ou a placa integrada no lugar da dedicada.',
+          evidence: gpuEvidence, limits: ['O uso da GPU no Windows mede tempo ocupado, não trabalho feito.', ...fpsLimit], confidence: 70 });
+      } else if (hasGpuSensor && verdict === 'gpu-calor') {
+        add({ id: 'gpu-thermal', severity: 'warn', title: 'A placa de vídeo foi segurada pelo calor', detail: 'Com a GPU quente, o driver reduziu o clock para protegê-la. Limpar poeira, melhorar o fluxo de ar do gabinete e revisar a curva das ventoinhas da placa ajudam.',
+          evidence: [...gpuEvidence, finite(summary.gpuTemp?.max) ? `Temperatura da GPU: pico de ${comma(summary.gpuTemp.max)} °C.` : 'O driver informou limitação por temperatura.'], limits: fpsLimit, confidence: 72 });
+      } else if (hasGpuSensor && verdict === 'gpu-vram') {
+        add({ id: 'gpu-vram', severity: 'warn', title: 'A memória de vídeo encheu', detail: 'Com a memória da placa cheia, texturas vão e voltam da RAM e aparecem engasgos. Baixar a qualidade das texturas ou a resolução costuma resolver.',
+          evidence: [`Memória de vídeo: pico de ${comma(limit.gpu.vramPctMax ?? 0)}%.`, ...gpuEvidence.slice(0, 1)], limits: fpsLimit, confidence: 74 });
+      } else if (verdict === 'limite-de-quadros') {
+        add({ id: 'frame-cap', severity: 'info', title: 'O FPS ficou no limite de quadros', detail: 'Os quadros ficaram colados na taxa do monitor (ou num limite do jogo/V-Sync), com GPU e processador folgados: nada estava no limite de verdade.',
+          evidence: [`FPS médio ${comma(fps?.avgFps ?? 0)} para um monitor de ${comma(refreshHz ?? 0)} Hz.`], confidence: 76 });
+      } else if (hasGpuSensor && ['gpu', 'gpu-energia'].includes(verdict) && coreShare < 0.3) {
+        add({ id: 'gpu-limited', severity: 'warn', title: verdict === 'gpu-energia' ? 'A placa de vídeo trabalhou no máximo de energia dela' : 'A placa de vídeo ficou no limite',
+          detail: `${verdict === 'gpu-energia' ? 'A GPU chegou ao teto de energia: é o máximo que ela entrega (é o normal de uma placa trabalhando forte, não defeito). ' : 'A GPU trabalhou no máximo, em clock alto, enquanto o processador tinha folga. '}Reduzir resolução ou qualidade gráfica tende a ajudar mais do que mexer no processador.`,
+          evidence: gpuEvidence, limits: fpsLimit, confidence: fps?.gpuBoundShare >= 0.5 ? 85 : finite(limit?.gpu?.clockRatioP50) ? 74 : 66 });
       }
       if (coreShare >= 0.35 && gpuHigh < 0.5 && cpuAvg < 75) {
         add({ id: 'cpu-thread-limited', severity: 'warn', title: 'Um núcleo do processador ficou no limite', detail: 'Um único núcleo chegou ao máximo enquanto o uso total e a GPU tinham folga: o programa depende de uma thread principal. Mais núcleos ou outro plano de energia pouco mudam; frequência e cache importam mais.',
@@ -143,10 +170,13 @@
         add({ id: 'cpu-saturated', severity: cpuShare >= 0.5 ? 'bad' : 'warn', title: 'O processador ficou saturado', detail: 'O uso total passou de 90% por boa parte da sessão, o que deixa o sistema sem folga para outras tarefas.',
           evidence: [`CPU em 90% ou mais em ${comma(cpuShare * 100)}% do tempo (média ${comma(cpuAvg)}%).`], confidence: 74 });
       }
-      if (memShare >= 0.1 || (summary.mem?.max ?? 0) >= 96) {
+      // Um segundo de pico não marca a sessão: precisa de 10% do tempo acima de 90% ou 5 s seguidos acima de 96%.
+      const memSpikes = episodes(active, 'memory', (s) => finite(s.mem) && s.mem >= 96, (s) => s.mem, 5);
+      if (memShare >= 0.1 || memSpikes.length) {
         add({ id: 'memory-pressure', severity: memShare >= 0.3 ? 'bad' : 'warn', title: 'A memória chegou ao limite', detail: 'Com pouca RAM livre o Windows usa o disco como apoio, o que causa travadas.',
           evidence: [`RAM em 90% ou mais em ${comma(memShare * 100)}% do tempo; pico de ${comma(summary.mem?.max ?? 0)}%.`], confidence: 72 });
       }
+      // temp = temperatura do PROCESSADOR (a da GPU fica em gpuTemp e tem achado próprio).
       const heat = episodes(samples, 'thermal', (s) => finite(s.temp) && s.temp >= 90, (s) => s.temp, 15);
       const throttle = episodes(samples, 'throttle', (s) => finite(s.clockRatio) && s.clockRatio <= 0.78 && s.cpu >= 70 && finite(s.temp) && s.temp >= 80, (s) => Math.round(s.clockRatio * 100), 10);
       if (heat.length || throttle.length) {
@@ -163,7 +193,7 @@
       const bgGpu = backgroundLoad(probes, 'gpu', 'util', 10);
       if (bgGpu && bgGpu.avg >= 15 && bgGpu.presence >= 0.3) {
         add({ id: 'gpu-other-process', severity: 'info', title: `${bgGpu.name} também usou a GPU`, detail: 'Outro programa dividiu a placa de vídeo com o que estava em primeiro plano.',
-          evidence: [`${bgGpu.name}: média de ${comma(bgGpu.avg)}% de uso da GPU em ${comma(bgGpu.presence * 100)}% das leituras.`], limits: ['Contador do Windows por programa; pode somar vários motores da GPU.'], confidence: 60 });
+          evidence: [`${bgGpu.name}: média de ${comma(bgGpu.avg)}% de uso da GPU em ${comma(bgGpu.presence * 100)}% das leituras.`], limits: ['Contador do Windows por programa: o motor da GPU mais ocupado dele (como no Gerenciador de Tarefas).'], confidence: 60 });
       }
       if (fps) {
         if (fps.p1LowFps < 0.6 * fps.avgFps) add({ id: 'fps-stutter', severity: 'warn', title: 'Os quadros variaram bastante', detail: 'O 1% baixo ficou bem abaixo da média, o que o olho percebe como engasgos mesmo com FPS médio alto.',
@@ -182,6 +212,7 @@
     return {
       meta: { name, profile, startedAt, endedAt, durationS, samples: samples.length, probes: probes.length, hasGpuSensor, hasFps: Boolean(fps), activeSeconds },
       summary, game, foreground: foreground.slice(0, 8), findings: ranked,
+      bottleneck: limit ? { verdict: limit.verdict, label: limit.label, explain: Bottleneck.explain(limit), limiter: limit.limiter, gpu: limit.gpu, cpu: limit.cpu } : null,
       background: { cpu: backgroundLoad(probes, 'cpu', 'cpu', 5), gpu: backgroundLoad(probes, 'gpu', 'util', 10) },
       fps, overhead,
       conclusion: headline.length ? `${headline.join(' e ')}.` : 'Nenhum gargalo evidente nas medições do sistema.',

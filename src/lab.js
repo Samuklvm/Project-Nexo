@@ -290,13 +290,18 @@
     let errorCursor = startedAt;
     result.thermal = { idle: null, reference: refTemp, spikes: 0, cooldowns: 0 };
 
-    const measure = async (bench, arm, side = 'cand') => {
+    /* `checkErrors`: a consulta ao log do Windows (um PowerShell) roda uma vez por lado do par, depois do último teste
+       — não no meio dos benchmarks, onde pesaria na medição seguinte. */
+    const measure = async (bench, arm, side = 'cand', checkErrors = true) => {
       checkCancel();
       const score = await system.bench(bench);
       let sample = await system.sample();
-      const checkAt = now();
-      const errorCount = await system.errorEventsSince(errorCursor);
-      errorCursor = checkAt;
+      let errorCount = 0;
+      if (checkErrors) {
+        const checkAt = now();
+        errorCount = await system.errorEventsSince(errorCursor);
+        errorCursor = checkAt;
+      }
       const reference = side === 'cand' ? refFor(bench) : null;
       let guard = evaluateGuards({ sample, startTemp: reference, errorCount, limits });
       // Pico de um instante (sensor que pula) não é aquecimento: confere de novo depois de um respiro.
@@ -342,8 +347,8 @@
           // Outro programa pesando no processador estragaria a medição: espera ele sossegar (até alguns segundos).
           sides += 1;
           if (typeof system.quiet === 'function') { const calm = await system.quiet(); if (calm && calm.ok === false) { noisy += 1; result.noisy = (result.noisy || 0) + 1; } }
-          for (const bench of benches) {
-            const reading = await measure(bench, arm, side);
+          for (const [index, bench] of benches.entries()) {
+            const reading = await measure(bench, arm, side, index === benches.length - 1);
             (side === 'base' ? base : cand)[bench].push(reading.score);
             temps[side].push(reading.tempC);
           }
@@ -394,7 +399,8 @@
       const sessionBenches = [...new Set(candidates.flatMap((arm) => arm.benches))];
       stage('aquecer', 'Aquecendo para estabilizar a medição');
       // Aquecimento no plano original: só as guardas absolutas valem aqui; o que ele medir vira o "normal" de cada teste.
-      for (const bench of sessionBenches.length ? sessionBenches : ['single']) await measure(bench, null, 'warm');
+      const warmBenches = sessionBenches.length ? sessionBenches : ['single'];
+      for (const [index, bench] of warmBenches.entries()) await measure(bench, null, 'warm', index === warmBenches.length - 1);
       const warm = Object.values(refTemp).filter(finite);
       if (warm.length) say(`Aquecido: ${Math.round(Math.max(...warm))} °C nos testes com o plano original (em repouso estava ${Math.round(pre.tempC)} °C). A guarda de aquecimento compara cada ajuste com isso.`);
       say(candidates.length ? `Ideias escolhidas para hoje: ${candidates.map((arm) => `${KNOB.get(arm.knob).label} → ${valueLabel(KNOB.get(arm.knob), arm.value)}${arm.untested ? ' (inédito aqui)' : ''}`).join('; ')}.` : 'Nenhuma ideia nova: tudo o que o espaço permite já foi testado ou bloqueado.');

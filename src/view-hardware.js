@@ -145,6 +145,7 @@
     }
     try {
       Nexo.state.sensors = await desktopBridge.getHardwareSensors();
+      Nexo.state.sensorsAt = Date.now(); // quando chegou: leitura velha não vale como "agora" (store.js)
       const snapshot = Nexo.state.sensors;
       setText('sensor-count', Number(snapshot.sensorCount || 0).toLocaleString('pt-BR'));
       const time = snapshot.collectedAt ? new Date(snapshot.collectedAt) : new Date();

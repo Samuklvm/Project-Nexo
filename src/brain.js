@@ -20,6 +20,9 @@
   const EPISODE_RETENTION = 30 * DAY;
 
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  /** Clock em MHz que faz sentido (leitura absurda de sensor não vira régua). */
+  const plausibleClock = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 300 && value <= 7000;
+  const CLOCK_WINDOW = 240;
   const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const comma = (value, digits = 1) => value.toFixed(digits).replace('.', ',');
   const finite = (value) => typeof value === 'number' && Number.isFinite(value);
@@ -35,7 +38,7 @@
   function emptyState() {
     const grid = () => Array.from({ length: BUCKETS }, () => [0, 0, 0]);
     return {
-      v: 1, firstSeen: 0, minutes: 0, maxClock: null,
+      v: 1, firstSeen: 0, minutes: 0, maxClock: null, clocks: [],
       buckets: Object.fromEntries(METRICS.map((m) => [m, grid()])),
       episodes: [], ledger: {}
     };
@@ -50,7 +53,9 @@
       }
       state.firstSeen = Number(saved.firstSeen) || 0;
       state.minutes = Number(saved.minutes) || 0;
-      state.maxClock = finite(saved.maxClock) ? saved.maxClock : null;
+      // Régua de clock: as últimas leituras COM CARGA (máx. 240 minutos). O maxClock antigo (que só subia) é descartado.
+      state.clocks = Array.isArray(saved.clocks) ? saved.clocks.filter((value) => plausibleClock(value)).slice(-CLOCK_WINDOW) : [];
+      state.maxClock = null;
       state.episodes = Array.isArray(saved.episodes) ? saved.episodes.filter((e) => e && finite(e.start)).slice(-MAX_EPISODES) : [];
       state.ledger = saved.ledger && typeof saved.ledger === 'object' ? saved.ledger : {};
     }
@@ -81,7 +86,9 @@
     function conditions(sample) {
       const zCpu = zscore('cpu', sample.cpu, sample.t);
       const zMem = zscore('mem', sample.mem, sample.t);
-      const throttled = finite(sample.clockRatio) && sample.clockRatio <= 0.78 && sample.cpu >= 70 && finite(sample.temp) && sample.temp >= 80;
+      // Queda de clock por calor: só com a temperatura do PROCESSADOR (uma GPU quente não diz nada sobre o clock da CPU).
+      const cpuTemp = finite(sample.cpuTemp) ? sample.cpuTemp : sample.temp;
+      const throttled = finite(sample.clockRatio) && sample.clockRatio <= 0.78 && sample.cpu >= 70 && finite(cpuTemp) && cpuTemp >= 80;
       return {
         cpu: finite(sample.cpu) && (sample.cpu >= 85 || (zCpu !== null && zCpu >= 3 && sample.cpu >= 60)),
         memory: finite(sample.mem) && (sample.mem >= 90 || (zMem !== null && zMem >= 3 && sample.mem >= 75)),
@@ -125,7 +132,8 @@
       if (!finite(sample?.t)) return;
       if (!state.firstSeen) state.firstSeen = sample.t;
       state.minutes += 1;
-      if (finite(sample.clock) && (state.maxClock === null || sample.clock > state.maxClock)) state.maxClock = sample.clock;
+      // Só minutos com carga entram na régua: o clock de "todos os núcleos ocupados" é o que importa para comparar.
+      if (plausibleClock(sample.clock) && finite(sample.cpu) && sample.cpu >= 50) { state.clocks.push(Math.round(sample.clock)); if (state.clocks.length > CLOCK_WINDOW) state.clocks.splice(0, state.clocks.length - CLOCK_WINDOW); }
 
       const active = conditions(sample);
       for (const kind of Object.keys(EPISODE_RULES)) {
@@ -191,9 +199,18 @@
       };
     }
 
+    /**
+     * Régua do clock: o percentil 90 dos minutos com carga recentes (precisa de 10). Um turbo de um núcleo ou uma
+     * leitura absurda não viram régua para sempre, e a régua acompanha o PC (pasta térmica nova, BIOS, plano).
+     */
+    function referenceClock() {
+      if (state.clocks.length < 10) return null;
+      const sorted = [...state.clocks].sort((a, b) => a - b);
+      return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))];
+    }
     return {
-      ingest, expected, zscore, recentEpisodes, ledger, habitGrid, learning,
-      clockRatio: (clock) => (state.maxClock && finite(clock) ? clamp(clock / state.maxClock, 0, 1.2) : null),
+      ingest, expected, zscore, recentEpisodes, ledger, habitGrid, learning, referenceClock,
+      clockRatio: (clock) => { const ref = referenceClock(); return ref && plausibleClock(clock) ? clamp(clock / ref, 0, 1.2) : null; },
       serialize: () => JSON.parse(JSON.stringify(state)),
       reset: () => { Object.assign(state, emptyState()); for (const k of Object.keys(runtime)) delete runtime[k]; }
     };

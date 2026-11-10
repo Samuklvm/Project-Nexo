@@ -17,6 +17,23 @@
   addEventListener('focus', update);
   document.addEventListener('visibilitychange', update);
   Nexo.isIdle = () => body.classList.contains('idle');
+  /* Taxa do monitor desta janela (Hz), medida pelos quadros do navegador uma vez ao abrir: serve para saber se o FPS
+     de um jogo ficou colado no limite do monitor (limite de quadros/V-Sync) em vez de num gargalo de verdade. */
+  let refreshHz = null;
+  const measureRefresh = () => {
+    const times = [];
+    const step = (time) => {
+      times.push(time);
+      if (times.length < 90) { requestAnimationFrame(step); return; }
+      const deltas = times.slice(1).map((value, index) => value - times[index]).filter((value) => value > 2 && value < 100).sort((a, b) => a - b);
+      const median = deltas[Math.floor(deltas.length / 2)];
+      if (median) refreshHz = Math.round(1000 / median);
+    };
+    requestAnimationFrame(step);
+  };
+  if (document.hidden) document.addEventListener('visibilitychange', () => { if (!document.hidden && refreshHz === null) measureRefresh(); }, { once: true });
+  else measureRefresh();
+  Nexo.refreshHz = () => refreshHz;
   update();
 
   /* Primeira abertura num PC fraco: liga o modo leve sozinho (a pessoa pode trocar em Ajustes). */

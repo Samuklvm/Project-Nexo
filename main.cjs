@@ -189,11 +189,15 @@ const linux = createLinux({ fs, path, os, run: (file, args) => runCode(file, arg
 
 function getCpuSample() {
   return os.cpus().reduce((sample, cpu) => {
-    sample.total += Object.values(cpu.times).reduce((total, value) => total + value, 0);
+    const total = Object.values(cpu.times).reduce((sum, value) => sum + value, 0);
+    sample.total += total;
     sample.idle += cpu.times.idle;
+    sample.cores.push([total, cpu.times.idle]);
     return sample;
-  }, { total: 0, idle: 0 });
+  }, { total: 0, idle: 0, cores: [] });
 }
+/** Núcleo mais ocupado na última leitura (%): mostra jogo/programa preso numa thread mesmo com a CPU total baixa. */
+let lastMaxCore = null;
 
 // Leitura contínua: compara com a amostra anterior em vez de esperar 250 ms a cada chamada. Assim o painel pode ler
 // a cada segundo sem custo extra (só a primeira chamada, ou uma depois de muito tempo parado, espera um pouco).
@@ -205,6 +209,11 @@ async function getCpuUsage() {
   const after = { ...getCpuSample(), at: Date.now() };
   lastCpuSample = after;
   const totalDelta = after.total - before.total;
+  if (before.cores?.length === after.cores.length) {
+    let busiest = 0;
+    after.cores.forEach(([total, idle], index) => { const dt = total - before.cores[index][0]; if (dt > 0) busiest = Math.max(busiest, (1 - (idle - before.cores[index][1]) / dt) * 100); });
+    lastMaxCore = Math.round(Math.max(0, Math.min(100, busiest)) * 10) / 10;
+  }
 
   if (totalDelta <= 0) return 0;
   const usage = (1 - (after.idle - before.idle) / totalDelta) * 100;
@@ -289,6 +298,8 @@ async function getCachedDrives() {
   return driveCache.pending;
 }
 
+const NVIDIA_FULL_QUERY = 'temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.gr,clocks.max.gr,power.draw,power.limit,clocks_throttle_reasons.active,utilization.memory';
+let nvidiaQueryMode = null;
 async function getTemperatureReadings() {
   if (process.platform !== 'win32' && !IS_LINUX) return { acpiSensors: [], gpuSensors: [] };
 
@@ -317,19 +328,28 @@ $sensors | ConvertTo-Json -Compress
       }
     })(),
     (async () => {
+      // Consulta completa (clock, energia e o MOTIVO do clock baixo: limite de energia, calor…); driver antigo que não
+      // conhece algum campo cai para a consulta básica, e o modo que funcionou fica guardado.
+      const run = (fields) => execFileAsync('nvidia-smi', [`--query-gpu=${fields}`, '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 3000, maxBuffer: 64 * 1024 });
+      const num = (value) => { const n = Number(String(value ?? '').trim()); return Number.isFinite(n) ? n : null; };
       try {
-        const { stdout } = await execFileAsync('nvidia-smi', [
-          '--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total',
-          '--format=csv,noheader,nounits'
-        ], { windowsHide: true, timeout: 3000, maxBuffer: 64 * 1024 });
+        let stdout = '';
+        if (nvidiaQueryMode !== 'basic') {
+          try { ({ stdout } = await run(NVIDIA_FULL_QUERY)); nvidiaQueryMode = 'full'; } catch (error) { if (error?.code === 'ENOENT') throw error; nvidiaQueryMode = 'basic'; }
+        }
+        if (nvidiaQueryMode === 'basic') ({ stdout } = await run('temperature.gpu,utilization.gpu,memory.used,memory.total'));
         return stdout.trim().split(/\r?\n/).filter(Boolean).map((line, index) => {
-          const [temperature, usage, memoryUsed, memoryTotal] = line.split(',').map((value) => Number(value.trim()));
+          const [temperature, usage, memoryUsed, memoryTotal, clock, clockMax, powerDraw, powerLimit, reasons, memUtil] = line.split(',');
+          const reasonBits = /^0x[0-9a-f]+$/i.test(String(reasons || '').trim()) ? Number.parseInt(String(reasons).trim(), 16) : null;
           return {
             name: `GPU ${index + 1}`,
-            temperatureCelsius: Number.isFinite(temperature) ? temperature : null,
-            usagePercent: Number.isFinite(usage) ? Math.max(0, Math.min(100, usage)) : null,
-            memoryUsedMb: Number.isFinite(memoryUsed) ? memoryUsed : null,
-            memoryTotalMb: Number.isFinite(memoryTotal) ? memoryTotal : null
+            temperatureCelsius: num(temperature),
+            usagePercent: num(usage) === null ? null : Math.max(0, Math.min(100, num(usage))),
+            memoryUsedMb: num(memoryUsed),
+            memoryTotalMb: num(memoryTotal),
+            clockMhz: num(clock), clockMaxMhz: num(clockMax), powerW: num(powerDraw), powerLimitW: num(powerLimit), memoryBusyPercent: num(memUtil),
+            // Bits do nvidia-smi: 0x4 limite de energia (software), 0x8 desaceleração de hardware, 0x20/0x40 calor, 0x80 freio de energia.
+            limits: reasonBits === null ? null : { power: Boolean(reasonBits & 0x4 || reasonBits & 0x80), thermal: Boolean(reasonBits & 0x20 || reasonBits & 0x40), hardware: Boolean(reasonBits & 0x8), idle: Boolean(reasonBits & 0x1) }
           };
         });
       } catch {
@@ -480,6 +500,7 @@ async function getSystemSnapshot() {
     cpuModel: cpuInformation[0]?.model || 'Processador',
     logicalCpuCount: cpuInformation.length,
     cpuUsage,
+    cpuMaxCore: lastMaxCore,
     memoryTotalBytes,
     memoryUsedBytes,
     memoryPercent: memoryTotalBytes ? Math.round((memoryUsedBytes / memoryTotalBytes) * 100) : 0,
@@ -1398,7 +1419,8 @@ registerIpcHandler('system:power-source', async () => ({ onBattery: Boolean(powe
 const sendToWindow = (channel, payload) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
 };
-const probe = IS_LINUX ? createLinuxProbe({ linux, emit: (sample) => sendToWindow('session:probe', sample), match: (exePath) => library.matchPath(exePath) }) : createProbe({ emit: (sample) => sendToWindow('session:probe', sample), match: (exePath) => library.matchPath(exePath) });
+const probeMatch = Object.assign((exePath) => library.matchPath(exePath), { byName: (name) => library.matchName(name) });
+const probe = IS_LINUX ? createLinuxProbe({ linux, emit: (sample) => sendToWindow('session:probe', sample), match: probeMatch }) : createProbe({ emit: (sample) => sendToWindow('session:probe', sample), match: probeMatch });
 const MANGO_DIR = () => path.join(app.getPath('userData'), 'mangohud');
 const fpsRunner = IS_LINUX ? createMangoRunner({ fs, path, dir: MANGO_DIR(), emit: (channel, payload) => sendToWindow(channel, payload) }) : createFpsRunner({ emit: (channel, payload) => sendToWindow(channel, payload) });
 
@@ -1912,8 +1934,11 @@ registerIpcHandler('games:remove-manual', async (_event, id) => {
 });
 
 // ---- Observador de jogos (sessão automática; opcional) ----
+// Jogo pelo caminho; sem caminho (anticheat, loja), pelo nome do processo conhecido da biblioteca.
+const matchGame = Object.assign((exePath) => library.matchPath(exePath), { byName: (name) => library.matchName(name) });
 const watcher = (IS_LINUX ? (options) => createLinuxWatcher({ linux, ...options }) : createWatcher)({
-  match: (exePath) => library.matchPath(exePath),
+  match: matchGame,
+  onProblem: (kind, reason) => noteInterruption('observador-de-jogos', `${kind}: ${reason}`, { motivo: kind }, kind === 'desistiu' ? 'erro' : 'aviso'),
   onStart: (game) => {
     sendToWindow('watch:game', { type: 'start', name: game.name, gameId: game.gameId, pid: game.pid });
     if (!mainWindow?.isVisible() && Notification.isSupported()) new Notification({ title: `Gravando a sessão de ${game.name}`, body: 'O Nexo começou a observar o desempenho. O relatório fica pronto quando o jogo fechar.', icon: path.join(__dirname, 'assets', 'icon.png') }).show();

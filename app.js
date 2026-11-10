@@ -50,8 +50,15 @@
   // Laços com setTimeout encadeado: o próximo só é marcado quando o anterior acabou (nunca empilham).
   const loop = (fn, delay) => { const tick = async () => { try { await fn(); } catch { /* segue */ } setTimeout(tick, delay()); }; setTimeout(tick, delay()); };
   loop(refreshSnapshot, () => (Nexo.isIdle?.() && !Nexo.sessions?.isRecording?.() ? 5000 : rate().snapshot));
-  loop(async () => { if (!Nexo.state.labRunning && !Nexo.state.rebootMeasuring && (!Nexo.isIdle?.() || Nexo.sessions?.isRecording?.())) await Nexo.refreshSensors?.(); },
-    () => (Nexo.state.sensors?.source === 'service' ? rate().sensors : rate().slowSensors));
+  // Sensores: sem foco também atualizam (a cada 30 s, como o resto) — antes paravam e a GPU, o clock e a temperatura
+  // ficavam congelados no último valor e entravam no histórico como se fossem do minuto atual.
+  let lastSensorsAt = 0;
+  loop(async () => {
+    if (Nexo.state.labRunning || Nexo.state.rebootMeasuring) return;
+    if (Nexo.isIdle?.() && !Nexo.sessions?.isRecording?.() && Date.now() - lastSensorsAt < IDLE_SNAPSHOT_MS) return;
+    lastSensorsAt = Date.now();
+    await Nexo.refreshSensors?.();
+  }, () => (Nexo.isIdle?.() && !Nexo.sessions?.isRecording?.() ? 5000 : Nexo.state.sensors?.source === 'service' ? rate().sensors : rate().slowSensors));
   Nexo.on('learned', () => Nexo.refreshHome());
 
   // No Linux não há assistente de instalação com os avisos: o próprio app mostra na primeira abertura.

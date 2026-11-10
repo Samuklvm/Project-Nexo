@@ -8,13 +8,13 @@ const readline = require('readline');
 const Fps = require('../src/fps.js');
 
 const SESSION = 'NexoFPS';
-const MAX_FRAMES = 400000;
 const ACCESS_HINT = 'O Windows negou o acesso aos eventos de apresentação. O PresentMon precisa que o seu usuário esteja no grupo “Performance Log Users” (ou seja administrador). O Nexo libera isso sozinho em Sessões → Componentes → “Liberar automaticamente” (o Windows pede permissão); depois saia da conta do Windows e entre de novo.';
 
 function createFpsRunner({ spawnFn = spawn, emit = () => {}, platform = process.platform } = {}) {
   let child = null;
   let timer = null;
-  let frames = [];
+  // Acumulador sem limite: a sessão inteira entra no resumo (antes, só os primeiros 400 mil quadros).
+  let frames = Fps.createAccumulator();
   let rolling = null;
   let parser = null;
   let startedAt = 0;
@@ -39,7 +39,7 @@ function createFpsRunner({ spawnFn = spawn, emit = () => {}, platform = process.
     exePath = exe;
     parser = Fps.createFrameParser();
     rolling = Fps.createRolling(1000);
-    frames = [];
+    frames = Fps.createAccumulator();
     notes = [];
     startedAt = Date.now();
     const args = ['--process_id', String(pid), '--output_stdout', '--no_console_stats', '--stop_existing_session', '--session_name', SESSION, '--terminate_on_proc_exit'];
@@ -48,23 +48,23 @@ function createFpsRunner({ spawnFn = spawn, emit = () => {}, platform = process.
 
     const onLine = (line) => {
       const frame = parser.push(line);
-      if (frame) { if (frames.length < MAX_FRAMES) frames.push(frame); rolling.push(frame); return; }
+      if (frame) { frames.push(frame); rolling.push(frame); return; }
       if (!parser.ready || /error|denied|failed|access|negad/i.test(line)) { notes.push(String(line).slice(0, 200)); if (notes.length > 8) notes.shift(); }
     };
     readline.createInterface({ input: spawned.stdout }).on('line', onLine);
     if (spawned.stderr) readline.createInterface({ input: spawned.stderr }).on('line', onLine);
 
-    timer = setInterval(() => emit('fps:update', { ...rolling.snapshot(), frames: frames.length }), 1000);
+    timer = setInterval(() => emit('fps:update', { ...rolling.snapshot(), frames: frames.count }), 1000);
     spawned.on('error', (error) => { clearInterval(timer); if (child === spawned) child = null; fail('falha-ao-iniciar', `Não foi possível iniciar o PresentMon: ${error.message}`); });
     spawned.on('exit', (code) => {
       clearInterval(timer);
       if (child === spawned) child = null;
-      const early = Date.now() - startedAt < 8000 && frames.length === 0;
+      const early = Date.now() - startedAt < 8000 && frames.count === 0;
       if (code !== 0 && early) {
         const joined = notes.join(' ');
         if (/access|denied|negad|0x5\b|performance log/i.test(joined)) fail('acesso-negado', ACCESS_HINT);
         else fail('falha-ao-iniciar', `O PresentMon encerrou sem medir nada${joined ? `: ${joined}` : '.'} Confira se o programa está exibindo imagem (DirectX/OpenGL/Vulkan).`);
-      } else emit('fps:ended', { frames: frames.length, code });
+      } else emit('fps:ended', { frames: frames.count, code });
     });
     return { ok: true };
   }
@@ -73,9 +73,9 @@ function createFpsRunner({ spawnFn = spawn, emit = () => {}, platform = process.
   async function stop() {
     clearInterval(timer);
     timer = null;
-    const result = { summary: Fps.summarize(frames), series: Fps.perSecond(frames), frames: frames.length };
+    const result = { summary: frames.summary(), series: frames.series(), frames: frames.count };
     if (child) { try { child.kill(); } catch { /* já encerrado */ } child = null; terminateSession(); }
-    frames = [];
+    frames = Fps.createAccumulator();
     return result;
   }
 
