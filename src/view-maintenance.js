@@ -22,6 +22,7 @@
   }
   const selectedDrive = () => Nexo.state.snapshot?.drives?.find((drive) => drive.driveLetter === select.value) || null;
 
+  /** Preenche o cartão da unidade escolhida (tipo, modelo, temperatura, sistema de arquivos, espaço). */
   function hydrate() {
     const drive = selectedDrive();
     const bar = document.getElementById('drive-capacity-bar');
@@ -62,6 +63,7 @@
     hydrate();
   }
 
+  /** Otimiza a unidade escolhida (TRIM em SSD, desfragmentação em HD) com a ferramenta do sistema e registra no Diário. */
   async function optimizeDrive() {
     const drive = selectedDrive();
     if (!drive || !desktopBridge?.optimizeDrive) return;
@@ -89,6 +91,7 @@
     }
   }
 
+  /** Roda a verificação dos arquivos do sistema (SFC) depois da confirmação e registra o resultado. */
   async function runRepair() {
     if (!desktopBridge?.repairSystemFiles) { showToast('A verificação SFC está disponível no aplicativo desktop.'); return; }
     const confirmed = await Nexo.confirm({

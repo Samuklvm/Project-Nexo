@@ -202,6 +202,7 @@
       empty: Object.keys(f.empty).slice(0, 40), crashed: Object.keys(f.crashed).slice(0, 40), sources };
   }
 
+  /** Monta o resumo anônimo de um dia para a telemetria (só números e nomes fixos do app). */
   function summary(day) {
     const b = days[day];
     if (!b) return null;

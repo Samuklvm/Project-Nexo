@@ -106,6 +106,7 @@
 
   const LIMIT_NO_FPS = 'Sem FPS medido, não dá para afirmar se houve queda de quadros.';
 
+  /** Analisa uma sessão gravada e devolve o relatório: o que limitou, achados com evidência, FPS e o custo do próprio Nexo. */
   function analyze(input) {
     const { name = '', profile = 'geral', startedAt, endedAt, samples = [], probes = [], fps = null, overhead = null, hasGpuSensor = false, forcedGame = null, refreshHz = null } = input;
     const durationS = Math.max(0, Math.round((endedAt - startedAt) / 1000));

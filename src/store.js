@@ -120,6 +120,7 @@
     };
   }
 
+  /** Transforma a leitura do sistema numa amostra do histórico (CPU, núcleo mais ocupado, memória, disco, GPU e temperaturas). */
   function makeSample(snapshot, timestamp) {
     const thermal = snapshot.temperatureReadings || {};
     const acpi = (thermal.acpiSensors || []).map((sensor) => sensor.celsius).filter(plausible);
@@ -209,6 +210,7 @@
     capture().catch((error) => console.warn('[processos] captura falhou', error));
   }
 
+  /** Fecha o minuto: médias e picos das amostras, o que limitou o PC e a entrada no aprendizado. */
   function commitMinute(now) {
     const window = live.filter((sample) => sample.timestamp > now - MIN && sample.timestamp <= now + FUTURE_TOLERANCE);
     if (!window.length) return;

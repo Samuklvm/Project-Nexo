@@ -112,6 +112,7 @@
     }));
   }
 
+  /** Pré-checagem da otimização extrema: mostra se dá para rodar agora (tomada, temperatura, carga, ajustes disponíveis). */
   async function check() {
     formError('');
     try {
@@ -144,6 +145,7 @@
     const armRow = (arm) => `<tr><td>${escapeHtml(arm.label)} <span class="chip">${NOVELTY[arm.novelty] || ''}</span></td><td>${escapeHtml(arm.fromLabel)} → ${escapeHtml(arm.valueLabel)}</td><td>${signed(arm.compositeDelta)}</td><td class="nowrap">${temp(arm.tempDelta)}</td><td>${verdictChip(arm.verdict)}</td></tr>`;
     document.getElementById('lab-arms').innerHTML = live.arms.length ? `<table class="exp"><thead><tr><th>Ideia</th><th>De → para</th><th>Ganho</th><th>Temp.</th><th>Veredito</th></tr></thead><tbody>${live.arms.map(armRow).join('')}</tbody></table>` : '';
   }
+  /** Recebe os eventos da sessão de risco em andamento (etapa, progresso, ideias testadas) e atualiza a tela. */
   function onEvent(event) {
     if (!live) return;
     if (event.type === 'stage') {
@@ -171,6 +173,7 @@
     if (event.type === 'combo') { live.arms.push({ label: 'Combinação inédita', fromLabel: 'original', valueLabel: event.combo.label, novelty: 'inedito-aqui', compositeDelta: event.combo.compositeDelta, tempDelta: event.combo.tempDelta, verdict: event.combo.verdict }); renderArms(); }
   }
 
+  /** Começa a sessão de risco depois da confirmação final, com o consentimento e as opções escolhidas. */
   async function startRun() {
     formError('');
     const consent = { acknowledged: document.getElementById('lab-ack').checked, phrase: document.getElementById('lab-phrase').value };
@@ -205,6 +208,7 @@
     return 'Nada mudou acima do ruído neste PC';
   }
 
+  /** Fecha a sessão de risco: guarda a evidência, registra no Diário e mostra o resultado. */
   function finishRun(result, mem) {
     live = null;
     result.combos = Array.isArray(result.combos) ? result.combos : [];
@@ -303,6 +307,7 @@
     } catch (error) { showToast(error.message || 'Não foi possível recuperar.'); }
   }
 
+  /** Lê o estado do laboratório (espaço de ajustes, recuperação pendente) e atualiza a tela. */
   async function refreshStatus() {
     if (!bridge?.getLabStatus) return;
     try {

@@ -84,6 +84,7 @@
     document.getElementById('fps-revoke').hidden = !access || !(access.member || access.inToken);
   }
 
+  /** Pede ao Windows (UAC) para colocar o usuário no grupo Performance Log Users, que a medição de FPS exige. */
   Nexo.grantFpsAccess = async function grantFpsAccess() {
     setAppStatus('Aguardando a permissão do Windows');
     try {
@@ -118,6 +119,7 @@
     box.hidden = !message;
   }
 
+  /** Atualiza o cartão da gravação em andamento (tempo, programa em primeiro plano, FPS). */
   function renderRec() {
     const recording = Boolean(rec);
     const button = document.getElementById('rec-toggle');
@@ -138,6 +140,7 @@
     catch (error) { fps.active = false; rec.useFps = false; showLiveError(error.message || 'Não foi possível iniciar a medição de FPS.'); }
   }
 
+  /** Guarda uma leitura da sonda (programa em primeiro plano e quem mais pesa) na gravação. */
   function onProbe(sample) {
     if (!rec) return;
     rec.probes.push(sample);
@@ -153,6 +156,7 @@
     if (isGame) startFps(sample.fg.pid);
   }
 
+  /** Uma amostra por segundo da gravação (CPU, núcleo, memória, GPU, temperaturas). */
   async function tick() {
     if (!rec || rec.busy) return;
     rec.busy = true;
@@ -196,6 +200,7 @@
     try { await beginRecording(options); } finally { starting = false; }
   }
 
+  /** Começa uma sessão de observação (manual ou automática), com a sonda e o FPS se pedidos. */
   async function beginRecording(options) {
     if (!bridge?.sampleSession) { showToast('As sessões estão disponíveis no aplicativo desktop.'); return; }
     if (Nexo.state.labRunning || Nexo.state.rebootMeasuring) { showToast('O Nexo está medindo o PC agora; a sessão fica para depois.'); return; }
@@ -237,6 +242,7 @@
     Nexo.emit('session-state');
   }
 
+  /** Para a gravação, analisa e guarda o relatório da sessão. */
   async function stop() {
     if (!rec) return;
     const finished = rec;
@@ -289,6 +295,7 @@
       <p class="muted">“1% baixo” é o FPS correspondente ao percentil 99 do tempo de quadro. “Quadro lento” é o que levou mais que o dobro da mediana e mais de 30 ms.</p>`;
   }
 
+  /** Monta o relatório de uma sessão gravada (conclusão, achados, FPS e programas). */
   function reportHtml(record) {
     const r = record.report;
     const m = r.meta;
@@ -310,6 +317,7 @@
       <p class="muted">${escapeHtml(r.limits)}</p>`;
   }
 
+  /** Desenha os gráficos do relatório (linha do tempo e FPS). */
   function drawReportCharts(record) {
     const colors = Nexo.charts.palette();
     const start = record.startedAt;
@@ -336,6 +344,7 @@
     showToast('Sessão exportada para um arquivo local.');
   }
 
+  /** Abre o relatório de uma sessão gravada numa janela. */
   function openReport(id) {
     const record = load().find((session) => session.id === id);
     if (!record) return;
@@ -355,6 +364,7 @@
     }).catch((error) => console.error('[sessões] não consegui excluir', error));
   }
 
+  /** Desenha a lista de sessões gravadas (as mais recentes primeiro). */
   function renderList() {
     const list = load();
     const box = document.getElementById('sess-list');

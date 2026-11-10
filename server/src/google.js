@@ -30,23 +30,48 @@ function decodePart(part) {
  * clientIds: os IDs de cliente OAuth aceitos (o do app para computador; vírgula separa vários).
  */
 export async function verifyGoogleIdToken(idToken, { clientIds, fetchImpl = fetch, now = Date.now() }) {
-  const fail = (message) => Object.assign(new Error(message), { status: 401 });
+  const { parts, header, payload } = parseToken(idToken);
+  await checkSignature(parts, header, fetchImpl, now);
+  return checkClaims(payload, clientIds, now);
+}
+
+const fail = (message) => Object.assign(new Error(message), { status: 401 });
+// JSON.parse aceita null, número, texto e lista: tudo isso é token malformado (401), não erro interno (500).
+const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** Separa e lê o cabeçalho e o conteúdo do token; qualquer formato estranho vira 401. */
+function parseToken(idToken) {
   const parts = String(idToken || '').split('.');
   if (parts.length !== 3 || idToken.length > 4096) throw fail('Login inválido.');
   let header;
   let payload;
-  try { header = decodePart(parts[0]); payload = decodePart(parts[1]); } catch { throw fail('Login inválido.'); }
-  // JSON.parse aceita null, número, texto e lista: tudo isso é token malformado (401), não erro interno (500).
-  const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  try {
+    header = decodePart(parts[0]);
+    payload = decodePart(parts[1]);
+  } catch {
+    throw fail('Login inválido.');
+  }
   if (!isObject(header) || !isObject(payload)) throw fail('Login inválido.');
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid || header.kid.length > 200) throw fail('Login inválido.');
+  return { parts, header, payload };
+}
+
+/** Confere a assinatura RS256 com a chave pública do Google (busca as chaves de novo se a do token for nova). */
+async function checkSignature(parts, header, fetchImpl, now) {
   let keys = await googleKeys(fetchImpl, now);
   let jwk = keys.find((key) => key.kid === header.kid);
-  if (!jwk) { keys = await googleKeys(fetchImpl, now, true); jwk = keys.find((key) => key.kid === header.kid); }
+  if (!jwk) {
+    keys = await googleKeys(fetchImpl, now, true);
+    jwk = keys.find((key) => key.kid === header.kid);
+  }
   if (!jwk) throw fail('Login com uma chave que o Google não reconhece.');
   const key = await crypto.subtle.importKey('jwk', { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
   const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, fromB64url(parts[2]), utf8(`${parts[0]}.${parts[1]}`));
   if (!valid) throw fail('Assinatura do login não confere.');
+}
+
+/** Confere público (o cliente OAuth do Nexo), emissor, validade, identificador e e-mail verificado. */
+function checkClaims(payload, clientIds, now) {
   const allowed = String(clientIds || '').split(',').map((id) => id.trim()).filter(Boolean);
   const audience = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
   if (!allowed.length || !audience.some((aud) => allowed.includes(aud))) throw fail('Este login não é do Nexo.');

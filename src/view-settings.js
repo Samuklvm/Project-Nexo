@@ -88,6 +88,7 @@
     catch (error) { showToast(error.message || 'Não foi possível iniciar a desinstalação.'); }
   });
 
+  /** Mostra a versão, o tamanho dos dados e a pasta do app em Ajustes. */
   async function refreshInfo() {
     if (!desktopBridge?.getAppInfo) { setText('about-version', 'desenvolvimento'); return; }
     try {

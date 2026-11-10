@@ -17,6 +17,7 @@
     return `${Math.floor(remaining / 60)} min restantes`;
   }
 
+  /** Traduz o erro do atualizador para uma frase que a pessoa entende. */
   function getUpdateErrorMessage(message) {
     const raw = String(message || '');
     const normalized = raw.toLowerCase();
@@ -32,6 +33,7 @@
     return raw || 'Confira sua conexão e tente novamente.';
   }
 
+  /** Mostra as notas da versão nova (do GitHub) no cartão de atualização. */
   function renderUpdateReleaseNotes(status) {
     const section = document.getElementById('update-release-notes');
     const list = document.getElementById('update-release-list');
@@ -57,6 +59,7 @@
     section.hidden = false;
   }
 
+  /** Atualiza o cartão de atualização conforme o estado (procurando, disponível, baixando, pronta, erro). */
   function renderUpdateStatus(status) {
     const errorMessage = status.state === 'error' ? getUpdateErrorMessage(status.message) : '';
     const details = {

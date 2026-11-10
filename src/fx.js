@@ -14,6 +14,7 @@
     const jobs = new Set();
     let running = false;
     let lastTick = 0;
+    /** Um passo do relógio compartilhado dos efeitos: no máximo ~30 quadros por segundo e para quando não há trabalho. */
     function tick(now) {
       if (!jobs.size) { running = false; return; }
       requestAnimationFrame(tick);

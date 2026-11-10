@@ -184,6 +184,7 @@
     try { render(); } catch (error) { desktopBridge?.reportError?.({ message: `Privacidade: ${error?.message || error}`, stack: error?.stack, context: { tela: 'settings' } }); }
   }
 
+  /** Pergunta o que trazer de outro PC e aplica só as partes marcadas. */
   async function choosePull(device) {
     const names = device.sections.filter((name) => SECTIONS[name]);
     if (!names.length) { showToast('Essa cópia não tem nada que este Nexo saiba trazer. Atualize o Nexo nos dois PCs.'); return; }
@@ -204,6 +205,7 @@
     } catch (error) { showToast(error.message || 'Não consegui trazer os dados.'); }
   }
 
+  /** Ações da sincronização (ligar, enviar, listar PCs, desligar, apagar os dados do servidor, painel), uma por vez. */
   async function act(name) {
     if (view.busy) return;
     view.busy = true;

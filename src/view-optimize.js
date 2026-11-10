@@ -23,6 +23,7 @@
     runButton().disabled = busy || !chosen.some((category) => category.fileCount > 0);
   }
 
+  /** Desenha a lista de categorias da limpeza (marcadas, tamanhos e o que não pode ser desfeito). */
   function renderCleanup() {
     list().innerHTML = categories.map((category) => {
       const empty = !category.fileCount;
@@ -37,6 +38,7 @@
     updateTotals();
   }
 
+  /** Mede o que a limpeza pode tirar, sem apagar nada. */
   async function scan() {
     if (!desktopBridge?.scanCleanup) { list().innerHTML = '<li class="empty">A limpeza está disponível no aplicativo desktop.</li>'; return; }
     const button = document.getElementById('cleanup-rescan');
@@ -50,6 +52,7 @@
     } finally { setButtonBusy(button, false); }
   }
 
+  /** Limpa as categorias marcadas depois da confirmação e registra no Diário e na atividade. */
   async function runCleanup() {
     const ids = selectedIds();
     const chosen = categories.filter((category) => ids.includes(category.id) && category.fileCount > 0);
@@ -92,6 +95,7 @@
     try { localStorage.setItem(Nexo.keys.autoCleanLastRun, String(Date.now())); } catch { /* ignorado */ }
   }
 
+  /** Limpeza automática (só temporários antigos), se a pessoa ligou e já passou o intervalo escolhido. */
   async function maybeAutoClean(snapshot) {
     if (!autoEnabled || busy || !desktopBridge?.getCleanupPreview) return;
     if (!snapshot.primaryDrive || snapshot.primaryDrive.usedPercent < AUTO_THRESHOLD) { highSamples = 0; highSince = 0; return; }

@@ -58,6 +58,7 @@
       <span class="muted">Ganho composto (objetivo ${escapeHtml(RT.GOALS[state.goal]?.label || state.goal)}): <strong>${signed(result.composite)}</strong> · ${result.counts.A} boot(s) sem e ${result.counts.B} com os ajustes${discarded}${keptText}</span></div>${resultTable(result)}`;
   }
 
+  /** Tela de montar o teste com reinício: ajustes escolhidos, ordem, objetivo e o tempo estimado. */
   function composeHtml() {
     const list = view.composing;
     const { order } = RT.PROTOCOLS[view.options.protocol];
@@ -77,6 +78,7 @@
       <div class="rt-actions"><button class="btn ghost" type="button" data-rt="close">Voltar</button><button class="btn danger" type="button" data-rt="start">Começar o teste</button></div>`;
   }
 
+  /** Tela do teste em andamento: boots medidos, o próximo passo e o resultado parcial. */
   function runningHtml(status) {
     const { state } = status;
     const progress = view.progress && view.progress.stage === 'medindo' ? view.progress : null;
@@ -119,6 +121,7 @@
     return `<details class="rt-history"><summary>Testes com reinício anteriores (${list.length})</summary><ul>${list.map(pastItem).join('')}</ul></details>`;
   }
 
+  /** Escolhe e desenha a tela do teste com reinício (montar, em andamento ou resultado). */
   function render() {
     const box = el();
     if (!box) return;
@@ -161,6 +164,7 @@
     if (finished && view.rescanned !== finished) { if (view.rescanned !== null) Nexo.emit('scan-changed'); view.rescanned = finished; }
   }
 
+  /** Ações do teste com reinício (começar, reiniciar, continuar, cancelar, fechar). */
   async function act(name) {
     try {
       if (name === 'close') { view.composing = null; render(); return; }

@@ -49,6 +49,7 @@
       `<li data-status="${factor.status}" title="${escapeHtml(factor.detail)}"><strong>${escapeHtml(factor.label)}</strong><span class="tag">${factor.status === 'ok' ? 'Em ordem' : factor.status === 'warn' ? 'Atenção' : 'Crítico'}</span><em>${escapeHtml(factor.detail)}</em></li>`).join('');
   }
 
+  /** Atualiza os números ao vivo do Início (processador, memória, disco, temperaturas) a partir da última leitura. */
   function renderLive() {
     const { snapshot } = Nexo.state;
     if (!snapshot) return;
@@ -77,6 +78,7 @@
     });
   }
 
+  /** Desenha os gráficos dos últimos minutos do Início com o histórico em memória. */
   function drawCharts() {
     const { from, to, samples } = Nexo.store.range(range);
     const c = colors();

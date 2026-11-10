@@ -11,6 +11,7 @@
     document.getElementById('atlas-status').innerHTML = [['all', 'Tudo'], ...order.map((status) => [status, NexoAtlas.STATUS[status]]), ['atencao', 'Vale olhar aqui']].map(([id, label]) => `<button type="button" data-atlas="${id}" aria-pressed="${state.status === id}">${escapeHtml(label)}</button>`).join('');
   }
 
+  /** Desenha os cartões do Atlas de opções conforme o filtro e a busca. */
   function renderGrid() {
     const query = state.query.toLocaleLowerCase('pt-BR');
     const items = NexoAtlas.forPlatform(Nexo.platform).filter((item) => {

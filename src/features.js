@@ -114,6 +114,7 @@
   // Saúde dos recursos (para a telemetria, só números e ids do código): fontes que demoram ou falham,
   // cartões que ficam sem dado e cartões cujo cálculo quebrou.
   const health = { sources: {}, tiles: {}, crashed: new Set() };
+  /** Devolve o dado de uma fonte dos cartões, do cache se ainda vale; senão pede de novo (sem bloquear a tela). */
   function source(name) {
     const spec = SOURCES[name];
     if (!spec) return undefined;
@@ -265,6 +266,7 @@
     return `<svg class="feat-spark" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true"><path class="area" d="${line} L100 26 L0 26 Z"/><path d="${line}"/></svg>`;
   }
 
+  /** HTML de um cartão de recurso: calcula o valor (um erro no cálculo vira cartão vazio, não quebra a tela). */
   function tileHtml(def, ctx, pinned) {
     let out;
     try { out = def.compute(ctx); } catch (error) { console.error(`[recurso ${def.view}/${def.id}]`, error); out = null; health.crashed.add(`${def.view}.${def.id}`); }
@@ -293,6 +295,7 @@
     </article>`;
   }
 
+  /** Cria a seção de recursos no fim da tela, uma vez, com filtros e busca. */
   function ensureSection(view) {
     const panel = document.querySelector(`[data-view-panel="${view}"]`);
     if (!panel) return null;
@@ -322,6 +325,7 @@
     return section;
   }
 
+  /** Desenha os grupos de cartões da tela, em partes pequenas para não travar a rolagem. */
   function render(view) {
     const section = ensureSection(view);
     if (!section) return;
@@ -381,6 +385,7 @@
     const ctx = makeContext();
     const pinned = pins()[view] || [];
     const queue = [...section.querySelectorAll('.feat')];
+    /** Desenha cartões da fila enquanto houver tempo no quadro; o resto fica para o próximo. */
     const step = (deadline) => {
       if (token !== pass) return; // outra atualização começou: esta para
       // Tempo do quadro: atualização síncrona (ou sem requestIdleCallback) vai até o fim; senão, até sobrar 2 ms.
@@ -404,6 +409,7 @@
     if (sync || !window.requestIdleCallback) step(null); else requestIdleCallback(step, { timeout: 500 });
   }
 
+  /** Cliques na seção de recursos: fixar, filtrar, ver mais e rodar a ação de um cartão. */
   async function onClick(view, event) {
     const more = event.target.closest('[data-more]');
     if (more) {
@@ -443,6 +449,7 @@
   /* ---------- Ritmo: só a tela aberta, no máximo a cada 3 s, nada com o app sem foco ---------- */
   let timer = null;
   let lastAt = 0;
+  /** Agenda uma atualização dos cartões da tela aberta (no máximo a cada 3 s; nunca com o app ocioso ou escondido). */
   function schedule(soon = false) {
     if (timer) return;
     const wait = soon ? 250 : Math.max(0, 3000 - (Date.now() - lastAt));

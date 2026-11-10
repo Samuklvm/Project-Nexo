@@ -31,6 +31,7 @@
   const unitOf = (sensor) => (sensor.type === 'Data' ? 'GB' : sensor.type === 'SmallData' ? 'MB' : sensor.unit || '');
   Nexo.sensorUnit = unitOf;
 
+  /** Formata a leitura de um sensor com a unidade e as casas certas ("8,3 %", "1,215 V", "4,2 GB/s"). */
   function formatSensorValue(value, unit = '') {
     if (!Number.isFinite(value)) return '—';
     if (unit === 'GB') return formatBytes(value * 1024 ** 3);
@@ -44,6 +45,7 @@
     return unit ? `${formatted} ${unit}` : formatted;
   }
 
+  /** Monta a lista de componentes e sensores (com busca e "avançados"); se a estrutura não mudou, só troca os números. */
   function renderSensorExplorer() {
     if (!Nexo.state.sensors || !sensorDeviceList) return;
     const snapshot = Nexo.state.sensors;
@@ -131,6 +133,7 @@
     }).join('');
   }
 
+  /** Busca uma leitura nova dos sensores e redesenha a tela de Hardware. */
   async function refreshHardwareSensors({ silent = false } = {}) {
     if (sensorRefreshInProgress) return Nexo.state.sensors;
     // Atualização automática (a cada 2 s): sem piscar o título nem desabilitar o botão; só os números mudam.

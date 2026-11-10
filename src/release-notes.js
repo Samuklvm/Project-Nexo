@@ -35,6 +35,7 @@
   // Tira as tags antes e depois de decodificar: `&lt;b&gt;` vira texto `<b>`, que também sai.
   const clean = (text) => stripTags(decode(stripTags(text))).replace(FLAGS, '').replace(/\s+/g, ' ').trim();
 
+  /** Converte as notas da release (HTML do GitHub) em blocos simples: títulos, itens, parágrafos e linhas. */
   function fromHtml(html) {
     const blocks = [];
     const pattern = /<(h[1-6]|li|p)\b[^>]*>([\s\S]*?)<\/\1>|<hr\b[^>]*>/gi;

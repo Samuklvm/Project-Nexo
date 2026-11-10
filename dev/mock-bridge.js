@@ -118,6 +118,7 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     const action = state && state.status === 'running' ? NexoRebootTest.nextAction(state, { bootAt: state.armedAt - 1, now: Date.now() }).type : 'idle';
     return { supported: true, state, action, busy: reboot.busy, restartAt: null, permissions: state ? NexoRebootTest.permissionCount(state.order, state.admin) : 0, preview: state && state.boots.length >= 2 ? NexoRebootTest.verdict(state) : null, history: reboot.history };
   };
+  /** Prévia: simula um boot do teste com reinício (etapas, medição e veredito) sem reiniciar nada. */
   async function simulateBoot() {
     let { state } = reboot;
     if (!state || state.status !== 'running') return;

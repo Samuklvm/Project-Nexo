@@ -5,6 +5,7 @@
   const DAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   let habitMetric = 'cpu';
 
+  /** Mostra os programas que mais usam processador e memória agora. */
   function renderProcesses(result) {
     const list = document.getElementById('process-insights-list');
     if (!list || !result) return;
@@ -53,6 +54,7 @@
       : `<li class="empty-art">${Nexo.constellation()}<span>Ainda não identifiquei programas recorrentes. Isso depende de acontecerem lentidões enquanto o Nexo observa.</span></li>`;
   }
 
+  /** Desenha o mapa de uso médio por dia da semana e hora. */
   function renderHabit() {
     const { grid, max } = Nexo.store.brain.habitGrid(habitMetric);
     const rgb = habitMetric === 'cpu' ? '90, 215, 255' : '160, 140, 255';
@@ -83,6 +85,7 @@
 
   function renderAll() { renderLearning(); renderInsights(); renderEpisodes(); renderLedger(); renderHabit(); }
 
+  /** Mede os programas que mais pesam, a pedido (botão "Medir agora"). */
   async function measureProcesses(button) {
     if (!desktopBridge?.getTopProcesses) { showToast('A leitura de processos está disponível no aplicativo desktop.'); return null; }
     setButtonBusy(button, true, 'Medindo…');

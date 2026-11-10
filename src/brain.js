@@ -44,6 +44,7 @@
     };
   }
 
+  /** Cria o aprendizado local (médias por hora da semana, lentidões e programas recorrentes) a partir do que foi salvo. */
   function create(saved) {
     const state = emptyState();
     if (saved && saved.v === 1) {
@@ -104,6 +105,7 @@
       return finite(sample.clockRatio) ? Math.round(sample.clockRatio * 100) : null;
     }
 
+    /** Fecha uma lentidão em andamento: guarda duração, pico e o programa que mais pesou. */
     function closeEpisode(kind, endT) {
       const run = runtime[kind];
       if (!run?.open) return;

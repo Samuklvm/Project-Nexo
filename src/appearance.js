@@ -40,6 +40,7 @@
     box.addEventListener('click', (event) => { const button = event.target.closest('button[data-accent]'); if (button) { Nexo.setAccent(button.dataset.accent); showToast(`Destaque: ${button.title}.`); } });
   }
 
+  /** Desenha as opções do céu vivo em Ajustes (quantidade e cada efeito). */
   function renderSky() {
     const box = document.getElementById('sky-settings');
     if (!box || !Nexo.sky) return;

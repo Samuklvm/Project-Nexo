@@ -3,6 +3,7 @@
   const css = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
   const palette = () => ({ cpu: css('--c-cpu', '#5ad7ff'), mem: css('--c-mem', '#a08cff'), disk: css('--c-disk', '#ffb86b'), gpu: css('--c-gpu', '#6ef2c2'), acpi: css('--c-acpi', '#ffb86b') });
 
+  /** Ajusta o canvas à densidade da tela e devolve o contexto 2D com as medidas em pixels CSS. */
   function prepare(canvas) {
     const ratio = devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
@@ -197,6 +198,7 @@
     });
   }
 
+  /** Desenha uma minilinha (sparkline) com os valores dados. */
   function spark(canvas, values, color) {
     const { context, width, height } = prepare(canvas);
     const valid = values.filter(Number.isFinite);

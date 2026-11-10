@@ -16,6 +16,7 @@
   };
   const when = (at) => new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
+  /** Desenha o registro de erros agrupado (e os avisos, se a pessoa pedir). */
   function render() {
     const box = body();
     if (!bridge?.listErrors) { box.innerHTML = '<p class="muted">Abra o Nexo para computador para ver o registro.</p>'; return; }

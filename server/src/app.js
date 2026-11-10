@@ -61,6 +61,7 @@ const CAN = {
   leitura: new Set(['ver'])
 };
 
+/** Cria o servidor do Nexo (sincronização, relatórios de erro, telemetria, Steam e painel do criador). */
 export function createApp({ fetchImpl = (...args) => fetch(...args), now = () => Date.now() } = {}) {
   /** Limite diário por chave (pessoa, PC ou IP com hash). */
   async function allow(env, key, max) {
@@ -162,6 +163,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ devices });
   }
 
+  /** Guarda (cifrada) a cópia de um PC da conta, com limite de tamanho e de PCs. */
   async function putDevice(request, env, deviceId) {
     const who = await session(request, env);
     if (!RE.deviceId.test(deviceId)) throw new HttpError(400, 'PC inválido.');
@@ -217,6 +219,50 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ ok: true, cleared: result?.meta?.changes ?? 0 });
   }
 
+  /**
+   * E-mail dos relatórios: o da sessão (confirmado pelo Google no login) vale mais. Sem sessão, aceita o que o app
+   * informou da conta Google entrada nele, guardado como "não confirmado" (email_verified = 0). Só com includeEmail.
+   */
+  async function reportEmail(request, env, body) {
+    if (body.includeEmail !== true) return { email: null, verified: 1 };
+    const fromSession = (await session(request, env, { required: false }).catch(() => null))?.email || null;
+    if (fromSession) return { email: fromSession, verified: 1 };
+    const contact = typeof body.contactEmail === 'string' ? body.contactEmail.trim().toLowerCase().slice(0, 254) : '';
+    return EMAIL.test(contact) ? { email: contact, verified: 0 } : { email: null, verified: 1 };
+  }
+
+  /** Os dois comandos de um relatório válido: o grupo do erro (texto limpo de novo) e a contagem deste PC. */
+  function reportStatements(env, report, { installId, email, verified, version, platform, at }) {
+    const source = SOURCES.has(report.source) ? report.source : 'principal';
+    const level = LEVELS.has(report.level) ? report.level : 'erro';
+    const message = redact(text(report.message, LIMITS.message)) || 'Erro sem mensagem';
+    const stack = redact(text(report.stack, LIMITS.stack));
+    const context = redact(text(report.context, LIMITS.context));
+    const count = clampInt(report.count, 1, 100000, 1);
+    const lastAt = Math.min(at, clampInt(report.lastAt, at - 400 * DAY, at, at));
+    const firstAt = Math.min(lastAt, clampInt(report.firstAt, at - 400 * DAY, at, lastAt));
+    return [
+      env.DB.prepare(`INSERT INTO error_groups (signature, source, level, message, stack, context, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(signature) DO UPDATE SET message = excluded.message, context = excluded.context, stack = CASE WHEN excluded.stack != '' THEN excluded.stack ELSE error_groups.stack END,
+        first_at = MIN(error_groups.first_at, excluded.first_at), last_at = MAX(error_groups.last_at, excluded.last_at),
+        level = CASE WHEN excluded.level = 'erro' THEN 'erro' ELSE error_groups.level END`).bind(report.signature, source, level, message, stack, context, firstAt, lastAt),
+      env.DB.prepare(`INSERT INTO error_reports (signature, install_id, email, email_verified, version, platform, count, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(signature, install_id) DO UPDATE SET
+          email = CASE WHEN excluded.email IS NULL THEN error_reports.email WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN error_reports.email ELSE excluded.email END,
+          email_verified = CASE WHEN excluded.email IS NULL THEN error_reports.email_verified WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN 1 ELSE excluded.email_verified END,
+          version = excluded.version, platform = excluded.platform,
+          count = error_reports.count + excluded.count, first_at = MIN(error_reports.first_at, excluded.first_at), last_at = MAX(error_reports.last_at, excluded.last_at)`).bind(report.signature, installId, email, verified, version, platform, count, firstAt, lastAt)
+    ];
+  }
+
+  /** Corrigido, mas voltou numa versão igual ou mais nova que a da correção: reabre (comparar versões no SQL é ruim). */
+  async function reopenStatement(env, signatures, version) {
+    const fixed = (await env.DB.prepare(`SELECT signature, fixed_in FROM error_groups WHERE status = 'corrigido' AND signature IN (${signatures.map(() => '?').join(',')})`).bind(...signatures).all()).results || [];
+    const reopen = fixed.filter((row) => row.fixed_in && compareVersions(version, row.fixed_in) >= 0).map((row) => row.signature);
+    return reopen.length ? env.DB.prepare(`UPDATE error_groups SET status = 'reaberto' WHERE signature IN (${reopen.map(() => '?').join(',')})`).bind(...reopen) : null;
+  }
+
+  /** Recebe os relatórios de erro de um PC (em grupos), com limite por PC e por IP. */
   async function postErrors(request, env) {
     const body = await readJson(request);
     const installId = String(body.installId || '');
@@ -225,54 +271,16 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     await limit(env, `errip:${(await ipKey(request, env)).slice(3)}`, 300);
     const version = RE.version.test(String(body.version || '')) ? body.version : '0.0.0';
     const platform = PLATFORMS.has(body.platform) ? body.platform : 'win32';
-    // E-mail: o da sessão (confirmado pelo Google no login) vale mais. Sem sessão, aceita o que o app informou da conta
-    // Google entrada nele — guardado como "não confirmado" (email_verified = 0), só de quem marcou "incluir meu e-mail".
-    let email = null;
-    let verified = 1;
-    if (body.includeEmail === true) email = (await session(request, env, { required: false }).catch(() => null))?.email || null;
-    if (!email && body.includeEmail === true && typeof body.contactEmail === 'string') {
-      const contact = body.contactEmail.trim().toLowerCase().slice(0, 254);
-      if (EMAIL.test(contact)) {
-        email = contact;
-        verified = 0;
-      }
-    }
-    const reports = Array.isArray(body.reports) ? body.reports.slice(0, LIMITS.reportsPerPost) : [];
+    const { email, verified } = await reportEmail(request, env, body);
+    const valid = (Array.isArray(body.reports) ? body.reports.slice(0, LIMITS.reportsPerPost) : []).filter((report) => report && RE.signature.test(String(report.signature || '')));
+    if (!valid.length) return json({ ok: true, accepted: 0 });
     const at = now();
-    const statements = [];
-    let accepted = 0;
-    for (const report of reports) {
-      if (!report || !RE.signature.test(String(report.signature || ''))) continue;
-      const source = SOURCES.has(report.source) ? report.source : 'principal';
-      const level = LEVELS.has(report.level) ? report.level : 'erro';
-      const message = redact(text(report.message, LIMITS.message)) || 'Erro sem mensagem';
-      const stack = redact(text(report.stack, LIMITS.stack));
-      const context = redact(text(report.context, LIMITS.context));
-      const count = clampInt(report.count, 1, 100000, 1);
-      const lastAt = Math.min(at, clampInt(report.lastAt, at - 400 * DAY, at, at));
-      const firstAt = Math.min(lastAt, clampInt(report.firstAt, at - 400 * DAY, at, lastAt));
-      statements.push(env.DB.prepare(`INSERT INTO error_groups (signature, source, level, message, stack, context, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(signature) DO UPDATE SET message = excluded.message, context = excluded.context, stack = CASE WHEN excluded.stack != '' THEN excluded.stack ELSE error_groups.stack END,
-        first_at = MIN(error_groups.first_at, excluded.first_at), last_at = MAX(error_groups.last_at, excluded.last_at),
-        level = CASE WHEN excluded.level = 'erro' THEN 'erro' ELSE error_groups.level END`).bind(report.signature, source, level, message, stack, context, firstAt, lastAt));
-      statements.push(env.DB.prepare(`INSERT INTO error_reports (signature, install_id, email, email_verified, version, platform, count, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(signature, install_id) DO UPDATE SET
-          email = CASE WHEN excluded.email IS NULL THEN error_reports.email WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN error_reports.email ELSE excluded.email END,
-          email_verified = CASE WHEN excluded.email IS NULL THEN error_reports.email_verified WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN 1 ELSE excluded.email_verified END,
-          version = excluded.version, platform = excluded.platform,
-          count = error_reports.count + excluded.count, first_at = MIN(error_reports.first_at, excluded.first_at), last_at = MAX(error_reports.last_at, excluded.last_at)`).bind(report.signature, installId, email, verified, version, platform, count, firstAt, lastAt));
-      accepted += 1;
-    }
-    if (accepted) {
-      // Corrigido, mas voltou numa versão igual ou mais nova que a da correção: reabre (comparar versões no SQL é ruim).
-      const signatures = [...new Set(reports.filter((report) => report && RE.signature.test(String(report.signature || ''))).map((report) => report.signature))];
-      const fixed = (await env.DB.prepare(`SELECT signature, fixed_in FROM error_groups WHERE status = 'corrigido' AND signature IN (${signatures.map(() => '?').join(',')})`).bind(...signatures).all()).results || [];
-      const reopen = fixed.filter((row) => row.fixed_in && compareVersions(version, row.fixed_in) >= 0).map((row) => row.signature);
-      if (reopen.length) statements.push(env.DB.prepare(`UPDATE error_groups SET status = 'reaberto' WHERE signature IN (${reopen.map(() => '?').join(',')})`).bind(...reopen));
-      statements.push(seenInstall(env, installId, version, platform, 'erros'));
-      await env.DB.batch(statements);
-    }
-    return json({ ok: true, accepted });
+    const statements = valid.flatMap((report) => reportStatements(env, report, { installId, email, verified, version, platform, at }));
+    const reopen = await reopenStatement(env, [...new Set(valid.map((report) => report.signature))], version);
+    if (reopen) statements.push(reopen);
+    statements.push(seenInstall(env, installId, version, platform, 'erros'));
+    await env.DB.batch(statements);
+    return json({ ok: true, accepted: valid.length });
   }
 
   /** Primeira e última vez que uma instalação apareceu (base de "usuários novos" no painel). */
@@ -320,6 +328,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ url: `${url.origin}/painel/entrar?c=${code}`, expiresIn: ADMIN_LINK_MS / 1000 });
   }
 
+  /** Entrada no painel pelo link de uso único: confere, gasta o link e cria a sessão do painel (cookie de 8 h). */
   async function adminEnter(env, url) {
     const code = url.searchParams.get('c') || '';
     const row = /^[A-Za-z0-9_-]{20,64}$/.test(code) ? await env.DB.prepare('SELECT code, email, expires_at, used FROM admin_links WHERE code = ?').bind(code).first() : null;
@@ -344,6 +353,163 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return { email: row.email, sid: payload.sid, role, can: (action) => CAN[role].has(action) };
   }
 
+  /* ----- API do painel: cada função recebe { request, env, url, admin, need } ----- */
+
+  /** Números da página inicial do painel: erros abertos, instalações ativas, versões e usuários novos. */
+  async function adminSummary({ env, admin }) {
+    const since7 = now() - 7 * DAY;
+    const [open7, reporters, active7, active30, versions] = await Promise.all([
+      env.DB.prepare("SELECT COUNT(*) AS n FROM error_groups WHERE status IN ('aberto','reaberto') AND level = 'erro'").first(),
+      env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM error_reports WHERE last_at >= ?').bind(since7).first(),
+      env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ?').bind(dayOf(since7)).first(),
+      env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ?').bind(dayOf(now() - 30 * DAY)).first(),
+      env.DB.prepare('SELECT version, COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ? GROUP BY version ORDER BY n DESC LIMIT 10').bind(dayOf(since7)).all()
+    ]);
+    const accounts = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
+    // Usuários novos = instalações vistas pela primeira vez (um código aleatório por instalação; atualizar não conta).
+    const startOfToday = Date.parse(`${dayOf(now())}T00:00:00Z`);
+    const [new1, new7, new30, newAccounts7, firstDays] = await Promise.all([
+      env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(startOfToday).first(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(now() - 7 * DAY).first(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(now() - 30 * DAY).first(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?').bind(now() - 7 * DAY).first(),
+      env.DB.prepare("SELECT strftime('%Y-%m-%d', first_seen / 1000, 'unixepoch') AS day, COUNT(*) AS n, GROUP_CONCAT(DISTINCT first_version) AS versions, GROUP_CONCAT(DISTINCT platform) AS platforms FROM installs WHERE first_seen >= ? GROUP BY day ORDER BY day").bind(now() - 30 * DAY).all()
+    ]);
+    const recent = await env.DB.prepare('SELECT first_seen, last_seen, first_version, last_version, platform, via FROM installs ORDER BY first_seen DESC LIMIT 15').all();
+    return json({ openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [], admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]],
+      newUsers: { today: new1?.n || 0, days7: new7?.n || 0, days30: new30?.n || 0, accounts7: newAccounts7?.n || 0, perDay: firstDays.results || [], recent: recent.results || [] } });
+  }
+
+  /** Lista dos erros agrupados (abertos e reabertos primeiro), com filtro de status e, se pedido, os avisos. */
+  async function adminErrorList({ env, url }) {
+    const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
+    const levelAll = url.searchParams.get('avisos') === '1';
+    const { results = [] } = await env.DB.prepare(`SELECT g.signature, g.source, g.level, g.message, g.context, g.first_at, g.last_at, g.status, g.fixed_in, g.note,
+        COUNT(r.install_id) AS installs, COALESCE(SUM(r.count), 0) AS occurrences, COUNT(r.email) AS emails, GROUP_CONCAT(DISTINCT r.version) AS versions, GROUP_CONCAT(DISTINCT r.platform) AS platforms
+      FROM error_groups g LEFT JOIN error_reports r ON r.signature = g.signature
+      WHERE (? IS NULL OR g.status = ?) AND (? = 1 OR g.level = 'erro')
+      GROUP BY g.signature ORDER BY CASE g.status WHEN 'reaberto' THEN 0 WHEN 'aberto' THEN 1 ELSE 2 END, g.last_at DESC LIMIT 300`).bind(status, status, levelAll ? 1 : 0).all();
+    return json({ groups: results });
+  }
+
+  /** Um erro com os PCs que mandaram; os e-mails só aparecem para quem tem a permissão "emails". */
+  async function adminErrorDetail({ env, admin }, signature) {
+    const group = await env.DB.prepare('SELECT * FROM error_groups WHERE signature = ?').bind(signature).first();
+    if (!group) throw new HttpError(404, 'Erro não encontrado.');
+    const { results = [] } = await env.DB.prepare('SELECT email, email_verified, version, platform, count, first_at, last_at FROM error_reports WHERE signature = ? ORDER BY last_at DESC LIMIT 500').bind(signature).all();
+    const byEmail = new Map();
+    if (admin.can('emails')) for (const row of results) if (row.email) byEmail.set(row.email, Boolean(byEmail.get(row.email)) || row.email_verified === 1);
+    const emails = [...byEmail.keys()];
+    const emailInfo = [...byEmail].map(([email, confirmed]) => ({ email, confirmed }));
+    return json({ group, reports: results.map(({ email, email_verified, ...row }) => ({ ...row, hasEmail: Boolean(email), emailConfirmed: Boolean(email) && email_verified === 1 })), emails, emailInfo, emailsHidden: !admin.can('emails') });
+  }
+
+  /** Muda o status de um erro; "corrigido" exige a versão da correção. */
+  async function adminErrorStatus({ request, env, need }, signature) {
+    need('status');
+    const body = await readJson(request);
+    const status = STATUSES.has(body.status) ? body.status : null;
+    if (!status) throw new HttpError(400, 'Status inválido.');
+    const validVersion = RE.version.test(String(body.fixedIn || '')) ? body.fixedIn : null;
+    const fixedIn = status === 'corrigido' ? validVersion : null;
+    if (status === 'corrigido' && !fixedIn) throw new HttpError(400, 'Diga em qual versão foi corrigido (ex.: 0.8.2).');
+    await env.DB.prepare('UPDATE error_groups SET status = ?, fixed_in = ?, note = ? WHERE signature = ?').bind(status, fixedIn, text(body.note, 500) || null, signature).run();
+    return json({ ok: true });
+  }
+
+  /** Telemetria agregada dos últimos dias (padrão 30, até 120). */
+  async function adminTelemetry({ env, url }) {
+    const days = clampInt(url.searchParams.get('dias'), 1, 120, 30);
+    const from = dayOf(now() - days * DAY);
+    const { results = [] } = await env.DB.prepare('SELECT install_id, day, version, platform, data FROM telemetry WHERE day >= ? ORDER BY day').bind(from).all();
+    return json(aggregateTelemetry(results));
+  }
+
+  /** Equipe do painel (só o dono). */
+  async function adminTeamList({ env, need }) {
+    need('equipe');
+    const { results = [] } = await env.DB.prepare('SELECT email, role, added_by, added_at FROM team ORDER BY added_at').all();
+    return json({ owners: adminEmails(env), members: results, roles: { colaborador: ROLES.colaborador, leitura: ROLES.leitura } });
+  }
+
+  /** Adiciona alguém à equipe ou muda o papel dessa pessoa (até 50 pessoas). */
+  async function adminTeamAdd({ request, env, admin, need }) {
+    need('equipe');
+    const body = await readJson(request);
+    const email = String(body.email || '').trim().toLowerCase().slice(0, 254);
+    if (!EMAIL.test(email)) throw new HttpError(400, 'E-mail inválido.');
+    if (!['colaborador', 'leitura'].includes(body.role)) throw new HttpError(400, 'Papel inválido.');
+    if (adminEmails(env).includes(email)) throw new HttpError(400, 'Esse e-mail já é dono do painel.');
+    const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM team').first();
+    if ((count?.n || 0) >= 50) throw new HttpError(409, 'A equipe chegou a 50 pessoas.');
+    await env.DB.prepare('INSERT INTO team (email, role, added_by, added_at) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET role = excluded.role').bind(email, body.role, admin.email, now()).run();
+    return json({ ok: true });
+  }
+
+  /** Tira alguém da equipe e encerra as sessões do painel dessa pessoa na hora. */
+  async function adminTeamRemove({ request, env, need }) {
+    need('equipe');
+    const body = await readJson(request);
+    const email = String(body.email || '').trim().toLowerCase();
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM team WHERE email = ?').bind(email),
+      env.DB.prepare('DELETE FROM admin_sessions WHERE email = ?').bind(email)
+    ]);
+    return json({ ok: true });
+  }
+
+  /** Chaves de acesso para ferramentas (só o dono). */
+  async function adminKeyList({ env, need }) {
+    need('chaves');
+    const { results = [] } = await env.DB.prepare('SELECT id, label, scope, created_by, created_at, last_used, revoked FROM tool_keys ORDER BY created_at DESC').all();
+    return json({ keys: results });
+  }
+
+  /** Cria uma chave só de leitura dos erros (até 10 ativas); o segredo aparece só nesta resposta. */
+  async function adminKeyCreate({ request, env, admin, need }) {
+    need('chaves');
+    const body = await readJson(request);
+    const label = text(body.label, 60).trim() || 'Chave sem nome';
+    const active = await env.DB.prepare('SELECT COUNT(*) AS n FROM tool_keys WHERE revoked = 0').first();
+    if ((active?.n || 0) >= 10) throw new HttpError(409, 'Já existem 10 chaves ativas. Revogue uma antes.');
+    const secret = `nexo_${randomId(30)}`;
+    const id = randomId(9);
+    await env.DB.prepare('INSERT INTO tool_keys (id, label, key_hash, scope, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, label, await sha256Hex(secret), 'erros:ler', admin.email, now()).run();
+    // A chave aparece só agora; depois, nem o painel consegue mostrar de novo.
+    return json({ id, label, key: secret, scope: 'erros:ler' });
+  }
+
+  /** Revoga uma chave de acesso. */
+  async function adminKeyRevoke({ request, env, need }) {
+    need('chaves');
+    const body = await readJson(request);
+    await env.DB.prepare('UPDATE tool_keys SET revoked = 1 WHERE id = ?').bind(String(body.id || '').slice(0, 40)).run();
+    return json({ ok: true });
+  }
+
+  /** Sai do painel: apaga a sessão e o cookie. */
+  async function adminLogout({ env, admin }) {
+    await env.DB.prepare('DELETE FROM admin_sessions WHERE sid = ?').bind(admin.sid).run();
+    return json({ ok: true }, 200, { 'set-cookie': 'nexo_painel=; Path=/painel; HttpOnly; Secure; SameSite=Strict; Max-Age=0' });
+  }
+
+  /** Rotas fixas da API do painel: "MÉTODO caminho" → função. */
+  const ADMIN_ROUTES = new Map([
+    ['GET resumo', adminSummary],
+    ['GET erros', adminErrorList],
+    ['GET telemetria', adminTelemetry],
+    ['GET equipe', adminTeamList],
+    ['POST equipe', adminTeamAdd],
+    ['POST equipe/remover', adminTeamRemove],
+    ['GET chaves', adminKeyList],
+    ['POST chaves', adminKeyCreate],
+    ['POST chaves/revogar', adminKeyRevoke],
+    ['POST sair', adminLogout]
+  ]);
+  /** Rotas de um erro só (erros/<assinatura>). */
+  const ADMIN_ERROR_ROUTES = new Map([['GET', adminErrorDetail], ['POST', adminErrorStatus]]);
+
+  /** API do painel do criador, com permissão por papel (dono, colaborador, leitura) e proteção contra CSRF. */
   async function adminApi(request, env, url, rest) {
     const admin = await adminSession(request, env);
     if (!admin) throw new HttpError(401, 'Abra o painel pelo Nexo.');
@@ -352,123 +518,12 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const origin = request.headers.get('origin');
     const crossSite = request.headers.get('x-nexo-painel') !== '1' || (origin && origin !== url.origin);
     if (request.method !== 'GET' && crossSite) throw new HttpError(403, 'Pedido recusado.');
-    if (rest === 'resumo' && request.method === 'GET') {
-      const since7 = now() - 7 * DAY;
-      const [open7, reporters, active7, active30, versions] = await Promise.all([
-        env.DB.prepare("SELECT COUNT(*) AS n FROM error_groups WHERE status IN ('aberto','reaberto') AND level = 'erro'").first(),
-        env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM error_reports WHERE last_at >= ?').bind(since7).first(),
-        env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ?').bind(dayOf(since7)).first(),
-        env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ?').bind(dayOf(now() - 30 * DAY)).first(),
-        env.DB.prepare('SELECT version, COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ? GROUP BY version ORDER BY n DESC LIMIT 10').bind(dayOf(since7)).all()
-      ]);
-      const accounts = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
-      // Usuários novos = instalações vistas pela primeira vez (um código aleatório por instalação; atualizar não conta).
-      const startOfToday = Date.parse(`${dayOf(now())}T00:00:00Z`);
-      const [new1, new7, new30, newAccounts7, firstDays] = await Promise.all([
-        env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(startOfToday).first(),
-        env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(now() - 7 * DAY).first(),
-        env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(now() - 30 * DAY).first(),
-        env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?').bind(now() - 7 * DAY).first(),
-        env.DB.prepare("SELECT strftime('%Y-%m-%d', first_seen / 1000, 'unixepoch') AS day, COUNT(*) AS n, GROUP_CONCAT(DISTINCT first_version) AS versions, GROUP_CONCAT(DISTINCT platform) AS platforms FROM installs WHERE first_seen >= ? GROUP BY day ORDER BY day").bind(now() - 30 * DAY).all()
-      ]);
-      const recent = await env.DB.prepare('SELECT first_seen, last_seen, first_version, last_version, platform, via FROM installs ORDER BY first_seen DESC LIMIT 15').all();
-      return json({ openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [], admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]],
-        newUsers: { today: new1?.n || 0, days7: new7?.n || 0, days30: new30?.n || 0, accounts7: newAccounts7?.n || 0, perDay: firstDays.results || [], recent: recent.results || [] } });
-    }
-    if (rest === 'erros' && request.method === 'GET') {
-      const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
-      const levelAll = url.searchParams.get('avisos') === '1';
-      const { results = [] } = await env.DB.prepare(`SELECT g.signature, g.source, g.level, g.message, g.context, g.first_at, g.last_at, g.status, g.fixed_in, g.note,
-          COUNT(r.install_id) AS installs, COALESCE(SUM(r.count), 0) AS occurrences, COUNT(r.email) AS emails, GROUP_CONCAT(DISTINCT r.version) AS versions, GROUP_CONCAT(DISTINCT r.platform) AS platforms
-        FROM error_groups g LEFT JOIN error_reports r ON r.signature = g.signature
-        WHERE (? IS NULL OR g.status = ?) AND (? = 1 OR g.level = 'erro')
-        GROUP BY g.signature ORDER BY CASE g.status WHEN 'reaberto' THEN 0 WHEN 'aberto' THEN 1 ELSE 2 END, g.last_at DESC LIMIT 300`).bind(status, status, levelAll ? 1 : 0).all();
-      return json({ groups: results });
-    }
+    const context = { request, env, url, admin, need };
+    const handler = ADMIN_ROUTES.get(`${request.method} ${rest}`);
+    if (handler) return handler(context);
     const detail = /^erros\/([0-9a-f]{16})$/.exec(rest || '');
-    if (detail && request.method === 'GET') {
-      const group = await env.DB.prepare('SELECT * FROM error_groups WHERE signature = ?').bind(detail[1]).first();
-      if (!group) throw new HttpError(404, 'Erro não encontrado.');
-      const { results = [] } = await env.DB.prepare('SELECT email, email_verified, version, platform, count, first_at, last_at FROM error_reports WHERE signature = ? ORDER BY last_at DESC LIMIT 500').bind(detail[1]).all();
-      const byEmail = new Map();
-      if (admin.can('emails')) for (const row of results) if (row.email) byEmail.set(row.email, Boolean(byEmail.get(row.email)) || row.email_verified === 1);
-      const emails = [...byEmail.keys()];
-      const emailInfo = [...byEmail].map(([email, confirmed]) => ({ email, confirmed }));
-      return json({ group, reports: results.map(({ email, email_verified, ...row }) => ({ ...row, hasEmail: Boolean(email), emailConfirmed: Boolean(email) && email_verified === 1 })), emails, emailInfo, emailsHidden: !admin.can('emails') });
-    }
-    if (detail && request.method === 'POST') {
-      need('status');
-      const body = await readJson(request);
-      const status = STATUSES.has(body.status) ? body.status : null;
-      if (!status) throw new HttpError(400, 'Status inválido.');
-      const validVersion = RE.version.test(String(body.fixedIn || '')) ? body.fixedIn : null;
-      const fixedIn = status === 'corrigido' ? validVersion : null;
-      if (status === 'corrigido' && !fixedIn) throw new HttpError(400, 'Diga em qual versão foi corrigido (ex.: 0.8.2).');
-      await env.DB.prepare('UPDATE error_groups SET status = ?, fixed_in = ?, note = ? WHERE signature = ?').bind(status, fixedIn, text(body.note, 500) || null, detail[1]).run();
-      return json({ ok: true });
-    }
-    if (rest === 'telemetria' && request.method === 'GET') {
-      const days = clampInt(url.searchParams.get('dias'), 1, 120, 30);
-      const from = dayOf(now() - days * DAY);
-      const { results = [] } = await env.DB.prepare('SELECT install_id, day, version, platform, data FROM telemetry WHERE day >= ? ORDER BY day').bind(from).all();
-      return json(aggregateTelemetry(results));
-    }
-    /* ----- Equipe (só o dono) ----- */
-    if (rest === 'equipe' && request.method === 'GET') {
-      need('equipe');
-      const { results = [] } = await env.DB.prepare('SELECT email, role, added_by, added_at FROM team ORDER BY added_at').all();
-      return json({ owners: adminEmails(env), members: results, roles: { colaborador: ROLES.colaborador, leitura: ROLES.leitura } });
-    }
-    if (rest === 'equipe' && request.method === 'POST') {
-      need('equipe');
-      const body = await readJson(request);
-      const email = String(body.email || '').trim().toLowerCase().slice(0, 254);
-      if (!EMAIL.test(email)) throw new HttpError(400, 'E-mail inválido.');
-      if (!['colaborador', 'leitura'].includes(body.role)) throw new HttpError(400, 'Papel inválido.');
-      if (adminEmails(env).includes(email)) throw new HttpError(400, 'Esse e-mail já é dono do painel.');
-      const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM team').first();
-      if ((count?.n || 0) >= 50) throw new HttpError(409, 'A equipe chegou a 50 pessoas.');
-      await env.DB.prepare('INSERT INTO team (email, role, added_by, added_at) VALUES (?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET role = excluded.role').bind(email, body.role, admin.email, now()).run();
-      return json({ ok: true });
-    }
-    if (rest === 'equipe/remover' && request.method === 'POST') {
-      need('equipe');
-      const body = await readJson(request);
-      const email = String(body.email || '').trim().toLowerCase();
-      await env.DB.batch([
-        env.DB.prepare('DELETE FROM team WHERE email = ?').bind(email),
-        env.DB.prepare('DELETE FROM admin_sessions WHERE email = ?').bind(email)
-      ]);
-      return json({ ok: true });
-    }
-    /* ----- Chaves de acesso para ferramentas (só o dono) ----- */
-    if (rest === 'chaves' && request.method === 'GET') {
-      need('chaves');
-      const { results = [] } = await env.DB.prepare('SELECT id, label, scope, created_by, created_at, last_used, revoked FROM tool_keys ORDER BY created_at DESC').all();
-      return json({ keys: results });
-    }
-    if (rest === 'chaves' && request.method === 'POST') {
-      need('chaves');
-      const body = await readJson(request);
-      const label = text(body.label, 60).trim() || 'Chave sem nome';
-      const active = await env.DB.prepare('SELECT COUNT(*) AS n FROM tool_keys WHERE revoked = 0').first();
-      if ((active?.n || 0) >= 10) throw new HttpError(409, 'Já existem 10 chaves ativas. Revogue uma antes.');
-      const secret = `nexo_${randomId(30)}`;
-      const id = randomId(9);
-      await env.DB.prepare('INSERT INTO tool_keys (id, label, key_hash, scope, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, label, await sha256Hex(secret), 'erros:ler', admin.email, now()).run();
-      // A chave aparece só agora; depois, nem o painel consegue mostrar de novo.
-      return json({ id, label, key: secret, scope: 'erros:ler' });
-    }
-    if (rest === 'chaves/revogar' && request.method === 'POST') {
-      need('chaves');
-      const body = await readJson(request);
-      await env.DB.prepare('UPDATE tool_keys SET revoked = 1 WHERE id = ?').bind(String(body.id || '').slice(0, 40)).run();
-      return json({ ok: true });
-    }
-    if (rest === 'sair' && request.method === 'POST') {
-      await env.DB.prepare('DELETE FROM admin_sessions WHERE sid = ?').bind(admin.sid).run();
-      return json({ ok: true }, 200, { 'set-cookie': 'nexo_painel=; Path=/painel; HttpOnly; Secure; SameSite=Strict; Max-Age=0' });
-    }
+    const errorHandler = detail && ADMIN_ERROR_ROUTES.get(request.method);
+    if (errorHandler) return errorHandler(context, detail[1]);
     throw new HttpError(404, 'Não encontrado.');
   }
 
@@ -490,7 +545,36 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ groups: results, generatedAt: now() });
   }
 
-  async function route(request, env, ctx) {
+  /** Página do painel: só abre com a sessão do painel; sem ela, mostra como entrar. */
+  async function panelPage(request, env) {
+    if (await adminSession(request, env)) return page(PANEL_HTML, 'text/html; charset=utf-8');
+    return page(PANEL_LOCKED('Abra o painel pelo Nexo: Ajustes > Painel do criador.'), 'text/html; charset=utf-8', 401);
+  }
+
+  /** Rotas fixas: "MÉTODO caminho" → função (request, env, url). */
+  const ROUTES = new Map([
+    ['POST /v1/auth/google', login],
+    ['POST /v1/auth/logout', logout],
+    ['GET /v1/me', me],
+    ['DELETE /v1/me', deleteMe],
+    ['GET /v1/sync', listDevices],
+    ['POST /v1/errors', postErrors],
+    ['POST /v1/errors/forget-email', forgetErrorEmail],
+    ['POST /v1/telemetry', postTelemetry],
+    ['POST /v1/admin/link', adminLink],
+    ['GET /v1/tools/errors', toolErrors],
+    ['GET /painel/entrar', (_request, env, url) => adminEnter(env, url)],
+    ['GET /painel', panelPage],
+    ['GET /painel/app.js', () => page(PANEL_JS, 'text/javascript; charset=utf-8')],
+    ['GET /painel/app.css', () => page(PANEL_CSS, 'text/css; charset=utf-8')],
+    // Papel de parede do painel (público como o CSS: é só arte, sem dado nenhum).
+    ['GET /painel/fundo.svg', () => page(PANEL_WALLPAPER, 'image/svg+xml; charset=utf-8', 200, { 'cache-control': 'public, max-age=86400' })]
+  ]);
+  /** Cópia de um PC (/v1/sync/<id>): função (request, env, deviceId, url). */
+  const DEVICE_ROUTES = new Map([['PUT', putDevice], ['GET', getDevice], ['DELETE', deleteDevice]]);
+
+  /** Encaminha cada pedido para a rota certa; o que não existe vira 404. */
+  async function route(request, env) {
     const url = new URL(request.url);
     let end = url.pathname.length;
     while (end > 1 && url.pathname[end - 1] === '/') end -= 1; // tira as barras do fim sem regex
@@ -498,26 +582,11 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const { method } = request;
     if (method === 'OPTIONS') return new Response(null, { status: 204, headers: SECURITY_HEADERS });
     if (path === '/' || path === '/health') return json({ ok: true, service: 'nexo-api', version: SERVER_VERSION });
-    if (path === '/v1/auth/google' && method === 'POST') return login(request, env);
-    if (path === '/v1/auth/logout' && method === 'POST') return logout(request, env);
-    if (path === '/v1/me' && method === 'GET') return me(request, env);
-    if (path === '/v1/me' && method === 'DELETE') return deleteMe(request, env);
-    if (path === '/v1/sync' && method === 'GET') return listDevices(request, env);
+    const handler = ROUTES.get(`${method} ${path}`);
+    if (handler) return handler(request, env, url);
     const device = /^\/v1\/sync\/([^/]+)$/.exec(path);
-    if (device && method === 'PUT') return putDevice(request, env, decodeURIComponent(device[1]));
-    if (device && method === 'GET') return getDevice(request, env, decodeURIComponent(device[1]), url);
-    if (device && method === 'DELETE') return deleteDevice(request, env, decodeURIComponent(device[1]));
-    if (path === '/v1/errors' && method === 'POST') return postErrors(request, env);
-    if (path === '/v1/errors/forget-email' && method === 'POST') return forgetErrorEmail(request, env);
-    if (path === '/v1/telemetry' && method === 'POST') return postTelemetry(request, env);
-    if (path === '/v1/admin/link' && method === 'POST') return adminLink(request, env, url);
-    if (path === '/v1/tools/errors' && method === 'GET') return toolErrors(request, env, url);
-    if (path === '/painel/entrar' && method === 'GET') return adminEnter(env, url);
-    if (path === '/painel' && method === 'GET') return (await adminSession(request, env)) ? page(PANEL_HTML, 'text/html; charset=utf-8') : page(PANEL_LOCKED('Abra o painel pelo Nexo: Ajustes > Painel do criador.'), 'text/html; charset=utf-8', 401);
-    if (path === '/painel/app.js' && method === 'GET') return page(PANEL_JS, 'text/javascript; charset=utf-8');
-    if (path === '/painel/app.css' && method === 'GET') return page(PANEL_CSS, 'text/css; charset=utf-8');
-    // Papel de parede do painel (público como o CSS: é só arte, sem dado nenhum).
-    if (path === '/painel/fundo.svg' && method === 'GET') return page(PANEL_WALLPAPER, 'image/svg+xml; charset=utf-8', 200, { 'cache-control': 'public, max-age=86400' });
+    const deviceHandler = device && DEVICE_ROUTES.get(method);
+    if (deviceHandler) return deviceHandler(request, env, decodeURIComponent(device[1]), url);
     if (path.startsWith('/painel/api/')) return adminApi(request, env, url, path.slice('/painel/api/'.length));
     if (path.startsWith('/v1/steam/')) {
       const answer = await steam.route(request, env, url, path, method);
@@ -527,9 +596,9 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   }
 
   return {
-    async fetch(request, env, ctx) {
+    async fetch(request, env) {
       try {
-        return await route(request, env, ctx);
+        return await route(request, env);
       } catch (error) {
         const status = Number(error?.status) || 500;
         if (status >= 500) console.error('nexo-api', error?.name || 'Error');
@@ -556,6 +625,163 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   };
 }
 
+/* ---------- Telemetria agregada para o painel ---------- */
+
+/** Número de verdade (finito) ou null. */
+const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+/** Fração (0–1) em porcentagem, ou null. */
+const pct = (value) => (num(value) === null ? null : value * 100);
+/** Faixa de um valor (em vez de ternários encadeados): a primeira cujo limite é maior que ele. */
+const band = (value, limits) => limits.find(([max]) => value < max)?.[1] ?? limits.at(-1)[1];
+const RAM_BANDS = [[8.5, 'até 8 GB'], [16.5, '9–16 GB'], [32.5, '17–32 GB'], [Infinity, 'mais de 32 GB']];
+const AGE_BANDS = [[1, 'menos de 1 dia'], [7, '1 a 6 dias'], [30, '1 a 4 semanas'], [90, '1 a 3 meses'], [Infinity, 'mais de 3 meses']];
+const SYSTEM_FLAGS = ['autostart', 'tray', 'autoSession', 'onlineCovers'];
+const SKY_FLAGS = ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor', 'skyHour', 'wallpaper', 'autoClean', 'reducedMotion'];
+/** Ajustes contados como estão: campo do resumo → lista no painel. */
+const SETTING_LISTS = [['effects', 'effects'], ['accent', 'accents'], ['skyDensity', 'skyDensity'], ['profile', 'profiles'], ['liveRate', 'liveRates']];
+/** Números do dia (mediana e p90 entre os resumos): rótulo → valor de um resumo. */
+const DAY_METRICS = [
+  ['Minutos com o Nexo em foco', (data) => data.app?.focusMin],
+  ['Minutos com o Nexo aberto', (data) => data.app?.openMin],
+  ['Aberturas no dia', (data) => data.app?.launches],
+  ['Tempo de abertura (ms)', (data) => data.app?.startMs],
+  ['CPU do Nexo em foco (%)', (data) => data.perf?.cpuFocus],
+  ['CPU do Nexo em segundo plano (%)', (data) => data.perf?.cpuBack],
+  ['Memória do Nexo em foco (MB)', (data) => data.perf?.memFocusMB],
+  ['Pico de memória do Nexo (MB)', (data) => data.perf?.memMaxMB],
+  ['Quadros do céu por segundo', (data) => data.perf?.skyFps],
+  ['Travadas da interface no dia', (data) => data.perf?.longTasks],
+  ['Vídeo com o Nexo na frente, Completo (%)', (data) => data.perf?.gpuCompleto],
+  ['Vídeo com o Nexo na frente, Leve (%)', (data) => data.perf?.gpuLeve],
+  ['Vídeo com o Nexo em segundo plano (%)', (data) => data.perf?.gpuFundo],
+  ['Processador do PC, média do dia (%)', (data) => data.health?.cpu],
+  ['Memória do PC, média do dia (%)', (data) => data.health?.mem],
+  ['Vídeo do PC, média do dia (%)', (data) => data.health?.gpu],
+  ['Maior temperatura do dia (°C)', (data) => data.health?.tempMax],
+  // O que limita os PCs: números da GPU e da CPU com carga e das sessões de jogo.
+  ['GPU com carga: uso típico (%)', (data) => data.bottleneck?.gpu?.busyP50],
+  ['GPU com carga: clock em % do máximo dela', (data) => pct(data.bottleneck?.gpu?.clockRatioP50)],
+  ['GPU com carga: energia em % do limite', (data) => data.bottleneck?.gpu?.powerPctP50],
+  ['GPU em 95%+ (% do tempo com carga)', (data) => pct(data.bottleneck?.gpu?.saturatedShare)],
+  ['Memória de vídeo, pico do dia (%)', (data) => data.bottleneck?.gpu?.vramPctMax],
+  ['Núcleo mais ocupado da CPU (p90, %)', (data) => data.bottleneck?.cpu?.maxCoreP90],
+  ['Minutos com carga no dia', (data) => data.bottleneck?.minutes],
+  ['FPS médio nas sessões', (data) => data.bottleneck?.fps?.avg],
+  ['1% baixo nas sessões (FPS)', (data) => data.bottleneck?.fps?.p1Low]
+];
+/** Listas que o painel mostra, na ordem da resposta. */
+const TOP_LISTS = ['limiter', 'sessionLimiter', 'updatedFrom', 'ageDays', 'ipcFails', 'events', 'featsEmpty', 'featsCrashed', 'sourceFails', 'versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
+
+/** Contadores por lista (nome → chave → soma), mais o maior valor visto por chave. */
+function createTally() {
+  const maps = {};
+  const mapOf = (name) => { maps[name] ??= new Map(); return maps[name]; };
+  return {
+    maps,
+    count(name, key, n = 1) {
+      if (key === null || key === undefined || key === '') return;
+      const map = mapOf(name);
+      map.set(String(key), (map.get(String(key)) || 0) + n);
+    },
+    max(name, key, value) {
+      const map = mapOf(name);
+      map.set(key, Math.max(map.get(key) || 0, value));
+    }
+  };
+}
+
+/** Lê cada resumo guardado (JSON); um resumo estragado vira vazio em vez de derrubar o painel. */
+function parseTelemetryRows(rows) {
+  return rows.map((row) => {
+    let data = {};
+    try { data = JSON.parse(row.data) || {}; } catch { data = {}; }
+    return { ...row, data };
+  });
+}
+
+/** Processador, memória, placa de vídeo e monitores de um PC. */
+function tallyHardware(count, hw) {
+  if (hw.cpuVendor) count('cpus', hw.cpuVendor);
+  if (hw.cpuModel) count('cpuModels', hw.cpuModel);
+  if (num(hw.ramGB) !== null) count('ram', band(hw.ramGB, RAM_BANDS));
+  if (num(hw.cores) !== null) count('cores', `${hw.cores} threads`);
+  if (hw.gpuVendor) count('gpus', hw.gpuVendor);
+  for (const model of Array.isArray(hw.gpuModels) ? hw.gpuModels : []) count('gpuModels', model);
+  const displays = Array.isArray(hw.displays) ? hw.displays : [];
+  const plural = displays.length > 1 ? 'es' : '';
+  if (displays.length) count('monitors', `${displays.length} monitor${plural}`);
+  for (const display of displays) {
+    if (num(display.w) && num(display.h)) count('resolutions', `${display.w}×${display.h}`);
+    if (num(display.hz)) count('refresh', `${display.hz} Hz`);
+    if (num(display.scale)) count('scales', `${Math.round(display.scale * 100)}%`);
+  }
+}
+
+/** Sistema, sensores, ajustes do céu e da aparência, lojas e de qual versão o PC veio. */
+function tallySetup(count, row) {
+  const { data } = row;
+  if (data.system?.locale) count('locales', data.system.locale);
+  if (data.system?.channel) count('channels', data.system.channel);
+  for (const flag of SYSTEM_FLAGS) if (data.system?.[flag] === true) count('appFlags', flag);
+  const withTemp = data.sensors?.cpuTemp ? ' · com temperatura do processador' : '';
+  if (data.sensors?.status) count('sensors', `${data.sensors.status}${withTemp}`);
+  const set = data.settings || {};
+  for (const [field, list] of SETTING_LISTS) if (set[field]) count(list, set[field]);
+  for (const flag of SKY_FLAGS) if (set[flag] === true) count('skyFlags', flag);
+  for (const [store, n] of Object.entries(data.library?.stores || {})) if (num(n)) count('stores', store, n);
+  if (data.app?.previous) count('updatedFrom', `${data.app.previous} → ${row.version}`);
+  if (num(data.app?.ageDays) !== null) count('ageDays', band(data.app.ageDays, AGE_BANDS));
+}
+
+/** Uso das telas e dos recursos, canais do app (falhas, chamadas, tempo e pico) e eventos de um resumo. */
+function tallyUsage({ count, max }, data) {
+  for (const [name, source] of [['views', data.usage?.views], ['viewTime', data.usage?.viewTime], ['actions', data.usage?.actions], ['ui', data.usage?.ui], ['features', data.features]]) {
+    for (const [key, value] of Object.entries(source || {})) if (num(value) !== null) count(name, key, value);
+  }
+  // Diagnóstico: canais que falham e os mais lentos (média de ms ponderada pelas chamadas), quedas e travadas.
+  for (const [channel, row] of Object.entries(data.diag?.ipc || {})) {
+    if (num(row?.e)) count('ipcFails', channel, row.e);
+    if (num(row?.n)) count('ipcCalls', channel, row.n);
+    if (num(row?.n) && num(row?.ms)) count('ipcMsSum', channel, row.ms * row.n);
+    if (num(row?.max)) max('ipcMax', channel, row.max);
+  }
+  for (const [event, n] of Object.entries(data.diag?.events || {})) if (num(n)) count('events', event, n);
+}
+
+/** Telas vazias ou que quebraram, fontes de dados (ok, falha e tempo) e o que limitou o PC. */
+function tallyHealth(count, data) {
+  for (const id of Array.isArray(data.feats?.empty) ? data.feats.empty : []) count('featsEmpty', id);
+  for (const id of Array.isArray(data.feats?.crashed) ? data.feats.crashed : []) count('featsCrashed', id);
+  for (const [name, row] of Object.entries(data.feats?.sources || {})) {
+    if (num(row?.fail)) count('sourceFails', name, row.fail);
+    if (num(row?.ok)) count('sourceOk', name, row.ok);
+    if (num(row?.ms) && num(row?.ok) && num(row?.fail)) count('sourceMsSum', name, row.ms * (row.ok + row.fail));
+  }
+  // Minutos com carga por classe e o veredito das sessões de jogo.
+  for (const [kind, n] of Object.entries(data.bottleneck?.limiter || {})) if (num(n)) count('limiter', kind, n);
+  for (const [kind, n] of Object.entries(data.bottleneck?.sessionLimiter || {})) if (num(n)) count('sessionLimiter', kind, n);
+}
+
+/** Valor da posição p (0–1) numa lista ordenada. */
+const percentile = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))];
+const round1 = (value) => Math.round(value * 10) / 10;
+
+/** Mediana e p90 de cada número do dia. */
+function dayNumbers(metrics) {
+  return [...metrics].map(([label, values]) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    return { key: label, median: round1(percentile(sorted, 0.5)), p90: round1(percentile(sorted, 0.9)), n: sorted.length };
+  });
+}
+
+/** Tempo médio por chave (soma de ms ÷ chamadas), os mais lentos primeiro. */
+function slowest(maps, sumName, callNames) {
+  return [...(maps[sumName] || new Map())].map(([key, total]) => {
+    const calls = callNames.reduce((sum, name) => sum + (maps[name]?.get(key) || 0), 0);
+    return { key, n: calls ? Math.round(total / calls) : 0 };
+  }).sort((a, b) => b.n - a.n);
+}
+
 /**
  * Agregados para o painel: instalações ativas por dia, versões, sistemas, hardware, monitores, ajustes, uso das telas
  * e dos recursos, e os números do dia (mediana e p90 entre os resumos diários). Tudo vem de dados anônimos.
@@ -563,128 +789,44 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
 export function aggregateTelemetry(rows) {
   const perDay = new Map();
   const latest = new Map();
-  const parsed = rows.map((row) => { let data = {}; try { data = JSON.parse(row.data) || {}; } catch { data = {}; } return { ...row, data }; });
+  const parsed = parseTelemetryRows(rows);
   for (const row of parsed) {
     if (!perDay.has(row.day)) perDay.set(row.day, new Set());
     perDay.get(row.day).add(row.install_id);
     const previous = latest.get(row.install_id);
     if (!previous || previous.day <= row.day) latest.set(row.install_id, row);
   }
-  const maps = {};
-  const count = (name, key, n = 1) => {
-    if (key === null || key === undefined || key === '') return;
-    maps[name] ??= new Map();
-    const map = maps[name];
-    map.set(String(key), (map.get(String(key)) || 0) + n);
-  };
-  // Faixas para os gráficos (em vez de ternários encadeados).
-  const band = (value, limits) => limits.find(([max]) => value < max)?.[1] ?? limits.at(-1)[1];
-  const RAM_BANDS = [[8.5, 'até 8 GB'], [16.5, '9–16 GB'], [32.5, '17–32 GB'], [Infinity, 'mais de 32 GB']];
-  const AGE_BANDS = [[1, 'menos de 1 dia'], [7, '1 a 6 dias'], [30, '1 a 4 semanas'], [90, '1 a 3 meses'], [Infinity, 'mais de 3 meses']];
-  const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  const tally = createTally();
+  const { count, maps } = tally;
   // Um voto por PC: o resumo mais recente de cada instalação.
   for (const row of latest.values()) {
-    const { data } = row;
     count('versions', row.version);
     count('platforms', row.platform);
-    const hw = data.hw || {};
-    if (hw.cpuVendor) count('cpus', hw.cpuVendor);
-    if (hw.cpuModel) count('cpuModels', hw.cpuModel);
-    if (num(hw.ramGB) !== null) count('ram', band(hw.ramGB, RAM_BANDS));
-    if (num(hw.cores) !== null) count('cores', `${hw.cores} threads`);
-    if (hw.gpuVendor) count('gpus', hw.gpuVendor);
-    for (const model of Array.isArray(hw.gpuModels) ? hw.gpuModels : []) count('gpuModels', model);
-    const displays = Array.isArray(hw.displays) ? hw.displays : [];
-    if (displays.length) count('monitors', `${displays.length} monitor${displays.length > 1 ? 'es' : ''}`);
-    for (const display of displays) {
-      if (num(display.w) && num(display.h)) count('resolutions', `${display.w}×${display.h}`);
-      if (num(display.hz)) count('refresh', `${display.hz} Hz`);
-      if (num(display.scale)) count('scales', `${Math.round(display.scale * 100)}%`);
-    }
-    if (data.system?.locale) count('locales', data.system.locale);
-    if (data.system?.channel) count('channels', data.system.channel);
-    for (const flag of ['autostart', 'tray', 'autoSession', 'onlineCovers']) if (data.system?.[flag] === true) count('appFlags', flag);
-    if (data.sensors?.status) count('sensors', `${data.sensors.status}${data.sensors.cpuTemp ? ' · com temperatura do processador' : ''}`);
-    const set = data.settings || {};
-    if (set.effects) count('effects', set.effects);
-    if (set.accent) count('accents', set.accent);
-    if (set.skyDensity) count('skyDensity', set.skyDensity);
-    if (set.profile) count('profiles', set.profile);
-    if (set.liveRate) count('liveRates', set.liveRate);
-    for (const flag of ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor', 'skyHour', 'wallpaper', 'autoClean', 'reducedMotion']) if (set[flag] === true) count('skyFlags', flag);
-    for (const [store, n] of Object.entries(data.library?.stores || {})) if (num(n)) count('stores', store, n);
-    if (data.app?.previous) count('updatedFrom', `${data.app.previous} → ${row.version}`);
-    if (num(data.app?.ageDays) !== null) count('ageDays', band(data.app.ageDays, AGE_BANDS));
+    tallyHardware(count, row.data.hw || {});
+    tallySetup(count, row);
   }
   // Somas de uso e números do dia: todos os resumos do período.
   const metrics = new Map();
-  const metric = (label, value) => {
-    const v = num(value);
-    if (v === null) return;
-    if (!metrics.has(label)) metrics.set(label, []);
-    metrics.get(label).push(v);
-  };
   for (const { data } of parsed) {
-    for (const [name, source] of [['views', data.usage?.views], ['viewTime', data.usage?.viewTime], ['actions', data.usage?.actions], ['ui', data.usage?.ui], ['features', data.features]]) {
-      for (const [key, value] of Object.entries(source || {})) if (num(value) !== null) count(name, key, value);
+    tallyUsage(tally, data);
+    tallyHealth(count, data);
+    for (const [label, read] of DAY_METRICS) {
+      const value = num(read(data));
+      if (value === null) continue;
+      if (!metrics.has(label)) metrics.set(label, []);
+      metrics.get(label).push(value);
     }
-    // Diagnóstico: canais que falham e os mais lentos (média de ms ponderada pelas chamadas), quedas e travadas.
-    for (const [channel, row] of Object.entries(data.diag?.ipc || {})) {
-      if (num(row?.e)) count('ipcFails', channel, row.e);
-      if (num(row?.n)) count('ipcCalls', channel, row.n);
-      if (num(row?.n) && num(row?.ms)) { count('ipcMsSum', channel, row.ms * row.n); }
-      if (num(row?.max)) {
-        maps.ipcMax ??= new Map();
-        maps.ipcMax.set(channel, Math.max(maps.ipcMax.get(channel) || 0, row.max));
-      }
-    }
-    for (const [event, n] of Object.entries(data.diag?.events || {})) if (num(n)) count('events', event, n);
-    for (const id of Array.isArray(data.feats?.empty) ? data.feats.empty : []) count('featsEmpty', id);
-    for (const id of Array.isArray(data.feats?.crashed) ? data.feats.crashed : []) count('featsCrashed', id);
-    for (const [name, row] of Object.entries(data.feats?.sources || {})) {
-      if (num(row?.fail)) count('sourceFails', name, row.fail);
-      if (num(row?.ok)) count('sourceOk', name, row.ok);
-      if (num(row?.ms) && num(row?.ok) && num(row?.fail)) count('sourceMsSum', name, row.ms * (row.ok + row.fail));
-    }
-    metric('Minutos com o Nexo em foco', data.app?.focusMin);
-    metric('Minutos com o Nexo aberto', data.app?.openMin);
-    metric('Aberturas no dia', data.app?.launches);
-    metric('Tempo de abertura (ms)', data.app?.startMs);
-    metric('CPU do Nexo em foco (%)', data.perf?.cpuFocus);
-    metric('CPU do Nexo em segundo plano (%)', data.perf?.cpuBack);
-    metric('Memória do Nexo em foco (MB)', data.perf?.memFocusMB);
-    metric('Pico de memória do Nexo (MB)', data.perf?.memMaxMB);
-    metric('Quadros do céu por segundo', data.perf?.skyFps);
-    metric('Travadas da interface no dia', data.perf?.longTasks);
-    metric('Vídeo com o Nexo na frente, Completo (%)', data.perf?.gpuCompleto);
-    metric('Vídeo com o Nexo na frente, Leve (%)', data.perf?.gpuLeve);
-    metric('Vídeo com o Nexo em segundo plano (%)', data.perf?.gpuFundo);
-    metric('Processador do PC, média do dia (%)', data.health?.cpu);
-    metric('Memória do PC, média do dia (%)', data.health?.mem);
-    metric('Vídeo do PC, média do dia (%)', data.health?.gpu);
-    metric('Maior temperatura do dia (°C)', data.health?.tempMax);
-    // O que limita os PCs: minutos com carga por classe e o veredito das sessões de jogo; números da GPU com carga.
-    for (const [kind, n] of Object.entries(data.bottleneck?.limiter || {})) if (num(n)) count('limiter', kind, n);
-    for (const [kind, n] of Object.entries(data.bottleneck?.sessionLimiter || {})) if (num(n)) count('sessionLimiter', kind, n);
-    const b = data.bottleneck || {};
-    metric('GPU com carga: uso típico (%)', b.gpu?.busyP50);
-    metric('GPU com carga: clock em % do máximo dela', num(b.gpu?.clockRatioP50) === null ? null : b.gpu.clockRatioP50 * 100);
-    metric('GPU com carga: energia em % do limite', b.gpu?.powerPctP50);
-    metric('GPU em 95%+ (% do tempo com carga)', num(b.gpu?.saturatedShare) === null ? null : b.gpu.saturatedShare * 100);
-    metric('Memória de vídeo, pico do dia (%)', b.gpu?.vramPctMax);
-    metric('Núcleo mais ocupado da CPU (p90, %)', b.cpu?.maxCoreP90);
-    metric('Minutos com carga no dia', b.minutes);
-    metric('FPS médio nas sessões', b.fps?.avg);
-    metric('1% baixo nas sessões (FPS)', b.fps?.p1Low);
   }
-  const top = (name) => [...(maps[name] || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n: Math.round(n * 10) / 10 }));
-  const pick = (list, p) => list[Math.min(list.length - 1, Math.max(0, Math.ceil(p * list.length) - 1))];
-  const numbers = [...metrics].map(([label, values]) => { const sorted = [...values].sort((a, b) => a - b); return { key: label, median: Math.round(pick(sorted, 0.5) * 10) / 10, p90: Math.round(pick(sorted, 0.9) * 10) / 10, n: sorted.length }; });
-  // Tempo médio por canal e por fonte: soma de ms ÷ chamadas, os mais lentos primeiro.
-  const slow = (sumName, callsName, extra) => [...(maps[sumName] || new Map())].map(([key, total]) => { const calls = (maps[callsName]?.get(key) || 0) + (extra ? (maps[extra]?.get(key) || 0) : 0); return { key, n: calls ? Math.round(total / calls) : 0 }; }).sort((a, b) => b.n - a.n);
-  const ipcSlow = slow('ipcMsSum', 'ipcCalls');
-  const sourceSlow = slow('sourceMsSum', 'sourceOk', 'sourceFails');
+  const top = (name) => [...(maps[name] || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n: round1(n) }));
   const ipcMax = [...(maps.ipcMax || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n }));
-  const names = ['limiter', 'sessionLimiter', 'updatedFrom', 'ageDays', 'ipcFails', 'events', 'featsEmpty', 'featsCrashed', 'sourceFails', 'versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
-  return { activeByDay: [...perDay].sort((a, b) => a[0].localeCompare(b[0])).map(([day, set]) => ({ day, n: set.size })), installs: latest.size, reports: parsed.length, numbers, ipcSlow, ipcMax, sourceSlow, ...Object.fromEntries(names.map((name) => [name, top(name)])) };
+  return {
+    activeByDay: [...perDay].sort((a, b) => a[0].localeCompare(b[0])).map(([day, set]) => ({ day, n: set.size })),
+    installs: latest.size,
+    reports: parsed.length,
+    numbers: dayNumbers(metrics),
+    ipcSlow: slowest(maps, 'ipcMsSum', ['ipcCalls']),
+    ipcMax,
+    sourceSlow: slowest(maps, 'sourceMsSum', ['sourceOk', 'sourceFails']),
+    ...Object.fromEntries(TOP_LISTS.map((name) => [name, top(name)]))
+  };
 }

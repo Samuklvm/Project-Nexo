@@ -202,6 +202,7 @@ function recordActivity(title, detail) {
   renderActivity(list.slice(0, 20));
 }
 
+/** Desenha a lista de atividades recentes, juntando repetições seguidas numa linha só. */
 function renderActivity(entries = readJSON(Nexo.keys.activity, [])) {
   const list = document.getElementById('activity-list');
   if (!list) return;

@@ -35,6 +35,7 @@
     return `rgb(${a.map((channel, i) => Math.round(channel + (b[i] - channel) * amount)).join(',')})`;
   }
 
+  /** Lê os números de agora (CPU, memória, disco, GPU) que definem o tamanho e o brilho de cada planeta. */
   function readValues() {
     const { snapshot } = Nexo.state;
     if (!snapshot) return;
@@ -66,6 +67,7 @@
   new MutationObserver(() => { toneCache = null; }).observe(document.body, { attributes: true, attributeFilter: ['data-tone', 'style', 'class'] });
   const ring = document.querySelector('.ring-orbit');
 
+  /** Desenha um quadro do mapa do sistema (órbitas e planetas) no canvas. */
   function draw(time, delta) {
     context.clearRect(0, 0, width, height);
     const palette = Nexo.charts.palette();
@@ -94,6 +96,7 @@
       return { planet, x, y, depth, front: Math.sin(planet.angle) >= 0 };
     });
 
+    /** Pinta um planeta na posição calculada, mais apagado quando está atrás da órbita. */
     const paint = ({ planet, x, y, depth, front }) => {
       const dim = planet.value === null ? 0.35 : 1;
       const base = palette[planet.color] || '#5ad7ff';

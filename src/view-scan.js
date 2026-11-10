@@ -21,6 +21,7 @@
     return state.filter.split(/\s+/).every((word) => text.includes(word));
   }
 
+  /** Desenha o resultado do Raio-X: grupos de ajustes, o valor de agora, as opções e o que o Nexo se recusa a mudar. */
   function render() {
     const { scan } = state;
     if (!scan) return;
@@ -86,6 +87,7 @@
     finally { button.dataset.idleText = 'Varrer de novo'; setButtonBusy(button, false); }
   }
 
+  /** Aplica os ajustes marcados depois da confirmação e registra cada um no Diário com o valor anterior. */
   async function applyPicked() {
     const list = picked();
     if (!list.length) return;

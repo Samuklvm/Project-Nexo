@@ -21,6 +21,7 @@
     }).join(' · ');
   }
 
+  /** Desenha o Diário de alterações (as 30 mais recentes) com os botões de reverter e de detalhes. */
   function renderJournal() {
     const list = document.getElementById('journal-list');
     if (!list) return;

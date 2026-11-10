@@ -201,6 +201,7 @@
     return `<section class="sheet gp-consent"><div><h3>Ver tudo deste jogo, como na loja</h3><p class="muted">Descrição, capturas de tela, gêneros, requisitos, as novidades e atualizações oficiais e as suas conquistas vêm da Steam. Para isso o Nexo precisa consultar a Steam pela internet${game.source === 'steam' ? '' : ' (para jogos de outras lojas, procurando o mesmo nome exato)'}. Fica ligado em Ajustes e dá para desligar quando quiser.</p></div><button class="btn primary" type="button" data-allow-online="${escapeHtml(game.id)}">Permitir e carregar</button></section>`;
   }
 
+  /** Aba "Visão geral" da página do jogo: capturas, descrição, requisitos e ficha da loja. */
   function overviewTab(game, info) {
     const store = info?.store;
     if (!store) return info?.appid === null ? '<p class="muted gp-empty">Este jogo não tem uma página com o mesmo nome na loja da Steam, então não há dados oficiais para mostrar.</p>' : '<p class="muted gp-empty">A loja não devolveu dados deste jogo agora.</p>';
@@ -235,6 +236,7 @@
       </aside></div>`;
   }
 
+  /** Aba "Conquistas": progresso da conta Steam ou o aviso do que falta para ver. */
   function achievementsTab(game, info) {
     const ach = info?.achievements;
     const c = state.connections?.steam;
@@ -289,6 +291,7 @@
         <p class="muted">O Nexo reconhece este jogo em primeiro plano pela pasta de instalação; o caminho não sai do processo principal.</p></section></div>`;
   }
 
+  /** Desenha a página do jogo (capa, botões, números e a aba aberta). */
   function renderGame(id) {
     const game = byId(id);
     const page = document.getElementById('game-page');
@@ -368,6 +371,7 @@
     finally { state.art = null; markArtSeen(); renderArtBanner(); }
   }
 
+  /** Abre o jogo pelo launcher dele e, se pedido, começa a gravar a sessão. */
   async function play(id, record) {
     const game = byId(id);
     if (!game) return;

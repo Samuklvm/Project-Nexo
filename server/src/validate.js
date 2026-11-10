@@ -133,35 +133,48 @@ const MAP_KEY = /^[A-Za-z][A-Za-z0-9_.-]{0,39}$/;
 const PERSONAL_KEY = /e-?mail|passw|senha|token|secret|segredo|usuario|username|hostname|cookie|session|\bip\b/i;
 const MAX_ABS = 1e9;
 
+/** Número finito e de tamanho razoável, arredondado a 3 casas (e conferido de novo depois da conta). */
+function cleanNumber(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_ABS) return undefined;
+  const rounded = Math.round(value * 1000) / 1000;
+  return Number.isFinite(rounded) ? rounded : undefined;
+}
+
+/** Guarda em out[key] o valor limpo, se sobrou algo dele. */
+function keep(out, key, cleaned) {
+  if (cleaned !== undefined) out[key] = cleaned;
+}
+
+/** Mapa com chaves de nome fixo do app (até 60); chave que pareça dado pessoal é descartada. */
+function cleanMap(schema, value, depth) {
+  const out = {};
+  for (const [key, item] of Object.entries(value).slice(0, 60)) {
+    if (MAP_KEY.test(key) && !PERSONAL_KEY.test(key)) keep(out, key, cleanBy(schema, item, depth + 1));
+  }
+  return out;
+}
+
+/** Objeto com campos de nome previsto: só os do esquema passam. */
+function cleanFields(schema, value, depth) {
+  const out = {};
+  for (const [key, inner] of Object.entries(schema)) {
+    if (Object.hasOwn(value, key)) keep(out, key, cleanBy(inner, value[key], depth + 1));
+  }
+  return out;
+}
+
+/** Limpa um valor pelo esquema dele; o que não bate com o esquema vira undefined (e é descartado). */
 function cleanBy(schema, value, depth = 0) {
   if (depth > 5 || value === null || value === undefined) return undefined;
-  if (schema === NUM) {
-    if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_ABS) return undefined;
-    const rounded = Math.round(value * 1000) / 1000;
-    return Number.isFinite(rounded) ? rounded : undefined;
-  }
+  if (schema === NUM) return cleanNumber(value);
   if (schema === BOOL) return typeof value === 'boolean' ? value : undefined;
   if (schema === STR) return typeof value === 'string' ? redact(value).slice(0, 80) : undefined;
   if (Array.isArray(schema)) {
     if (!Array.isArray(value)) return undefined;
     return value.slice(0, 40).map((item) => cleanBy(schema[0], item, depth + 1)).filter((item) => item !== undefined);
   }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const out = {};
-  if (schema.$map) {
-    for (const [key, item] of Object.entries(value).slice(0, 60)) {
-      if (!MAP_KEY.test(key) || PERSONAL_KEY.test(key)) continue;
-      const cleaned = cleanBy(schema.$map, item, depth + 1);
-      if (cleaned !== undefined) out[key] = cleaned;
-    }
-    return out;
-  }
-  for (const [key, inner] of Object.entries(schema)) {
-    if (!Object.hasOwn(value, key)) continue;
-    const cleaned = cleanBy(inner, value[key], depth + 1);
-    if (cleaned !== undefined) out[key] = cleaned;
-  }
-  return out;
+  if (typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return schema.$map ? cleanMap(schema.$map, value, depth) : cleanFields(schema, value, depth);
 }
 
 /** Telemetria: só as categorias e os campos do esquema, com tamanho máximo. */
@@ -169,9 +182,7 @@ export function cleanTelemetry(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const out = {};
   for (const [key, schema] of Object.entries(SCHEMA)) {
-    if (!Object.hasOwn(data, key)) continue;
-    const cleaned = cleanBy(schema, data[key]);
-    if (cleaned !== undefined) out[key] = cleaned;
+    if (Object.hasOwn(data, key)) keep(out, key, cleanBy(schema, data[key]));
   }
   const json = JSON.stringify(out);
   return json.length <= LIMITS.telemetry ? out : null;

@@ -53,6 +53,7 @@
     'desligar-autodetect': { actionId: 'net-autodetect-off', title: () => 'Detecção automática de proxy desligada', risk: 'baixo' }
   };
 
+  /** Aplica uma correção de rede depois da confirmação e registra no Diário (com volta, quando existe). */
   async function applyFix(id, button) {
     const fix = last?.fixes.find((item) => item.id === id);
     if (!fix) return;

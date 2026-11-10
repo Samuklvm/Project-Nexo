@@ -25,6 +25,7 @@
     return true;
   };
 
+  /** Pergunta o perfil de uso (Jogos, Trabalho e criação ou Uso geral); na primeira vez, "geral" fica se a pessoa pular. */
   Nexo.chooseProfile = async function chooseProfile({ first = false } = {}) {
     let selected = Nexo.profile.id || NexoProfiles.DEFAULT;
     const dialog = Nexo.dialog({

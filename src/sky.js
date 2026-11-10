@@ -102,6 +102,7 @@
     }, rand(5500, 12500));
   }
 
+  /** Desenha um quadro do céu vivo (estrelas, vagalumes, estrelas cadentes). */
   function draw(time, dt) {
     context.clearRect(0, 0, width, height);
     const t = time / 1000;
@@ -193,6 +194,7 @@
     if (pulseDot) pulseDot.style.setProperty('--pulse', (((time % 2400) / 2400) ** 0.8).toFixed(3));
   }
 
+  /** Um quadro do céu: para quando não precisa animar e reduz a carga se o quadro passar do orçamento. */
   function frame(time, elapsed) {
     if (still()) { running = false; drawStill(); return false; }
     const dt = Math.min(elapsed, 100) / 16.7;

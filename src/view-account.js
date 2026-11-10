@@ -6,6 +6,7 @@
 
   function avatarHtml(url) { return url ? `<img src="${escapeHtml(url)}" alt="" />` : '<svg><use href="#i-user"/></svg>'; }
 
+  /** Desenha o cartão da conta Google (entrar, sair, quem está conectado). */
   function render() {
     const profile = account?.profile;
     document.getElementById('account-avatar').innerHTML = avatarHtml(account?.avatar);
@@ -75,6 +76,7 @@
     return `<span class="avatar md">${picture}</span>`;
   };
   const status = (on, label) => `<span class="conn-status${on ? ' on' : ''}"><i></i>${escapeHtml(label)}</span>`;
+  /** Desenha os cartões de Steam, Xbox e Discord com o estado de cada conexão. */
   function renderConnections() {
     const c = connections;
     const grid = document.getElementById('conn-grid');

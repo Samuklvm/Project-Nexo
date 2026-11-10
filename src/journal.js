@@ -10,6 +10,7 @@
   const MAX_ENTRIES = 100;
   const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
+  /** Cria o Diário de alterações (gravar, marcar revertida, listar), guardado no armazenamento local. */
   function create(storage) {
     const load = () => { const stored = storage.get(); return Array.isArray(stored) ? stored.filter((entry) => entry && typeof entry.id === 'string') : []; };
     const save = (entries) => storage.set(entries.slice(-MAX_ENTRIES));

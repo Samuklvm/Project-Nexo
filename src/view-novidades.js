@@ -18,6 +18,7 @@
     if (list[list.length - 1]?.version !== version) { list.push({ version, at: Date.now() }); write(VERSIONS_KEY, JSON.stringify(list.slice(-30))); }
   }
 
+  /** Monta o conteúdo da janela de novidades de uma versão. */
   function html(entry, index, total) {
     const date = entry.date ? new Date(`${entry.date}T12:00:00`).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
     const star = (_, i) => `<i data-css="--x:${(i * 53) % 100}%;--y:${(i * 37) % 100}%;--d:${(i % 7) * 0.4}s;--s:${1 + (i % 3)}px"></i>`;
@@ -41,6 +42,7 @@
   }
 
   let open = null;
+  /** Abre a janela de novidades na versão pedida, com navegação para as anteriores. */
   function show(version) {
     const list = data();
     if (!list.length) return;

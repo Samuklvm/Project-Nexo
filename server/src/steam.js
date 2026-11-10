@@ -36,6 +36,7 @@ function tella(message, status = 400) {
   return new Response(html, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" } });
 }
 
+/** Rotas do "Entrar com a Steam" (login OpenID oficial) e da biblioteca/conquistas pela chave do servidor. */
 export function createSteam({ fetchImpl, now, limit, json }) {
   const returnTo = (url, port, state) => `${url.origin}/v1/steam/back?port=${port}&state=${state}`;
 
@@ -107,6 +108,7 @@ export function createSteam({ fetchImpl, now, limit, json }) {
     return json({ steamId: steam, personaName: String(player.personaname || '').slice(0, 64) || null, avatar, public: Number(player.communityvisibilitystate) === 3 });
   }
 
+  /** Jogos da conta Steam do passe assinado (com tempo de jogo), buscados na Steam Web API a cada pedido. */
   async function library(request, env) {
     const steam = await who(request, env);
     await limit(env, `steam:${steam}`, 600);

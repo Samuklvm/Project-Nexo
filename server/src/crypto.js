@@ -10,7 +10,7 @@ const decoder = new TextDecoder();
 export function b64url(bytes) {
   let text = '';
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  for (let i = 0; i < view.length; i += 1) text += String.fromCharCode(view[i]);
+  for (const byte of view) text += String.fromCharCode(byte);
   const b64 = btoa(text).replaceAll('+', '-').replaceAll('/', '_');
   let end = b64.length;
   while (end > 0 && b64[end - 1] === '=') end -= 1; // sem o preenchimento, sem regex no fim do texto
@@ -61,6 +61,7 @@ export async function signToken(payload, secret) {
   return `${body}.${b64url(signature)}`;
 }
 
+/** Confere a assinatura e a validade de um token do servidor; devolve o conteúdo ou null. */
 export async function verifyToken(token, secret, now = Date.now()) {
   const [body, signature, extra] = String(token || '').split('.');
   if (!body || !signature || extra !== undefined || body.length > 2000) return null;

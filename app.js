@@ -10,6 +10,7 @@
   let lastSnapshotAt = 0;
   let lastSamplesAt = 0;
 
+  /** Lê o estado do PC (CPU, memória, discos) e atualiza o painel; mais espaçado com a janela escondida e pausado durante as medições. */
   async function refreshSnapshot() {
     if (!desktopBridge?.getSystemSnapshot) { setAppStatus('Abra o app desktop para monitorar'); return; }
     if (snapshotBusy || Nexo.state.labRunning || Nexo.state.rebootMeasuring) return; // durante as medições, nada de carga extra atrapalhando
