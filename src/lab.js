@@ -18,8 +18,7 @@
   else root.NexoLab = factory(root.NexoLabSpace);
 })(typeof self !== 'undefined' ? self : this, function (LabSpace) {
   /** Espaço fechado de ajustes (src/lab-space.js). Nada fora daqui pode ser aplicado (validateStep). */
-  const SPACE = LabSpace.SPACE;
-  const GROUPS = LabSpace.GROUPS;
+  const { SPACE, GROUPS } = LabSpace;
   /* No Linux o laboratório testa os perfis do power-profiles-daemon (sem root). Ajustes finos do processador no Linux
      (EPP, governador) exigem root a cada mudança, e o Nexo não roda como root. */
   const LINUX_SPACE = [
@@ -258,10 +257,13 @@
    * Etapas: pré-checagem → ponto de restauração → clone do plano → aquecimento → triagem (2 pares; quem promete ganha
    * mais pares) → combinações inéditas → confirmação (5 pares) → restauração. Guardas depois de cada medição.
    */
+  /* eslint-disable no-await-in-loop -- Sequencial de propósito: cada medição precisa da máquina só para ela (dois testes
+     ao mesmo tempo disputariam o processador e o calor, e a comparação A/B perderia o sentido), e cada ajuste é aplicado,
+     medido e desfeito antes do próximo. */
   async function run(system, options = {}) {
     const limits = { ...DEFAULT_LIMITS, ...(options.limits || {}) };
     const goal = GOALS[options.goal] ? options.goal : 'geral';
-    const weights = GOALS[goal].weights;
+    const { weights } = GOALS[goal];
     const emit = typeof options.emit === 'function' ? options.emit : () => {};
     const now = system.now || (() => Date.now());
     const signal = options.signal || {};
@@ -480,7 +482,7 @@
       /* Confirmação: a melhor candidata (os vencedores juntos e/ou a melhor combinação inédita) com 5 pares. */
       const finalists = [];
       if (chosen.length) finalists.push({ keys: chosen.map((arm) => arm.key), expected: Math.max(...chosen.map((arm) => arm.compositeDelta)) });
-      const bestNovel = result.combos.filter((combo) => combo.verdict === 'melhorou').sort((a, b) => b.compositeDelta - a.compositeDelta)[0];
+      const [bestNovel] = result.combos.filter((combo) => combo.verdict === 'melhorou').sort((a, b) => b.compositeDelta - a.compositeDelta);
       if (bestNovel && (!finalists.length || bestNovel.compositeDelta > finalists[0].expected)) finalists.push({ keys: bestNovel.keys, expected: bestNovel.compositeDelta });
       for (const finalist of finalists) {
         if (result.budgetHit || overBudget()) { result.budgetHit = true; break; }
@@ -531,6 +533,7 @@
     emit({ type: 'done', result });
     return result;
   }
+  /* eslint-enable no-await-in-loop */
 
   /** Higieniza evidência e tabu vindos do armazenamento do navegador antes de entrar no motor. */
   function sanitizeMemory(evidence, tabu) {

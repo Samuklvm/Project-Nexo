@@ -23,7 +23,7 @@
 
   /** Atualiza o índice, o veredito e os fatores. */
   function renderHealth() {
-    const snapshot = Nexo.state.snapshot;
+    const { snapshot } = Nexo.state;
     if (!snapshot) return;
     const history = Nexo.store.brainHistory();
     const sample = Nexo.store.fresh(Nexo.store.live().slice(-1)[0]);
@@ -50,7 +50,7 @@
   }
 
   function renderLive() {
-    const snapshot = Nexo.state.snapshot;
+    const { snapshot } = Nexo.state;
     if (!snapshot) return;
     const sample = Nexo.store.live().slice(-1)[0] || {};
     Nexo.num('cpu-usage-value', snapshot.cpuUsage, (v) => `${Math.round(v)}%`);

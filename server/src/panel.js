@@ -10,6 +10,12 @@ export const PANEL_LOCKED = (message) => `<!doctype html><html lang="pt-BR"><hea
  * com brilho, estrelas cadentes e o anel de órbita do Nexo. Servido como /painel/fundo.svg (a política de segurança
  * só aceita imagens do próprio servidor).
  */
+/** Cor de uma estrela: a maioria branca, algumas azuladas e poucas quentes (sorteios na mesma ordem de antes). */
+function starColor(rand) {
+  if (rand() < 0.15) return 'bfe9ff';
+  return rand() < 0.1 ? 'ffe6c2' : 'ffffff';
+}
+
 function starfield() {
   let seed = 20261110;
   const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
@@ -19,7 +25,7 @@ function starfield() {
     const y = Math.round(rand() * 900 * (0.35 + rand() * 0.65));
     const r = (rand() < 0.06 ? 1.6 + rand() : 0.4 + rand() * 0.9).toFixed(2);
     const o = (0.35 + rand() * 0.65).toFixed(2);
-    stars.push(`<circle cx="${x}" cy="${y}" r="${r}" fill="#${rand() < 0.15 ? 'bfe9ff' : rand() < 0.1 ? 'ffe6c2' : 'ffffff'}" opacity="${o}"/>`);
+    stars.push(`<circle cx="${x}" cy="${y}" r="${r}" fill="#${starColor(rand)}" opacity="${o}"/>`);
   }
   const meteors = [[1180, 120, 260], [420, 70, 190], [1420, 300, 150], [760, 40, 120]].map(([x, y, len], i) => `<line x1="${x}" y1="${y}" x2="${x - len}" y2="${y + len * 0.42}" stroke="url(#meteor)" stroke-width="${i ? 1.4 : 2.2}" stroke-linecap="round" opacity="${i ? 0.55 : 0.85}"/><circle cx="${x}" cy="${y}" r="${i ? 1.6 : 2.4}" fill="#e9f7ff"/>`);
   return { stars: stars.join(''), meteors: meteors.join('') };

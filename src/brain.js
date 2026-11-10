@@ -265,7 +265,7 @@
     }
     if (finite(ctx.temp)) add('thermal', 'Temperatura', clamp((ctx.temp - 75) / 20, 0, 1) * 18, `${Math.round(ctx.temp)} °C reportados`);
     const day = 24 * 60 * MIN;
-    const brain = ctx.brain;
+    const { brain } = ctx;
     const throttles = brain ? brain.recentEpisodes(day, now, ['throttle']).length : 0;
     if (brain) add('throttle', 'Limites de desempenho', throttles ? 8 : 0, throttles ? `${pl(throttles, 'queda', 'quedas')} de clock com calor nas últimas 24 h` : 'Nenhuma queda de clock com calor nas últimas 24 h');
     const slow = brain ? brain.recentEpisodes(day, now, ['cpu', 'memory']).length : 0;
@@ -301,7 +301,7 @@
   function buildInsights(ctx) {
     const now = ctx.now ?? Date.now();
     const s = ctx.snapshot || {};
-    const brain = ctx.brain;
+    const { brain } = ctx;
     const history = ctx.history || [];
     const out = [];
     const push = (item) => {
@@ -358,7 +358,7 @@
     }
     const throttled = brain ? brain.recentEpisodes(24 * 60 * MIN, now, ['throttle']) : [];
     if (throttled.length) {
-      const last = throttled[0];
+      const [last] = throttled;
       push({
         id: 'throttle', category: 'throttle', severity: 'warn', title: 'O processador reduziu a velocidade por calor',
         summary: 'Houve momentos de carga alta com a frequência bem abaixo do máximo já observado e temperatura alta: indício de limitação térmica.',
@@ -369,7 +369,7 @@
     if (brain) {
       const ledger = brain.ledger().filter((e) => e.events >= 2);
       if (ledger.length) {
-        const top = ledger[0];
+        const [top] = ledger;
         push({
           id: 'culprit', category: 'culprit', severity: 'info', title: `${top.name} costuma estar por trás das lentidões`,
           summary: 'Este programa apareceu no topo do consumo em vários episódios de sobrecarga.',

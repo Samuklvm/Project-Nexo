@@ -136,9 +136,12 @@
   });
 
   /* ---------- Plano de energia ---------- */
-  const planNote = (name) => /alto|high|máxim|ultimate|ultra/i.test(name) ? 'Máximo de desempenho; consome mais energia.'
-    : /equilibr|balanced/i.test(name) ? 'Equilíbrio entre desempenho e consumo.'
-      : /econom|saver/i.test(name) ? 'Poupa energia; pode limitar a velocidade do processador.' : 'Plano personalizado.';
+  const planNote = (name) => {
+    if (/alto|high|máxim|ultimate|ultra/i.test(name)) return 'Máximo de desempenho; consome mais energia.';
+    if (/equilibr|balanced/i.test(name)) return 'Equilíbrio entre desempenho e consumo.';
+    if (/econom|saver/i.test(name)) return 'Poupa energia; pode limitar a velocidade do processador.';
+    return 'Plano personalizado.';
+  };
 
   function renderPower() {
     const box = document.getElementById('power-list');

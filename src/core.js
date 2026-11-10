@@ -24,7 +24,7 @@ const desktopBridge = window.nexoDesktop;
   };
   window.addEventListener('error', (event) => {
     // Recurso que não carregou (img/script/link): o alvo é o elemento, não a janela.
-    const target = event.target;
+    const { target } = event;
     if (target && target !== window && target.tagName) {
       const url = String(target.src || target.href || '');
       if (/^(blob:|data:|https?:)/.test(url) && target.tagName === 'IMG') return; // capas e fotos da internet: falha comum, não é bug
@@ -52,7 +52,7 @@ const desktopBridge = window.nexoDesktop;
     }).observe({ type: 'longtask', buffered: false });
   } catch { /* sem longtask */ }
   setInterval(() => {
-    const memory = performance.memory;
+    const { memory } = performance;
     if (memory?.jsHeapSizeLimit && memory.usedJSHeapSize / memory.jsHeapSizeLimit >= 0.85) report('A memória da tela passou de 85% do limite', '', 'aviso', { usadoMB: Math.round(memory.usedJSHeapSize / 1048576) });
   }, 5 * 60000);
   // Trilha: cada troca de tela vai para o processo principal (só o nome da tela).
@@ -194,7 +194,7 @@ function iconUse(id) { return `<svg aria-hidden="true"><use href="#${id}"/></svg
 function recordActivity(title, detail) {
   const entries = readJSON(Nexo.keys.activity, []);
   const list = Array.isArray(entries) ? entries : [];
-  const last = list[0];
+  const [last] = list;
   // Repetições seguidas (ex.: "Análise inteligente · nada preocupante") viram uma linha só, com contador.
   if (last && last.title === String(title) && last.detail === String(detail) && Date.now() - last.timestamp < 12 * 3600e3) { last.timestamp = Date.now(); last.count = (Number(last.count) || 1) + 1; }
   else list.unshift({ title: String(title), detail: String(detail), timestamp: Date.now() });

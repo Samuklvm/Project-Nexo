@@ -47,7 +47,7 @@
   /* ---------- Componentes ---------- */
   async function refreshFps() {
     try { fps.status = await bridge.getFpsStatus(); } catch { fps.status = { available: false, source: null, name: null, platform: 'desconhecida' }; }
-    const status = fps.status;
+    const { status } = fps;
     const where = status.source === 'escolhido' ? 'escolhido por você' : 'embutido no instalador';
     setText('fps-note', status.available ? `Componente: ${status.name} (${where}). Exige o grupo “Performance Log Users”.` : status.platform && status.platform !== 'win32' ? 'Disponível só no Windows.' : 'Componente não encontrado. Escolha o PresentMon em “Componentes”, mais abaixo.');
     setText('fps-status-text', status.available ? `${status.name} · ${where}` : 'Não encontrado nesta instalação. Reinstale o Nexo pela última versão, ou baixe o PresentMon no site oficial e escolha o arquivo.');
@@ -69,7 +69,7 @@
   /* ---------- Acesso ao FPS: grupo "Performance Log Users", liberado automaticamente com o UAC ---------- */
   async function refreshAccess() {
     try { fps.access = await bridge.getFpsAccess(); } catch { fps.access = null; }
-    const access = fps.access;
+    const { access } = fps;
     const text = !access || access.platform !== 'win32' ? 'Disponível só no Windows.'
       : access.admin ? 'O Nexo está rodando como administrador: o FPS funciona sem o grupo.'
       : access.inToken ? 'Liberado: o seu usuário está no grupo “Performance Log Users”.'
@@ -242,7 +242,7 @@
     stopProbeListener?.(); stopProbeListener = null;
     renderRec();
     setAppStatus('Analisando sessão');
-    let fpsResult = finished.fpsResult;
+    let { fpsResult } = finished;
     if (!fpsResult && (fps.active || finished.useFps)) { try { fpsResult = await bridge.stopFps(); } catch { fpsResult = null; } }
     fps.active = false;
     if (finished.useProbe) await bridge.stopProbe().catch(() => {});
@@ -375,7 +375,7 @@
     try {
       const result = await bridge.testProbe();
       if (!result.ok) { setText('probe-result', result.reason); return; }
-      const sample = result.sample;
+      const { sample } = result;
       setText('probe-result', `Funcionou. Primeiro plano: ${sample.fg ? `${sample.fg.name}${sample.fg.isGame ? ' (jogo)' : ''}` : 'nenhum'}. CPU por programa: ${sample.cpu.length ? 'sim' : 'nenhum programa se destacou agora'}. GPU por programa: ${sample.gpu.length ? 'sim' : 'nenhum programa usando a GPU agora ou contador indisponível'}. Custo da sonda: cerca de ${dec(sample.self?.cpu)}% da CPU e ${dec(sample.self?.memMB, 0)} MB.`);
     } catch (error) { setText('probe-result', error.message || 'O teste falhou.'); }
     finally { setButtonBusy(button, false); }

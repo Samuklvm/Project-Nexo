@@ -100,7 +100,7 @@
         totals.set(item.name, entry);
       }
     }
-    const best = [...totals.values()].filter((entry) => entry.ticks > 0).map((entry) => ({ name: entry.name, avg: entry.sum / entry.ticks, presence: entry.ticks / probes.length })).sort((a, b) => b.presence * b.avg - a.presence * a.avg)[0];
+    const [best] = [...totals.values()].filter((entry) => entry.ticks > 0).map((entry) => ({ name: entry.name, avg: entry.sum / entry.ticks, presence: entry.ticks / probes.length })).sort((a, b) => b.presence * b.avg - a.presence * a.avg);
     return best || null;
   }
 

@@ -143,7 +143,10 @@
   /* ---------- Contexto de cada desenho (memorizado) ---------- */
   function makeContext() {
     const memo = {};
-    const once = (key, fn) => (key in memo ? memo[key] : (memo[key] = fn()));
+    const once = (key, fn) => {
+      if (!(key in memo)) memo[key] = fn();
+      return memo[key];
+    };
     const ctx = {
       H, now: Date.now(),
       get snap() { return Nexo.state.snapshot; },
@@ -361,7 +364,8 @@
   function refresh(view, { sync = false } = {}) {
     const section = document.querySelector(`[data-feats="${view}"]`);
     if (!section) return render(view);
-    const token = ++pass;
+    pass += 1;
+    const token = pass;
     const ctx = makeContext();
     const pinned = pins()[view] || [];
     const queue = [...section.querySelectorAll('.feat')];
@@ -433,7 +437,7 @@
     timer = setTimeout(() => {
       timer = null;
       if (Nexo.isIdle?.() || document.hidden) return;
-      const view = Nexo.state.view;
+      const { view } = Nexo.state;
       if (!REG[view]) return;
       lastAt = Date.now();
       refresh(view);

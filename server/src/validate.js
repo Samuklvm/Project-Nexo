@@ -41,7 +41,10 @@ export function redact(value) {
     .replace(/(\/(?:home|Users)\/)[^/\s"'`]+/g, '$1<usuário>')
     .replace(SECRET_PAIR, '$1=<oculto>')
     .replace(SECRET_JSON, '$1$2$1$3"<oculto>"')
-    .replace(/\b(authorization|proxy-authorization|cookie|set-cookie|x-api-key)(\s*:\s*)(?:(Bearer|Basic|Digest|Token) )?[^\r\n]*/gi, (_m, name, sep, scheme) => `${name}${sep}${scheme ? `${scheme} ` : ''}<oculto>`)
+    .replace(/\b(authorization|proxy-authorization|cookie|set-cookie|x-api-key)(\s*:\s*)(?:(Bearer|Basic|Digest|Token) )?[^\r\n]*/gi, (_m, name, sep, scheme) => {
+      const prefix = scheme ? `${scheme} ` : '';
+      return `${name}${sep}${prefix}<oculto>`;
+    })
     .replace(/([?&]code=)[^&\s"']+/gi, '$1<oculto>')
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, 'Bearer <oculto>')
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b/g, '<jwt oculto>')
@@ -73,7 +76,11 @@ export function compareVersions(a, b) {
     const q = y.pre[i];
     const pn = /^\d+$/.test(p);
     const qn = /^\d+$/.test(q);
-    if (pn && qn) { const d = Number(p) - Number(q); if (d) return d; continue; }
+    if (pn && qn) {
+      const d = Number(p) - Number(q);
+      if (d) return d;
+      continue;
+    }
     if (pn !== qn) return pn ? -1 : 1;
     if (p !== q) return p < q ? -1 : 1;
   }

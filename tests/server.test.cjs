@@ -425,6 +425,20 @@ test('e-mail nos erros: o da sessão é confirmado; o informado pelo app fica ma
   assert.equal(env.DB.raw.prepare("SELECT email FROM error_reports WHERE install_id = 'install-email-00001'").get().email, 'pessoa@exemplo.com', 'um não confirmado não troca um confirmado');
 });
 
+test('desmarcar "incluir meu e-mail" tira o e-mail dos relatórios que aquele PC mandou (e só dele)', async () => {
+  const { call, env } = setup();
+  const report = { signature: '0123456789abcdef', message: 'falhou', count: 1 };
+  await call('POST', '/v1/errors', { body: { installId: 'install-esquecer-001', version: '0.11.1', includeEmail: true, contactEmail: 'amiga@exemplo.com', reports: [report] } });
+  await call('POST', '/v1/errors', { body: { installId: 'install-manter-0001', version: '0.11.1', includeEmail: true, contactEmail: 'outra@exemplo.com', reports: [report] } });
+  const answer = await call('POST', '/v1/errors/forget-email', { body: { installId: 'install-esquecer-001' } });
+  assert.equal(answer.status, 200);
+  assert.equal(answer.data.cleared, 1);
+  assert.equal(env.DB.raw.prepare("SELECT email FROM error_reports WHERE install_id = 'install-esquecer-001'").get().email, null);
+  assert.equal(env.DB.raw.prepare("SELECT email FROM error_reports WHERE install_id = 'install-manter-0001'").get().email, 'outra@exemplo.com', 'outro PC não muda');
+  assert.equal(env.DB.raw.prepare("SELECT count FROM error_reports WHERE install_id = 'install-esquecer-001'").get().count, 1, 'o relatório continua, só sem e-mail');
+  assert.equal((await call('POST', '/v1/errors/forget-email', { body: { installId: 'curto' } })).status, 400);
+});
+
 test('versões: pré-versões comparadas campo a campo (A23)', () => {
   const cmp = validate.compareVersions;
   const order = ['0.9.0', '1.0.0-alpha', '1.0.0-alpha.1', '1.0.0-alpha.beta', '1.0.0-beta', '1.0.0-beta.2', '1.0.0-beta.10', '1.0.0-rc.1', '1.0.0', '1.0.1', '1.10.0'];

@@ -78,34 +78,50 @@ ipcMain.handle('install', async (_e, input) => {
   const lnk = path.join(app.getPath('desktop'), PRODUCT + '.lnk');
   const hadLnk = fs.existsSync(lnk);
   installing = true;
-  await setTelemetry(!!o.telemetry);
+  let timer = null;
+  let done = false;
+  let code;
+  // Qualquer falha no meio (o instalador não abrir, por exemplo) solta a trava de "instalando" e o relógio do progresso.
+  try {
+    await setTelemetry(!!o.telemetry);
 
-  const args = ['/S'];
-  if (custom) args.push('/D=' + custom);   // NSIS: /D= precisa ser o último argumento e sem aspas
+    const args = ['/S'];
+    if (custom) args.push('/D=' + custom);   // NSIS: /D= precisa ser o último argumento e sem aspas
 
-  // O NSIS silencioso não informa progresso: estimamos pelo tamanho da pasta de destino.
-  const t0 = Date.now();
-  let pct = 0, busy = false, done = false;
-  const timer = setInterval(async () => {
-    if (busy || done) return;
-    busy = true;
-    const bySize = Math.min(0.95, (await dirSize(target)) / (EXPECTED_MB * 1024 * 1024));
-    const byTime = Math.min(0.12, (Date.now() - t0) / 90000);
-    pct = Math.max(pct, bySize, byTime);
-    if (!done && win && !win.isDestroyed()) {
-      win.setProgressBar(pct);
-      win.webContents.send('progress', Math.floor(pct * 100));
-    }
-    busy = false;
-  }, 600);
+    // O NSIS silencioso não informa progresso: estimamos pelo tamanho da pasta de destino.
+    const t0 = Date.now();
+    let pct = 0, busy = false;
+    timer = setInterval(async () => {
+      if (busy || done) return;
+      busy = true;
+      try {
+        const bySize = Math.min(0.95, (await dirSize(target)) / (EXPECTED_MB * 1024 * 1024));
+        const byTime = Math.min(0.12, (Date.now() - t0) / 90000);
+        pct = Math.max(pct, bySize, byTime);
+        if (!done && win && !win.isDestroyed()) {
+          win.setProgressBar(pct);
+          win.webContents.send('progress', Math.floor(pct * 100));
+        }
+      } finally {
+        busy = false;
+      }
+    }, 600);
 
-  const code = await new Promise(res => {
-    const c = spawn(setup, args, { windowsVerbatimArguments: true, windowsHide: true, stdio: 'ignore' });
-    c.on('error', () => res(-1));
-    c.on('exit', x => res(x ?? -1));
-  });
-  done = true; clearInterval(timer); installing = false;
-  if (win && !win.isDestroyed()) win.setProgressBar(-1);
+    code = await new Promise(res => {
+      try {
+        const c = spawn(setup, args, { windowsVerbatimArguments: true, windowsHide: true, stdio: 'ignore' });
+        c.on('error', () => res(-1));
+        c.on('exit', x => res(x ?? -1));
+      } catch {
+        res(-1);
+      }
+    });
+  } finally {
+    done = true;
+    clearInterval(timer);
+    installing = false;
+    if (win && !win.isDestroyed()) win.setProgressBar(-1);
+  }
   if (code !== 0) return { ok: false, code };
 
   if (!o.desktop && !hadLnk) fs.rmSync(lnk, { force: true });

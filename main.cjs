@@ -2235,9 +2235,10 @@ const accountEmail = async () => { const profile = await readProfile().catch(() 
 let cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: null, fetchImpl: (url, init) => net.fetch(url, init), safeStorage, version: app.getVersion(), errorLog, accountEmail });
 const cloudReady = serverUrl().then(async (url) => {
   cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog, accountEmail });
-  // Quem marcou "Ajudar a melhorar o Nexo" no instalador já respondeu: liga telemetria e erros e o app não pergunta de novo.
+  // Quem marcou "Ajudar a melhorar o Nexo" no instalador já respondeu: liga a telemetria e o app não pergunta de novo.
+  // (Os relatórios de erro são sempre enviados desde a 0.11.1; não dependem dessa caixa.)
   const status = await cloud.status();
-  if (status.configured && !status.asked && (await readSharePreference()).shareWithCreator) await cloud.setOptions({ telemetry: true, errors: true, asked: true });
+  if (status.configured && !status.asked && (await readSharePreference()).shareWithCreator) await cloud.setOptions({ telemetry: true, asked: true });
 }).catch(() => {});
 const withCloud = async () => { await cloudReady; return cloud; };
 /**
@@ -2281,7 +2282,7 @@ async function telemetryHardware() {
 const TELEMETRY_PARTS = ['usage', 'features', 'app', 'perf', 'health', 'settings', 'library', 'lab', 'feats', 'bottleneck'];
 registerIpcHandler('cloud:status', async () => (await withCloud()).status());
 registerIpcHandler('cloud:set', async (_event, options) => {
-  const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
+  const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
   // O Registro acompanha a escolha, para o instalador mostrar a caixa certa numa reinstalação.
   if (typeof options?.telemetry === 'boolean') writeSharePreference(status.telemetry).catch(() => {});
   return status;

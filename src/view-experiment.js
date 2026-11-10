@@ -41,10 +41,12 @@
     const multi = [];
     for (let i = 0; i < REPS; i += 1) {
       ctx.check(); ctx.detail = `${label}: um núcleo, repetição ${i + 1} de ${REPS}`; ctx.render();
+      // eslint-disable-next-line no-await-in-loop -- uma medição por vez: duas ao mesmo tempo disputariam o processador
       single.push((await desktopBridge.runCpuBench({ mode: 'single', ms: BENCH_MS })).mopsPerSec);
     }
     for (let i = 0; i < REPS; i += 1) {
       ctx.check(); ctx.detail = `${label}: vários núcleos, repetição ${i + 1} de ${REPS}`; ctx.render();
+      // eslint-disable-next-line no-await-in-loop -- uma medição por vez: duas ao mesmo tempo disputariam o processador
       multi.push((await desktopBridge.runCpuBench({ mode: 'multi', ms: BENCH_MS })).mopsPerSec);
     }
     return { single, multi, temp: Nexo.store.hottest(Nexo.store.live().slice(-1)[0] || {}) };

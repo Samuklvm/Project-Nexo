@@ -65,8 +65,7 @@
     const plotH = height - pad.top - pad.bottom;
     const { from, to, unit = '' } = options;
     const all = options.series.flatMap((serie) => serie.data.map((point) => point[1])).filter(Number.isFinite);
-    let yMin = options.yMin;
-    let yMax = options.yMax;
+    let { yMin, yMax } = options;
     if (yMin === undefined) {
       const low = all.length ? Math.min(...all) : 30;
       const high = all.length ? Math.max(...all) : 90;

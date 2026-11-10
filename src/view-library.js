@@ -36,7 +36,7 @@
   const titleArt = (game, tag = 'h2') => (game.logo ? `<img class="game-logo" src="${escapeHtml(game.logo)}" alt="${escapeHtml(game.name)}" />` : `<${tag}>${escapeHtml(game.name)}</${tag}>`);
 
   function card(game, index) {
-    const session = sessionsOf(game)[0];
+    const [session] = sessionsOf(game);
     const meta = !game.installed ? (game.fromAccount === 'xbox' ? 'No histórico da conta Xbox' : 'Na sua conta · não instalado') : game.lastPlayed ? `Jogado em ${short(game.lastPlayed)}` : game.sizeBytes ? formatBytes(game.sizeBytes) : game.sourceLabel;
     return `<button class="game-card${game.installed ? '' : ' not-installed'}" type="button" data-game="${escapeHtml(game.id)}" data-css="--i:${Math.min(index, 24)}">
       <div class="cover">${art(game)}<span class="src-badge">${escapeHtml(game.sourceLabel)}</span>${session?.report?.fps ? `<span class="fps-badge">${dec(session.report.fps.avgFps)} FPS</span>` : ''}
@@ -45,7 +45,7 @@
   }
 
   function tile(game) {
-    const session = sessionsOf(game)[0];
+    const [session] = sessionsOf(game);
     return `<button class="shelf-tile" type="button" data-game="${escapeHtml(game.id)}"><div class="tile-art">${wideArt(game)}</div><div class="tile-copy">${game.logo ? `<img class="tile-logo" src="${escapeHtml(game.logo)}" alt="${escapeHtml(game.name)}" />` : `<strong>${escapeHtml(game.name)}</strong>`}
       <span>${[game.lastPlayed ? short(game.lastPlayed) : null, hours(game.playtimeMin), session?.report?.fps ? `${dec(session.report.fps.avgFps)} FPS` : null].filter(Boolean).map(escapeHtml).join(' · ')}</span></div></button>`;
   }
@@ -95,7 +95,7 @@
     }
     artBox.innerHTML = `${hero.hero ? `<img class="hero-wide" src="${escapeHtml(hero.hero)}" alt="" />` : hero.cover ? `<img class="hero-bg" src="${escapeHtml(hero.cover)}" alt="" />` : `<div class="cover-gen hero-bg" data-css="--hue:${Number(hero.hue) || 220}"></div>`}${hero.hero ? '' : `<div class="hero-cover">${art(hero, 'big')}</div>`}`;
     if (hero.hero) Nexo.heroWake?.();
-    const session = sessionsOf(hero)[0];
+    const [session] = sessionsOf(hero);
     setText('lib-hero-eyebrow', hero.lastPlayed ? `Jogado por último · ${when(hero.lastPlayed)}` : hero.sourceLabel);
     document.getElementById('lib-hero-title').innerHTML = titleArt(hero);
     setText('lib-hero-sub', session ? session.report.conclusion : 'Ainda sem sessão gravada. “Jogar e gravar” mede FPS, tempo de quadro e o que limita o jogo neste PC.');
@@ -159,7 +159,7 @@
     const max = Math.max(...points.map((session) => session.report.fps.avgFps)) * 1.15;
     const width = 100 / Math.max(points.length, 8); // no mínimo 8 vagas: uma sessão só não vira um bloco gigante
     const bars = points.map((session, index) => {
-      const fps = session.report.fps;
+      const { fps } = session.report;
       const avg = (fps.avgFps / max) * 100;
       const low = (fps.p1LowFps / max) * 100;
       return `<g><rect x="${index * width + width * 0.18}" y="${100 - avg}" width="${width * 0.64}" height="${avg}" rx="1.2" class="fps-bar"/><rect x="${index * width + width * 0.18}" y="${100 - low}" width="${width * 0.64}" height="0.9" class="fps-low"/><title>${when(session.startedAt)}: ${dec(fps.avgFps)} FPS médios, 1% baixo ${dec(fps.p1LowFps)}</title></g>`;

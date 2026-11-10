@@ -36,7 +36,7 @@
   }
 
   function readValues() {
-    const snapshot = Nexo.state.snapshot;
+    const { snapshot } = Nexo.state;
     if (!snapshot) return;
     const sample = Nexo.store.live().slice(-1)[0] || {};
     const hot = Nexo.store.hottest(sample);
@@ -59,7 +59,10 @@
 
   /* Cor de destaque lida uma vez por mudança de tom ou de cor (ler o estilo a cada quadro forçava recálculo). */
   let toneCache = null;
-  const accent = () => (toneCache ||= getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#5ad7ff');
+  const accent = () => {
+    toneCache ||= getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#5ad7ff';
+    return toneCache;
+  };
   new MutationObserver(() => { toneCache = null; }).observe(document.body, { attributes: true, attributeFilter: ['data-tone', 'style', 'class'] });
   const ring = document.querySelector('.ring-orbit');
 

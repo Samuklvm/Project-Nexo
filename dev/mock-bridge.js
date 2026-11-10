@@ -4,7 +4,13 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
 (function () {
   const MIN = 60000;
   const now = Date.now();
-  const seeded = (() => { let s = 11; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+  const seeded = (() => {
+    let s = 11;
+    return () => {
+      s = (s * 16807) % 2147483647;
+      return s / 2147483647;
+    };
+  })();
   const history = [];
   const brainSeed = NexoBrain.create();
   for (let i = 7 * 24 * 60; i > 0; i -= 1) {
@@ -40,7 +46,7 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
       cpuUsage: wave(22, 14, 5), memoryTotalBytes: 32e9, memoryUsedBytes: 17.6e9, memoryPercent: Math.round(wave(55, 3, 9)),
       networkConnected: true, uptimeSeconds: 3 * 86400 + 4 * 3600, drives, primaryDrive: drives[0], version: '0.5.0',
       temperatureReadings: { acpiSensors: [{ celsius: 41 }], gpuSensors: [{ temperatureCelsius: 47, usagePercent: 9 }] } }; },
-    getHardwareSensors: async () => { const gpu = sensors.devices[1].sensors[0]; gpu.value = window.__mockGameMode ? 94 + Math.random() * 5 : 9; return { ...sensors, collectedAt: Date.now() }; },
+    getHardwareSensors: async () => { const [gpu] = sensors.devices[1].sensors; gpu.value = window.__mockGameMode ? 94 + Math.random() * 5 : 9; return { ...sensors, collectedAt: Date.now() }; },
     getTopProcesses: async () => ({ byCpu: [{ processId: 4120, name: 'chrome', cpuPercent: 31, memoryBytes: 2.1e9, memoryPercent: 6 }, { processId: 912, name: 'Code', cpuPercent: 9, memoryBytes: 1.1e9, memoryPercent: 3 }], byMemory: [{ processId: 4120, name: 'chrome', cpuPercent: 31, memoryBytes: 2.1e9, memoryPercent: 6 }, { processId: 77, name: 'dwm', cpuPercent: 3, memoryBytes: 0.4e9, memoryPercent: 1 }] }),
     scanCleanup: async () => ({ categories: [
       { id: 'temp', label: 'Temporários antigos', description: 'Arquivos com mais de 7 dias na pasta temporária do usuário (sem subpastas).', fileCount: 842, bytes: 1.9e9, destructive: false },
@@ -75,7 +81,7 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     getFpsStatus: async () => ({ available: true, source: 'escolhido', name: 'PresentMon-2.6.0-x64.exe', platform: 'win32' }),
     chooseFps: async () => ({ canceled: false, available: true, source: 'escolhido', name: 'PresentMon-2.6.0-x64.exe', platform: 'win32' }),
     clearFps: async () => ({ available: false, source: null, name: null, platform: 'win32' }),
-    startFps: async () => { fpsFrames = []; clearInterval(fpsTimer); fpsTimer = setInterval(() => { for (let i = 0; i < 75; i++) fpsFrames.push({ ms: i % 40 === 0 ? 75 : 12.5 + Math.random() }); listeners.fps.forEach((cb) => cb({ fps: 72 + Math.random() * 6, worstMs: 20, frames: fpsFrames.length })); }, 1000); return { ok: true }; },
+    startFps: async () => { fpsFrames = []; clearInterval(fpsTimer); fpsTimer = setInterval(() => { for (let i = 0; i < 75; i += 1) fpsFrames.push({ ms: i % 40 === 0 ? 75 : 12.5 + Math.random() }); listeners.fps.forEach((cb) => cb({ fps: 72 + Math.random() * 6, worstMs: 20, frames: fpsFrames.length })); }, 1000); return { ok: true }; },
     stopFps: async () => { clearInterval(fpsTimer); const frames = fpsFrames.map((frame) => ({ ...frame, cpuBusy: 5, gpuBusy: frame.ms * 0.97 })); return { summary: NexoFps.summarize(frames), series: NexoFps.perSecond(frames), frames: frames.length }; },
     onFpsUpdate: (cb) => { listeners.fps.add(cb); return () => listeners.fps.delete(cb); },
     onFpsError: (cb) => { listeners.fpsError.add(cb); return () => listeners.fpsError.delete(cb); },
@@ -105,17 +111,21 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
   const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
   const reboot = { state: null, history: [], listeners: new Set(), busy: false };
   const rebootView = () => {
-    const state = reboot.state;
+    const { state } = reboot;
     const action = state && state.status === 'running' ? NexoRebootTest.nextAction(state, { bootAt: state.armedAt - 1, now: Date.now() }).type : 'idle';
     return { supported: true, state, action, busy: reboot.busy, restartAt: null, permissions: state ? NexoRebootTest.permissionCount(state.order, state.admin) : 0, preview: state && state.boots.length >= 2 ? NexoRebootTest.verdict(state) : null, history: reboot.history };
   };
   async function simulateBoot() {
-    let state = reboot.state;
+    let { state } = reboot;
     if (!state || state.status !== 'running') return;
     reboot.busy = true;
     const config = state.order[state.step];
     const steps = ['Esperando o Windows terminar de ligar (120 s)', 'Esperando o processador sossegar (12%)', 'Medindo o processador em repouso', 'Teste ritmo de quadros (rodada 2 de 3)', 'Teste disco (rodada 3 de 3)'];
-    for (const [index, text] of steps.entries()) { reboot.listeners.forEach((cb) => cb({ stage: 'medindo', text, pct: Math.round((index / steps.length) * 100), step: state.step, steps: state.order.length, config })); await wait(500); }
+    for (const [index, text] of steps.entries()) {
+      reboot.listeners.forEach((cb) => cb({ stage: 'medindo', text, pct: Math.round((index / steps.length) * 100), step: state.step, steps: state.order.length, config }));
+      // eslint-disable-next-line no-await-in-loop -- simula as etapas uma depois da outra, como no teste real
+      await wait(500);
+    }
     const gain = config === 'B' ? 1.06 : 1;
     const jitter = () => 1 + (Math.random() - 0.5) * 0.02;
     const metrics = { desktop: 9.4 / gain * jitter(), boot: 21 * jitter(), idleCpu: 2.4 / gain * jitter(), memUsed: 4.1 / (config === 'B' ? 1.04 : 1) * jitter(), processes: Math.round((config === 'B' ? 196 : 214) * jitter()), services: Math.round((config === 'B' ? 92 : 104) * jitter()) };

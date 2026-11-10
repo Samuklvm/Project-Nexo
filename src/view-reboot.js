@@ -44,7 +44,7 @@
 
   function composeHtml() {
     const list = view.composing;
-    const order = RT.PROTOCOLS[view.options.protocol].order;
+    const { order } = RT.PROTOCOLS[view.options.protocol];
     const admin = list.some((change) => change.admin);
     const permissions = RT.permissionCount(order, admin);
     return `<div class="rt-head"><div><span class="badge risk sm">TESTE COM REINÍCIO</span><h4>Medir ${list.length} ajuste(s) reiniciando o PC</h4>
@@ -60,7 +60,7 @@
   }
 
   function runningHtml(status) {
-    const state = status.state;
+    const { state } = status;
     const progress = view.progress && view.progress.stage === 'medindo' ? view.progress : null;
     const config = state.order[state.step];
     let body = '';
@@ -83,7 +83,7 @@
   }
 
   function finishedHtml(status) {
-    const state = status.state;
+    const { state } = status;
     return `<div class="rt-head"><div><span class="badge risk sm">TESTE COM REINÍCIO</span><h4>${state.status === 'cancelled' ? 'Teste cancelado' : 'Resultado'} · ${state.changes.length} ajuste(s) · ${when(state.finishedAt)}</h4></div><button class="btn ghost sm" type="button" data-rt="hide">Fechar</button></div>
       ${timeline(state)}${state.note ? `<p class="notes-line">${escapeHtml(state.note)}</p>` : ''}
       ${state.result ? verdictCard(state, state.result, true) : '<p class="muted">Sem boots suficientes para um veredito. O PC ficou com os valores de antes.</p>'}`;
@@ -101,7 +101,7 @@
   function render() {
     const box = el();
     if (!box) return;
-    const status = view.status;
+    const { status } = view;
     // Enquanto mede um boot, o painel para de ler o sistema (a própria leitura atrapalharia a medida).
     Nexo.state.rebootMeasuring = Boolean(status?.busy && status?.state?.status === 'running' && view.progress?.stage === 'medindo');
     let html = '';
@@ -145,7 +145,7 @@
       if (name === 'close') { view.composing = null; render(); return; }
       if (name === 'hide') { view.hidden = true; render(); return; }
       if (name === 'start') {
-        const order = RT.PROTOCOLS[view.options.protocol].order;
+        const { order } = RT.PROTOCOLS[view.options.protocol];
         const ok = await Nexo.confirm({ title: 'Começar o teste com reinício?', tone: 'danger', confirmLabel: 'Começar',
           body: `O PC vai reiniciar ${order.length} vezes. Na primeira, nada muda (é a medida de referência). Cancelar a qualquer momento volta ao original.`,
           items: view.composing.map((change) => `${change.label}: ${change.beforeLabel} → ${change.afterLabel}`).slice(0, 12) });

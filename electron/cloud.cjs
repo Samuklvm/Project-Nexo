@@ -1,8 +1,10 @@
 /*
  * Nexo na nuvem (servidor próprio na Cloudflare). Tudo desligado por padrão; cada parte liga separada:
  *  - sincronização: precisa do login Google; cada PC manda a SUA cópia; trazer dados de outro PC é escolha da pessoa;
- *  - relatórios de erro: os do registro local, agrupados; o e-mail vai junto só se a pessoa marcar (e estiver logada);
- *  - telemetria: no máximo uma vez por dia, anônima (código aleatório deste PC, sem e-mail e sem conta).
+ *  - relatórios de erro: SEMPRE ligados (desde a 0.11.1), os do registro local, agrupados, sem nome de usuário nem
+ *    pastas; o e-mail da conta Google vai junto só com "incluir meu e-mail" marcado (dá para desmarcar);
+ *  - telemetria: um resumo por dia (o de hoje, parcial, no máximo a cada 3 h), anônima (código aleatório deste PC,
+ *    sem e-mail e sem conta).
  * O token de sessão do servidor fica cifrado com o cofre do sistema (safeStorage). Sem cofre (Linux sem chaveiro), o
  * token NÃO vai para o disco: vale só enquanto o app estiver aberto (antes era gravado em Base64, que não protege nada).
  * Toda gravação de cloud.json é conferida: se falhar, a tela fica sabendo e uma escolha que liga algo é desfeita.
@@ -14,7 +16,8 @@ const DAY = 24 * 3600 * 1000;
 const REQUEST_TIMEOUT_MS = 20000;
 const PARTIAL_EVERY_MS = 3 * 3600 * 1000;
 const ERROR_BATCHES = 5;
-const DEFAULTS = { sync: false, telemetry: false, errors: false, errorEmail: true, asked: false };
+/* `errors` fica sempre true: os relatórios de erro são obrigatórios desde a 0.11.1 (a chave continua por compatibilidade). */
+const DEFAULTS = { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false };
 
 const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
 /** Endereço do servidor: https, só host (e porta), sem caminho, usuário ou senha — conferido pela API de URL. */
@@ -44,6 +47,16 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     state = { ...DEFAULTS, ...stored };
     for (const key of Object.keys(DEFAULTS)) if (typeof state[key] !== 'boolean') state[key] = DEFAULTS[key];
     let fresh = false;
+    // Relatórios de erro obrigatórios. Quem tinha desligado (antes da 0.11.1) começa a mandar a partir de agora: nada
+    // do tempo em que estava desligado sai. Instalação nova (sem cloud.json) manda desde o começo.
+    if (stored.errors !== true) {
+      const firstRun = !stored.installId;
+      state.errors = true;
+      state.errorsWindowAt = firstRun ? 0 : now();
+      if (!Number.isFinite(state.errorsCursor)) state.errorsCursor = 0;
+      if (!firstRun) state.lastErrorsSentAt = now();
+      fresh = true;
+    }
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(state.installId || ''))) { state.installId = randomId(); fresh = true; }
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(state.deviceId || ''))) { state.deviceId = `pc-${randomId(12)}`; fresh = true; }
     // Códigos novos são gravados na hora: senão o PC ganharia outra identidade a cada abertura do app.
@@ -107,7 +120,7 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       connected: Boolean(token()), email: token() ? state.session.email : null, admin: Boolean(token() && state.session.admin),
       deviceId: state.deviceId, lastSyncAt: state.lastSyncAt || null, lastErrorsAt: state.lastErrorsSentAt || null, lastTelemetryDay: state.lastTelemetryDay || null,
       lastTelemetryAt: state.lastTelemetryAt || null, telemetryProblem: state.telemetryProblem || null, errorsProblem: state.errorsProblem || null,
-      tokenProtected: vault(), saveProblem: lastSaveError
+      tokenProtected: vault(), saveProblem: lastSaveError, forgetEmailPending: state.forgetEmailPending === true
     };
   }
 
@@ -118,18 +131,39 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
   async function setOptions(options = {}) {
     await load();
     const before = { ...state };
-    for (const key of ['telemetry', 'errors', 'errorEmail', 'asked']) if (typeof options[key] === 'boolean') state[key] = options[key];
+    // `errors` não é mais uma escolha (relatórios de erro obrigatórios): um pedido para desligar é ignorado.
+    for (const key of ['telemetry', 'errorEmail', 'asked']) if (typeof options[key] === 'boolean') state[key] = options[key];
     if (typeof options.sync === 'boolean') state.sync = options.sync && Boolean(token());
-    // Cada vez que os erros são LIGADOS começa uma janela nova: só vai o que acontecer daqui para frente — nada do
-    // tempo em que estava desligado (antes o cursor antigo continuava valendo ao religar).
-    if (state.errors && !before.errors) { state.errorsWindowAt = now(); if (!Number.isFinite(state.errorsCursor)) state.errorsCursor = 0; state.lastErrorsSentAt = now(); }
     try { await save(); }
     catch (error) {
-      for (const key of ['telemetry', 'errors', 'errorEmail', 'sync']) state[key] = Boolean(before[key] && state[key]);
-      state.errorsWindowAt = before.errorsWindowAt; state.errorsCursor = before.errorsCursor; state.lastErrorsSentAt = before.lastErrorsSentAt;
+      for (const key of ['telemetry', 'errorEmail', 'sync']) state[key] = Boolean(before[key] && state[key]);
       throw Object.assign(new Error(`Não consegui salvar a sua escolha no disco (${error?.code || 'erro'}). Nada foi ligado; tente de novo.`), { code: 'nao-salvou' });
     }
+    // Desmarcou "incluir meu e-mail": o servidor tira o e-mail dos relatórios que este PC já mandou. Sem conexão agora,
+    // fica pendente e é tentado de novo no próximo envio de erros (ou na próxima vez que mudar a escolha).
+    if (before.errorEmail && !state.errorEmail) {
+      state.forgetEmailPending = true;
+      await save().catch(() => {});
+      await forgetEmail().catch(() => {});
+    }
     return status();
+  }
+
+  /** Pede ao servidor para tirar o e-mail dos relatórios deste PC (pendente até dar certo). */
+  async function forgetEmail() {
+    await load();
+    if (!state.forgetEmailPending || !base) return { skipped: true };
+    try {
+      const data = await request('POST', '/v1/errors/forget-email', { auth: false, body: { installId: state.installId } });
+      state.forgetEmailPending = false;
+      state.errorsProblem = null;
+      await save().catch(() => {});
+      return { cleared: Number(data?.cleared) || 0 };
+    } catch (error) {
+      state.errorsProblem = { at: now(), message: `Não consegui tirar o seu e-mail dos relatórios ainda: ${String(error?.message || error).slice(0, 120)}` };
+      await save().catch(() => {});
+      throw error;
+    }
   }
 
   /** Entra no servidor com o id_token do Google (vindo de um login feito agora). */
@@ -197,6 +231,7 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     if (inflight.has('errors')) return inflight.get('errors');
     const run = (async () => {
       await load();
+      if (state.forgetEmailPending) await forgetEmail().catch(() => {});
       if (!state.errors || !base || !errorLog) return { skipped: true };
       if (!Number.isFinite(state.errorsWindowAt)) state.errorsWindowAt = state.lastErrorsSentAt || now();
       const legacy = Number.isFinite(state.errorsCursor) ? null : (state.lastErrorsSentAt || now());
@@ -225,13 +260,10 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
   }
 
   /**
-   * Resumo de um dia, uma vez por dia: a interface manda cada dia depois que ele acaba (assim chegam as contagens
-   * do dia inteiro). Um dia já enviado não vai de novo; dias com mais de 6 dias ficam de fora.
-   */
-  /**
-   * `partial`: o resumo de HOJE, ainda aberto (no máximo a cada 3 h). Assim quem usa o app só um dia também aparece;
-   * o resumo completo do dia, quando o dia acabar, substitui o parcial no servidor (mesma chave instalação+dia).
-   * Dia no futuro (relógio do PC adiantado) não vira "hoje": fica para quando o dia chegar.
+   * Um resumo por dia. O dia completo sai depois que acaba (assim chegam as contagens do dia inteiro) e não vai de
+   * novo; dias com mais de 6 dias ficam de fora. `partial`: o resumo de HOJE, ainda aberto (no máximo a cada 3 h),
+   * para quem usa o app só um dia também aparecer; o completo, quando o dia acabar, substitui o parcial no servidor
+   * (mesma chave instalação+dia). Dia no futuro (relógio do PC adiantado) não vira "hoje": espera o dia chegar.
    */
   function sendTelemetry(data, day = dayOf(now()), { partial = false } = {}) {
     const key = `tel:${day}:${partial ? 'p' : 'f'}`;

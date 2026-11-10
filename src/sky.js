@@ -73,7 +73,7 @@
     const k = (DENSITY[prefs.density] || 1) * scale;
     const starCount = prefs.twinkle ? Math.round(Math.min(150, Math.max(50, area / 12000)) * k) : 0;
     stars = Array.from({ length: starCount }, () => ({
-      x: Math.random() * width, y: Math.pow(Math.random(), 1.4) * height * 0.8,
+      x: Math.random() * width, y: Math.random() ** 1.4 * height * 0.8,
       r: rand(0.5, 1.5) * ratio, base: rand(0.25, 0.75), speed: rand(0.5, 1.7), phase: Math.random() * Math.PI * 2, bright: Math.random() < 0.08
     }));
     const flyCount = prefs.fireflies ? Math.round(Math.min(34, Math.max(12, area / 55000)) * k) : 0;
@@ -141,7 +141,7 @@
         if (fly.x < -40) fly.x = width + 30; else if (fly.x > width + 40) fly.x = -30;
         if (fly.y < height * 0.25) fly.vy += 0.01 * dt; else if (fly.y > height + 20) fly.y = height * 0.5;
         const phase = ((t + fly.offset) % fly.cycle) / fly.cycle;
-        const glow = Math.pow(Math.max(0, Math.sin(phase * Math.PI)), 2.2);
+        const glow = Math.max(0, Math.sin(phase * Math.PI)) ** 2.2;
         context.globalAlpha = 0.12 + glow * 0.88;
         const s = fly.size * (0.8 + glow * 0.5);
         context.drawImage(fly.sprite, fly.x - s / 2, fly.y - s / 2, s, s);

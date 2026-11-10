@@ -53,7 +53,7 @@
       return `<details class="knob-group"><summary><strong>${escapeHtml(info.label)}</strong><span class="muted">${knobs.length - missing} ajustes · ${optionCount} opções${missing ? ` · ${missing} não valem neste PC` : ''}${tested ? ` · ${tested} testadas` : ''}</span></summary><p class="muted">${escapeHtml(info.hint || '')}</p><ul class="knobs">${knobs.map((knob) => {
         const testedValues = Object.entries(evidence).filter(([key]) => key.startsWith(`${knob.id}=`));
         const blocked = tabu.filter((key) => key.startsWith(`${knob.id}=`));
-        const best = testedValues.filter(([, item]) => item.wins).sort((x, y) => y[1].mean - x[1].mean)[0];
+        const [best] = testedValues.filter(([, item]) => item.wins).sort((x, y) => y[1].mean - x[1].mean);
         const riskTone = knob.risk === 'alto' ? 'risk-alto' : knob.risk === 'moderado' ? 'risk-moderado' : 'risk-baixo';
         const benches = (knob.affects || []).map((bench) => BENCH_SHORT[bench]).filter(Boolean).join(', ');
         return `<li class="${usable(knob) ? '' : 'knob-missing'}"><div><strong>${escapeHtml(knob.label)}</strong><span class="muted">${escapeHtml(knob.what)}</span></div>

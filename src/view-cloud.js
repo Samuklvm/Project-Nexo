@@ -94,6 +94,8 @@
         const data = t.summary(day);
         if (!data) { t.markSent(day); continue; }
         let result;
+        // Um dia por vez, do mais antigo ao mais novo: se um envio falha, os dias seguintes esperam a próxima tentativa.
+        // eslint-disable-next-line no-await-in-loop -- sequencial de propósito (ordem e parada no primeiro erro)
         try { result = await bridge.cloudTelemetry({ day, data }); } catch { return; } // registrado no processo principal
         if (result?.sent || result?.already || result?.old || result?.invalid) t.markSent(day);
         else break;
@@ -264,16 +266,20 @@
   Nexo.on('view', (name) => { if (name === 'settings') refresh(); });
   Nexo.on('account', (account) => {
     view.account = account;
-    bridge.cloudStatus().then((status) => { view.status = status; return status; }).catch(() => view.status).finally(() => {
+    bridge.cloudStatus().catch(() => view.status).then((status) => {
+      view.status = status;
       try { render(); } catch (error) { console.error('[privacidade] não desenhou', error); }
-    });
+      return status;
+    }).catch((error) => console.error('[privacidade] estado da conta', error));
   });
   Nexo.cloudPolicy = POLICY;
-  refresh().finally(() => {
+  // Os envios agendados começam mesmo se a primeira leitura falhar (cada um trata o próprio erro).
+  const startSchedules = () => {
     setTimeout(askOnce, 20000);
     setTimeout(() => { sendTelemetry(); }, 60000);
     setTimeout(() => pushNow(), 90000);
-  });
+  };
+  refresh().finally(startSchedules).catch((error) => console.error('[privacidade] primeira leitura', error));
   // De hora em hora: o dia (em UTC) que acabou sai logo, mesmo com o Nexo aberto o tempo todo na bandeja.
   setInterval(sendTelemetry, 3600 * 1000);
   setInterval(() => pushNow(), 30 * 60 * 1000);

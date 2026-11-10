@@ -235,22 +235,26 @@ test('registro de erros: canais, falha de ação vira aviso e a tela recebe o er
   assert.match(await call('log:export'), /Nexo Device Care/);
 });
 
-test('servidor do Nexo: canais registrados, tudo desligado por padrão e nada sai do PC sem a pessoa ligar', async () => {
+test('servidor do Nexo: canais registrados; sincronização e telemetria desligadas por padrão; relatórios de erro sempre ligados', async () => {
   for (const channel of ['cloud:status', 'cloud:set', 'cloud:connect', 'cloud:disconnect', 'cloud:delete-remote', 'cloud:push', 'cloud:devices', 'cloud:pull', 'cloud:forget', 'cloud:telemetry', 'cloud:send-errors', 'cloud:admin']) assert.ok(handlers.has(channel), `faltou ${channel}`);
   const shipped = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'server.json'), 'utf8')).url;
   assert.match(shipped, /^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/, 'endereço do servidor só por HTTPS');
   const before = netCalls.length;
   const status = await call('cloud:status');
   assert.equal(status.configured, true);
-  for (const key of ['sync', 'telemetry', 'errors', 'connected', 'asked']) assert.equal(status[key], false, key);
+  for (const key of ['sync', 'telemetry', 'connected', 'asked']) assert.equal(status[key], false, key);
+  assert.equal(status.errors, true, 'relatórios de erro são obrigatórios');
   assert.deepEqual(await call('cloud:telemetry', { day: '2026-01-01', data: { usage: { views: { home: 1 } } } }), { skipped: true }, 'telemetria desligada não sai');
-  assert.deepEqual(await call('cloud:send-errors'), { skipped: true }, 'relatórios desligados não saem');
+  assert.equal((await call('cloud:set', { errors: false })).errors, true, 'os relatórios de erro não desligam pela tela');
   assert.equal((await call('cloud:set', { sync: true, extra: 'x' })).sync, false, 'sincronização só liga conectando');
   await assert.rejects(call('cloud:push', 'não é objeto'), /Nada para sincronizar/);
   assert.deepEqual(await call('cloud:push', { perfil: 'jogos' }), { skipped: true });
   await assert.rejects(call('cloud:devices'), /sincronização/);
   await assert.rejects(call('cloud:admin'), /sincronização/);
   assert.equal(netCalls.length, before, 'nenhum pedido ao servidor');
+  // Os relatórios de erro vão para o endereço do servidor (um erro do servidor não derruba nada).
+  const errorsResult = await call('cloud:send-errors').catch((error) => ({ failed: String(error?.message || error) }));
+  assert.ok(!errorsResult?.skipped, `relatórios de erro não ficam parados: ${JSON.stringify(errorsResult)}`);
   // Ligada, a telemetria vai para o endereço do servidor (e um erro do servidor não derruba nada).
   await call('cloud:set', { telemetry: true });
   await assert.rejects(call('cloud:telemetry', { day: new Date().toISOString().slice(0, 10), data: { usage: { views: { home: 1 } } } }), /503/);

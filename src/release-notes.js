@@ -38,8 +38,7 @@
   function fromHtml(html) {
     const blocks = [];
     const pattern = /<(h[1-6]|li|p)\b[^>]*>([\s\S]*?)<\/\1>|<hr\b[^>]*>/gi;
-    let match;
-    while ((match = pattern.exec(html))) {
+    for (const match of String(html).matchAll(pattern)) {
       if (!match[1]) { blocks.push({ type: 'rule' }); continue; }
       const tag = match[1].toLowerCase();
       // Itens que contêm uma lista aninhada: só o texto antes dela.
@@ -73,7 +72,7 @@
     // Só a seção em português, quando as notas são bilíngues.
     const start = blocks.findIndex((block) => block.type === 'heading' && /portugu[eê]s/i.test(block.text));
     if (start >= 0) {
-      const level = blocks[start].level;
+      const { level } = blocks[start];
       const rest = blocks.slice(start + 1);
       const end = rest.findIndex((block) => block.type === 'rule' || (block.type === 'heading' && block.level <= level));
       blocks = end >= 0 ? rest.slice(0, end) : rest;

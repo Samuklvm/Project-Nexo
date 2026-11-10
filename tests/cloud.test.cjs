@@ -41,7 +41,7 @@ function world() {
   };
   const rows = (sql, ...values) => env.DB.raw.prepare(sql).all(...values);
   const client = (dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-')), extra = {}) => createCloud({ fs: fs.promises, path, dir, serverUrl: SERVER, fetchImpl, safeStorage: fakeSafeStorage, version: '0.9.0', platform: 'win32', now: () => clock, ...extra });
-  return { env, calls, tokens, rows, client };
+  return { env, calls, tokens, rows, client, fetchImpl };
 }
 
 test.before(async () => {
@@ -52,17 +52,19 @@ test.before(async () => {
 });
 test.beforeEach(() => google.resetGoogleKeys());
 
-test('nuvem: tudo desligado por padrão e nada sai do PC sem a pessoa ligar', async () => {
-  assert.deepEqual(DEFAULTS, { sync: false, telemetry: false, errors: false, errorEmail: true, asked: false });
+test('nuvem: sincronização e telemetria desligadas por padrão; relatórios de erro sempre ligados', async () => {
+  assert.deepEqual(DEFAULTS, { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false });
   const { client, calls } = world();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
-  const errorLog = { groupsSince: async () => { throw new Error('não deveria ler o registro'); } };
+  const errorLog = { groupsSince: async () => ({ groups: [], cursor: 0, more: false }) };
   const cloud = client(dir, { errorLog });
   const status = await cloud.status();
   assert.equal(status.configured, true);
-  for (const key of ['sync', 'telemetry', 'errors', 'asked', 'connected', 'admin']) assert.equal(status[key], false, key);
+  for (const key of ['sync', 'telemetry', 'asked', 'connected', 'admin']) assert.equal(status[key], false, key);
+  assert.equal(status.errors, true, 'relatórios de erro são obrigatórios');
+  assert.equal((await cloud.setOptions({ errors: false })).errors, true, 'pedido para desligar os erros é ignorado');
   assert.match(status.deviceId, /^pc-[A-Za-z0-9_-]{8,}$/);
-  assert.deepEqual(await cloud.sendErrors(), { skipped: true });
+  assert.deepEqual(await cloud.sendErrors(), { sent: 0 }, 'sem erro no registro, nada sai');
   assert.deepEqual(await cloud.sendTelemetry({ usage: { views: { home: 1 } } }), { skipped: true });
   assert.deepEqual(await cloud.push({ name: 'PC', sections: { perfil: 'jogos' } }), { skipped: true });
   await assert.rejects(cloud.devices(), /sincronização/);
@@ -165,16 +167,13 @@ test('sincronização: desligar encerra a sessão; apagar leva as cópias de tod
   assert.equal(rows('SELECT * FROM users').length, 0);
 });
 
-test('relatórios de erro: só os novos, agrupados, e o e-mail só de quem está conectado e marcou', async () => {
+test('relatórios de erro: agrupados, sem pastas pessoais, e o e-mail só de quem está conectado e marcou', async () => {
   const { client, rows, calls } = world();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
   const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), version: '0.9.0', platform: 'win32', home: 'C:\\Users\\Samuel Antonio', user: 'Samuel Antonio', now: () => clock });
   const cloud = client(dir, { errorLog });
-  errorLog.record({ level: 'erro', source: 'interface', message: 'Erro antigo, de antes de ligar', stack: 'at C:\\Users\\Samuel Antonio\\AppData\\x.js:1:1' });
-  clock += 1000;
-  await cloud.setOptions({ errors: true });
-  assert.deepEqual(await cloud.sendErrors(), { sent: 0 }, 'o que aconteceu antes de ligar não vai');
-  assert.equal(calls.length, 0);
+  assert.deepEqual(await cloud.sendErrors(), { sent: 0 });
+  assert.equal(calls.length, 0, 'registro vazio, nenhum pedido');
 
   clock += 1000;
   errorLog.record({ level: 'erro', source: 'ipc', message: 'Falhou ao ler C:\\Users\\Samuel Antonio\\Desktop\\jogo.exe', stack: 'Error\n    at scan (C:\\Users\\Samuel Antonio\\AppData\\Local\\Programs\\nexo\\main.cjs:10:5)' });
@@ -203,12 +202,12 @@ test('relatórios de erro: só os novos, agrupados, e o e-mail só de quem está
   errorLog.record({ level: 'erro', source: 'principal', message: 'Terceiro erro, sem e-mail marcado' });
   await cloud.sendErrors();
   assert.equal(calls.at(-1).auth, false, 'sem o e-mail, nem a sessão vai junto');
-  assert.equal(rows("SELECT email FROM error_reports WHERE email IS NOT NULL").length, 1);
+  assert.equal(rows("SELECT email FROM error_reports WHERE email IS NOT NULL").length, 0, 'desmarcar tira o e-mail até dos relatórios já mandados');
 
   await cloud.setOptions({ errors: false });
   clock += 1000;
-  errorLog.record({ level: 'erro', source: 'principal', message: 'Depois de desligar' });
-  assert.deepEqual(await cloud.sendErrors(), { skipped: true });
+  errorLog.record({ level: 'erro', source: 'principal', message: 'Depois de tentar desligar' });
+  assert.deepEqual(await cloud.sendErrors(), { sent: 1 }, 'os relatórios de erro não desligam');
 });
 
 test('telemetria: no máximo uma vez por dia, anônima e só com o que a lista permite', async () => {
@@ -263,25 +262,23 @@ test('painel: o link de entrada só sai para o e-mail do criador', async () => {
   assert.match(link.url, /^https:\/\/nexo-api\.exemplo\.workers\.dev\/painel\/entrar\?c=[A-Za-z0-9_-]+$/);
 });
 
-test('A07: religar os relatórios não manda o que aconteceu enquanto estava desligado', async () => {
+test('A07: quem tinha desligado os erros (antes da 0.11.1) só manda o que acontecer depois da atualização', async () => {
   const { client, rows } = world();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
   const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), now: () => clock });
+  // cloud.json de uma versão antiga, com os relatórios desligados.
+  fs.writeFileSync(path.join(dir, 'cloud.json'), JSON.stringify({ sync: false, telemetry: false, errors: false, errorEmail: true, asked: true, installId: 'instalacao-antiga-0001', deviceId: 'pc-antigo-0001' }));
+  errorLog.record({ message: 'T1, enquanto estava desligado' });
+  await errorLog.idle();
+  clock += 1000;
   const cloud = client(dir, { errorLog });
-  await cloud.setOptions({ errors: true });
+  assert.equal((await cloud.status()).errors, true);
   clock += 1000;
-  errorLog.record({ message: 'T1, ligado' });
-  assert.deepEqual(await cloud.sendErrors(), { sent: 1 });
-  await cloud.setOptions({ errors: false });
-  clock += 1000;
-  errorLog.record({ message: 'T2, desligado' });
-  clock += 1000;
-  await cloud.setOptions({ errors: true });
-  clock += 1000;
-  errorLog.record({ message: 'T4, religado' });
+  errorLog.record({ message: 'T2, depois da atualização' });
   assert.deepEqual(await cloud.sendErrors(), { sent: 1 });
   const messages = rows('SELECT message FROM error_groups ORDER BY first_at').map((row) => row.message);
-  assert.deepEqual(messages, ['T1, ligado', 'T4, religado']);
+  assert.deepEqual(messages, ['T2, depois da atualização']);
+  assert.equal(rows('SELECT install_id FROM error_reports')[0].install_id, 'instalacao-antiga-0001', 'a instalação continua a mesma');
 });
 
 test('A03: com mais de 50 erros diferentes, todos chegam (em lotes) e nenhum se repete', async () => {
@@ -308,10 +305,10 @@ test('A08: se não der para gravar a escolha, o que liga é desfeito e a tela fi
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
   const broken = { ...fs.promises, rename: async () => { throw Object.assign(new Error('disco cheio'), { code: 'ENOSPC' }); } };
   const cloud = client(dir, { fs: broken });
-  await assert.rejects(cloud.setOptions({ telemetry: true, errors: true }), (error) => error.code === 'nao-salvou' && /ENOSPC/.test(error.message));
+  await assert.rejects(cloud.setOptions({ telemetry: true }), (error) => error.code === 'nao-salvou' && /ENOSPC/.test(error.message));
   const status = await cloud.status();
   assert.equal(status.telemetry, false);
-  assert.equal(status.errors, false);
+  assert.equal(status.errors, true, 'os relatórios de erro não dependem da escolha');
   assert.equal(status.saveProblem.code, 'ENOSPC');
   // Desligar continua desligado mesmo sem gravar (o lado seguro).
   const ok = client(dir);
@@ -390,6 +387,37 @@ test('erros: com a conta Google entrada no app (sem sincronizar), o e-mail vai c
   errorLog.record({ message: 'outro erro da amiga' });
   await cloud.sendErrors();
   assert.equal(calls.at(-1).body.contactEmail, undefined, 'sem marcar, o e-mail não sai do PC');
+  assert.ok(calls.some((call) => call.url.endsWith('/v1/errors/forget-email') && call.body.installId), 'desmarcar pede para tirar o e-mail');
+  assert.ok(rows('SELECT email FROM error_reports').every((row) => row.email === null), 'e o e-mail some dos relatórios já mandados');
+  assert.equal((await cloud.status()).forgetEmailPending, false);
+});
+
+test('desmarcar o e-mail sem conexão: fica pendente e vai no próximo envio de erros', async () => {
+  const { client, rows, calls, fetchImpl } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), now: () => clock });
+  let offline = false;
+  const base = client(dir, { errorLog, accountEmail: async () => 'amiga@exemplo.com' });
+  await base.setOptions({ errors: true });
+  clock += 1000;
+  errorLog.record({ message: 'erro com e-mail' });
+  await base.sendErrors();
+  assert.equal(rows('SELECT email FROM error_reports')[0].email, 'amiga@exemplo.com');
+  // Mesmo diretório (mesmo cloud.json), mas a rede cai na hora de desmarcar.
+  const flaky = createCloud({ fs: fs.promises, path, dir, serverUrl: SERVER, version: '0.9.0', platform: 'win32', now: () => clock, errorLog, accountEmail: async () => 'amiga@exemplo.com',
+    fetchImpl: async (url, init) => {
+      if (offline) throw new Error('sem rede');
+      return fetchImpl(url, init);
+    } });
+  offline = true;
+  await flaky.setOptions({ errorEmail: false });
+  assert.equal((await flaky.status()).forgetEmailPending, true);
+  assert.equal(rows('SELECT email FROM error_reports')[0].email, 'amiga@exemplo.com');
+  offline = false;
+  await flaky.sendErrors();
+  assert.equal(rows('SELECT email FROM error_reports')[0].email, null);
+  assert.equal((await flaky.status()).forgetEmailPending, false);
+  assert.ok(calls.length > 0);
 });
 
 test('fitTelemetry: corta do menos importante até caber', () => {

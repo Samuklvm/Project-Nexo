@@ -194,13 +194,19 @@
     capturing = true;
     lastCaptureAt = Date.now();
     const startedIn = generation;
-    desktopBridge.getTopProcesses().then((result) => {
-      if (startedIn !== generation) return null; // o aprendizado foi apagado enquanto a captura rodava
-      Nexo.state.processes = result;
-      lastProcesses = { at: Date.now(), cpu: pickName(result.byCpu, 'cpuPercent', 5), memory: pickName(result.byMemory, 'memoryBytes', 0) };
-      Nexo.emit('processes', result);
-      return result;
-    }).catch(() => null).finally(() => { capturing = false; });
+    const capture = async () => {
+      try {
+        const result = await desktopBridge.getTopProcesses();
+        if (startedIn !== generation) return; // o aprendizado foi apagado enquanto a captura rodava
+        Nexo.state.processes = result;
+        lastProcesses = { at: Date.now(), cpu: pickName(result.byCpu, 'cpuPercent', 5), memory: pickName(result.byMemory, 'memoryBytes', 0) };
+        Nexo.emit('processes', result);
+      } finally {
+        capturing = false;
+      }
+    };
+    // A captura é só uma pista para a análise: se falhar, a próxima lentidão tenta de novo.
+    capture().catch((error) => console.warn('[processos] captura falhou', error));
   }
 
   function commitMinute(now) {

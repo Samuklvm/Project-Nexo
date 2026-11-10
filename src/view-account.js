@@ -76,7 +76,7 @@
     const c = connections;
     const grid = document.getElementById('conn-grid');
     if (!c) { grid.innerHTML = '<p class="muted">Disponível no aplicativo desktop.</p>'; return; }
-    const steam = c.steam;
+    const { steam } = c;
     // "Entrar com a Steam": login oficial da Steam no navegador; jogos da conta e conquistas vêm pelo servidor do Nexo.
     const steamLogin = steam.loginAvailable !== false ? `<button class="btn primary sm steam-in" type="button" data-conn="steam-in"><svg><use href="#i-game"/></svg>Entrar com a Steam</button>` : '';
     const keyBlock = `<details class="steam-key"${steam.hasKey ? ' open' : ''}><summary>Usar a minha própria chave da Steam Web API (opcional)</summary>
@@ -93,7 +93,7 @@
         : `<p class="muted">Entre com a sua conta: abre a página oficial da Steam no navegador e o Nexo recebe só o ID da conta, nunca a senha. Traz os jogos da conta, o tempo de jogo e as conquistas, mesmo sem a Steam instalada aqui.</p>
           ${steamLogin ? `<div class="btn-row">${steamLogin}</div>` : ''}
           ${steam.installed && steam.detected.length ? `<p class="muted">Ou use uma conta que já entrou na Steam deste PC (só o que está neste PC):</p><div class="conn-pick">${steam.detected.map((user) => `<button type="button" data-steam="${escapeHtml(user.steamId)}">${avatar(user.avatar)}<span><b>${escapeHtml(user.personaName)}</b><small>${user.mostRecent ? 'conta atual' : 'outra conta'}</small></span></button>`).join('')}</div>` : ''}`;
-    const xbox = c.xbox;
+    const { xbox } = c;
     const xboxBody = !xbox.configured ? '<p class="muted">O login com a conta Xbox chega numa próxima versão.</p>'
       : xbox.connected ? `<div class="conn-who">${avatar(xbox.avatar)}<div><b>${escapeHtml(xbox.gamertag)}</b><small>${xbox.titles} títulos no histórico · artes oficiais do Xbox nas capas</small></div></div><div class="btn-row"><button class="btn sm" type="button" data-conn="xbox-in">Atualizar</button><button class="btn sm ghost" type="button" data-conn="xbox-off">Desconectar</button></div>`
       : '<p class="muted">Gamertag, foto e o histórico de jogos com as artes oficiais de cada título. O login acontece no navegador; o Nexo não guarda tokens.</p><button class="btn primary sm" type="button" data-conn="xbox-in">Entrar com a conta Microsoft</button>';

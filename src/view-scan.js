@@ -22,7 +22,7 @@
   }
 
   function render() {
-    const scan = state.scan;
+    const { scan } = state;
     if (!scan) return;
     if (!scan.supported) { body().innerHTML = '<p class="muted">O Raio-X do registro existe só no Windows.</p>'; return; }
     const usable = scan.items.filter((item) => item.available);

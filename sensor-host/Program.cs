@@ -24,6 +24,7 @@ internal static class Program
     internal const string PipeName = "NexoSensors";
     internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>Escolhe o modo pelo argumento: versão, remoção do serviço, serviço do Windows ou processo filho do app.</summary>
     private static int Main(string[] args)
     {
         if (args.Contains("--version"))
@@ -43,11 +44,11 @@ internal static class Program
         return RunChild();
     }
 
+    /// <summary>Modo filho: cada linha recebida no stdin (o conteúdo não importa) vira uma leitura em JSON no stdout.</summary>
     private static int RunChild()
     {
         using var reader = new SensorReader("child");
-        string? line;
-        while ((line = Console.ReadLine()) is not null)
+        while (Console.ReadLine() is not null)
             Console.WriteLine(reader.ReadJson());
         return 0;
     }
@@ -56,6 +57,10 @@ internal static class Program
 /** Desinstalação (chamada elevada pelo desinstalador do Nexo): serviço, pasta protegida, registro e o PawnIO se foi o Nexo que instalou. */
 internal static class ServiceRemoval
 {
+    /// <summary>
+    /// Remove o serviço, a pasta protegida, a chave do Registro e o PawnIO (só se foi o Nexo que instalou).
+    /// Cada passo é de melhor esforço: a desinstalação não pode parar no meio porque um item já não existe.
+    /// </summary>
     public static int Run()
     {
         string dest = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Nexo Device Care", "SensorService");
@@ -68,38 +73,96 @@ internal static class ServiceRemoval
                 service.WaitForStatus(System.ServiceProcess.ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
             }
         }
-        catch { }
-        Exec("sc.exe", $"delete {Program.PipeName}");
-        WaitForServiceProcess(Path.Combine(dest, "host", "Nexo.SensorHost.exe"));
-        using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\NexoDeviceCare\SensorService"))
+        catch (Exception)
         {
+            // Serviço ausente ou já parado: segue para o "sc delete", que resolve os dois casos.
+        }
+        // Caminho completo da pasta do sistema: este processo roda como administrador, então nada vem do PATH.
+        Exec(Path.Combine(Environment.SystemDirectory, "sc.exe"), $"delete {Program.PipeName}");
+        WaitForServiceProcess(Path.Combine(dest, "host", "Nexo.SensorHost.exe"));
+        BestEffort(() =>
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\NexoDeviceCare\SensorService");
             bool byNexo = key?.GetValue("PawnIOByNexo") is int flag && flag == 1;
             string setup = Path.Combine(dest, "PawnIO_setup.exe");
             if (byNexo && File.Exists(setup)) Exec(setup, "-uninstall -silent", 120000);
-        }
-        try { if (Directory.Exists(dest)) Directory.Delete(dest, true); } catch { }
-        try { string parent = Path.GetDirectoryName(dest)!; if (Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any()) Directory.Delete(parent); } catch { }
-        try { Microsoft.Win32.Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\NexoDeviceCare", false); } catch { }
+        });
+        BestEffort(() =>
+        {
+            if (Directory.Exists(dest)) Directory.Delete(dest, true);
+        });
+        BestEffort(() =>
+        {
+            string parent = Path.GetDirectoryName(dest)!;
+            if (Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any()) Directory.Delete(parent);
+        });
+        BestEffort(() => Microsoft.Win32.Registry.LocalMachine.DeleteSubKeyTree(@"SOFTWARE\NexoDeviceCare", false));
         return 0;
     }
 
-    /** O processo do serviço segura os arquivos da pasta protegida; espera ele sair (e encerra se passar do tempo). */
+    /// <summary>Roda um passo de limpeza que pode falhar sem impedir os outros (arquivo em uso, pasta já apagada).</summary>
+    private static void BestEffort(Action step)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception)
+        {
+            // O que sobrar fica para o Windows remover no próximo reinício; a desinstalação continua.
+        }
+    }
+
+    /// <summary>O processo do serviço segura os arquivos da pasta protegida; espera ele sair (e encerra se passar do tempo).</summary>
     private static void WaitForServiceProcess(string exePath)
     {
-        int self = Environment.ProcessId;
         for (int attempt = 0; attempt < 40; attempt++)
         {
-            var left = System.Diagnostics.Process.GetProcessesByName("Nexo.SensorHost").Where(process =>
-            {
-                try { return process.Id != self && string.Equals(process.MainModule?.FileName, exePath, StringComparison.OrdinalIgnoreCase); }
-                catch { return false; }
-            }).ToList();
+            List<System.Diagnostics.Process> left = ServiceProcesses(exePath);
             if (left.Count == 0) return;
-            if (attempt == 30) foreach (var process in left) { try { process.Kill(); } catch { } }
+            if (attempt == 30) KillAll(left);
             Thread.Sleep(250);
         }
     }
 
+    /// <summary>Processos do coletor que rodam a partir da pasta do serviço (nunca este próprio processo).</summary>
+    private static List<System.Diagnostics.Process> ServiceProcesses(string exePath)
+    {
+        int self = Environment.ProcessId;
+        return System.Diagnostics.Process.GetProcessesByName("Nexo.SensorHost").Where(process => process.Id != self && RunsFrom(process, exePath)).ToList();
+    }
+
+    /// <summary>Compara o executável do processo; um processo que já saiu ou sem acesso conta como "não é o serviço".</summary>
+    private static bool RunsFrom(System.Diagnostics.Process process, string exePath)
+    {
+        try
+        {
+            return string.Equals(process.MainModule?.FileName, exePath, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            // Processo que já saiu ou de outro usuário (sem acesso ao módulo): não é o coletor desta pasta.
+            return false;
+        }
+    }
+
+    /// <summary>Encerra os processos que não saíram sozinhos; um que já saiu entre a leitura e o Kill é ignorado.</summary>
+    private static void KillAll(IEnumerable<System.Diagnostics.Process> processes)
+    {
+        foreach (var process in processes)
+        {
+            try
+            {
+                process.Kill();
+            }
+            catch (Exception)
+            {
+                // Já saiu ou não pode ser encerrado: a espera continua e a pasta é apagada no que der.
+            }
+        }
+    }
+
+    /// <summary>Roda uma ferramenta do sistema sem janela e espera até o tempo limite.</summary>
     private static void Exec(string file, string arguments, int timeoutMs = 20000)
     {
         try
@@ -107,7 +170,10 @@ internal static class ServiceRemoval
             using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file, arguments) { CreateNoWindow = true, UseShellExecute = false });
             process?.WaitForExit(timeoutMs);
         }
-        catch { }
+        catch (Exception)
+        {
+            // Ferramenta ausente ou bloqueada: o passo é de melhor esforço e a desinstalação segue.
+        }
     }
 }
 
@@ -122,6 +188,7 @@ internal sealed class SensorReader : IDisposable
 
     public SensorReader(string source) => _source = source;
 
+    /// <summary>Uma leitura de todos os sensores em JSON (reaproveitada por até 0,9 s; um erro vira uma leitura com status "error").</summary>
     public string ReadJson()
     {
         lock (_gate)
@@ -134,7 +201,7 @@ internal sealed class SensorReader : IDisposable
             }
             catch (Exception error)
             {
-                _cached = JsonSerializer.Serialize(new SensorSnapshot("error", _source, Elevated(), DateTimeOffset.UtcNow, [], 0,
+                _cached = JsonSerializer.Serialize(new SensorSnapshot("error", _source, RunningElevated(), DateTimeOffset.UtcNow, [], 0,
                     [new SensorIssue("Coletor", CleanError(error.Message))]), Program.JsonOptions);
             }
             _cachedAt = DateTime.UtcNow;
@@ -154,7 +221,8 @@ internal sealed class SensorReader : IDisposable
         catch { computer.Close(); throw; }
     }
 
-    private static bool Elevated()
+    /// <summary>Se o coletor roda como administrador ou sistema (sem isso, parte dos sensores fica sem acesso).</summary>
+    private static bool RunningElevated()
     {
         using WindowsIdentity identity = WindowsIdentity.GetCurrent();
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator) || identity.IsSystem;
@@ -165,9 +233,10 @@ internal sealed class SensorReader : IDisposable
         var devices = new List<HardwareEntry>();
         var issues = new List<SensorIssue>();
         foreach (IHardware hardware in computer.Hardware) ReadHardware(hardware, [], devices, issues);
-        return new SensorSnapshot("ready", _source, Elevated(), DateTimeOffset.UtcNow, devices, devices.Sum(device => device.Sensors.Count), issues);
+        return new SensorSnapshot("ready", _source, RunningElevated(), DateTimeOffset.UtcNow, devices, devices.Sum(device => device.Sensors.Count), issues);
     }
 
+    /// <summary>Lê um componente e os subcomponentes dele; uma falha num componente vira um aviso e não para os outros.</summary>
     private static void ReadHardware(IHardware hardware, IReadOnlyList<string> parentPath, ICollection<HardwareEntry> devices, ICollection<SensorIssue> issues)
     {
         string safeName = CleanName(hardware.Name);
@@ -221,6 +290,7 @@ internal sealed class PipeService : BackgroundService
 {
     private readonly SensorReader _reader = new("service");
 
+    /// <summary>Aceita conexões no pipe local até o serviço parar; cada cliente é atendido em paralelo (até 4).</summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var clients = new List<Task>();
@@ -249,6 +319,7 @@ internal sealed class PipeService : BackgroundService
         return security;
     }
 
+    /// <summary>Atende um cliente: cada linha recebida (até 256 caracteres, conteúdo ignorado) recebe uma leitura.</summary>
     private async Task Serve(NamedPipeServerStream pipe, CancellationToken token)
     {
         await using (pipe)
@@ -269,8 +340,14 @@ internal sealed class PipeService : BackgroundService
                     await writer.WriteLineAsync(_reader.ReadJson().AsMemory(), token);
                 }
             }
-            catch (Exception) when (token.IsCancellationRequested || !pipe.IsConnected) { }
-            catch (IOException) { }
+            catch (Exception) when (token.IsCancellationRequested || !pipe.IsConnected)
+            {
+                // O serviço está parando ou o app desconectou: fim normal da conversa com este cliente.
+            }
+            catch (IOException)
+            {
+                // Pipe quebrado pelo outro lado: o cliente reconecta quando precisar de outra leitura.
+            }
         }
     }
 }

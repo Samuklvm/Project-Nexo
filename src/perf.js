@@ -6,7 +6,7 @@
  */
 (function () {
   const bridge = desktopBridge;
-  const body = document.body;
+  const { body } = document;
   const update = () => {
     const idle = document.hidden || !document.hasFocus();
     if (idle === body.classList.contains('idle')) return;

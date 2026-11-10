@@ -196,7 +196,7 @@
   function featsSummary(b) {
     const f = b.feats || { empty: {}, seen: {}, crashed: {} };
     const perView = {};
-    for (const id of Object.keys(f.seen)) { const view = id.split('.')[0]; const row = perView[view] || (perView[view] = [0, 0]); row[0] += 1; if (f.empty[id]) row[1] += 1; }
+    for (const id of Object.keys(f.seen)) { const [view] = id.split('.'); const row = perView[view] || (perView[view] = [0, 0]); row[0] += 1; if (f.empty[id]) row[1] += 1; }
     const sources = Object.fromEntries(Object.entries(b.sources || {}).map(([name, [ok, fail, ms]]) => [name, { ok, fail, ms: ok + fail ? Math.round(ms / (ok + fail)) : 0 }]));
     return { seen: Object.keys(f.seen).length, perView: Object.fromEntries(Object.entries(perView).map(([v, [seen, emptyN]]) => [v, { seen, empty: emptyN }])),
       empty: Object.keys(f.empty).slice(0, 40), crashed: Object.keys(f.crashed).slice(0, 40), sources };

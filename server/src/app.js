@@ -74,7 +74,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   async function limit(env, key, max) { if (!await allow(env, key, max)) throw new HttpError(429, 'Muitos pedidos hoje. Tente amanhã.'); }
   const steam = createSteam({ fetchImpl, now, limit, json });
   // O IP nunca é guardado: só um resumo com o segredo do servidor (sem ele, não dá para voltar ao IP), apagado em um dia.
-  const ipKey = async (request, env) => `ip:${(await sha256Hex(`${env.SESSION_SECRET}|${request.headers.get('cf-connecting-ip') || 'local'}`)).slice(0, 20)}`;
+  const ipKey = async (request, env) => {
+    const mixed = await sha256Hex(`${env.SESSION_SECRET}|${request.headers.get('cf-connecting-ip') || 'local'}`);
+    return `ip:${mixed.slice(0, 20)}`;
+  };
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -106,7 +109,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const body = await readJson(request);
     const deviceId = RE.deviceId.test(String(body.deviceId || '')) ? body.deviceId : null;
     const google = await verifyGoogleIdToken(body.idToken, { clientIds: env.GOOGLE_CLIENT_IDS, fetchImpl, now: now() });
-    const uid = `u_${(await sha256Hex(`google:${google.sub}`)).slice(0, 32)}`;
+    const subjectHash = await sha256Hex(`google:${google.sub}`);
+    const uid = `u_${subjectHash.slice(0, 32)}`;
     const at = now();
     await env.DB.prepare('INSERT INTO users (uid, google_sub, email, name, created_at, last_seen) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(uid) DO UPDATE SET email = excluded.email, name = excluded.name, last_seen = excluded.last_seen')
       .bind(uid, google.sub, google.email, google.name, at, at).run();
@@ -200,6 +204,19 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   }
 
   /* ---------- Erros ---------- */
+  /**
+   * Tira o e-mail dos relatórios que ESTE PC mandou (quem desmarcou "incluir meu e-mail"). Vale também para o e-mail
+   * não confirmado, de quem nunca ligou a sincronização: o código da instalação só existe nos dados do app daquele PC.
+   */
+  async function forgetErrorEmail(request, env) {
+    const body = await readJson(request);
+    const installId = String(body.installId || '');
+    if (!RE.installId.test(installId)) throw new HttpError(400, 'Instalação inválida.');
+    await limit(env, `errmail:${installId}`, 20);
+    const result = await env.DB.prepare('UPDATE error_reports SET email = NULL, email_verified = 1 WHERE install_id = ? AND email IS NOT NULL').bind(installId).run();
+    return json({ ok: true, cleared: result?.meta?.changes ?? 0 });
+  }
+
   async function postErrors(request, env) {
     const body = await readJson(request);
     const installId = String(body.installId || '');
@@ -331,10 +348,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const admin = await adminSession(request, env);
     if (!admin) throw new HttpError(401, 'Abra o painel pelo Nexo.');
     const need = (action) => { if (!admin.can(action)) throw new HttpError(403, 'O seu papel no painel não permite isso.'); };
-    if (request.method !== 'GET') {
-      // Contra CSRF: mesmo site e um cabeçalho que formulário de outro site não consegue mandar.
-      if (request.headers.get('x-nexo-painel') !== '1' || (request.headers.get('origin') && request.headers.get('origin') !== url.origin)) throw new HttpError(403, 'Pedido recusado.');
-    }
+    // Contra CSRF (pedidos que mudam algo): mesmo site e um cabeçalho que formulário de outro site não consegue mandar.
+    const origin = request.headers.get('origin');
+    const crossSite = request.headers.get('x-nexo-painel') !== '1' || (origin && origin !== url.origin);
+    if (request.method !== 'GET' && crossSite) throw new HttpError(403, 'Pedido recusado.');
     if (rest === 'resumo' && request.method === 'GET') {
       const since7 = now() - 7 * DAY;
       const [open7, reporters, active7, active30, versions] = await Promise.all([
@@ -478,7 +495,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     let end = url.pathname.length;
     while (end > 1 && url.pathname[end - 1] === '/') end -= 1; // tira as barras do fim sem regex
     const path = url.pathname.slice(0, end) || '/';
-    const method = request.method;
+    const { method } = request;
     if (method === 'OPTIONS') return new Response(null, { status: 204, headers: SECURITY_HEADERS });
     if (path === '/' || path === '/health') return json({ ok: true, service: 'nexo-api', version: SERVER_VERSION });
     if (path === '/v1/auth/google' && method === 'POST') return login(request, env);
@@ -491,6 +508,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     if (device && method === 'GET') return getDevice(request, env, decodeURIComponent(device[1]), url);
     if (device && method === 'DELETE') return deleteDevice(request, env, decodeURIComponent(device[1]));
     if (path === '/v1/errors' && method === 'POST') return postErrors(request, env);
+    if (path === '/v1/errors/forget-email' && method === 'POST') return forgetErrorEmail(request, env);
     if (path === '/v1/telemetry' && method === 'POST') return postTelemetry(request, env);
     if (path === '/v1/admin/link' && method === 'POST') return adminLink(request, env, url);
     if (path === '/v1/tools/errors' && method === 'GET') return toolErrors(request, env, url);

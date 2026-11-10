@@ -52,7 +52,8 @@
     const { grid, max } = Nexo.store.brain.habitGrid(habitMetric);
     const rgb = habitMetric === 'cpu' ? '90, 215, 255' : '160, 140, 255';
     const now = new Date();
-    let html = '<span></span>' + Array.from({ length: 24 }, (_, hour) => `<span class="h-hour">${hour % 3 === 0 ? hour : ''}</span>`).join('');
+    const hourLabel = (_, hour) => `<span class="h-hour">${hour % 3 === 0 ? hour : ''}</span>`;
+    let html = `<span></span>${Array.from({ length: 24 }, hourLabel).join('')}`;
     for (const day of DAY_ORDER) {
       html += `<span class="h-label">${DAY_SHORT[day]}</span>`;
       for (let hour = 0; hour < 24; hour += 1) {
