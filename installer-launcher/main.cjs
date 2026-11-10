@@ -37,7 +37,7 @@ function createWindow() {
   win.once('ready-to-show', () => win.show());
   win.loadFile('index.html');
 }
-app.whenReady().then(createWindow);
+app.whenReady().then(createWindow).catch(() => app.quit()); // sem janela não há instalação: fecha em vez de ficar aberto à toa
 app.on('window-all-closed', () => app.quit());
 
 async function dirSize(dir) {
@@ -83,7 +83,7 @@ ipcMain.handle('install', async (_e, input) => {
   let code;
   // Qualquer falha no meio (o instalador não abrir, por exemplo) solta a trava de "instalando" e o relógio do progresso.
   try {
-    await setTelemetry(!!o.telemetry);
+    await setTelemetry(o.telemetry === true); // só um "sim" explícito liga
 
     const args = ['/S'];
     if (custom) args.push('/D=' + custom);   // NSIS: /D= precisa ser o último argumento e sem aspas

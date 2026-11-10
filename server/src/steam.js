@@ -74,7 +74,8 @@ export function createSteam({ fetchImpl, now, limit, json }) {
     } catch { return tella('A Steam não respondeu agora.', 502); }
     if (!/^is_valid\s*:\s*true\s*$/m.test(verdict)) return tella('A Steam não confirmou o login.');
     const pass = await signToken({ typ: 'steam', steam: match[1], exp: now() + PASS_DAYS * DAY }, env.SESSION_SECRET);
-    const target = `http://127.0.0.1:${port}/steam?${new URLSearchParams({ state, pass })}`;
+    // Volta para o servidor local do próprio app neste PC (127.0.0.1), que só existe em http durante o login.
+    const target = `http://127.0.0.1:${port}/steam?${new URLSearchParams({ state, pass })}`; // NOSONAR
     return new Response(null, { status: 302, headers: { location: target, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
   }
 

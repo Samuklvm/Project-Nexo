@@ -43,7 +43,7 @@
     finally { setButtonBusy(button, false); renderStats(); renderGrid(); }
   }
 
-  document.getElementById('atlas-status').addEventListener('click', (event) => { const chip = event.target.closest('[data-atlas]'); if (!chip) return; state.status = chip.dataset.atlas; renderStats(); renderGrid(); });
+  document.getElementById('atlas-status').addEventListener('click', (event) => { const chip = event.target.closest('[data-atlas]'); if (!chip) { return; } state.status = chip.dataset.atlas; renderStats(); renderGrid(); });
   document.getElementById('atlas-search').addEventListener('input', (event) => { state.query = event.target.value.trim(); renderGrid(); });
   document.getElementById('atlas-refresh').addEventListener('click', check);
   document.getElementById('atlas-grid').addEventListener('click', (event) => {

@@ -59,7 +59,10 @@
     if (Nexo.isIdle?.() && !Nexo.sessions?.isRecording?.() && Date.now() - lastSensorsAt < IDLE_SNAPSHOT_MS) return;
     lastSensorsAt = Date.now();
     await Nexo.refreshSensors?.();
-  }, () => (Nexo.isIdle?.() && !Nexo.sessions?.isRecording?.() ? 5000 : Nexo.state.sensors?.source === 'service' ? rate().sensors : rate().slowSensors));
+  }, () => {
+    if (Nexo.isIdle?.() && !Nexo.sessions?.isRecording?.()) return 5000;
+    return Nexo.state.sensors?.source === 'service' ? rate().sensors : rate().slowSensors;
+  });
   Nexo.on('learned', () => Nexo.refreshHome());
 
   // No Linux não há assistente de instalação com os avisos: o próprio app mostra na primeira abertura.
@@ -70,11 +73,11 @@
       const dialog = Nexo.dialog({ title: 'Bem-vindo ao Nexo no Linux', wide: true, dismissible: false,
         html: `<ul>
           <li>Os indicadores e as recomendações são heurísticos: não garantem ganho de desempenho nem substituem avaliação técnica.</li>
-          <li>Tudo o que o Nexo aprende fica neste computador (em ~/.config/Nexo Device Care). Ele consulta o GitHub para atualizações e só usa a internet para os recursos opcionais que você ligar (capas e dados das lojas, contas e login com Google).</li>
+          <li>Tudo o que o Nexo aprende fica neste computador (em ~/.config/Nexo Device Care). Ele consulta o GitHub para atualizações, manda os relatórios de erro ao servidor do Nexo e, fora isso, só usa a internet para os recursos opcionais que você ligar (capas e dados das lojas, contas, login com Google, telemetria e sincronização).</li>
           <li>Nada roda como root. O TRIM e a remoção do pacote .deb pedem a sua senha pela janela do próprio sistema (pkexec).</li>
           <li>A Otimização extrema (beta) é arriscada: no Linux ela testa os perfis de energia do power-profiles-daemon e volta ao original no fim.</li>
           <li>Para medir FPS, o Nexo lê o log do MangoHud; para detectar o jogo em primeiro plano, usa o xprop (X11 e XWayland).</li>
-          <li>O compartilhamento opcional com o criador começa desativado, e nesta versão o Nexo não envia telemetria.</li></ul>`,
+          <li>Os relatórios de erro vão sempre ao servidor do Nexo: os erros do app e os últimos passos antes de cada um, sem o seu nome de usuário, as suas pastas ou o que você digitou. Com a conta Google entrada, o e-mail vai junto para o criador avisar quando corrigir (dá para tirar em Ajustes). A telemetria (um resumo anônimo por dia) e a sincronização são opcionais e começam desligadas.</li></ul>`,
         actions: [{ id: 'policy', label: 'Política completa', keepOpen: true, onClick: () => desktopBridge.openLink?.('privacy') }, { id: 'ok', label: 'Entendi', tone: 'primary' }] });
       dialog.done.then(() => { try { localStorage.setItem('nexo-linux-notice', '1'); } catch { /* sem armazenamento */ } return true; }).catch(() => {});
     }, 900);

@@ -82,4 +82,4 @@ async function main() {
   console.log('%d erro(s) aberto(s): %d nova(s), %d atualizada(s), %d fechada(s).', counts.open, counts.create, counts.update, counts.close);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main().catch((error) => { console.error(error.message); process.exit(1); });
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((error) => { console.error('%s', String(error?.message || error).replace(/[\r\n]+/g, ' ').slice(0, 300)); process.exit(1); }); // uma linha só no log

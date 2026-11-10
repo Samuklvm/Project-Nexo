@@ -136,7 +136,7 @@ function createWatcher({ spawnFn = spawn, platform = process.platform, match, al
     catch (error) { child = null; state = 'falhou'; try { onProblem('nao-iniciou', error?.message || String(error)); } catch { /* registro indisponível */ } return { ok: false, reason: 'não consegui iniciar o observador' }; }
     child = spawned;
     state = 'ativo';
-    readline.createInterface({ input: spawned.stdout }).on('line', (line) => { if (child !== spawned) return; try { logic.feed(JSON.parse(line)); } catch { /* linha inválida */ } });
+    readline.createInterface({ input: spawned.stdout }).on('line', (line) => { if (child !== spawned) { return; } try { logic.feed(JSON.parse(line)); } catch { /* linha inválida */ } });
     // Se o PowerShell do observador cair (antivírus, falta de memória…) ou nem abrir, volta sozinho com espera
     // crescente, no máximo 5 vezes seguidas; o contador zera depois de 60 s funcionando.
     spawned.on('exit', (code) => finalize(spawned, `saiu (código ${code})`));

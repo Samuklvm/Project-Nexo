@@ -6,6 +6,20 @@ O Nexo inclui `LibreHardwareMonitorLib` para ler sensores locais de hardware. A 
 
 O coletor do Nexo está em `sensor-host/` e o projeto não altera nem substitui a licença da biblioteca. Os demais arquivos do Nexo permanecem sujeitos à licença indicada pelo próprio projeto.
 
+### Bibliotecas que vêm junto com o LibreHardwareMonitorLib
+
+O pacote do LibreHardwareMonitorLib traz estas dependências, que vão dentro do executável do coletor (`Nexo.SensorHost.exe`) exatamente como publicadas no NuGet. O Nexo não altera nenhuma delas.
+
+| Pacote | Versão | Licença | Código-fonte |
+| --- | --- | --- | --- |
+| BlackSharp.Core | 1.0.7 | MPL-2.0 | <https://github.com/Blacktempel/BlackSharp> |
+| DiskInfoToolkit | 1.1.2 | MPL-2.0 (partes baseadas no CrystalDiskInfo, licença MIT) | <https://github.com/Blacktempel/DiskInfoToolkit> |
+| RAMSPDToolkit-NDD | 1.4.2 | MPL-2.0 | <https://github.com/Blacktempel/RAMSPDToolkit> |
+| HidSharp | 2.6.4 | Apache License 2.0, Copyright 2010-2025 James F. Bellinger | <https://software.seekye.com/hidsharp> |
+| Mono.Posix.NETStandard | 1.0.0 | MIT (bibliotecas de classe do Mono, Microsoft/Xamarin) | <https://github.com/mono/mono.posix> |
+
+A MPL-2.0 é uma licença copyleft por arquivo: quem distribui uma versão modificada de um arquivo coberto por ela precisa publicar essa modificação. O Nexo distribui esses arquivos sem modificação; o código-fonte de cada um está nos endereços acima e o texto da licença em <https://www.mozilla.org/MPL/2.0/>. O texto da Apache License 2.0 está em <https://www.apache.org/licenses/LICENSE-2.0>. Os demais pacotes do .NET usados pelo coletor (System.\* e Microsoft.\*) são da Microsoft e da .NET Foundation, sob a licença MIT.
+
 ## PresentMon (componente opcional)
 
 Para medir FPS e tempo de quadro, o Nexo pode executar o **PresentMon**, ferramenta de captura de desempenho gráfico da Intel (<https://github.com/GameTechDev/PresentMon>), distribuída sob a licença MIT. O Nexo não altera o PresentMon: ele é executado como um programa separado, somente quando você ativa a medição de FPS, e os dados lidos (eventos de apresentação do Windows do programa escolhido) ficam neste computador. A versão e o hash embutidos são fixados em `third-party/presentmon.lock.json`; sem hash fixado, nada é embutido e você pode apontar um `PresentMon.exe` baixado por conta própria.

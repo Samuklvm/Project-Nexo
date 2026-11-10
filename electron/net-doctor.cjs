@@ -24,7 +24,7 @@ const PUBLIC = Object.freeze({
 });
 const HTTP_PROBES = ['https://www.google.com/generate_204', 'https://cp.cloudflare.com/generate_204'];
 
-const median = (list) => { const v = list.filter(Number.isFinite).sort((a, b) => a - b); if (!v.length) return null; const m = Math.floor(v.length / 2); return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
+const median = (list) => { const v = list.filter(Number.isFinite).sort((a, b) => a - b); if (!v.length) { return null; } const m = Math.floor(v.length / 2); return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
 const round = (value) => (Number.isFinite(value) ? Math.round(value) : null);
 
 /** Windows: adaptador da rota padrão, DNS (de DHCP ou fixo), proxy do usuário e a preferência de IPv6. */
@@ -80,7 +80,7 @@ function createNetDoctor({ dns, net, https, os, fs, platform = process.platform,
     for (let i = 0; i < 2; i += 1) {
       const name = `nexo-${randomBytes(6).toString('hex')}.wikipedia.org`;
       // Nome inexistente: a resposta "não existe" também mede a ida até o DNS da internet.
-      fresh.push(await timed(() => resolver.resolve4(name).catch((error) => { if (error?.code === 'ENOTFOUND' || error?.code === 'ENODATA') return null; throw error; }), 3000));
+      fresh.push(await timed(() => resolver.resolve4(name).catch((error) => { if (error?.code === 'ENOTFOUND' || error?.code === 'ENODATA') { return null; } throw error; }), 3000));
     }
     const okKnown = known.filter((r) => r.ok);
     return { server, medianMs: round(median(okKnown.map((r) => r.ms))), worstMs: okKnown.length ? Math.max(...okKnown.map((r) => r.ms)) : null, failures: known.length - okKnown.length, tries: known.length,
@@ -106,7 +106,7 @@ function createNetDoctor({ dns, net, https, os, fs, platform = process.platform,
     return new Promise((resolve) => {
       const start = now();
       const out = { url, ok: false };
-      const finish = (extra = {}) => { if (out.done) return; out.done = true; delete out.done; resolve({ ...out, ...extra, totalMs: round(now() - start) }); };
+      const finish = (extra = {}) => { if (out.done) { return; } out.done = true; delete out.done; resolve({ ...out, ...extra, totalMs: round(now() - start) }); };
       let request;
       try {
         request = https.get(url, { agent: false, timeout: 8000, headers: { 'user-agent': 'NexoDeviceCare-diagnostico' } }, (response) => {

@@ -161,7 +161,7 @@
     await journalIfNeeded();
     // Terminou agora: o Raio-X relê o PC uma vez (os valores podem ter voltado ou ficado).
     const finished = view.status?.state && view.status.state.status !== 'running' ? view.status.state.id : null;
-    if (finished && view.rescanned !== finished) { if (view.rescanned !== null) Nexo.emit('scan-changed'); view.rescanned = finished; }
+    if (finished && view.rescanned !== finished) { if (view.rescanned !== null) { Nexo.emit('scan-changed'); } view.rescanned = finished; }
   }
 
   /** Ações do teste com reinício (começar, reiniciar, continuar, cancelar, fechar). */

@@ -10,7 +10,7 @@ const KEY = 'ABCDEF0123456789ABCDEF0123456789';
 const SID = '76561198000000001';
 const ORIGIN = 'https://nexo-api.exemplo.workers.dev';
 let mod;
-let clock = Date.UTC(2026, 10, 6, 15);
+const clock = Date.UTC(2026, 10, 6, 15);
 
 function world({ valid = true, key = KEY, ownedVisible = true } = {}) {
   const env = { DB: createD1(), SESSION_SECRET: 's'.repeat(48), DATA_KEY: 'd'.repeat(48), GOOGLE_CLIENT_IDS: 'x.apps.googleusercontent.com', STEAM_API_KEY: key };

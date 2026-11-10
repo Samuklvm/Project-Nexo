@@ -84,7 +84,7 @@
     // Instalação nova: nada de histórico nem perfil. Marca como visto e não empilha mais uma janela.
     const fresh = !seen && !read(Nexo.keys.history) && !read(Nexo.keys.profile);
     if (fresh || !data().some((entry) => entry.version === version)) { write(SEEN_KEY, version); return; }
-    if (document.getElementById('modal-root')?.childElementCount || document.hidden) { if (tries < 40) setTimeout(() => Nexo.showNovidades({ tries: tries + 1 }), 4000); return; }
+    if (document.getElementById('modal-root')?.childElementCount || document.hidden) { if (tries < 40) { setTimeout(() => Nexo.showNovidades({ tries: tries + 1 }), 4000); } return; }
     write(SEEN_KEY, version);
     show(version);
     Nexo.emit('telemetry-ui', 'novidades-sozinha');

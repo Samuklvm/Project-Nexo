@@ -52,7 +52,7 @@
   }
 
   const finite = (value) => typeof value === 'number' && Number.isFinite(value);
-  const median = (list) => { const v = list.filter(finite).sort((a, b) => a - b); if (!v.length) return null; const m = Math.floor(v.length / 2); return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
+  const median = (list) => { const v = list.filter(finite).sort((a, b) => a - b); if (!v.length) { return null; } const m = Math.floor(v.length / 2); return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
   const round1 = (value) => Math.round(value * 10) / 10;
   const armKey = (arm) => `${arm.knob}=${arm.value}`;
   const comboKey = (keys) => `combo:${[...keys].sort((a, b) => (a < b ? -1 : Number(a > b))).join('+')}`;
@@ -116,9 +116,9 @@
     const perGroup = new Map();
     const limit = Math.max(1, Math.ceil(count / 5));
     // 1ª passada: um valor por ajuste, no máximo alguns por grupo (variedade); 2ª: um por ajuste; 3ª: o que sobrar.
-    for (const arm of arms) { if (picked.length >= count) break; if (!usedKnobs.has(arm.knob) && (perGroup.get(arm.group) || 0) < limit) { picked.push(arm); usedKnobs.add(arm.knob); perGroup.set(arm.group, (perGroup.get(arm.group) || 0) + 1); } }
-    for (const arm of arms) { if (picked.length >= count) break; if (!usedKnobs.has(arm.knob)) { picked.push(arm); usedKnobs.add(arm.knob); } }
-    for (const arm of arms) { if (picked.length >= count) break; if (!picked.includes(arm)) picked.push(arm); }
+    for (const arm of arms) { if (picked.length >= count) { break; } if (!usedKnobs.has(arm.knob) && (perGroup.get(arm.group) || 0) < limit) { picked.push(arm); usedKnobs.add(arm.knob); perGroup.set(arm.group, (perGroup.get(arm.group) || 0) + 1); } }
+    for (const arm of arms) { if (picked.length >= count) { break; } if (!usedKnobs.has(arm.knob)) { picked.push(arm); usedKnobs.add(arm.knob); } }
+    for (const arm of arms) { if (picked.length >= count) { break; } if (!picked.includes(arm)) picked.push(arm); }
     return picked;
   }
 

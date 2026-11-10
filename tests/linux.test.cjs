@@ -77,9 +77,9 @@ test('laboratório no Linux: perfis de energia, sem root, trava e volta ao origi
   const state = { active: 'balanced', sets: [] };
   const linux = { PROFILES: L.PROFILES, PROFILE_ORDER: L.PROFILE_ORDER, powerProfiles: async () => L.PROFILE_ORDER.map((guid) => ({ guid, name: L.PROFILES[guid], active: guid === state.active })), setPowerProfile: async (id) => { state.sets.push(id); state.active = id; } };
   const files = new Map();
-  const memfs = { mkdir: async () => {}, writeFile: async (f, d) => files.set(f, d), readFile: async (f) => { if (!files.has(f)) throw new Error('x'); return files.get(f); }, rm: async (f) => files.delete(f) };
+  const memfs = { mkdir: async () => {}, writeFile: async (f, d) => files.set(f, d), readFile: async (f) => { if (!files.has(f)) { throw new Error('x'); } return files.get(f); }, rm: async (f) => files.delete(f) };
   let t = 0;
-  const system = createLinuxLabSystem({ linux, run: async () => ({ code: 0, stdout: '' }), bench: async (mode) => ({ mopsPerSec: (state.active === 'performance' && mode === 'burst' ? 110 : 100) * (1 + (t % 7) / 1000) }), readTemp: async () => 50, cpuLoad: async () => 5, onBattery: async () => false, fs: memfs, path, dir: '/lab', now: () => (t += 500), sleep: async () => {} });
+  const system = createLinuxLabSystem({ linux, run: async () => ({ code: 0, stdout: '' }), bench: async (mode) => ({ mopsPerSec: (state.active === 'performance' && mode === 'burst' ? 110 : 100) * (1 + (t % 7) / 1000) }), readTemp: async () => 50, cpuLoad: async () => 5, onBattery: async () => false, fs: memfs, path, dir: '/lab', now: () => { t += 500; return t; }, sleep: async () => {} });
   const result = await Lab.run(system, { consent: { acknowledged: true, phrase: 'ENTENDO O RISCO' }, autonomy: 'autonomo', limits: { pairs: 3, confirmPairs: 5 } });
   assert.equal(result.status, 'completed');
   assert.ok(result.arms.some((arm) => arm.key === 'ppd=2' && arm.verdict === 'melhorou'));

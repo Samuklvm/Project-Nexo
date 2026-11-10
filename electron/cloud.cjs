@@ -73,6 +73,7 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       await fs.writeFile(temp, JSON.stringify(state), 'utf8');
       await fs.rename(temp, file);
       lastSaveError = null;
+      return true;
     });
     chain = run.catch((error) => { lastSaveError = { at: now(), code: String(error?.code || 'erro').slice(0, 20) }; });
     return run;

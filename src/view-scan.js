@@ -30,7 +30,7 @@
     const missing = scan.items.length - usable.length;
     const shown = usable.filter(visible);
     const groups = new Map();
-    for (const item of shown) { if (!groups.has(item.group)) groups.set(item.group, []); groups.get(item.group).push(item); }
+    for (const item of shown) { if (!groups.has(item.group)) { groups.set(item.group, []); } groups.get(item.group).push(item); }
     const changed = usable.filter((item) => item.currentKind !== 'padrao').length;
     const options = usable.reduce((total, item) => total + item.options.length, 0);
     const lab = labTotals();

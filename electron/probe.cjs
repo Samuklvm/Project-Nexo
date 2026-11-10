@@ -181,7 +181,7 @@ function createProbe({ spawnFn = spawn, emit = () => {}, platform = process.plat
     const started = start();
     if (!started.ok) return Promise.resolve({ ok: false, reason: started.reason });
     return new Promise((resolve) => {
-      const finish = (result) => { clearTimeout(timer); waiters.delete(onSample); if (startedHere) stop(); resolve(result); };
+      const finish = (result) => { clearTimeout(timer); waiters.delete(onSample); if (startedHere) { stop(); } resolve(result); };
       const onSample = (sample) => finish({ ok: true, sample });
       const timer = setTimeout(() => finish({ ok: false, reason: 'A sonda não respondeu a tempo. O Windows pode ter bloqueado o PowerShell ou o contador de GPU.' }), timeoutMs);
       waiters.add(onSample);
@@ -234,7 +234,7 @@ function createLinuxProbe({ linux, emit = () => {}, match = () => null, interval
     const startedHere = !timer;
     start();
     return new Promise((resolve) => {
-      const finish = (result) => { clearTimeout(limit); waiters.delete(onSample); if (startedHere) stop(); resolve(result); };
+      const finish = (result) => { clearTimeout(limit); waiters.delete(onSample); if (startedHere) { stop(); } resolve(result); };
       const onSample = (sample) => { if (sample.cpu.length || sample.fg || previous) finish({ ok: true, sample }); };
       const limit = setTimeout(() => finish({ ok: false, reason: 'A sonda não respondeu a tempo.' }), timeoutMs);
       waiters.add(onSample);

@@ -9,5 +9,5 @@ for (let i = size - 1; i > 0; i -= 1) { seed = (Math.imul(seed, 1664525) + 10139
 let p = 0; let reads = 0;
 const start = performance.now();
 const end = start + workerData.ms;
-while (performance.now() < end) { for (let k = 0; k < 100000; k += 1) p = next[p]; reads += 100000; }
+while (performance.now() < end) { for (let k = 0; k < 100000; k += 1) { p = next[p]; } reads += 100000; }
 parentPort.postMessage({ readsPerUs: reads / ((performance.now() - start) * 1000), p });

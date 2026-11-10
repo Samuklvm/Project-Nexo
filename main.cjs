@@ -12,7 +12,7 @@ const { createProbe } = require('./electron/probe.cjs');
 const { createFpsRunner } = require('./electron/fps-runner.cjs');
 const { createElevator, toolLauncher, PAWNIO } = require('./electron/elevate.cjs');
 const { decodeConsole } = require('./electron/console-text.cjs');
-const { systemTool } = require('./electron/system-path.cjs');
+const { systemTool, nvidiaSmi } = require('./electron/system-path.cjs');
 const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
 const { createSystemScan, validateChange: validateScanChange } = require('./electron/system-scan.cjs');
@@ -65,7 +65,7 @@ const diagErrorsSeen = new Set();
 const diag = createDiag({
   fs: require('fs'), path, file: path.join(app.getPath('userData'), 'diag.json'),
   // Uma vez por tipo e por sessão, direto no registro (sem passar pela contagem do diag, para não entrar em laço).
-  onError: (kind, error) => { if (diagErrorsSeen.has(kind)) return; diagErrorsSeen.add(kind); try { recordRaw({ source: 'principal', level: 'aviso', message: `Diagnóstico do app: falha ao ${kind} (${error?.code || error?.message || error})`, context: { etapa: `diag.${kind}` } }); } catch { /* registro indisponível */ } }
+  onError: (kind, error) => { if (diagErrorsSeen.has(kind)) { return; } diagErrorsSeen.add(kind); try { recordRaw({ source: 'principal', level: 'aviso', message: `Diagnóstico do app: falha ao ${kind} (${error?.code || error?.message || error})`, context: { etapa: `diag.${kind}` } }); } catch { /* registro indisponível */ } }
 });
 setInterval(() => diag.flush(), 5 * 60 * 1000).unref?.();
 /*
@@ -129,15 +129,15 @@ try {
 process.on('uncaughtException', (error) => { errorLog.record({ source: 'principal', message: error?.message || String(error), stack: error?.stack }); });
 process.on('unhandledRejection', (reason) => { errorLog.record({ source: 'principal', message: reason?.message || String(reason), stack: reason?.stack }); });
 app.on('render-process-gone', (_event, _contents, details) => { diag.count('telaFechou'); errorLog.record({ source: 'processo', message: `A tela do Nexo fechou sozinha (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode } }); });
-app.on('child-process-gone', (_event, details) => { if (details?.reason !== 'clean-exit') diag.count(details?.type === 'GPU' ? 'gpuCaiu' : 'processoCaiu'); if (details?.reason !== 'clean-exit') errorLog.record({ source: 'processo', level: details?.type === 'GPU' ? 'aviso' : 'erro', message: `Processo ${details?.type || '?'} do Nexo caiu (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode, nome: details?.name } }); });
+app.on('child-process-gone', (_event, details) => { if (details?.reason !== 'clean-exit') { diag.count(details?.type === 'GPU' ? 'gpuCaiu' : 'processoCaiu'); } if (details?.reason !== 'clean-exit') errorLog.record({ source: 'processo', level: details?.type === 'GPU' ? 'aviso' : 'erro', message: `Processo ${details?.type || '?'} do Nexo caiu (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode, nome: details?.name } }); });
 let updateDownloaded = false;
 let updateAvailableVersion = null;
 let updateDownloadInProgress = false;
 let updateCheckInProgress = false;
 let updateReleaseInfo = null;
 let updateProgress = null;
-let driveCache = { expiresAt: 0, value: null, pending: null };
-let temperatureCache = { expiresAt: 0, value: null, pending: null };
+const driveCache = { expiresAt: 0, value: null, pending: null };
+const temperatureCache = { expiresAt: 0, value: null, pending: null };
 let sensorHost = null;
 let sensorRequestPending = null;
 let sensorHostStatus = 'starting';
@@ -302,6 +302,7 @@ async function getCachedDrives() {
 
 const NVIDIA_FULL_QUERY = 'temperature.gpu,utilization.gpu,memory.used,memory.total,clocks.gr,clocks.max.gr,power.draw,power.limit,clocks_throttle_reasons.active,utilization.memory';
 let nvidiaQueryMode = null;
+let nvidiaSmiFile; // undefined = ainda não procurado; null = este PC não tem o nvidia-smi
 async function getTemperatureReadings() {
   if (process.platform !== 'win32' && !IS_LINUX) return { acpiSensors: [], gpuSensors: [] };
 
@@ -332,12 +333,14 @@ $sensors | ConvertTo-Json -Compress
     (async () => {
       // Consulta completa (clock, energia e o MOTIVO do clock baixo: limite de energia, calor…); driver antigo que não
       // conhece algum campo cai para a consulta básica, e o modo que funcionou fica guardado.
-      const run = (fields) => execFileAsync('nvidia-smi', [`--query-gpu=${fields}`, '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 3000, maxBuffer: 64 * 1024 });
+      if (nvidiaSmiFile === undefined) nvidiaSmiFile = nvidiaSmi();
+      if (!nvidiaSmiFile) return [];
+      const run = (fields) => execFileAsync(nvidiaSmiFile, [`--query-gpu=${fields}`, '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 3000, maxBuffer: 64 * 1024 });
       const num = (value) => { const n = Number(String(value ?? '').trim()); return Number.isFinite(n) ? n : null; };
       try {
         let stdout = '';
         if (nvidiaQueryMode !== 'basic') {
-          try { ({ stdout } = await run(NVIDIA_FULL_QUERY)); nvidiaQueryMode = 'full'; } catch (error) { if (error?.code === 'ENOENT') throw error; nvidiaQueryMode = 'basic'; }
+          try { ({ stdout } = await run(NVIDIA_FULL_QUERY)); nvidiaQueryMode = 'full'; } catch (error) { if (error?.code === 'ENOENT') { throw error; } nvidiaQueryMode = 'basic'; }
         }
         if (nvidiaQueryMode === 'basic') ({ stdout } = await run('temperature.gpu,utilization.gpu,memory.used,memory.total'));
         return stdout.trim().split(/\r?\n/).filter(Boolean).map((line, index) => {
@@ -1535,7 +1538,7 @@ async function applySettings(patch) {
   if (process.platform === 'win32' && app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.openAtLogin, name: 'NexoDeviceCare', args: ['--hidden'] });
   if (IS_LINUX && app.isPackaged) await setLinuxAutostart(settings.openAtLogin);
   applyTray();
-  if (settings.autoSession) { if (!library.list().length) await library.scan().catch(() => []); watcher.start(); } else watcher.stop();
+  if (settings.autoSession) { if (!library.list().length) { await library.scan().catch(() => []); } watcher.start(); } else watcher.stop();
   sendToWindow('settings:changed', { ...settings });
   return { ...settings, packaged: app.isPackaged, platform: process.platform };
 }
@@ -1697,7 +1700,7 @@ const library = createLibrary({
   getFileIcon: (file) => app.getFileIcon(file, { size: 'large' }).then((image) => image.toDataURL()),
   coversDir: COVERS_DIR(),
   manualFile: path.join(app.getPath('userData'), 'games-manual.json'),
-  downscale: async (source, target, width) => { const data = shrink(nativeImage.createFromPath(source), width, target.endsWith('.png')); if (!data) return false; await fs.writeFile(target, data); return true; },
+  downscale: async (source, target, width) => { const data = shrink(nativeImage.createFromPath(source), width, target.endsWith('.png')); if (!data) { return false; } await fs.writeFile(target, data); return true; },
   resolveOnline: (game) => covers.resolve(game),
   extras: async (steamRoot) => {
     const out = { xboxTitles: connections.xbox?.titles || [] };
@@ -1769,7 +1772,7 @@ registerIpcHandler('games:launch', async (_event, id) => {
   const game = library.get(String(id));
   if (!game) throw new Error('Jogo não encontrado; atualize a biblioteca.');
   if (game.launchUri && LAUNCH_SCHEMES.test(game.launchUri)) { await shell.openExternal(game.launchUri); return { ok: true, via: 'launcher' }; }
-  if (game.exe && /\.exe$/i.test(game.exe) && await isFile(game.exe)) { const error = await shell.openPath(game.exe); if (error) throw new Error(error); return { ok: true, via: 'executável' }; }
+  if (game.exe && /\.exe$/i.test(game.exe) && await isFile(game.exe)) { const error = await shell.openPath(game.exe); if (error) { throw new Error(error); } return { ok: true, via: 'executável' }; }
   throw new Error('Este jogo precisa ser aberto pelo próprio launcher.');
 });
 registerIpcHandler('games:reveal', async (_event, id) => {
@@ -1829,6 +1832,10 @@ const watcher = (IS_LINUX ? (options) => createLinuxWatcher({ linux, ...options 
 registerIpcHandler('watch:current', async () => watcher.current());
 
 // ---- Laboratório (Otimização extrema, beta) ----
+/**
+ * Maior temperatura do processador nas leituras do LibreHardwareMonitor. Ficam de fora os sensores que não são
+ * leitura de temperatura: limites e distâncias ("Tj Max", "Distance to TjMax", "warning", "critical", "shutdown").
+ */
 function maxTemperature(readings) {
   const values = [];
   for (const device of readings?.devices || []) {
@@ -2028,7 +2035,7 @@ async function resumeRebootTest(viaRunOnce, launchedAt) {
   const result = await rebootTest.tick({ viaRunOnce, launchedAt }).catch(() => null);
   if (result) sendToWindow('reboot:status', result);
 }
-registerIpcHandler('lab:cancel', async () => { if (labState.signal) labState.signal.cancelled = true; return { ok: true }; });
+registerIpcHandler('lab:cancel', async () => { if (labState.signal) { labState.signal.cancelled = true; } return { ok: true }; });
 registerIpcHandler('lab:recover', async () => labSystem.recover());
 registerIpcHandler('lab:adopt', async (_event, config) => {
   if (labState.running) throw new Error('O laboratório está rodando.');
@@ -2239,6 +2246,7 @@ const cloudReady = serverUrl().then(async (url) => {
   // (Os relatórios de erro são sempre enviados desde a 0.11.1; não dependem dessa caixa.)
   const status = await cloud.status();
   if (status.configured && !status.asked && (await readSharePreference()).shareWithCreator) await cloud.setOptions({ telemetry: true, asked: true });
+  return cloud;
 }).catch(() => {});
 const withCloud = async () => { await cloudReady; return cloud; };
 /**
@@ -2518,11 +2526,16 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'win32') mainWindow.webContents.once('did-finish-load', () => { setTimeout(() => resumeRebootTest(process.argv.includes('--reboot-test'), APP_LAUNCHED_AT).catch(() => {}), 1500); });
     applyTray();
     if (process.platform === 'win32' && app.isPackaged) setTimeout(() => autoSensorSetup().catch(() => {}), 5000);
-    if (settings.autoSession) library.scan().catch(() => []).finally(() => watcher.start());
+    if (settings.autoSession) library.scan().catch(() => []).then(() => watcher.start()).catch((error) => console.error('[observador de jogos]', error));
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+    return true;
+  }).catch((error) => {
+    // Falha ao abrir: fica no registro de erros (vai no próximo envio) e o app fecha em vez de ficar sem janela.
+    errorLog.record({ source: 'principal', message: `O Nexo não conseguiu abrir: ${error?.message || error}`, stack: error?.stack });
+    errorLog.idle?.().catch(() => {}).finally(() => app.quit());
   });
 }
 

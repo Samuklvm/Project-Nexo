@@ -45,8 +45,8 @@
     dirty = false;
     try { localStorage.setItem(KEY, JSON.stringify(days)); } catch { /* cheio: tenta de novo no próximo minuto */ dirty = true; }
   }
-  const add = (map, key, n = 1) => { if (!key) return; map[key] = Math.round(((map[key] || 0) + n) * 10) / 10; dirty = true; };
-  const acc = (pair, value) => { if (!fin(value)) return; pair[0] += value; pair[1] += 1; dirty = true; };
+  const add = (map, key, n = 1) => { if (!key) { return; } map[key] = Math.round(((map[key] || 0) + n) * 10) / 10; dirty = true; };
+  const acc = (pair, value) => { if (!fin(value)) { return; } pair[0] += value; pair[1] += 1; dirty = true; };
 
   /* ---------- Contagens ---------- */
   const focused = () => !document.hidden && document.hasFocus();

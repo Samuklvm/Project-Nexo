@@ -42,7 +42,7 @@ async function signIn({ clientId, createServer, openExternal, fetch }) {
   if (!CLIENT_ID.test(String(clientId))) throw new Error('A conta Xbox ainda não foi configurada nesta build.');
   const { code, redirectUri, verifier } = await loopbackAuthorize({ host: '127.0.0.1', redirectHost: 'localhost', appName: 'Nexo', createServer, openExternal,
     buildUrl: ({ redirectUri: uri, challenge, state }) => buildMicrosoftUrl({ clientId, redirectUri: uri, challenge, state }) });
-  const json = async (url, init) => { const response = await fetch(url, init); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.error_description || body.Message || `${new URL(url).host} respondeu ${response.status}`); return body; };
+  const json = async (url, init) => { const response = await fetch(url, init); const body = await response.json().catch(() => ({})); if (!response.ok) { throw new Error(body.error_description || body.Message || `${new URL(url).host} respondeu ${response.status}`); } return body; };
   const token = await json(`${AUTHORITY}/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: clientId, grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: verifier, scope: SCOPE }).toString() });
   const user = await json('https://user.auth.xboxlive.com/user/authenticate', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'x-xbl-contract-version': '1' },

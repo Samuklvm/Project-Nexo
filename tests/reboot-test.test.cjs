@@ -111,7 +111,7 @@ function harness({ applyResult = () => ({ ok: true, failed: [] }), packaged = tr
   const files = new Map();
   const fs = {
     mkdir: async () => {}, rename: async (from, to) => { files.set(to, files.get(from)); files.delete(from); },
-    writeFile: async (file, text) => { files.set(file, String(text)); }, readFile: async (file) => { if (!files.has(file)) throw new Error('ENOENT'); return files.get(file); }
+    writeFile: async (file, text) => { files.set(file, String(text)); }, readFile: async (file) => { if (!files.has(file)) { throw new Error('ENOENT'); } return files.get(file); }
   };
   const clock = { now: 1_000_000, uptimeS: 3600 };
   const calls = [];

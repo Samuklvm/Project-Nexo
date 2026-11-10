@@ -166,7 +166,7 @@ ${WRITE_RESULT}`;
 
 /* ---------- Rede (diagnóstico de rede: só o que o diagnóstico sugeriu, com dados validados aqui) ---------- */
 const { isIP } = require('node:net');
-const ifIndexOf = (value) => { const n = Number(value); if (!Number.isInteger(n) || n < 1 || n > 1000000) throw new Error('Placa de rede inválida.'); return n; };
+const ifIndexOf = (value) => { const n = Number(value); if (!Number.isInteger(n) || n < 1 || n > 1000000) { throw new Error('Placa de rede inválida.'); } return n; };
 
 /** Troca os servidores de DNS de uma placa (ou volta para os da rede, com reset) e limpa o cache de DNS. */
 function netDnsBody(args) {

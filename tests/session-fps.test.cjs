@@ -5,7 +5,7 @@ const Fps = require('../src/fps.js');
 
 // ---------- gerador de sessões sintéticas (1 Hz) ----------
 function build({ seconds = 300, cpu = 20, maxCore = 40, gpu = null, mem = 50, temp = 60, clockRatio = 1, game = true, jitter = 3, shape = null } = {}) {
-  let seed = 5; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let seed = 5; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const startedAt = 1_700_000_000_000; const samples = []; const probes = [];
   const v = (base, i) => Math.max(0, Math.min(100, base + (rnd() - 0.5) * 2 * jitter));
   for (let i = 0; i < seconds; i++) {

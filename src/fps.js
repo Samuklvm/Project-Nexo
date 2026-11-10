@@ -117,7 +117,7 @@
     const frames = [];
     return {
       push(frame) { frames.push(frame.ms); let total = frames.reduce((a, v) => a + v, 0); while (total > windowMs && frames.length > 1) { total -= frames.shift(); } },
-      snapshot() { if (!frames.length) return { fps: null, worstMs: null }; const total = frames.reduce((a, v) => a + v, 0); return { fps: (frames.length * 1000) / total, worstMs: Math.max(...frames) }; }
+      snapshot() { if (!frames.length) { return { fps: null, worstMs: null }; } const total = frames.reduce((a, v) => a + v, 0); return { fps: (frames.length * 1000) / total, worstMs: Math.max(...frames) }; }
     };
   }
 

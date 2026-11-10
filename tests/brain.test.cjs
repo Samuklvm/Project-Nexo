@@ -8,7 +8,7 @@ function simulate() {
   const brain = Brain.create();
   const history = [];
   const start = new Date(2026, 9, 1, 0, 0, 0).getTime();
-  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   for (let i = 0; i < 10 * 24 * 60; i++) {
     const t = start + i * MIN; const d = new Date(t); const h = d.getHours(); const day = Math.floor(i / 1440);
     let cpu = 12 + rnd() * 8; let mem = 45 + rnd() * 4; let culprit = null;

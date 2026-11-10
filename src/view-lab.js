@@ -42,7 +42,7 @@
     const statsBox = document.getElementById('lab-space-stats');
     if (statsBox) statsBox.innerHTML = `<div><strong>${stats.knobs}</strong><span>ajustes${support ? ' neste PC' : ''}</span></div><div><strong>${stats.options}</strong><span>opções${support ? ' neste PC' : ''}</span></div><div><strong>10<sup>${String(Math.floor(stats.log10))}</sup></strong><span>combinações possíveis</span></div><div><strong>${testedArms + testedCombos}</strong><span>testadas neste PC</span></div>`;
     const groups = new Map();
-    for (const knob of list) { const id = knob.group || 'desempenho'; if (!groups.has(id)) groups.set(id, []); groups.get(id).push(knob); }
+    for (const knob of list) { const id = knob.group || 'desempenho'; if (!groups.has(id)) { groups.set(id, []); } groups.get(id).push(knob); }
     // Depois da conferência: o que este PC não tem (ou não usa) aparece apagado e não conta nas opções.
     const usable = (knob) => !lastPre?.knobs || (lastPre.knobs[knob.id]?.available && !(knob.hybrid && lastPre.hybrid === false));
     const knobItem = (knob) => {

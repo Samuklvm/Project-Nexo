@@ -262,7 +262,7 @@
     const report = NexoSession.analyze({ name: finished.name, profile: finished.profile, startedAt: finished.startedAt, endedAt, samples: finished.samples, probes: finished.probes, fps: fpsResult?.summary || null,
       overhead, hasGpuSensor: finished.samples.some((sample) => Number.isFinite(sample.gpu)), forcedGame: finished.forcedGame, refreshHz: Nexo.refreshHz?.() ?? null });
     const label = finished.name || (report.game ? `${report.game.name}` : `Sessão de ${when(finished.startedAt)}`);
-    const probeGame = (() => { const counts = new Map(); for (const probe of finished.probes) if (probe.fg?.gameId) counts.set(probe.fg.gameId, (counts.get(probe.fg.gameId) || 0) + 1); return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || null; })();
+    const probeGame = (() => { const counts = new Map(); for (const probe of finished.probes) if (probe.fg?.gameId) { counts.set(probe.fg.gameId, (counts.get(probe.fg.gameId) || 0) + 1); } return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || null; })();
     const record = { id: finished.id, name: label, startedAt: finished.startedAt, endedAt, profile: finished.profile, report, auto: finished.auto, gameId: finished.gameId || probeGame,
       // Linha do tempo com no máximo ~600 pontos (sessão longa fica com pontos de 10 s, 20 s…), para caber no orçamento.
       timeline: NexoSession.compactTimeline(finished.samples, finished.startedAt, Math.max(5, Math.ceil((endedAt - finished.startedAt) / 1000 / 600))), fpsSeries: fpsResult?.series?.slice(0, 2000) || null };
@@ -387,7 +387,7 @@
   document.getElementById('sess-clear').addEventListener('click', async () => {
     if (await Nexo.confirm({ title: 'Apagar todas as sessões?', body: 'Os relatórios e as linhas do tempo salvos serão removidos deste computador.', confirmLabel: 'Apagar', tone: 'danger' })) { Nexo.sessions.clear(); showToast('Sessões apagadas.'); }
   });
-  document.getElementById('live-mark-game').addEventListener('click', () => { if (!rec?.fg) return; rec.forcedGame = rec.fg.name; onProbe({ ...rec.probes[rec.probes.length - 1] }); showToast(`${rec.fg.name} marcado como jogo nesta sessão.`); });
+  document.getElementById('live-mark-game').addEventListener('click', () => { if (!rec?.fg) { return; } rec.forcedGame = rec.fg.name; onProbe({ ...rec.probes[rec.probes.length - 1] }); showToast(`${rec.fg.name} marcado como jogo nesta sessão.`); });
   document.getElementById('live-fps-now').addEventListener('click', () => { if (rec?.fg) startFps(rec.fg.pid); });
   document.getElementById('fps-choose').addEventListener('click', async () => { try { const status = await bridge.chooseFps(); if (!status.canceled) showToast('PresentMon escolhido.'); } catch (error) { showToast(error.message || 'Não foi possível usar este arquivo.'); } refreshFps(); });
   document.getElementById('fps-clear').addEventListener('click', async () => { await bridge.clearFps(); refreshFps(); });

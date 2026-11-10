@@ -201,6 +201,8 @@ function createLabSystem(deps) {
         if (!fitsPc(change.id, change.value)) throw new Error(`${knob.label}: este PC não aceita o valor ${change.value}.`);
         await powercfg(['/setacvalueindex', session.labGuid, ...settingArgs(knob), String(change.value)]);
       }
+      // Ativar de novo o plano (que já é o ativo) é o que faz o Windows aplicar os valores novos: sem isso, o
+      // /setacvalueindex só muda o que está gravado e a medição seguinte rodaria com o valor antigo. Uma vez por lote.
       await powercfg(['/setactive', session.labGuid]);
     },
     bench: async (mode) => (await bench(mode)).mopsPerSec,

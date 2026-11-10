@@ -64,9 +64,9 @@
     let start = null;
     let last = null;
     let peak = null;
-    const flush = () => { if (start !== null && last - start >= (minSeconds - 1) * 1000) out.push({ kind, startMs: start, endMs: last, seconds: Math.round((last - start) / 1000) + 1, peak }); start = null; peak = null; };
+    const flush = () => { if (start !== null && last - start >= (minSeconds - 1) * 1000) { out.push({ kind, startMs: start, endMs: last, seconds: Math.round((last - start) / 1000) + 1, peak }); } start = null; peak = null; };
     for (const sample of samples) {
-      if (test(sample)) { if (start === null) start = sample.t; last = sample.t; const v = value(sample); if (finite(v)) peak = peak === null ? v : Math.max(peak, v); } else flush();
+      if (test(sample)) { if (start === null) { start = sample.t; } last = sample.t; const v = value(sample); if (finite(v)) peak = peak === null ? v : Math.max(peak, v); } else flush();
     }
     flush();
     return out;

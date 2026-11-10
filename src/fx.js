@@ -125,7 +125,7 @@
     // Cada bloco perde a classe quando a SUA animação termina (antes um temporizador cortava os últimos no meio).
     parts.forEach((element) => {
       element.classList.add('rise');
-      element.addEventListener('animationend', function done(event) { if (event.target !== element) return; element.classList.remove('rise'); element.removeEventListener('animationend', done); });
+      element.addEventListener('animationend', function done(event) { if (event.target !== element) { return; } element.classList.remove('rise'); element.removeEventListener('animationend', done); });
     });
   });
 

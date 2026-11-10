@@ -33,12 +33,12 @@ function fakeWindows() {
     switch (verb) {
       case '/getactivescheme': return { code: 0, stdout: `GUID do Esquema de Energia: ${state.active}  (${state.plans.get(state.active)})` };
       case '/list': return { code: 0, stdout: [...state.plans].map(([guid, name]) => `GUID do Esquema de Energia: ${guid}  (${name})${guid === state.active ? ' *' : ''}`).join('\r\n') };
-      case '/duplicatescheme': { const guid = state.dup.shift(); state.plans.set(guid, state.plans.get(rest[0])); for (const [key, value] of state.values) if (key.startsWith(rest[0])) state.values.set(key.replace(rest[0], guid), value); return { code: 0, stdout: `GUID do Esquema de Energia: ${guid}  (${state.plans.get(guid)})` }; }
+      case '/duplicatescheme': { const guid = state.dup.shift(); state.plans.set(guid, state.plans.get(rest[0])); for (const [key, value] of state.values) if (key.startsWith(rest[0])) { state.values.set(key.replace(rest[0], guid), value); } return { code: 0, stdout: `GUID do Esquema de Energia: ${guid}  (${state.plans.get(guid)})` }; }
       case '/changename': state.plans.set(rest[0], rest[1]); return { code: 0, stdout: '' };
-      case '/setactive': if (!state.plans.has(rest[0])) return { code: 1, stdout: '' }; state.active = rest[0]; return { code: 0, stdout: '' };
-      case '/delete': if (rest[0] === state.active) return { code: 1, stdout: '' }; state.plans.delete(rest[0]); return { code: 0, stdout: '' };
+      case '/setactive': if (!state.plans.has(rest[0])) { return { code: 1, stdout: '' }; } state.active = rest[0]; return { code: 0, stdout: '' };
+      case '/delete': if (rest[0] === state.active) { return { code: 1, stdout: '' }; } state.plans.delete(rest[0]); return { code: 0, stdout: '' };
       case '/export': return { code: 0, stdout: '' };
-      case '/qh': { const key = `${rest[0]}|${rest[2]}`; if (rest[2] === 'PERFBOOSTPOL') return { code: 1, stdout: '' }; const value = state.values.has(key) ? state.values.get(key) : 33; return { code: 0, stdout: qh(value, value) }; }
+      case '/qh': { const key = `${rest[0]}|${rest[2]}`; if (rest[2] === 'PERFBOOSTPOL') { return { code: 1, stdout: '' }; } const value = state.values.has(key) ? state.values.get(key) : 33; return { code: 0, stdout: qh(value, value) }; }
       case '/setacvalueindex': state.values.set(`${rest[0]}|${rest[2]}`, Number(rest[3])); return { code: 0, stdout: '' };
       default: return { code: 2, stdout: '' };
     }

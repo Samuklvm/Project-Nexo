@@ -49,7 +49,7 @@ test('resolvedor: Steam pelo número, Xbox pelo StoreId, outras lojas pelo nome 
   const saved = [];
   const fetched = [];
   const resolver = Covers.createCoverResolver({
-    fetchBytes: async (url) => { fetched.push(url); if (/library_600x900_2x|library_hero/.test(url) && url.includes('shared.cloudflare')) return JPEG; if (/logo\.png/.test(url)) return PNG; if (/store-images/.test(url)) return JPEG; throw new Error('404'); },
+    fetchBytes: async (url) => { fetched.push(url); if (/library_600x900_2x|library_hero/.test(url) && url.includes('shared.cloudflare')) { return JPEG; } if (/logo\.png/.test(url)) { return PNG; } if (/store-images/.test(url)) { return JPEG; } throw new Error('404'); },
     fetchJson: async (url) => (url.includes('displaycatalog') ? { Products: [{ LocalizedProperties: [{ Images: [{ ImagePurpose: 'Poster', Uri: '//store-images.s-microsoft.com/image/apps.1' }] }] }] } : { items: [{ type: 'app', id: 42, name: 'Hollow Signal' }] }),
     save: async (id, kind) => { saved.push(`${id}:${kind}`); return `/covers/${id}-${kind}`; }
   });
@@ -208,9 +208,9 @@ test('conquistas: desbloqueadas primeiro com data, ocultas sem spoiler, raridade
   assert.match(result.list[1].icon, /bg\.jpg$/);
 
   const fsMem = new Map();
-  const fs = { readFile: async (file) => { if (!fsMem.has(file)) throw new Error('x'); return fsMem.get(file); }, writeFile: async (file, data) => { fsMem.set(file, data); }, mkdir: async () => {} };
+  const fs = { readFile: async (file) => { if (!fsMem.has(file)) { throw new Error('x'); } return fsMem.get(file); }, writeFile: async (file, data) => { fsMem.set(file, data); }, mkdir: async () => {} };
   const calls = [];
-  const details = Details.createSteamDetails({ fs, path: require('node:path'), cacheDir: '/c', fetchJson: async (url) => { calls.push(url); if (url.includes('GetPlayerAchievements')) throw new Error('HTTP 403'); return schema; } });
+  const details = Details.createSteamDetails({ fs, path: require('node:path'), cacheDir: '/c', fetchJson: async (url) => { calls.push(url); if (url.includes('GetPlayerAchievements')) { throw new Error('HTTP 403'); } return schema; } });
   assert.equal((await details.achievements('10', null, null)).state, 'needs-steam');
   assert.equal((await details.achievements('10', '76561198000000002', null)).state, 'needs-key');
   const privateProfile = await details.achievements('10', '76561198000000002', 'K');

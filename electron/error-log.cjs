@@ -143,7 +143,7 @@ function createErrorLog({ fs, path, dir, version = '0.0.0', platform = process.p
   /** true = pode gravar. Se o arquivo está cheio e não deu para girar, NÃO grava (limite rígido). */
   async function rotateIfNeeded(bytes) {
     let size = 0;
-    try { size = (await fs.stat(file)).size; } catch (error) { if (error?.code === 'ENOENT') return true; size = MAX_BYTES; }
+    try { size = (await fs.stat(file)).size; } catch (error) { if (error?.code === 'ENOENT') { return true; } size = MAX_BYTES; }
     if (size + bytes <= MAX_BYTES) return true;
     try {
       await fs.rm(previous, { force: true });

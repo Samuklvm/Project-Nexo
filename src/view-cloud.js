@@ -58,7 +58,7 @@
         const mine = readJSON(Nexo.keys.activity, []);
         const seen = new Set();
         const merged = [...(Array.isArray(mine) ? mine : []), ...data].filter((item) => item && typeof item.title === 'string' && Number.isFinite(item.timestamp))
-          .filter((item) => { const key = `${item.timestamp}|${item.title}`; if (seen.has(key)) return false; seen.add(key); return true; })
+          .filter((item) => { const key = `${item.timestamp}|${item.title}`; if (seen.has(key)) { return false; } seen.add(key); return true; })
           .sort((a, b) => b.timestamp - a.timestamp).slice(0, 20);
         writeJSON(Nexo.keys.activity, merged);
         window.renderActivity?.(merged);
@@ -260,7 +260,7 @@
   async function askOnce(tries = 0) {
     if (!view.status?.configured || view.status.asked) return;
     // Não passa por cima de outra janela (escolha do perfil, tour, confirmações): espera ela fechar.
-    if (document.getElementById('modal-root')?.childElementCount || document.hidden) { if (tries < 40) setTimeout(() => askOnce(tries + 1), 15000); return; }
+    if (document.getElementById('modal-root')?.childElementCount || document.hidden) { if (tries < 40) { setTimeout(() => askOnce(tries + 1), 15000); } return; }
     const dialog = Nexo.dialog({ title: 'Ajudar a melhorar o Nexo?', html: `<p>${escapeHtml(POLICY)}</p><p class="muted">Ligar aqui liga a telemetria (um resumo anônimo por dia). Os relatórios de erro já vão sempre, sem o seu nome de usuário nem as suas pastas; se você estiver com a conta Google entrada no Nexo, o e-mail dela vai junto para o criador avisar quando o erro for corrigido. Dá para mudar a telemetria e tirar o e-mail quando quiser em Ajustes &gt; Privacidade e dados.</p>`,
       actions: [{ id: 'no', label: 'Agora não' }, { id: 'yes', label: 'Ligar a telemetria', tone: 'primary' }] });
     const choice = (await dialog.done) === 'yes';

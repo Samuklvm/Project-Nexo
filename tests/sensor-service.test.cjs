@@ -37,7 +37,7 @@ test('serviço de sensores: precisa instalar quando falta ou quando a versão mu
 
 test('serviço de sensores: o PawnIO só passa adiante se o SHA-256 conferir', async () => {
   const files = new Map();
-  const fs = { readFile: async (file) => { if (!files.has(file)) throw new Error('x'); return files.get(file); }, writeFile: async (file, data) => files.set(file, data), mkdir: async () => {} };
+  const fs = { readFile: async (file) => { if (!files.has(file)) { throw new Error('x'); } return files.get(file); }, writeFile: async (file, data) => files.set(file, data), mkdir: async () => {} };
   const good = Buffer.from('pawnio oficial');
   const pawnio = { url: 'https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe', sha256: crypto.createHash('sha256').update(good).digest('hex') };
   const calls = [];

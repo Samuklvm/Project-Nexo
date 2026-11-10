@@ -70,7 +70,7 @@ function steamLibraries(vdfText, steamRoot) {
   const root = parsed.libraryfolders || parsed;
   const paths = new Set([steamRoot]);
   for (const value of Object.values(root || {})) {
-    if (typeof value === 'string') { if (/^[a-z]:[\\/]/i.test(value)) paths.add(value); continue; }
+    if (typeof value === 'string') { if (/^[a-z]:[\\/]/i.test(value)) { paths.add(value); } continue; }
     if (value && typeof value.path === 'string') paths.add(value.path);
   }
   return [...paths].filter(Boolean).map(winPath);
@@ -99,7 +99,7 @@ function parseEpicManifest(text) {
 /** MicrosoftGame.config (jogos do app Xbox / Game Pass instalados em X:\XboxGames). */
 function parseMicrosoftGameConfig(text) {
   const source = String(text);
-  const attr = (tag, name) => { const element = source.match(new RegExp(`<${tag}\\b[^>]*>`, 'i')); if (!element) return null; const value = element[0].match(new RegExp(`\\b${name}="([^"]*)"`, 'i')); return value ? value[1] : null; };
+  const attr = (tag, name) => { const element = source.match(new RegExp(`<${tag}\\b[^>]*>`, 'i')); if (!element) { return null; } const value = element[0].match(new RegExp(`\\b${name}="([^"]*)"`, 'i')); return value ? value[1] : null; };
   const display = attr('ShellVisuals', 'DefaultDisplayName');
   const exe = attr('Executable', 'Name');
   const logo = attr('ShellVisuals', 'Square480x480Logo') || attr('ShellVisuals', 'Square150x150Logo') || attr('ShellVisuals', 'StoreLogo');
@@ -129,7 +129,7 @@ function classifyUninstall(entry) {
 }
 
 const slug = (value) => String(value).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
-const hueOf = (value) => { let hash = 0; for (const ch of String(value)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0; return hash % 360; };
+const hueOf = (value) => { let hash = 0; for (const ch of String(value)) { hash = (hash * 31 + ch.charCodeAt(0)) >>> 0; } return hash % 360; };
 
 /** Junta as fontes, remove duplicados (o mesmo jogo em duas fontes) e ordena por última vez jogado e nome. */
 function mergeGames(lists) {
@@ -254,9 +254,14 @@ function createLibrary({ fs, path, runPowerShell, getFileIcon, coversDir, manual
   async function prepareArt(game, names) {
     const find = (prefix) => names.find((name) => name.startsWith(prefix));
     const custom = find(`custom-${game.id}.`);
+    const official = find(`off-${game.id}-cover.`);
     if (custom) { game.cover = path.join(coversDir, custom); game.coverSource = 'sua imagem'; }
-    else if (game.coverFile && (game.cover = await cacheLocal(game.coverFile, path.join(coversDir, `${game.id}.jpg`), 360))) game.coverSource = game.source === 'steam' ? 'capa oficial (cache da Steam)' : 'arte oficial do jogo';
-    else if (find(`off-${game.id}-cover.`)) { game.cover = path.join(coversDir, find(`off-${game.id}-cover.`)); game.coverSource = 'capa oficial (internet)'; }
+    else {
+      // Capa do cache do launcher (null se o arquivo sumiu); sem ela, a oficial baixada da loja.
+      if (game.coverFile) game.cover = await cacheLocal(game.coverFile, path.join(coversDir, `${game.id}.jpg`), 360);
+      if (game.coverFile && game.cover) game.coverSource = game.source === 'steam' ? 'capa oficial (cache da Steam)' : 'arte oficial do jogo';
+      else if (official) { game.cover = path.join(coversDir, official); game.coverSource = 'capa oficial (internet)'; }
+    }
     if (game.heroFile) game.hero = await cacheLocal(game.heroFile, path.join(coversDir, `${game.id}-hero.jpg`), 1600);
     if (!game.hero && find(`off-${game.id}-hero.`)) game.hero = path.join(coversDir, find(`off-${game.id}-hero.`));
     if (game.logoFile) game.logo = await cacheLocal(game.logoFile, path.join(coversDir, `${game.id}-logo.png`), 640);
@@ -317,7 +322,7 @@ function createLibrary({ fs, path, runPowerShell, getFileIcon, coversDir, manual
         if (!item?.install_path || !item.title) continue;
         found.push({ id: `epic-${slug(appName)}`, source: 'epic', name: String(item.title), installDir: item.install_path, exe: null, installed: true, sizeBytes: Number(item.install_size) || 0, via: 'Heroic' });
       }
-      let titles = {};
+      const titles = {};
       try { const library = JSON.parse(await fs.readFile(path.join(root, 'gog_store', 'library.json'), 'utf8')); for (const game of asList(library.games)) if (game?.app_name) titles[game.app_name] = game.title; } catch { /* sem cache de títulos */ }
       let gog = {};
       try { gog = JSON.parse(await fs.readFile(path.join(root, 'gog_store', 'installed.json'), 'utf8')); } catch { /* sem GOG */ }

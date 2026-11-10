@@ -55,7 +55,7 @@ function createFpsRunner({ spawnFn = spawn, emit = () => {}, platform = process.
     if (spawned.stderr) readline.createInterface({ input: spawned.stderr }).on('line', onLine);
 
     timer = setInterval(() => emit('fps:update', { ...rolling.snapshot(), frames: frames.count }), 1000);
-    spawned.on('error', (error) => { clearInterval(timer); if (child === spawned) child = null; fail('falha-ao-iniciar', `Não foi possível iniciar o PresentMon: ${error.message}`); });
+    spawned.on('error', (error) => { clearInterval(timer); if (child === spawned) { child = null; } fail('falha-ao-iniciar', `Não foi possível iniciar o PresentMon: ${error.message}`); });
     spawned.on('exit', (code) => {
       clearInterval(timer);
       if (child === spawned) child = null;

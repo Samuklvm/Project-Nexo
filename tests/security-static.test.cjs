@@ -43,8 +43,14 @@ test('imagens da Steam: a lista do código e a da política de segurança são a
 
 test('programas do sistema pelo caminho completo, nunca pelo PATH', () => {
   for (const file of ['main.cjs', 'electron/probe.cjs', 'electron/watcher.cjs']) {
-    assert.doesNotMatch(read(file), /(?:spawn|spawnFn|execFile|execFileAsync)\('(?:powershell\.exe|powershell|reg|powercfg|taskmgr\.exe|sh)'/, file);
+    assert.doesNotMatch(read(file), /(?:spawn|spawnFn|execFile|execFileAsync)\('(?:powershell\.exe|powershell|reg|powercfg|taskmgr\.exe|sh|nvidia-smi(?:\.exe)?)'/, file);
   }
+  // nvidia-smi: só nos lugares em que o driver da NVIDIA instala; sem ele, nada (nunca procura no PATH).
+  const { nvidiaSmi } = require('../electron/system-path.cjs');
+  const asked = [];
+  assert.equal(nvidiaSmi({ platform: 'win32', env: { SystemRoot: 'C:\\Windows', ProgramW6432: 'C:\\Program Files' }, exists: (file) => { asked.push(file); return false; } }), null);
+  assert.deepEqual(asked, ['C:\\Windows\\System32\\nvidia-smi.exe', 'C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe']);
+  assert.equal(nvidiaSmi({ platform: 'linux', env: {}, exists: (file) => file === '/usr/bin/nvidia-smi' }), '/usr/bin/nvidia-smi');
   assert.doesNotMatch(read('installer-launcher/main.cjs'), /execFile\('reg'/);
   assert.doesNotMatch(read('electron/elevate.cjs'), /-FilePath 'powershell\.exe'/);
 });

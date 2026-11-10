@@ -72,7 +72,7 @@ const desktopBridge = window.nexoDesktop;
       if (colon > 0) element.style.setProperty(part.slice(0, colon).trim(), part.slice(colon + 1).trim());
     }
   };
-  const scan = (node) => { if (node.nodeType !== 1) return; apply(node); node.querySelectorAll('[data-css]').forEach(apply); };
+  const scan = (node) => { if (node.nodeType !== 1) { return; } apply(node); node.querySelectorAll('[data-css]').forEach(apply); };
   new MutationObserver((records) => {
     for (const record of records) {
       if (record.type === 'attributes') apply(record.target);
@@ -207,7 +207,7 @@ function renderActivity(entries = readJSON(Nexo.keys.activity, [])) {
   const list = document.getElementById('activity-list');
   if (!list) return;
   const valid = (Array.isArray(entries) ? entries : []).filter((entry) => entry && typeof entry.title === 'string' && Number.isFinite(entry.timestamp))
-    .reduce((acc, entry) => { const prev = acc[acc.length - 1]; if (prev && prev.title === entry.title && prev.detail === entry.detail) { prev.count = (prev.count || 1) + (Number(entry.count) || 1); } else acc.push({ ...entry }); return acc; }, []).slice(0, 20);
+    .reduce((acc, entry) => { const prev = acc[acc.length - 1]; if (prev && prev.title === entry.title && prev.detail === entry.detail) { prev.count = (prev.count || 1) + (Number(entry.count) || 1); } else { acc.push({ ...entry }); } return acc; }, []).slice(0, 20);
   list.replaceChildren(...valid.map((entry) => {
     const item = document.createElement('li');
     const label = document.createElement('strong');

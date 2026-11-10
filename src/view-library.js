@@ -397,8 +397,8 @@
     if (target.dataset.tab) { state.tab = target.dataset.tab; renderGame(state.open); return; }
     if (target.dataset.shot) { showShot(Number(target.dataset.shot)); return; }
     if (target.dataset.storeUrl) { bridge.openStoreUrl(target.dataset.storeUrl).catch((error) => showToast(error.message)); return; }
-    if (target.dataset.allowOnline) { await bridge.setSettings({ onlineCovers: true }); const game = byId(target.dataset.allowOnline); if (game) loadDetails(game, true); return; }
-    if (target.dataset.refreshDetails) { const game = byId(target.dataset.refreshDetails); if (game) loadDetails(game, true); return; }
+    if (target.dataset.allowOnline) { await bridge.setSettings({ onlineCovers: true }); const game = byId(target.dataset.allowOnline); if (game) { loadDetails(game, true); } return; }
+    if (target.dataset.refreshDetails) { const game = byId(target.dataset.refreshDetails); if (game) { loadDetails(game, true); } return; }
     if ('openConnections' in target.dataset) { Nexo.openConnections?.(); return; }
     if (target.dataset.play) play(target.dataset.play, false);
     else if (target.dataset.playRec) play(target.dataset.playRec, true);
@@ -416,9 +416,9 @@
     else if (target.id === 'lib-connect') Nexo.openConnections?.();
     else if (target.id === 'art-fetch') fetchArt();
   });
-  document.getElementById('lib-sources').addEventListener('click', (event) => { const chip = event.target.closest('[data-lib-source]'); if (!chip) return; state.filter = chip.dataset.libSource; renderFilters(); renderGrid(); });
+  document.getElementById('lib-sources').addEventListener('click', (event) => { const chip = event.target.closest('[data-lib-source]'); if (!chip) { return; } state.filter = chip.dataset.libSource; renderFilters(); renderGrid(); });
   document.querySelectorAll('[data-lib-sort]').forEach((button) => button.addEventListener('click', () => { state.sort = button.dataset.libSort; document.querySelectorAll('[data-lib-sort]').forEach((other) => other.setAttribute('aria-pressed', String(other === button))); renderGrid(); }));
-  document.getElementById('lib-search').addEventListener('input', (event) => { state.query = event.target.value.trim(); if (state.query && state.filter === 'installed') state.filter = 'all'; renderFilters(); renderGrid(); });
+  document.getElementById('lib-search').addEventListener('input', (event) => { state.query = event.target.value.trim(); if (state.query && state.filter === 'installed') { state.filter = 'all'; } renderFilters(); renderGrid(); });
   document.getElementById('lib-rescan').addEventListener('click', scan);
   document.getElementById('lib-add').addEventListener('click', async () => { try { const result = await bridge.addGame(); if (result?.games) { state.games = result.games; render(); showToast('Jogo adicionado à biblioteca.'); } } catch (error) { showToast(error.message || 'Não foi possível adicionar.'); } });
   document.getElementById('lib-auto').addEventListener('change', async (event) => { try { await bridge.setSettings({ autoSession: event.target.checked }); showToast(event.target.checked ? 'O Nexo vai gravar sozinho quando um jogo abrir.' : 'Gravação automática desligada.'); } catch (error) { event.target.checked = !event.target.checked; showToast(error.message); } });

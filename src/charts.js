@@ -182,7 +182,7 @@
       const rect = canvas.getBoundingClientRect();
       const info = line(canvas, state.options, event.clientX - rect.left);
       const box = state.tip;
-      if (!box || !info || !info.readings.length) { if (box) box.hidden = true; return; }
+      if (!box || !info || !info.readings.length) { if (box) { box.hidden = true; } return; }
       const unit = state.options.unit || '';
       const reading = ({ serie, point }) => `<span data-css="color:${escapeHtml(serie.color)}">●</span> ${escapeHtml(serie.label)} ${escapeHtml(point[1].toFixed(0))}${escapeHtml(unit)}`;
       const when = new Date(info.t).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });

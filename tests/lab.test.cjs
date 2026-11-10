@@ -211,7 +211,7 @@ test('cancelamento volta ao original', async () => {
   const { system, state } = fakeSystem();
   const realBench = system.bench;
   let calls = 0;
-  system.bench = async (bench) => { calls += 1; if (calls === 6) signal.cancelled = true; return realBench(bench); };
+  system.bench = async (bench) => { calls += 1; if (calls === 6) { signal.cancelled = true; } return realBench(bench); };
   const result = await Lab.run(system, { consent: CONSENT, signal });
   assert.equal(result.status, 'cancelled');
   assert.ok(state.restored && state.finished);

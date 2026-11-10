@@ -17,7 +17,7 @@
   const H = {
     fin,
     // Arredonda antes de formatar: -0,04 vira "0,0", nunca "-0,0".
-    nf: (value, digits = 0) => { if (!fin(value)) return '--'; let v = Number(Number(value).toFixed(digits)); if (v === 0) v = 0; return v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }); },
+    nf: (value, digits = 0) => { if (!fin(value)) { return '--'; } let v = Number(Number(value).toFixed(digits)); if (v === 0) { v = 0; } return v.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits }); },
     /** Programas (processos de mesmo nome somados), do serviço se ele já mandar, senão agrupados aqui. */
     programs(result, by = 'cpu') {
       const ready = by === 'cpu' ? result?.programsByCpu : result?.programsByMemory;
@@ -32,7 +32,7 @@
       return [...map.values()].sort((a, b) => (by === 'cpu' ? b.cpuPercent - a.cpuPercent : b.memoryBytes - a.memoryBytes));
     },
     /** Número com sinal: "+1,2", "-0,8" ou "0,0" (sem "+0,0" nem "-0,0"). */
-    signed: (value, digits = 0) => { if (!fin(value)) return '--'; const v = Number(Number(value).toFixed(digits)); return `${v > 0 ? '+' : ''}${H.nf(v, digits)}`; },
+    signed: (value, digits = 0) => { if (!fin(value)) { return '--'; } const v = Number(Number(value).toFixed(digits)); return `${v > 0 ? '+' : ''}${H.nf(v, digits)}`; },
     bytes(value) {
       if (!fin(value) || value < 0) return '--';
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -62,8 +62,8 @@
     max: (list) => (list.length ? Math.max(...list) : null),
     min: (list) => (list.length ? Math.min(...list) : null),
     sum: (list) => list.reduce((a, v) => a + v, 0),
-    sd(list) { if (list.length < 2) return null; const m = H.avg(list); return Math.sqrt(H.avg(list.map((v) => (v - m) ** 2))); },
-    pct(list, p) { if (!list.length) return null; const s = [...list].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1))]; },
+    sd(list) { if (list.length < 2) { return null; } const m = H.avg(list); return Math.sqrt(H.avg(list.map((v) => (v - m) ** 2))); },
+    pct(list, p) { if (!list.length) { return null; } const s = [...list].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1))]; },
     slope(points) { // regressão simples: [[x, y]] → inclinação por unidade de x
       if (points.length < 3) return null;
       const n = points.length; const mx = H.avg(points.map((p) => p[0])); const my = H.avg(points.map((p) => p[1]));

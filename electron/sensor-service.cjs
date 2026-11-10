@@ -28,7 +28,7 @@ function createSensorService({ net, fs, path, crypto, run, fetchBuffer, elevate,
     return new Promise((resolve) => {
       let buffer = '';
       let done = false;
-      const finish = (value) => { if (done) return; done = true; clearTimeout(timer); socket.destroy(); resolve(value); };
+      const finish = (value) => { if (done) { return; } done = true; clearTimeout(timer); socket.destroy(); resolve(value); };
       const socket = net.connect(PIPE);
       const timer = setTimeout(() => finish(null), timeoutMs);
       socket.setEncoding('utf8');
