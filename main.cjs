@@ -57,13 +57,73 @@ const errorLog = createErrorLog({
   user: (() => { try { return os.userInfo().username; } catch { return ''; } })()
 });
 // Diagnóstico do app por dia (canais IPC, quedas, travadas, erros por origem): só sai com a telemetria ligada.
+// O diag usa a API síncrona do fs (o flush do before-quit precisa terminar antes de o app fechar); `fs` aqui é o de promessas.
 const { createDiag } = require('./electron/diag.cjs');
-const diag = createDiag({ fs, path, file: path.join(app.getPath('userData'), 'diag.json') });
+const recordRaw = errorLog.record.bind(errorLog);
+const diagErrorsSeen = new Set();
+const diag = createDiag({
+  fs: require('fs'), path, file: path.join(app.getPath('userData'), 'diag.json'),
+  // Uma vez por tipo e por sessão, direto no registro (sem passar pela contagem do diag, para não entrar em laço).
+  onError: (kind, error) => { if (diagErrorsSeen.has(kind)) return; diagErrorsSeen.add(kind); try { recordRaw({ source: 'principal', level: 'aviso', message: `Diagnóstico do app: falha ao ${kind} (${error?.code || error?.message || error})`, context: { etapa: `diag.${kind}` } }); } catch { /* registro indisponível */ } }
+});
 setInterval(() => diag.flush(), 5 * 60 * 1000).unref?.();
-{
-  const record = errorLog.record.bind(errorLog);
-  errorLog.record = (entry = {}) => { diag.count(`erro.${String(entry.source || 'outro').replace(/[^a-z]/gi, '') || 'outro'}`); return record(entry); };
+/*
+ * Trilha (breadcrumbs): as últimas ações do app (canal IPC, resultado e tempo; telas; energia), só nomes fixos.
+ * Vai junto com cada ERRO no contexto ("trilha"), para dar para reconstruir o que levou a ele. Nada do conteúdo.
+ */
+const trail = [];
+function crumb(kind, name, extra = '') {
+  trail.push(`${Math.round((Date.now() - APP_LAUNCHED_AT) / 1000)}s ${kind} ${String(name).slice(0, 40)}${extra ? ` ${String(extra).slice(0, 30)}` : ''}`);
+  if (trail.length > 30) trail.splice(0, trail.length - 30);
 }
+errorLog.record = (entry = {}) => {
+  diag.count(`erro.${String(entry.source || 'outro').replace(/[^a-z]/gi, '') || 'outro'}`);
+  if (entry.level !== 'aviso' && (entry.context === undefined || (entry.context && typeof entry.context === 'object' && !Array.isArray(entry.context)))) {
+    entry = { ...entry, context: { ...(entry.context || {}), trilha: trail.slice(-12) } };
+  }
+  return recordRaw(entry);
+};
+/** Interrupção que não foi a pessoa que pediu (guarda, prazo, falha de serviço): vai para o registro como erro. */
+function noteInterruption(what, reason, context = {}, level = 'erro') {
+  crumb('parou', what);
+  diag.count(`interrompido.${what}`);
+  errorLog.record({ source: 'servico', level, message: `${what}: interrompido — ${String(reason || 'motivo desconhecido').slice(0, 300)}`, context: { etapa: what, ...context } });
+}
+/** Erro de programação (TypeError, ReferenceError…) é bug nosso; recusa do UAC, cancelamento e rede, não. */
+const isBug = (error) => ['TypeError', 'ReferenceError', 'RangeError', 'SyntaxError', 'URIError', 'EvalError'].includes(error?.name) || error instanceof TypeError || error instanceof ReferenceError || error instanceof RangeError;
+/*
+ * Ação lenta vira aviso no registro. Limite por canal (ms); Infinity = espera a pessoa (login, UAC) ou é longa por natureza.
+ * O resto usa 30 s. Só o nome do canal e o tempo vão para o registro.
+ */
+const SLOW_IPC_MS = {
+  'system:snapshot': 15000, 'sensors:snapshot': 15000, 'watch:current': 5000, 'cloud:status': 8000, 'app:self-metrics': 5000, 'settings:get': 5000, 'privacy:get': 5000,
+  'window:minimize': 3000, 'window:toggle-maximize': 3000, 'window:close': 3000, 'window:get-state': 3000, 'games:scan': 120000, 'games:fetch-art': 90000, 'scan:run': 120000,
+  'cleanup:scan': 120000, 'cleanup:preview': 90000, 'net:diagnose': 90000, 'lab:preflight': 60000, 'updates:check': 60000, 'session:probe-test': 60000, 'steam:connect': 60000
+};
+for (const channel of ['bench:cpu', 'lab:run', 'lab:adopt', 'lab:recover', 'reboot:start', 'reboot:continue', 'reboot:restart', 'account:sign-in', 'steam:sign-in', 'xbox:sign-in', 'cloud:connect', 'net:fix', 'scan:apply',
+  'cleanup:run', 'drives:optimize', 'system:repair', 'updates:download', 'updates:install', 'sensors:service-install', 'fps:access', 'fps:choose', 'app:uninstall', 'account:import-config', 'integrations:import', 'games:add', 'games:set-cover']) SLOW_IPC_MS[channel] = Infinity;
+const slowSeen = new Map();
+function noteSlowIpc(channel, ms) {
+  const hour = Math.floor(Date.now() / 3600000);
+  if (slowSeen.get(channel) === hour) return; // uma vez por canal por hora
+  slowSeen.set(channel, hour);
+  diag.count(`lento.${channel}`);
+  errorLog.record({ source: 'ipc', level: 'aviso', message: `Ação lenta: ${channel} levou ${(ms / 1000).toFixed(1)} s`, context: { acao: channel, ms: Math.round(ms), limite: SLOW_IPC_MS[channel] ?? 30000 } });
+}
+/* Processo principal travado (laço de eventos parado): mede o atraso e registra trechos acima de 1,5 s. */
+try {
+  const { monitorEventLoopDelay } = require('perf_hooks');
+  const loop = monitorEventLoopDelay({ resolution: 50 });
+  loop.enable();
+  setInterval(() => {
+    const maxMs = loop.max / 1e6;
+    if (maxMs >= 1500) {
+      diag.count('principalTravou');
+      errorLog.record({ source: 'principal', level: 'aviso', message: `O processo principal ficou travado por ${(maxMs / 1000).toFixed(1)} s`, context: { p99ms: Math.round(loop.percentile(99) / 1e6), trilha: trail.slice(-8) } });
+    }
+    loop.reset();
+  }, 60000).unref?.();
+} catch { /* sem perf_hooks: segue sem essa medida */ }
 process.on('uncaughtException', (error) => { errorLog.record({ source: 'principal', message: error?.message || String(error), stack: error?.stack }); });
 process.on('unhandledRejection', (reason) => { errorLog.record({ source: 'principal', message: reason?.message || String(reason), stack: reason?.stack }); });
 app.on('render-process-gone', (_event, _contents, details) => { diag.count('telaFechou'); errorLog.record({ source: 'processo', message: `A tela do Nexo fechou sozinha (${details?.reason || 'motivo desconhecido'})`, context: { codigo: details?.exitCode } }); });
@@ -82,6 +142,13 @@ let sensorHostStatus = 'starting';
 
 /** Saída do PowerShell em UTF-8: sem isso, nomes com acento (rótulos de disco, programas, planos) chegam quebrados. */
 const PS_UTF8_OUTPUT = '[Console]::OutputEncoding=[Text.Encoding]::UTF8; ';
+/** Nome curto do comando para o registro (o primeiro cmdlet do script): nunca o script inteiro. */
+const scriptLabel = (script) => (/\b(?:Get|Set|Start|Stop|Invoke|New|Remove|Test|Optimize|Repair|Clear|Disable|Enable|Restart)-[A-Za-z]+/.exec(String(script)) || ['powershell'])[0];
+/** PowerShell que estourou o prazo (o Windows matou o processo): é lentidão, vai para o registro. */
+function notePowerShellTimeout(error, script, timeout) {
+  if (!error?.killed && error?.signal !== 'SIGTERM') return;
+  noteInterruption('powershell', `${scriptLabel(script)} passou de ${Math.round(timeout / 1000)} s e foi encerrado`, { comando: scriptLabel(script), prazoS: Math.round(timeout / 1000) }, 'aviso');
+}
 function runPowerShell(script, timeout = 15000) {
   if (process.platform !== 'win32') {
     throw new Error('Esta operação está disponível somente no Windows.');
@@ -97,7 +164,7 @@ function runPowerShell(script, timeout = 15000) {
     windowsHide: true,
     timeout,
     maxBuffer: 2 * 1024 * 1024
-  });
+  }).catch((error) => { notePowerShellTimeout(error, script, timeout); throw error; });
 }
 
 /** Igual ao runPowerShell, mas nunca lança: devolve { code, stdout } (o laboratório decide o que fazer com o código). */
@@ -105,6 +172,7 @@ function runPowerShellCode(script, timeout = 15000) {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') { resolve({ code: -1, stdout: '' }); return; }
     execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PS_UTF8_OUTPUT + script], { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
+      if (error) notePowerShellTimeout(error, script, timeout);
       resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || '') });
     });
   });
@@ -375,6 +443,7 @@ async function getHardwareSensors() {
     sensorRequestPending = null;
     sensorHost?.kill();
     sensorHost = null;
+    noteInterruption('sensores', 'a leitura detalhada passou de 20 s e foi interrompida', { fonte: 'coletor' }, 'aviso');
     pending.resolve({ status: 'timeout', collectedAt: new Date().toISOString(), devices: [], sensorCount: 0, issues: [{ device: 'Coletor', message: 'A leitura de sensores demorou demais e foi interrompida.' }] });
   }, 20000);
   host.stdin.write('{"command":"sample"}\n', (error) => {
@@ -572,16 +641,23 @@ function registerIpcHandler(channel, handler) {
       throw new Error('Origem não autorizada para esta operação.');
     }
     const started = performance.now();
+    let result;
+    let failure = null;
+    try { result = await handler(event, ...args); } catch (error) { failure = error || new Error('Falha sem detalhe.'); }
+    // Instrumentação isolada: diag e registro nunca trocam o resultado (nem o erro original) da ação.
+    const ms = performance.now() - started;
+    diag.ipc(channel, ms, !failure);
     try {
-      const result = await handler(event, ...args);
-      diag.ipc(channel, performance.now() - started, true);
-      return result;
-    } catch (error) {
-      diag.ipc(channel, performance.now() - started, false);
-      // Falha de uma ação: vai para o registro como aviso (muitas são esperadas, como recusar o UAC), e a tela recebe o erro igual.
-      errorLog.record({ source: 'ipc', level: 'aviso', message: error?.message || String(error), stack: error?.stack, context: { acao: channel } });
-      throw error;
+      if (!/^(window|app:self-metrics|system:snapshot|sensors:snapshot|watch:current|session:sample)/.test(channel)) crumb('ipc', channel, `${failure ? 'falhou' : 'ok'} ${Math.round(ms)}ms`);
+      if (ms > (SLOW_IPC_MS[channel] ?? 30000)) noteSlowIpc(channel, ms);
+    } catch { /* instrumentação nunca atrapalha */ }
+    if (failure) {
+      // Falha de uma ação: aviso quando é esperada (recusar o UAC, cancelar, sem rede); ERRO quando é bug nosso
+      // (TypeError e afins) — esse vai para o painel. A tela recebe o erro original igual.
+      try { errorLog.record({ source: 'ipc', level: isBug(failure) ? 'erro' : 'aviso', message: failure?.message || String(failure), stack: failure?.stack, context: { acao: channel, ms: Math.round(ms) } }); } catch { /* registro indisponível */ }
+      throw failure;
     }
+    return result;
   });
 }
 
@@ -644,6 +720,7 @@ autoUpdater.on('update-cancelled', () => {
     releaseNotes: updateReleaseInfo?.releaseNotes
   });
 });
+autoUpdater.on('error', (error) => { noteInterruption('atualizacao', error?.message || error, { versao: updateAvailableVersion || null }, 'aviso'); });
 autoUpdater.on('error', (error) => publishUpdateStatus('error', {
   message: error.message,
   version: updateAvailableVersion,
@@ -688,8 +765,17 @@ function createWindow() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.webContents.send('window:state', { maximized: mainWindow.isMaximized() });
   };
-  mainWindow.on('unresponsive', () => diag.count('janelaTravou'));
-  mainWindow.on('unresponsive', () => errorLog.record({ source: 'interface', level: 'aviso', message: 'A janela do Nexo parou de responder por alguns segundos', context: { tela: 'janela' } }));
+  // Travada da tela: registra quanto tempo durou (quando ela volta) e o que vinha acontecendo antes.
+  let frozenAt = 0;
+  mainWindow.on('unresponsive', () => { diag.count('janelaTravou'); frozenAt = Date.now(); crumb('tela', 'travou'); });
+  mainWindow.on('responsive', () => {
+    if (!frozenAt) return;
+    const seconds = Math.round((Date.now() - frozenAt) / 1000);
+    frozenAt = 0;
+    errorLog.record({ source: 'interface', level: seconds >= 10 ? 'erro' : 'aviso', message: `A janela do Nexo parou de responder por ${seconds} s`, context: { tela: 'janela', segundos: seconds, trilha: trail.slice(-10) } });
+  });
+  mainWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => { if (isMainFrame) errorLog.record({ source: 'interface', message: `A tela não carregou (${code} ${description})`, context: { codigo: code, principal: Boolean(isMainFrame), alvo: String(url || '').startsWith('file:') ? 'arquivo do app' : 'outro' } }); });
+  mainWindow.webContents.on('preload-error', (_event, _path, error) => errorLog.record({ source: 'interface', message: `Falha no preload: ${error?.message || error}`, stack: error?.stack }));
   mainWindow.on('maximize', publishWindowState);
   mainWindow.on('unmaximize', publishWindowState);
   mainWindow.loadURL(trustedDocumentUrl);
@@ -702,6 +788,13 @@ function createWindow() {
 ipcMain.on('log:report', (event, payload) => {
   if (event.senderFrame?.url !== trustedDocumentUrl || !payload || typeof payload !== 'object') return;
   errorLog.record({ source: 'interface', level: payload.level === 'aviso' ? 'aviso' : 'erro', message: String(payload.message || '').slice(0, 600), stack: String(payload.stack || '').slice(0, 4000), context: payload.context && typeof payload.context === 'object' ? payload.context : undefined });
+});
+// Trilha vinda da tela: troca de tela e ações com nome fixo (nada digitado).
+ipcMain.on('log:crumb', (event, payload) => {
+  if (event.senderFrame?.url !== trustedDocumentUrl || !payload || typeof payload !== 'object') return;
+  const kind = /^[a-z]{2,10}$/.test(String(payload.kind)) ? payload.kind : 'tela';
+  const name = String(payload.name || '').replace(/[^\w.:-]/g, '').slice(0, 40);
+  if (name) crumb(kind, name);
 });
 registerIpcHandler('log:list', async (_event, options) => errorLog.list({ limit: Math.min(500, Number(options?.limit) || 100) }));
 registerIpcHandler('log:export', async () => errorLog.exportText());
@@ -1868,7 +1961,7 @@ registerIpcHandler('lab:run', async (_event, options) => {
   labState.running = true;
   labState.signal = { cancelled: false };
   try {
-    return await NexoLab.run(labSystem, {
+    const result = await NexoLab.run(labSystem, {
       consent: { acknowledged: options?.consent?.acknowledged === true, phrase: String(options?.consent?.phrase || '').slice(0, 40) },
       autonomy: options?.autonomy === 'autonomo' ? 'autonomo' : 'assistido',
       allowRisk: ['baixo', 'moderado', 'alto'].includes(options?.allowRisk) ? options.allowRisk : 'moderado',
@@ -1881,6 +1974,11 @@ registerIpcHandler('lab:run', async (_event, options) => {
       evidence: memory.evidence, tabu: memory.tabu, signal: labState.signal,
       emit: (event) => sendToWindow('lab:event', event.type === 'done' ? { type: 'done' } : event)
     });
+    // Guardas e falhas do laboratório vão para o registro (cancelar pela pessoa, não).
+    if (result.status === 'aborted') noteInterruption('laboratorio', result.reason, { guarda: result.guard || 'erro', ajustes: result.arms.length, aquecimento: result.thermal?.idle ?? null, referencia: Math.max(0, ...Object.values(result.thermal?.reference || {}).filter(Number.isFinite)) || null });
+    if (result.restoreFailed) noteInterruption('laboratorio', 'não consegui voltar ao plano de energia original (a recuperação tenta de novo na próxima abertura)', { etapa: 'restaurar' });
+    if (result.noisy) crumb('lab', 'medicoes-ruidosas', String(result.noisy));
+    return result;
   } finally { labState.running = false; labState.signal = null; }
 });
 // ---- Diagnóstico de rede ("a internet está boa, mas os sites demoram") ----
@@ -1995,7 +2093,8 @@ const rebootTest = createRebootTest({
   fs, path, dir: path.join(app.getPath('userData'), 'reboot-test'),
   run: runCode, runPowerShell: runPowerShellCode, apply: (changes) => systemScan.apply(changes), validate: validateScanChange,
   bench: labBench, cpuLoad: getCpuUsage, memory: () => ({ total: os.totalmem(), free: os.freemem() }), onBattery: async () => Boolean(powerMonitor?.isOnBatteryPower?.()),
-  uptime: () => os.uptime(), exePath: process.execPath, isPackaged: app.isPackaged, emit: (channel, payload) => sendToWindow(channel, payload)
+  uptime: () => os.uptime(), exePath: process.execPath, isPackaged: app.isPackaged, emit: (channel, payload) => sendToWindow(channel, payload),
+  onProblem: (kind, message) => noteInterruption('teste-com-reinicio', message, { motivo: kind })
 });
 const cleanRebootValue = (value) => (value === null || (typeof value === 'number' && Number.isFinite(value)) || (typeof value === 'string' && value.length <= 200) ? value : undefined);
 registerIpcHandler('reboot:status', async () => rebootTest.status());
@@ -2223,10 +2322,13 @@ async function serverUrl() {
   for (const file of candidates) { try { const url = JSON.parse(await fs.readFile(file, 'utf8')).url; if (typeof url === 'string' && url) return url; } catch { /* próximo */ } }
   return null;
 }
-const { createCloud } = require('./electron/cloud.cjs');
-let cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: null, fetchImpl: (url, init) => net.fetch(url, init), safeStorage, version: app.getVersion(), errorLog });
+const { createCloud, fitTelemetry } = require('./electron/cloud.cjs');
+// E-mail da conta Google entrada no app: vai com os erros (marcado como "informado pelo app") quando a pessoa marcou
+// "incluir meu e-mail" e não ligou a sincronização (sem ela o servidor não tem como confirmar o e-mail).
+const accountEmail = async () => { const profile = await readProfile().catch(() => null); return profile?.email || null; };
+let cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: null, fetchImpl: (url, init) => net.fetch(url, init), safeStorage, version: app.getVersion(), errorLog, accountEmail });
 const cloudReady = serverUrl().then(async (url) => {
-  cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog });
+  cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog, accountEmail });
   // Quem marcou "Ajudar a melhorar o Nexo" no instalador já respondeu: liga telemetria e erros e o app não pergunta de novo.
   const status = await cloud.status();
   if (status.configured && !status.asked && (await readSharePreference()).shareWithCreator) await cloud.setOptions({ telemetry: true, errors: true, asked: true });
@@ -2270,7 +2372,7 @@ async function telemetryHardware() {
   };
 }
 /** Só as partes conhecidas do resumo que a interface montou (o servidor confere de novo). */
-const TELEMETRY_PARTS = ['usage', 'features', 'app', 'perf', 'health', 'settings', 'library', 'lab', 'feats'];
+const TELEMETRY_PARTS = ['usage', 'features', 'app', 'perf', 'health', 'settings', 'library', 'lab', 'feats', 'bottleneck'];
 registerIpcHandler('cloud:status', async () => (await withCloud()).status());
 registerIpcHandler('cloud:set', async (_event, options) => {
   const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
@@ -2282,6 +2384,7 @@ registerIpcHandler('cloud:set', async (_event, options) => {
 registerIpcHandler('cloud:connect', async () => {
   const target = await withCloud();
   if (!target.configured) throw new Error('O servidor do Nexo não está configurado nesta versão.');
+  if ((await target.status()).connected) return target.setOptions({ sync: true });
   if (!freshIdToken || Date.now() - freshIdToken.at > 50 * 60 * 1000) {
     if (signingIn) throw new Error('Já existe um login em andamento no navegador.');
     const config = await googleConfig();
@@ -2323,13 +2426,26 @@ registerIpcHandler('cloud:telemetry', async (_event, packet) => {
   if (!status.telemetry) return { skipped: true };
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(packet?.day || '')) ? packet.day : null;
   if (!day) throw new Error('Dia inválido.');
+  const partial = packet?.partial === true;
   const summary = packet?.data && typeof packet.data === 'object' && !Array.isArray(packet.data) ? packet.data : {};
   const data = Object.fromEntries(TELEMETRY_PARTS.filter((key) => summary[key] && typeof summary[key] === 'object').map((key) => [key, summary[key]]));
   const extra = await telemetryHardware();
   diag.flush();
-  return target.sendTelemetry({ ...data, hw: extra.hw, sensors: extra.sensors, system: extra.system, diag: diag.summary(day) || undefined }, day);
+  // Cabe no limite do servidor: se passar, saem primeiro os detalhes menos importantes (antes o pacote todo era recusado).
+  const fitted = fitTelemetry({ ...data, hw: extra.hw, sensors: extra.sensors, system: extra.system, diag: diag.summary(day) || undefined });
+  try { return await target.sendTelemetry(fitted.data, day, { partial }); }
+  catch (error) {
+    // Telemetria que não chega precisa aparecer no registro: 4xx = algo errado no pacote (vai como erro); sem rede = aviso.
+    errorLog.record({ source: 'servico', level: error?.offline || error?.status === 429 ? 'aviso' : 'erro', message: `Telemetria não foi enviada: ${error?.message || error}`, context: { etapa: 'telemetria', status: error?.status || null, bytes: fitted.bytes, cortado: fitted.trimmed.join(',') || null, parcial: partial } });
+    throw error;
+  }
 });
 registerIpcHandler('cloud:send-errors', async () => (await withCloud()).sendErrors());
+/** Envio periódico dos relatórios: falha de rede é esperada (aviso local), recusa do servidor é erro de verdade. */
+async function sendErrorsQuietly() {
+  try { await (await withCloud()).sendErrors(); }
+  catch (error) { if (!error?.offline) errorLog.record({ source: 'servico', level: 'aviso', message: `Relatórios de erro não foram enviados: ${error?.message || error}`, context: { etapa: 'relatorios', status: error?.status || null } }); }
+}
 registerIpcHandler('cloud:admin', async () => {
   const link = await (await withCloud()).adminLink();
   if (!/^https:\/\/[A-Za-z0-9.-]+\/painel\/entrar\?c=[A-Za-z0-9_-]+$/.test(String(link?.url || ''))) throw new Error('O servidor devolveu um link estranho; não abri.');
@@ -2337,8 +2453,8 @@ registerIpcHandler('cloud:admin', async () => {
   return { ok: true };
 });
 // Relatórios de erro (se ligados): 2 minutos depois de abrir e a cada 30 minutos.
-setTimeout(() => withCloud().then((target) => target.sendErrors()).catch(() => {}), 2 * 60 * 1000).unref?.();
-setInterval(() => withCloud().then((target) => target.sendErrors()).catch(() => {}), 30 * 60 * 1000).unref?.();
+setTimeout(sendErrorsQuietly, 2 * 60 * 1000).unref?.();
+setInterval(sendErrorsQuietly, 30 * 60 * 1000).unref?.();
 
 registerIpcHandler('account:sign-in', async () => {
   if (signingIn) throw new Error('Já existe um login em andamento no navegador.');
@@ -2479,6 +2595,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    // Suspender/voltar, bloquear, bateria: entram na trilha (explicam muitos erros "do nada" depois de dormir).
+    try { for (const name of ['suspend', 'resume', 'lock-screen', 'unlock-screen', 'on-ac', 'on-battery', 'shutdown']) powerMonitor.on(name, () => crumb('energia', name)); } catch { /* sem powerMonitor */ }
     if (process.platform === 'win32') app.setAppUserModelId('com.samuklvm.nexo');
     Menu.setApplicationMenu(null);
     // Se um teste do laboratório ficou pela metade (queda de energia, travamento), volta ao plano original antes de tudo.

@@ -147,10 +147,13 @@ function createLabSystem(deps) {
     lastInfo = knobs;
     return knobs;
   }
-  /** Defesa extra: o valor tem que caber no que o próprio powercfg informou para este PC. */
+  /**
+   * Defesa extra: o valor tem que caber no que o próprio powercfg informou para este PC NESTA sessão. Sem leitura
+   * (ajuste que o PC não expõe ou leitura que falhou), recusa — antes aceitava às cegas.
+   */
   function fitsPc(id, value) {
     const info = lastInfo[id];
-    if (!info || !info.available) return true;
+    if (!info || !info.available) return false;
     if (value === info.current) return true;
     if (Array.isArray(info.indexes) && info.indexes.length) return info.indexes.includes(value);
     if (Number.isFinite(info.min) && Number.isFinite(info.max)) return value >= info.min && value <= info.max;
@@ -257,6 +260,7 @@ function createLabSystem(deps) {
     },
     async finish() {
       session = null;
+      lastInfo = {};
       await fs.rm(lockFile, { force: true });
       await fs.rm(path.join(dir, 'disk-probe.bin'), { force: true }).catch(() => {}); // arquivo do teste de disco
       await run('reg', ['delete', RUNONCE_KEY, '/v', RUNONCE_VALUE, '/f']).catch(() => {});

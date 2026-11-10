@@ -85,6 +85,9 @@ test('begin clona o plano, nunca edita o original e grava trava + RunOnce', asyn
   assert.equal(win.state.plans.get(CLONE), Sys.LAB_PLAN_NAME);
   assert.ok(fs.files.has(path.join('/dados/lab', 'lab-lock.json')));
   assert.ok(win.state.calls.some((call) => call[0] === 'reg' && call.includes(Sys.RUNONCE_VALUE) && call.some((arg) => /--lab-recover/.test(arg))));
+  // Sem ler o que o PC aceita nesta sessão, nada é aplicado (antes passava às cegas).
+  await assert.rejects(system.apply([{ id: 'perfepp', sub: 'SUB_PROCESSOR', setting: 'PERFEPP', value: 0 }]), /não aceita/);
+  await system.readConfig();
   await system.apply([{ id: 'perfepp', sub: 'SUB_PROCESSOR', setting: 'PERFEPP', value: 0 }]);
   assert.equal(win.state.values.get(`${CLONE}|PERFEPP`), 0);
   assert.equal(win.state.values.has(`${ORIGINAL}|PERFEPP`), false, 'o plano original não é tocado');

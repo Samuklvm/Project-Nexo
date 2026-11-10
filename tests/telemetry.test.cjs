@@ -104,7 +104,9 @@ test('diagnóstico: canais contados por dia, falhas e tempos, e o arquivo guarda
   assert.equal(keyOf('9x:y z'), 'c9x.y-z');
   for (let i = 0; i < 10; i++) { clock += 86400000; diag.count('x'); }
   diag.flush();
-  assert.equal(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'diag.json'), 'utf8'))).length, 8);
+  const stored = JSON.parse(fs.readFileSync(path.join(dir, 'diag.json'), 'utf8'));
+  assert.equal(stored.v, 2);
+  assert.equal(Object.keys(stored.days).length, 8);
   // Muitos canais: os mais usados e todos os que falharam, sem passar do limite de chaves do servidor.
   for (let i = 0; i < 90; i++) diag.ipc(`canal:${i}`, 5, i % 7 !== 0);
   const big = diag.summary(new Date(clock).toISOString().slice(0, 10));
@@ -134,4 +136,40 @@ test('telemetria: um dia cheio (tudo no máximo) passa no servidor e cabe no lim
   assert.ok(size < LIMITS.telemetry * 0.8, `${size} bytes: perto demais do limite`);
   for (const key of ['usage', 'features', 'app', 'perf', 'health', 'settings', 'library', 'lab', 'feats', 'hw', 'diag', 'sensors', 'system']) if (data[key]) assert.ok(clean[key], `${key} ficou de fora no servidor`);
   assert.equal(clean.library.stores['Minha Loja!'], undefined, 'chave estranha cai no servidor');
+});
+
+test('A01: diagnóstico com o fs real persiste e volta depois de reabrir; fs/promises é recusado na hora', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-diag-'));
+  const file = path.join(dir, 'sub', 'diag.json');
+  const clock = Date.UTC(2026, 10, 10, 12);
+  const first = createDiag({ fs, path, file, now: () => clock });
+  first.ipc('lab:run', 50, true);
+  first.count('janelaTravou');
+  assert.equal(first.flush(), true);
+  const reopened = createDiag({ fs, path, file, now: () => clock });
+  reopened.count('janelaTravou');
+  const summary = reopened.summary('2026-11-10');
+  assert.equal(summary.events.janelaTravou, 2, 'o contador voltou do disco');
+  assert.equal(summary.ipc['lab.run'].n, 1);
+  assert.throws(() => createDiag({ fs: fs.promises, path, file }), /síncrona/, 'a composição errada (A01) falha alto em vez de perder tudo em silêncio');
+});
+
+test('A06/A15: arquivo do diagnóstico com formato errado não quebra nada; diagnóstico nunca lança', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-diag-'));
+  const file = path.join(dir, 'diag.json');
+  const clock = Date.UTC(2026, 10, 10, 12);
+  for (const content of ['null', '[]', '"texto"', '{"2026-11-10": {}}', '{"2026-11-10": {"ipc": [], "events": null}}', '{"2026-11-10": {"ipc": {"a": [1]}, "events": {"x": "y"}}}', '{"v":2,"days":{"nao-e-dia":{"ipc":{}}}}', '{corte']) {
+    fs.writeFileSync(file, content);
+    const d = createDiag({ fs, path, file, now: () => clock });
+    assert.doesNotThrow(() => { d.ipc('system:snapshot', 10, true); d.count('x'); }, content);
+    assert.equal(d.summary('2026-11-10').ipc['system.snapshot'].n, 1, content);
+  }
+  // Disco cheio na gravação: flush devolve false e quem chamou segue.
+  const errors = [];
+  const full = createDiag({ fs: { ...fs, writeFileSync: () => { throw Object.assign(new Error('cheio'), { code: 'ENOSPC' }); } }, path, file, now: () => clock, onError: (kind) => errors.push(kind) });
+  full.count('y');
+  assert.equal(full.flush(), false);
+  assert.ok(errors.includes('gravar'));
+  assert.ok(errors.includes('ler'), 'o arquivo cortado também aparece');
+  assert.equal(full.summary('2026-11-10').events['diag.falhas'], 1, 'a falha do próprio diagnóstico aparece na telemetria');
 });

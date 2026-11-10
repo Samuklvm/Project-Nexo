@@ -25,7 +25,9 @@ $out.processes = @(Get-Process).Count
 $out.services = @(Get-Service | Where-Object { $_.Status -eq 'Running' }).Count
 [Console]::Out.Write(($out | ConvertTo-Json -Compress))`;
 
-function createRebootTest({ fs, path, dir, run, runPowerShell, apply, validate, bench, cpuLoad, memory, onBattery, uptime, exePath, isPackaged, platform = process.platform, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), emit = () => {} }) {
+function createRebootTest({ fs, path, dir, run, runPowerShell, apply, validate, bench, cpuLoad, memory, onBattery, uptime, exePath, isPackaged, platform = process.platform, now = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), emit = () => {}, onProblem = () => {} }) {
+  /* Interrupções vão para o registro de erros do app (sem os valores medidos). Nunca derrubam o teste. */
+  const problem = (kind, message) => { try { onProblem(kind, String(message || '').slice(0, 200)); } catch { /* registro indisponível */ } };
   const file = path.join(dir, 'state.json');
   const historyFile = path.join(dir, 'history.json');
   let busy = null;
@@ -201,12 +203,12 @@ function createRebootTest({ fs, path, dir, run, runPowerShell, apply, validate, 
       let acted = false;
       for (let guard = 0; guard < 12 && state && state.status === 'running'; guard += 1) {
         const action = RT.nextAction(state, { bootAt: bootAt(), now: now() });
-        if (action.type === 'abandon') { state = await cancelState(state, action.reason); break; }
+        if (action.type === 'abandon') { problem('abandonado', action.reason); state = await cancelState(state, action.reason); break; }
         if (action.type === 'finish') { state = await finish(state); break; }
         if (action.type === 'switch') {
           emit('reboot:progress', { stage: 'trocando', text: action.config === 'B' ? 'Aplicando os ajustes do teste' : 'Voltando aos valores de antes', pct: 0 });
           const outcome = await switchTo(state, action.config);
-          if (!outcome.ok) { state = { ...state, note: `${outcome.note} O teste está pausado: tente de novo ou cancele (volta ao original).` }; await save(state); break; }
+          if (!outcome.ok) { problem('troca-falhou', outcome.note); state = { ...state, note: `${outcome.note} O teste está pausado: tente de novo ou cancele (volta ao original).` }; await save(state); break; }
           state = RT.markSwitched(state, action.config, now());
           await save(state);
           acted = true;
@@ -224,6 +226,7 @@ function createRebootTest({ fs, path, dir, run, runPowerShell, apply, validate, 
             continue;
           } catch (error) {
             if (signal.cancelled) break;
+            problem('medicao-falhou', error?.message || error);
             state = { ...RT.markArmed(state, now()), note: `A medição falhou: ${String(error?.message || error).slice(0, 160)}. Reinicie para medir este boot de novo.` };
             await save(state);
             break;

@@ -36,7 +36,10 @@ export async function verifyGoogleIdToken(idToken, { clientIds, fetchImpl = fetc
   let header;
   let payload;
   try { header = decodePart(parts[0]); payload = decodePart(parts[1]); } catch { throw fail('Login inválido.'); }
-  if (header.alg !== 'RS256' || typeof header.kid !== 'string') throw fail('Login inválido.');
+  // JSON.parse aceita null, número, texto e lista: tudo isso é token malformado (401), não erro interno (500).
+  const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!isObject(header) || !isObject(payload)) throw fail('Login inválido.');
+  if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid || header.kid.length > 200) throw fail('Login inválido.');
   let keys = await googleKeys(fetchImpl, now);
   let jwk = keys.find((key) => key.kid === header.kid);
   if (!jwk) { keys = await googleKeys(fetchImpl, now, true); jwk = keys.find((key) => key.kid === header.kid); }

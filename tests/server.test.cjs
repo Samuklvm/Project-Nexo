@@ -152,21 +152,31 @@ test('telemetria: anônima, só chaves conhecidas, um pacote por dia e limite di
   assert.equal(rows.length, 1, 'mesmo dia: substitui');
   const data = JSON.parse(rows[0].data);
   assert.deepEqual(Object.keys(data).sort(), ['features', 'hw', 'usage']);
-  assert.equal(data.hw.path, 'C:\\Users\\<usuário>\\x');
-  for (let i = 0; i < 8; i++) assert.equal((await call('POST', '/v1/telemetry', { body })).status, 200);
-  assert.equal((await call('POST', '/v1/telemetry', { body })).status, 429, 'no máximo 10 por dia');
-  // Dia: o app manda cada dia depois que ele acaba. Dia velho demais ou inválido é recusado (antes virava "hoje").
-  const day = (offset) => new Date(Date.now() - offset * 86400000).toISOString().slice(0, 10);
+  assert.equal(data.hw.path, undefined, 'campo fora do esquema da categoria some (esquema fechado)');
+  assert.deepEqual(data.hw, { cpuVendor: 'AMD', cores: 12, ramGB: 16, gpuVendor: 'AMD' });
+  for (let i = 0; i < 28; i++) assert.equal((await call('POST', '/v1/telemetry', { body })).status, 200);
+  assert.equal((await call('POST', '/v1/telemetry', { body })).status, 429, 'no máximo 30 por dia');
+  // Dia: o MESMO relógio do servidor de teste (antes misturava com Date.now e falhava conforme a data — A17).
+  const day = (offset) => new Date(clock - offset * 86400000).toISOString().slice(0, 10);
   assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-04', day: day(2) } })).status, 200);
   assert.equal(env.DB.raw.prepare("SELECT day FROM telemetry WHERE install_id = 'install-telemetria-04'").get().day, day(2));
   assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-05', day: day(9) } })).status, 400, 'dia antigo demais');
   assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-05', day: 'ontem' } })).status, 400, 'dia inválido');
-  // Textos longos são cortados (80) e listas, limitadas (40); o que ainda passar de 16 KB é recusado.
-  const trimmed = await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-02', data: { usage: { views: { x: 'y'.repeat(9000) } } } } });
+  // A18: dia no futuro é recusado (antes virava "hoje" e sobrescrevia o resumo de hoje); data impossível também.
+  const future = await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-04', day: day(-1) } });
+  assert.equal(future.status, 400);
+  assert.equal(future.data.code, 'dia-futuro');
+  for (const bad of ['2026-13-01', '2026-11-00', '2026-02-29', '2026-04-31']) assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-05', day: bad } })).status, 400, bad);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM telemetry WHERE install_id = 'install-telemetria-04'").get().n, 1, 'nada sobrescrito');
+  // Textos longos são cortados (80) e listas, limitadas (40); o que ainda passar de 32 KB é recusado.
+  const trimmed = await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-02', data: { hw: { cpuModel: 'y'.repeat(9000) } } } });
   assert.equal(trimmed.status, 200);
-  assert.equal(JSON.parse(env.DB.raw.prepare("SELECT data FROM telemetry WHERE install_id = 'install-telemetria-02'").get().data).usage.views.x.length, 80);
-  const block = () => Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`chave${i}`, 'y'.repeat(79)]));
-  const huge = { usage: { views: block(), ui: block() }, features: block(), perf: block(), lab: Array.from({ length: 40 }, () => ({ a: 'b'.repeat(79) })) };
+  assert.equal(JSON.parse(env.DB.raw.prepare("SELECT data FROM telemetry WHERE install_id = 'install-telemetria-02'").get().data).hw.cpuModel.length, 80);
+  const long = (i) => `chave${'x'.repeat(30)}${String(i).padStart(4, '0')}`; // 39 caracteres, o máximo de uma chave
+  const block = () => Object.fromEntries(Array.from({ length: 60 }, (_, i) => [long(i), 123456789.123]));
+  const huge = { diag: { ipc: Object.fromEntries(Array.from({ length: 60 }, (_, i) => [long(i), { n: 123456789, e: 123456, ms: 987654, max: 987654321 }])), events: block() },
+    usage: { views: block(), ui: block(), viewTime: block(), actions: block() }, features: block(), feats: { empty: Array.from({ length: 40 }, () => 'z'.repeat(79)), crashed: Array.from({ length: 40 }, () => 'w'.repeat(79)), sources: Object.fromEntries(Array.from({ length: 60 }, (_, i) => [long(i), { ok: 1e6, fail: 1e6, ms: 1e6 }])), perView: Object.fromEntries(Array.from({ length: 60 }, (_, i) => [long(i), { seen: 1e6, empty: 1e6 }])) },
+    library: { stores: block() }, lab: { journal: { today: block() } }, bottleneck: { limiter: block(), sessionLimiter: block() } };
   assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, installId: 'install-telemetria-03', data: huge } })).status, 400, 'grande demais');
   env.DB.raw.prepare("DELETE FROM telemetry WHERE install_id != 'install-telemetria-01'").run();
   const agg = mod.aggregateTelemetry(env.DB.raw.prepare('SELECT * FROM telemetry').all());
@@ -347,4 +357,93 @@ test('rotina de relatórios: cria, atualiza e fecha issues pela assinatura', asy
   assert.equal(tools.plan([{ ...group, occurrences: 9 }], [issue])[0].type, 'update');
   assert.deepEqual(tools.plan([], [issue]), [{ type: 'close', number: 7 }], 'corrigido no painel: fecha');
   assert.equal(tools.issueTitle({ ...group, status: 'reaberto' }), '[voltou] Quebrou feio');
+});
+
+test('telemetria: esquema fechado por categoria, números sempre finitos e parcial de hoje', async () => {
+  const { call, env } = setup();
+  const clean = validate.cleanTelemetry;
+  // A16: nomes pessoais em qualquer nível somem; A24: número finito que estoura no arredondamento some.
+  const out = clean({ hw: { email: 'x@exemplo.test', password: 'segredo', cores: 8, displays: [{ w: 1920, h: 1080, nome: 'Samuel' }] }, perf: { cpuFocus: 1e308, cpuBack: 2.34567 },
+    usage: { views: { home: 2, email: 3, senha: 1, 'a b': 4 } }, diag: { ipc: { 'system.snapshot': { n: 2, e: 0, ms: 4, max: 9, extra: 'x' } } }, extra: { a: 1 } });
+  assert.deepEqual(out, { hw: { cores: 8, displays: [{ w: 1920, h: 1080 }] }, usage: { views: { home: 2 } }, perf: { cpuBack: 2.346 }, diag: { ipc: { 'system.snapshot': { n: 2, e: 0, ms: 4, max: 9 } } } });
+  const walk = (value) => { if (typeof value === 'number') assert.ok(Number.isFinite(value)); else if (value && typeof value === 'object') Object.values(value).forEach(walk); };
+  walk(clean({ health: { cpu: Number.MAX_VALUE, mem: -Number.MAX_VALUE, gpu: 1e9, disk: 1e10 }, bottleneck: { gpu: { busyP50: 1e300 } } }));
+  // Parcial: só hoje; um completo substitui o parcial, um parcial nunca substitui o completo.
+  const body = { installId: 'install-parcial-0001', version: '0.11.1', platform: 'win32' };
+  const today = new Date(clock).toISOString().slice(0, 10);
+  const yesterday = new Date(clock - 86400000).toISOString().slice(0, 10);
+  assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, day: yesterday, partial: true, data: { usage: { views: { home: 1 } } } } })).status, 400);
+  assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, day: today, partial: true, data: { usage: { views: { home: 1 } } } } })).status, 200);
+  assert.equal(env.DB.raw.prepare('SELECT partial FROM telemetry').get().partial, 1);
+  assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, day: today, data: { usage: { views: { home: 5 } } } } })).status, 200);
+  assert.equal((await call('POST', '/v1/telemetry', { body: { ...body, day: today, partial: true, data: { usage: { views: { home: 2 } } } } })).status, 200);
+  const row = env.DB.raw.prepare('SELECT partial, data FROM telemetry').get();
+  assert.equal(row.partial, 0);
+  assert.equal(JSON.parse(row.data).usage.views.home, 5, 'o completo ficou');
+});
+
+test('usuários novos: instalação conta na primeira vez que aparece, não a cada atualização', async () => {
+  const { call, env, loginAs } = setup();
+  const send = (installId, version) => call('POST', '/v1/telemetry', { body: { installId, version, platform: 'win32', data: { usage: { views: { home: 1 } } } } });
+  await send('install-novo-000001', '0.11.0');
+  clock += 86400000;
+  await send('install-novo-000001', '0.11.1'); // atualizou: continua a mesma instalação
+  await send('install-novo-000002', '0.11.1');
+  await call('POST', '/v1/errors', { body: { installId: 'install-novo-000003', version: '0.11.1', reports: [{ signature: 'abcdefabcdef0123', message: 'x', count: 1 }] } });
+  const installs = env.DB.raw.prepare('SELECT install_id, first_version, last_version, via FROM installs ORDER BY install_id').all().map((row) => ({ ...row }));
+  assert.deepEqual(installs, [
+    { install_id: 'install-novo-000001', first_version: '0.11.0', last_version: '0.11.1', via: 'telemetria' },
+    { install_id: 'install-novo-000002', first_version: '0.11.1', last_version: '0.11.1', via: 'telemetria' },
+    { install_id: 'install-novo-000003', first_version: '0.11.1', last_version: '0.11.1', via: 'erros' }
+  ]);
+  // No painel: 3 nos últimos 7 dias, 2 hoje.
+  const owner = await loginAs({ sub: 'sub-dono', email: ADMIN });
+  const link = await call('POST', '/v1/admin/link', { token: owner.token });
+  const enter = await call('GET', new URL(link.data.url).pathname + new URL(link.data.url).search, { raw: true });
+  const cookie = enter.headers.get('set-cookie').split(';')[0];
+  const resumo = await call('GET', '/painel/api/resumo', { headers: { cookie } });
+  assert.equal(resumo.data.newUsers.days7, 3);
+  assert.equal(resumo.data.newUsers.today, 2);
+  assert.ok(resumo.data.newUsers.perDay.length >= 1);
+});
+
+test('e-mail nos erros: o da sessão é confirmado; o informado pelo app fica marcado como não confirmado', async () => {
+  const { call, env, loginAs } = setup();
+  const report = { signature: '0123456789abcdef', message: 'falhou', count: 1 };
+  await call('POST', '/v1/errors', { body: { installId: 'install-email-00001', version: '0.11.1', includeEmail: true, contactEmail: 'Amiga@Exemplo.com', reports: [report] } });
+  let row = env.DB.raw.prepare('SELECT email, email_verified FROM error_reports').get();
+  assert.deepEqual({ ...row }, { email: 'amiga@exemplo.com', email_verified: 0 });
+  await call('POST', '/v1/errors', { body: { installId: 'install-email-00002', version: '0.11.1', includeEmail: false, contactEmail: 'outra@exemplo.com', reports: [report] } });
+  assert.equal(env.DB.raw.prepare("SELECT email FROM error_reports WHERE install_id = 'install-email-00002'").get().email, null, 'sem marcar, sem e-mail');
+  await call('POST', '/v1/errors', { body: { installId: 'install-email-00003', version: '0.11.1', includeEmail: true, contactEmail: 'nao é email', reports: [report] } });
+  assert.equal(env.DB.raw.prepare("SELECT email FROM error_reports WHERE install_id = 'install-email-00003'").get().email, null);
+  const person = await loginAs();
+  await call('POST', '/v1/errors', { token: person.token, body: { installId: 'install-email-00001', version: '0.11.1', includeEmail: true, contactEmail: 'falso@exemplo.com', reports: [report] } });
+  row = env.DB.raw.prepare("SELECT email, email_verified FROM error_reports WHERE install_id = 'install-email-00001'").get();
+  assert.deepEqual({ ...row }, { email: 'pessoa@exemplo.com', email_verified: 1 }, 'a sessão vale mais que o corpo');
+  await call('POST', '/v1/errors', { body: { installId: 'install-email-00001', version: '0.11.1', includeEmail: true, contactEmail: 'trocado@exemplo.com', reports: [report] } });
+  assert.equal(env.DB.raw.prepare("SELECT email FROM error_reports WHERE install_id = 'install-email-00001'").get().email, 'pessoa@exemplo.com', 'um não confirmado não troca um confirmado');
+});
+
+test('versões: pré-versões comparadas campo a campo (A23)', () => {
+  const cmp = validate.compareVersions;
+  const order = ['0.9.0', '1.0.0-alpha', '1.0.0-alpha.1', '1.0.0-alpha.beta', '1.0.0-beta', '1.0.0-beta.2', '1.0.0-beta.10', '1.0.0-rc.1', '1.0.0', '1.0.1', '1.10.0'];
+  for (let i = 0; i < order.length - 1; i += 1) { assert.ok(cmp(order[i], order[i + 1]) < 0, `${order[i]} < ${order[i + 1]}`); assert.ok(cmp(order[i + 1], order[i]) > 0); }
+  assert.equal(cmp('1.0.0+build.1', '1.0.0+build.9'), 0, 'build não conta');
+  assert.equal(cmp('1.0.0-beta.1', '1.0.0-beta.1'), 0);
+});
+
+test('login com cabeçalho JWT malformado devolve 401, nunca 500 (A25)', async () => {
+  const { call, certFetches } = setup();
+  const enc = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const bodies = [null, [], 1, 'texto', {}, { alg: 'RS256' }, { alg: 'RS256', kid: 5 }];
+  for (const header of bodies) {
+    for (const payload of [null, [], {}]) {
+      const token = `${enc(header)}.${enc(payload)}.${Buffer.from('assinatura').toString('base64url')}`;
+      const answer = await call('POST', '/v1/auth/google', { body: { idToken: token, deviceId: 'pc-aaaaaaaa' } });
+      assert.equal(answer.status, 401, JSON.stringify({ header, payload }));
+    }
+  }
+  assert.equal((await call('POST', '/v1/auth/google', { body: { idToken: '%%%.***.###', deviceId: 'pc-aaaaaaaa' } })).status, 401);
+  assert.equal(certFetches(), 0, 'nada malformado chega a buscar as chaves do Google');
 });

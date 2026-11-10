@@ -5,7 +5,7 @@
   const STAGES = [['preflight', 'Pré-checagem'], ['ponto', 'Ponto de restauração'], ['preparar', 'Ambiente de testes'], ['aquecer', 'Aquecimento'], ['testar', 'Testando ideias'], ['combinar', 'Combinações inéditas'], ['confirmar', 'Confirmação'], ['restaurar', 'Restauração']];
   const BENCH_SHORT = { single: '1 núcleo', multi: 'Todos', burst: 'Rajadas', latency: 'Latência', disk: 'Disco' };
   const GOAL_NOTE = { jogos: 'Pesa mais um núcleo, rajadas e latência.', geral: 'Todos os testes com peso parecido.', pesado: 'Pesa mais todos os núcleos (render, compilação, compressão).', resposta: 'Pesa mais latência e rajadas: cliques e carregamentos curtos.' };
-  const VERDICT = { melhorou: ['melhorou', 'risk-baixo'], piorou: ['piorou', 'risk-alto'], misto: ['troca (melhora e piora)', 'risk-moderado'], 'sem-diferenca': ['sem diferença', ''], inconclusivo: ['inconclusivo', ''] };
+  const VERDICT = { melhorou: ['melhorou', 'risk-baixo'], piorou: ['piorou', 'risk-alto'], misto: ['troca (melhora e piora)', 'risk-moderado'], 'sem-diferenca': ['sem diferença', ''], inconclusivo: ['inconclusivo', ''], recusado: ['o PC recusou', 'risk-moderado'] };
   const NOVELTY = { 'inedito-aqui': 'inédito neste PC', 'pouco-conhecido': 'pouco conhecido', conhecido: 'conhecido', raro: 'quase ninguém mexe' };
   const options = { autonomy: 'assistido', allowRisk: 'moderado', maxArms: 8, goal: 'jogos', combos: 2, budgetMin: 30 };
   let space = [];

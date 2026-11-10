@@ -327,3 +327,55 @@ test('espaço com pelo menos 70 ajustes e 380 opções', () => {
   const stats = Lab.spaceStats();
   assert.ok(stats.knobs >= 70 && stats.options >= 380, JSON.stringify(stats));
 });
+
+test('aquecimento normal do teste não aborta: a guarda compara com o mesmo teste no plano original', async () => {
+  // Reproduz o relato: em repouso 40 °C, rodar os testes leva a 58 °C sem mudar nada. Antes abortava no aquecimento.
+  const { system, state } = fakeSystem();
+  system.preflight = async () => ({ platform: 'win32', onBattery: false, tempC: 40, cpuLoad: 8, pending: false, knobs: Object.fromEntries(Object.keys(state.config).map((id) => [id, { available: true, current: state.config[id] }])) });
+  system.sample = async () => ({ tempC: 58, onBattery: false, cpuLoad: 10 });
+  const result = await Lab.run(system, { consent: CONSENT, maxArms: 3, allowRisk: 'baixo' });
+  assert.equal(result.status, 'completed', result.reason);
+  assert.equal(result.thermal.idle, 40);
+  assert.ok(result.arms.length >= 1);
+});
+
+test('pico de um instante no sensor não vira tabu; calor que continua, sim', async () => {
+  const { system, state } = fakeSystem();
+  let spikes = 0;
+  const realApply = system.apply;
+  system.apply = async (changes) => { await realApply(changes); if (state.config.minstate === 100 && spikes === 0) { spikes = 1; state.temp = 70; } else state.temp = 50; };
+  system.sleep = async (ms) => { state.t += ms; if (state.temp === 70) state.temp = 50; };
+  const result = await Lab.run(system, { consent: CONSENT, maxArms: 3, allowRisk: 'baixo' });
+  assert.equal(result.status, 'completed', result.reason);
+  assert.equal(result.tabu.length, 0);
+});
+
+test('erro do Windows conta por janela: erro antigo não culpa o ajuste seguinte', async () => {
+  const { system } = fakeSystem();
+  const windows = [];
+  system.errorEventsSince = async (since) => { windows.push(since); return 0; };
+  await Lab.run(system, { consent: CONSENT, maxArms: 2, allowRisk: 'baixo' });
+  assert.ok(windows.length > 3);
+  for (let i = 1; i < windows.length; i += 1) assert.ok(windows[i] >= windows[i - 1], 'a janela anda para frente');
+  assert.ok(windows.at(-1) > windows[0]);
+});
+
+test('ajuste que o PC recusa vira tabu e a sessão continua; estado volta ao original', async () => {
+  const { system, state } = fakeSystem();
+  const realApply = system.apply;
+  system.apply = async (changes) => { if (changes.some((change) => change.id === 'perfepp' && change.value === 0)) { state.config.perfepp = 0; throw new Error('valor fora da faixa'); } return realApply(changes); };
+  const result = await Lab.run(system, { consent: CONSENT, maxArms: 4, allowRisk: 'baixo' });
+  assert.equal(result.status, 'completed', result.reason);
+  assert.ok(result.tabu.includes('perfepp=0'));
+  assert.equal(state.config.perfepp, 33, 'o valor recusado foi desfeito antes do próximo teste');
+  assert.ok(result.arms.some((arm) => arm.verdict === 'recusado'));
+  assert.ok(result.arms.filter((arm) => arm.verdict !== 'recusado').length >= 1, 'as outras ideias foram testadas');
+});
+
+test('medição com outro programa pesando fica inconclusiva', async () => {
+  const { system } = fakeSystem();
+  system.quiet = async () => ({ ok: false });
+  const result = await Lab.run(system, { consent: CONSENT, maxArms: 3, allowRisk: 'baixo' });
+  assert.ok(result.arms.every((arm) => arm.verdict === 'inconclusivo'));
+  assert.equal(result.combination, null);
+});

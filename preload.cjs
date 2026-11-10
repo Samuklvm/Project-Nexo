@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   scanSystem: () => call('scan:run'),
   applyTweaks: (changes) => call('scan:apply', changes),
   reportError: (payload) => ipcRenderer.send('log:report', payload),
+  crumb: (kind, name) => ipcRenderer.send('log:crumb', { kind: String(kind || '').slice(0, 10), name: String(name || '').slice(0, 40) }),
   cloudStatus: () => call('cloud:status'),
   cloudSet: (options) => call('cloud:set', options),
   cloudConnect: () => call('cloud:connect'),

@@ -64,10 +64,14 @@ test('erro em loop não enche o disco; arquivo gira em 512 KB', async () => {
   let clock = 5_000_000;
   const log = createErrorLog({ fs, path, dir, now: () => clock });
   for (let i = 0; i < 200; i += 1) log.record({ message: 'sempre o mesmo', stack: 'Error\n    at loop (a.js:1:1)' });
-  assert.equal((await log.list()).total, PER_HOUR, 'depois de 20 na mesma hora, só conta');
+  await log.idle();
+  const lines = (await fs.readFile(path.join(dir, 'nexo-errors.log'), 'utf8')).trim().split('\n');
+  assert.equal(lines.length, PER_HOUR + 1, 'depois de 20 na mesma hora, o resto vira UMA linha com a contagem');
+  assert.equal(JSON.parse(lines.at(-1)).repeat, 200 - PER_HOUR);
+  assert.equal((await log.list()).total, 200, 'a lista conta todas as ocorrências (antes mostrava só 20)');
   clock += 3600000;
   log.record({ message: 'sempre o mesmo', stack: 'Error\n    at loop (a.js:1:1)' });
-  assert.equal((await log.list()).total, PER_HOUR + 1, 'na hora seguinte volta a gravar');
+  assert.equal((await log.list()).total, 201, 'na hora seguinte volta a gravar');
   // Muitos erros diferentes: o arquivo gira e o total em disco fica limitado.
   for (let i = 0; i < 1500; i += 1) log.record({ message: `erro diferente ${'x'.repeat(i % 7)} ${String.fromCharCode(65 + (i % 26))}${i}`, stack: `Error\n    at f${i} (a.js:1:1)`, context: 'y'.repeat(400) });
   await log.list();
@@ -84,4 +88,76 @@ test('nunca lança, nem com o disco recusando', async () => {
   const log = createErrorLog({ fs: broken, path, dir: '/nao/existe' });
   assert.doesNotThrow(() => log.record({ message: 'oi', context: { circular: (() => { const o = {}; o.o = o; return o; })() } }));
   assert.deepEqual((await log.list()).groups, []);
+});
+
+test('A02: segredos em JSON, cabeçalhos, e-mails e campos de contexto não vão para o disco', async () => {
+  const redact = makeRedactor({});
+  assert.equal(redact('{"password":"abc123","token": "t0k","ok":1}'), '{"password":"<oculto>","token": "<oculto>","ok":1}');
+  assert.equal(redact("{'senha': 'x'}"), "{'senha': \"<oculto>\"}");
+  assert.equal(redact('Cookie: sid=abc; outra=def\nlinha 2'), 'Cookie: <oculto>\nlinha 2');
+  assert.equal(redact('falhou para fulano@exemplo.com.br'), 'falhou para <e-mail>');
+  const dir = await tempDir();
+  const log = createErrorLog({ fs, path, dir });
+  log.record({ message: 'x', context: { acao: 'cloud:push', password: 'p4ss', nested: { apiKey: 'k3y', token: 'tok', ok: 'fica' }, email: 'a@b.co', lista: [{ secret: 's' }] } });
+  await log.idle();
+  const text = await fs.readFile(path.join(dir, 'nexo-errors.log'), 'utf8');
+  for (const secret of ['p4ss', 'k3y', 'tok"', 'a@b.co', '"s"']) assert.ok(!text.includes(secret), secret);
+  assert.match(text, /fica/, 'o que não é segredo continua útil');
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('A05: limpar só diz que deu certo se apagou (ENOENT conta como apagado)', async () => {
+  const dir = await tempDir();
+  const ok = createErrorLog({ fs, path, dir });
+  assert.deepEqual(await ok.clear(), { ok: true }, 'nada para apagar');
+  const locked = createErrorLog({ fs: { ...fs, rm: async () => { throw Object.assign(new Error('negado'), { code: 'EACCES' }); } }, path, dir });
+  locked.record({ message: 'algo' });
+  const result = await locked.clear();
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.failed.map((item) => item.code), ['EACCES', 'EACCES']);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('A12: se a rotação falhar, o arquivo não passa do limite (e a perda é contada)', async () => {
+  const dir = await tempDir();
+  const losses = [];
+  const log = createErrorLog({ fs: { ...fs, rename: async () => { throw Object.assign(new Error('travado'), { code: 'EBUSY' }); } }, path, dir, onLoss: (info) => losses.push(info) });
+  for (let i = 0; i < 1500; i += 1) log.record({ message: `diferente ${i}`, stack: `Error\n    at f${i} (a.js:1:1)`, context: 'y'.repeat(400) });
+  await log.idle();
+  const size = (await fs.stat(path.join(dir, 'nexo-errors.log'))).size;
+  assert.ok(size <= MAX_BYTES, String(size));
+  assert.ok(log.stats().lost > 0);
+  assert.ok(losses.length > 0);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('A14: limpar e gravar na mesma fila — o que veio antes some, o que veio depois fica', async () => {
+  const dir = await tempDir();
+  const log = createErrorLog({ fs, path, dir });
+  log.record({ message: 'antes de limpar' });
+  const cleared = log.clear();
+  log.record({ message: 'depois de limpar' });
+  assert.deepEqual(await cleared, { ok: true });
+  const { groups } = await log.list();
+  assert.deepEqual(groups.map((group) => group.message), ['depois de limpar']);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('A03: cursor por sequência — 51 grupos no mesmo instante não perdem o último', async () => {
+  const dir = await tempDir();
+  const log = createErrorLog({ fs, path, dir, now: () => 42 });
+  for (let i = 0; i < 51; i += 1) log.record({ message: `grupo ${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`, stack: `Error\n    at g${i} (a.js:1:1)` });
+  const first = await log.groupsSince({ afterSeq: 0, limit: 50 });
+  assert.equal(first.groups.length, 50);
+  assert.equal(first.more, true);
+  const second = await log.groupsSince({ afterSeq: first.cursor, limit: 50 });
+  assert.equal(second.groups.length, 1);
+  assert.equal(second.more, false);
+  assert.equal((await log.groupsSince({ afterSeq: second.cursor })).groups.length, 0);
+  // Reabrir o app: a sequência continua de onde parou.
+  const reopened = createErrorLog({ fs, path, dir, now: () => 42 });
+  reopened.record({ message: 'novo depois de reabrir' });
+  const third = await reopened.groupsSince({ afterSeq: second.cursor });
+  assert.deepEqual(third.groups.map((group) => group.message), ['novo depois de reabrir']);
+  await fs.rm(dir, { recursive: true, force: true });
 });

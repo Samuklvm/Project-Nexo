@@ -220,7 +220,7 @@ test('telemetria: no máximo uma vez por dia, anônima e só com o que a lista p
   assert.deepEqual(await cloud.sendTelemetry(data), { skipped: true, already: true });
   let stored = rows('SELECT * FROM telemetry');
   assert.equal(stored.length, 1);
-  assert.deepEqual(Object.keys(stored[0]).sort(), ['data', 'day', 'install_id', 'platform', 'received_at', 'version'], 'sem e-mail, conta ou PC sincronizado');
+  assert.deepEqual(Object.keys(stored[0]).sort(), ['data', 'day', 'install_id', 'partial', 'platform', 'received_at', 'version'], 'sem e-mail, conta ou PC sincronizado');
   assert.ok(!stored[0].data.includes('segredo'), 'chaves fora da lista ficam de fora');
   assert.equal(calls.filter((call) => call.url.endsWith('/v1/telemetry')).length, 1);
   assert.equal(calls.at(-1).auth, false, 'a telemetria nunca leva a sessão');
@@ -260,4 +260,143 @@ test('painel: o link de entrada só sai para o e-mail do criador', async () => {
   assert.equal(status.admin, true);
   const link = await owner.adminLink();
   assert.match(link.url, /^https:\/\/nexo-api\.exemplo\.workers\.dev\/painel\/entrar\?c=[A-Za-z0-9_-]+$/);
+});
+
+test('A07: religar os relatórios não manda o que aconteceu enquanto estava desligado', async () => {
+  const { client, rows } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), now: () => clock });
+  const cloud = client(dir, { errorLog });
+  await cloud.setOptions({ errors: true });
+  clock += 1000;
+  errorLog.record({ message: 'T1, ligado' });
+  assert.deepEqual(await cloud.sendErrors(), { sent: 1 });
+  await cloud.setOptions({ errors: false });
+  clock += 1000;
+  errorLog.record({ message: 'T2, desligado' });
+  clock += 1000;
+  await cloud.setOptions({ errors: true });
+  clock += 1000;
+  errorLog.record({ message: 'T4, religado' });
+  assert.deepEqual(await cloud.sendErrors(), { sent: 1 });
+  const messages = rows('SELECT message FROM error_groups ORDER BY first_at').map((row) => row.message);
+  assert.deepEqual(messages, ['T1, ligado', 'T4, religado']);
+});
+
+test('A03: com mais de 50 erros diferentes, todos chegam (em lotes) e nenhum se repete', async () => {
+  const { client, rows } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), now: () => clock });
+  const cloud = client(dir, { errorLog });
+  await cloud.setOptions({ errors: true });
+  clock += 1000;
+  for (let i = 0; i < 101; i += 1) errorLog.record({ message: `erro diferente ${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`, stack: `Error\n    at f${i} (a.js:1:1)` });
+  assert.deepEqual(await cloud.sendErrors(), { sent: 101 });
+  assert.equal(rows('SELECT COUNT(*) AS n FROM error_groups')[0].n, 101);
+  assert.deepEqual(await cloud.sendErrors(), { sent: 0 }, 'nada de novo');
+  // Empate de horário e reinício do app: o cursor é a sequência, não a data.
+  errorLog.record({ message: 'depois do lote' });
+  const again = client(dir, { errorLog: createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), now: () => clock }) });
+  await errorLog.idle();
+  assert.deepEqual(await again.sendErrors(), { sent: 1 });
+  assert.equal(rows('SELECT SUM(count) AS n FROM error_reports')[0].n, 102, 'cada ocorrência contada uma vez');
+});
+
+test('A08: se não der para gravar a escolha, o que liga é desfeito e a tela fica sabendo', async () => {
+  const { client } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const broken = { ...fs.promises, rename: async () => { throw Object.assign(new Error('disco cheio'), { code: 'ENOSPC' }); } };
+  const cloud = client(dir, { fs: broken });
+  await assert.rejects(cloud.setOptions({ telemetry: true, errors: true }), (error) => error.code === 'nao-salvou' && /ENOSPC/.test(error.message));
+  const status = await cloud.status();
+  assert.equal(status.telemetry, false);
+  assert.equal(status.errors, false);
+  assert.equal(status.saveProblem.code, 'ENOSPC');
+  // Desligar continua desligado mesmo sem gravar (o lado seguro).
+  const ok = client(dir);
+  await ok.setOptions({ telemetry: true });
+  const later = client(dir, { fs: broken });
+  await assert.rejects(later.setOptions({ telemetry: false }));
+  assert.equal((await later.status()).telemetry, false);
+  // Arquivo ilegível: começa com tudo desligado.
+  fs.writeFileSync(path.join(dir, 'cloud.json'), '{"telemetry": tr');
+  assert.equal((await client(dir).status()).telemetry, false);
+});
+
+test('A13: sem cofre do sistema, o token não vai para o disco', async () => {
+  const { client } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const noVault = { isEncryptionAvailable: () => false, encryptString: () => { throw new Error('sem cofre'); }, decryptString: () => { throw new Error('sem cofre'); } };
+  const cloud = client(dir, { safeStorage: noVault });
+  const status = await cloud.connect(await idToken());
+  assert.equal(status.connected, true, 'vale enquanto o app está aberto');
+  assert.equal(status.tokenProtected, false);
+  const stored = fs.readFileSync(path.join(dir, 'cloud.json'), 'utf8');
+  assert.ok(!/"value"/.test(stored), 'nenhum valor de token gravado');
+  assert.equal((await client(dir, { safeStorage: noVault }).status()).connected, false, 'depois de reabrir, precisa ligar de novo');
+  // Token antigo em Base64 (versões anteriores) é descartado ao abrir.
+  const old = JSON.parse(stored);
+  old.session = { token: { enc: false, value: Buffer.from('abc').toString('base64') }, expiresAt: clock + DAY, email: 'x@exemplo.com' };
+  fs.writeFileSync(path.join(dir, 'cloud.json'), JSON.stringify(old));
+  assert.equal((await client(dir).status()).connected, false);
+});
+
+test('A19/A20: o mesmo dia não sai duas vezes ao mesmo tempo; servidor parado tem prazo', async () => {
+  const { client, calls } = world();
+  const cloud = client();
+  await cloud.setOptions({ telemetry: true });
+  const day = new Date(clock - DAY).toISOString().slice(0, 10);
+  const [a, b] = await Promise.all([cloud.sendTelemetry({ usage: { views: { home: 1 } } }, day), cloud.sendTelemetry({ usage: { views: { home: 1 } } }, day)]);
+  assert.deepEqual(a, { sent: true });
+  assert.deepEqual(b, { sent: true }, 'a segunda chamada espera a primeira em vez de mandar de novo');
+  assert.equal(calls.filter((call) => call.url.endsWith('/v1/telemetry')).length, 1);
+  const stuck = client(undefined, { fetchImpl: (_url, init) => new Promise((_resolve, reject) => { init.signal?.addEventListener('abort', () => reject(new Error('abortado'))); }), timeoutMs: 50 });
+  await stuck.setOptions({ telemetry: true });
+  const started = Date.now();
+  await assert.rejects(stuck.sendTelemetry({ usage: { views: { home: 1 } } }, day), (error) => error.timeout === true && /não respondeu/.test(error.message));
+  assert.ok(Date.now() - started < 2000);
+  assert.match((await stuck.status()).telemetryProblem.message, /não respondeu/);
+});
+
+test('telemetria: hoje sai como parcial (a cada 3 h); dia no futuro espera', async () => {
+  const { client, rows } = world();
+  const cloud = client();
+  await cloud.setOptions({ telemetry: true });
+  const today = new Date(clock).toISOString().slice(0, 10);
+  assert.deepEqual(await cloud.sendTelemetry({ usage: { views: { home: 1 } } }, today, { partial: true }), { sent: true, partial: true });
+  assert.deepEqual(await cloud.sendTelemetry({ usage: { views: { home: 2 } } }, today, { partial: true }), { skipped: true, throttled: true });
+  clock += 3 * 3600 * 1000 + 1;
+  assert.deepEqual(await cloud.sendTelemetry({ usage: { views: { home: 3 } } }, today, { partial: true }), { sent: true, partial: true });
+  assert.equal(rows('SELECT partial FROM telemetry')[0].partial, 1);
+  assert.deepEqual(await cloud.sendTelemetry({ usage: { views: { home: 9 } } }, today), { sent: true }, 'o completo do dia ainda sai depois do parcial');
+  const tomorrow = new Date(clock + DAY).toISOString().slice(0, 10);
+  assert.deepEqual(await cloud.sendTelemetry({ usage: { views: { home: 1 } } }, tomorrow), { skipped: true, future: true });
+});
+
+test('erros: com a conta Google entrada no app (sem sincronizar), o e-mail vai como "não confirmado"', async () => {
+  const { client, rows, calls } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), now: () => clock });
+  const cloud = client(dir, { errorLog, accountEmail: async () => 'amiga@exemplo.com' });
+  await cloud.setOptions({ errors: true });
+  clock += 1000;
+  errorLog.record({ message: 'erro da amiga' });
+  await cloud.sendErrors();
+  assert.deepEqual({ ...rows('SELECT email, email_verified FROM error_reports')[0] }, { email: 'amiga@exemplo.com', email_verified: 0 });
+  assert.equal(calls.at(-1).auth, false);
+  await cloud.setOptions({ errorEmail: false });
+  clock += 1000;
+  errorLog.record({ message: 'outro erro da amiga' });
+  await cloud.sendErrors();
+  assert.equal(calls.at(-1).body.contactEmail, undefined, 'sem marcar, o e-mail não sai do PC');
+});
+
+test('fitTelemetry: corta do menos importante até caber', () => {
+  const { fitTelemetry } = require('../electron/cloud.cjs');
+  const big = { hw: { cores: 8 }, usage: { views: { home: 1 }, actions: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`acao${i}`, i])) }, diag: { ipc: Object.fromEntries(Array.from({ length: 58 }, (_, i) => [`canal.${i}`, { n: i, e: 0, ms: 1, max: 2 }])) } };
+  const fitted = fitTelemetry(big, 1500);
+  assert.ok(fitted.bytes <= 1500, String(fitted.bytes));
+  assert.deepEqual(fitted.data.hw, { cores: 8 }, 'o hardware fica');
+  assert.ok(fitted.trimmed.includes('diag.ipc'));
+  assert.equal(fitTelemetry({ hw: { cores: 2 } }).trimmed.length, 0);
 });

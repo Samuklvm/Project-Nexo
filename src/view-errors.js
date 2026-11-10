@@ -57,7 +57,11 @@
   document.getElementById('errors-folder')?.addEventListener('click', () => { bridge.openErrorFolder?.().catch(() => showToast('Não consegui abrir a pasta.')); });
   document.getElementById('errors-clear')?.addEventListener('click', async () => {
     if (!await Nexo.confirm({ title: 'Limpar o registro de erros?', body: 'Apaga tudo o que foi anotado neste computador. Erros novos voltam a ser registrados.', confirmLabel: 'Limpar' })) return;
-    await bridge.clearErrors().catch(() => {});
+    // Só diz que limpou se limpou mesmo (arquivo travado ou sem permissão volta como falha).
+    let result = null;
+    try { result = await bridge.clearErrors(); } catch (error) { result = { ok: false, failed: [{ code: error?.message || 'erro' }] }; }
+    if (result?.ok === false) showToast(`Não consegui apagar ${result.failed?.length > 1 ? 'os arquivos' : 'o arquivo'} do registro (${(result.failed || []).map((item) => item.code).join(', ')}). Feche outros programas que possam estar com ele aberto e tente de novo.`);
+    else showToast('Registro de erros limpo.');
     state.open.clear();
     refresh();
   });

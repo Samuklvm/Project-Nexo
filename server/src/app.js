@@ -13,7 +13,7 @@
  */
 import { open, randomId, seal, sha256Hex, signToken, verifyToken } from './crypto.js';
 import { verifyGoogleIdToken } from './google.js';
-import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTelemetry, compareVersions, dayOf, redact, text } from './validate.js';
+import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTelemetry, compareVersions, dayOf, isCalendarDay, redact, text } from './validate.js';
 import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED } from './panel.js';
 import { createSteam } from './steam.js';
 
@@ -51,7 +51,8 @@ async function readJson(request) {
 }
 
 const adminEmails = (env) => String(env.ADMIN_EMAILS || '').toLowerCase().split(',').map((item) => item.trim()).filter(Boolean);
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Partes sem ponto separadas por ponto: sem sobreposição entre os trechos, a checagem é linear (sem retrocesso).
+const EMAIL = /^[^\s@]{1,64}@[^\s@.]{1,63}(?:\.[^\s@.]{1,63}){1,8}$/;
 export const ROLES = { dono: 'Dono', colaborador: 'Colaborador', leitura: 'Leitura' };
 /** O que cada papel pode fazer no painel. */
 const CAN = {
@@ -202,9 +203,15 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     await limit(env, `errip:${(await ipKey(request, env)).slice(3)}`, 300);
     const version = RE.version.test(String(body.version || '')) ? body.version : '0.0.0';
     const platform = PLATFORMS.has(body.platform) ? body.platform : 'win32';
-    // O e-mail vem da sessão (nunca do corpo): só de quem está logado e marcou "incluir meu e-mail".
+    // E-mail: o da sessão (confirmado pelo Google no login) vale mais. Sem sessão, aceita o que o app informou da conta
+    // Google entrada nele — guardado como "não confirmado" (email_verified = 0), só de quem marcou "incluir meu e-mail".
     let email = null;
+    let verified = 1;
     if (body.includeEmail === true) email = (await session(request, env, { required: false }).catch(() => null))?.email || null;
+    if (!email && body.includeEmail === true && typeof body.contactEmail === 'string') {
+      const contact = body.contactEmail.trim().toLowerCase().slice(0, 254);
+      if (EMAIL.test(contact)) { email = contact; verified = 0; }
+    }
     const reports = Array.isArray(body.reports) ? body.reports.slice(0, LIMITS.reportsPerPost) : [];
     const at = now();
     const statements = [];
@@ -223,9 +230,12 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         ON CONFLICT(signature) DO UPDATE SET message = excluded.message, context = excluded.context, stack = CASE WHEN excluded.stack != '' THEN excluded.stack ELSE error_groups.stack END,
         first_at = MIN(error_groups.first_at, excluded.first_at), last_at = MAX(error_groups.last_at, excluded.last_at),
         level = CASE WHEN excluded.level = 'erro' THEN 'erro' ELSE error_groups.level END`).bind(report.signature, source, level, message, stack, context, firstAt, lastAt));
-      statements.push(env.DB.prepare(`INSERT INTO error_reports (signature, install_id, email, version, platform, count, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(signature, install_id) DO UPDATE SET email = COALESCE(excluded.email, error_reports.email), version = excluded.version, platform = excluded.platform,
-        count = error_reports.count + excluded.count, first_at = MIN(error_reports.first_at, excluded.first_at), last_at = MAX(error_reports.last_at, excluded.last_at)`).bind(report.signature, installId, email, version, platform, count, firstAt, lastAt));
+      statements.push(env.DB.prepare(`INSERT INTO error_reports (signature, install_id, email, email_verified, version, platform, count, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(signature, install_id) DO UPDATE SET
+          email = CASE WHEN excluded.email IS NULL THEN error_reports.email WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN error_reports.email ELSE excluded.email END,
+          email_verified = CASE WHEN excluded.email IS NULL THEN error_reports.email_verified WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN 1 ELSE excluded.email_verified END,
+          version = excluded.version, platform = excluded.platform,
+          count = error_reports.count + excluded.count, first_at = MIN(error_reports.first_at, excluded.first_at), last_at = MAX(error_reports.last_at, excluded.last_at)`).bind(report.signature, installId, email, verified, version, platform, count, firstAt, lastAt));
       accepted += 1;
     }
     if (accepted) {
@@ -234,9 +244,17 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       const fixed = (await env.DB.prepare(`SELECT signature, fixed_in FROM error_groups WHERE status = 'corrigido' AND signature IN (${signatures.map(() => '?').join(',')})`).bind(...signatures).all()).results || [];
       const reopen = fixed.filter((row) => row.fixed_in && compareVersions(version, row.fixed_in) >= 0).map((row) => row.signature);
       if (reopen.length) statements.push(env.DB.prepare(`UPDATE error_groups SET status = 'reaberto' WHERE signature IN (${reopen.map(() => '?').join(',')})`).bind(...reopen));
+      statements.push(seenInstall(env, installId, version, platform, 'erros'));
       await env.DB.batch(statements);
     }
     return json({ ok: true, accepted });
+  }
+
+  /** Primeira e última vez que uma instalação apareceu (base de "usuários novos" no painel). */
+  function seenInstall(env, installId, version, platform, via) {
+    const at = now();
+    return env.DB.prepare(`INSERT INTO installs (install_id, first_seen, last_seen, first_version, last_version, platform, via) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(install_id) DO UPDATE SET last_seen = MAX(installs.last_seen, excluded.last_seen), last_version = excluded.last_version, platform = excluded.platform`).bind(installId, at, at, version, version, platform, via);
   }
 
   /* ---------- Telemetria ---------- */
@@ -244,19 +262,28 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const body = await readJson(request);
     const installId = String(body.installId || '');
     if (!RE.installId.test(installId)) throw new HttpError(400, 'Instalação inválida.');
-    // Um resumo por dia; o app manda cada dia depois que ele acaba (e pode ter dias guardados de quando estava sem internet).
-    await limit(env, `tel:${installId}`, 10);
+    // Um resumo por dia fechado (o app guarda os dias de quando estava sem internet) e o de hoje, parcial, a cada 3 h.
+    await limit(env, `tel:${installId}`, 30);
     const data = cleanTelemetry(body.data);
     if (!data) throw new HttpError(400, 'Telemetria inválida.');
     const today = dayOf(now());
-    if (body.day !== undefined && !RE.day.test(String(body.day))) throw new HttpError(400, 'Dia inválido.');
-    const day = body.day && body.day <= today ? body.day : today;
-    if (day < dayOf(now() - 7 * DAY)) throw new HttpError(400, 'Dia antigo demais.');
+    if (body.day !== undefined && !isCalendarDay(body.day)) throw Object.assign(new HttpError(400, 'Dia inválido.'), { code: 'dia-invalido' });
+    const day = body.day || today;
+    // Dia no futuro (relógio do PC adiantado): recusa em vez de gravar como hoje — senão sobrescreveria o resumo de hoje.
+    if (day > today) throw Object.assign(new HttpError(400, 'Dia no futuro: confira o relógio do PC.'), { code: 'dia-futuro' });
+    if (day < dayOf(now() - 7 * DAY)) throw Object.assign(new HttpError(400, 'Dia antigo demais.'), { code: 'dia-antigo' });
+    const partial = body.partial === true ? 1 : 0;
+    if (partial && day !== today) throw Object.assign(new HttpError(400, 'Resumo parcial só vale para hoje.'), { code: 'parcial-fora-de-hoje' });
     const version = RE.version.test(String(body.version || '')) ? body.version : '0.0.0';
     const platform = PLATFORMS.has(body.platform) ? body.platform : 'win32';
-    await env.DB.prepare('INSERT INTO telemetry (install_id, day, version, platform, data, received_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(install_id, day) DO UPDATE SET version = excluded.version, platform = excluded.platform, data = excluded.data, received_at = excluded.received_at')
-      .bind(installId, day, version, platform, JSON.stringify(data), now()).run();
-    return json({ ok: true });
+    // O completo sempre substitui o parcial; um parcial nunca substitui um completo já recebido.
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO telemetry (install_id, day, version, platform, data, received_at, partial) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(install_id, day) DO UPDATE SET version = excluded.version, platform = excluded.platform, data = excluded.data, received_at = excluded.received_at, partial = excluded.partial
+        WHERE excluded.partial = 0 OR telemetry.partial = 1`).bind(installId, day, version, platform, JSON.stringify(data), now(), partial),
+      seenInstall(env, installId, version, platform, 'telemetria')
+    ]);
+    return json({ ok: true, partial: Boolean(partial) });
   }
 
   /* ---------- Painel do criador ---------- */
@@ -310,7 +337,18 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         env.DB.prepare('SELECT version, COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ? GROUP BY version ORDER BY n DESC LIMIT 10').bind(dayOf(since7)).all()
       ]);
       const accounts = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
-      return json({ openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [], admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]] });
+      // Usuários novos = instalações vistas pela primeira vez (um código aleatório por instalação; atualizar não conta).
+      const startOfToday = Date.parse(`${dayOf(now())}T00:00:00Z`);
+      const [new1, new7, new30, newAccounts7, firstDays] = await Promise.all([
+        env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(startOfToday).first(),
+        env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(now() - 7 * DAY).first(),
+        env.DB.prepare('SELECT COUNT(*) AS n FROM installs WHERE first_seen >= ?').bind(now() - 30 * DAY).first(),
+        env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?').bind(now() - 7 * DAY).first(),
+        env.DB.prepare("SELECT strftime('%Y-%m-%d', first_seen / 1000, 'unixepoch') AS day, COUNT(*) AS n, GROUP_CONCAT(DISTINCT first_version) AS versions, GROUP_CONCAT(DISTINCT platform) AS platforms FROM installs WHERE first_seen >= ? GROUP BY day ORDER BY day").bind(now() - 30 * DAY).all()
+      ]);
+      const recent = await env.DB.prepare('SELECT first_seen, last_seen, first_version, last_version, platform, via FROM installs ORDER BY first_seen DESC LIMIT 15').all();
+      return json({ openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [], admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]],
+        newUsers: { today: new1?.n || 0, days7: new7?.n || 0, days30: new30?.n || 0, accounts7: newAccounts7?.n || 0, perDay: firstDays.results || [], recent: recent.results || [] } });
     }
     if (rest === 'erros' && request.method === 'GET') {
       const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
@@ -326,9 +364,12 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     if (detail && request.method === 'GET') {
       const group = await env.DB.prepare('SELECT * FROM error_groups WHERE signature = ?').bind(detail[1]).first();
       if (!group) throw new HttpError(404, 'Erro não encontrado.');
-      const { results = [] } = await env.DB.prepare('SELECT email, version, platform, count, first_at, last_at FROM error_reports WHERE signature = ? ORDER BY last_at DESC LIMIT 500').bind(detail[1]).all();
-      const emails = admin.can('emails') ? [...new Set(results.map((row) => row.email).filter(Boolean))] : [];
-      return json({ group, reports: results.map(({ email, ...row }) => ({ ...row, hasEmail: Boolean(email) })), emails, emailsHidden: !admin.can('emails') });
+      const { results = [] } = await env.DB.prepare('SELECT email, email_verified, version, platform, count, first_at, last_at FROM error_reports WHERE signature = ? ORDER BY last_at DESC LIMIT 500').bind(detail[1]).all();
+      const byEmail = new Map();
+      if (admin.can('emails')) for (const row of results) if (row.email) byEmail.set(row.email, Boolean(byEmail.get(row.email)) || row.email_verified === 1);
+      const emails = [...byEmail.keys()];
+      const emailInfo = [...byEmail].map(([email, confirmed]) => ({ email, confirmed }));
+      return json({ group, reports: results.map(({ email, email_verified, ...row }) => ({ ...row, hasEmail: Boolean(email), emailConfirmed: Boolean(email) && email_verified === 1 })), emails, emailInfo, emailsHidden: !admin.can('emails') });
     }
     if (detail && request.method === 'POST') {
       need('status');
@@ -458,7 +499,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       } catch (error) {
         const status = Number(error?.status) || 500;
         if (status >= 500) console.error('nexo-api', error?.name || 'Error');
-        return json({ error: status >= 500 ? 'Erro interno do servidor.' : error.message }, status);
+        return json({ error: status >= 500 ? 'Erro interno do servidor.' : error.message, ...(status < 500 && error?.code ? { code: String(error.code).slice(0, 40) } : {}) }, status);
       }
     },
     /** Limpeza diária (cron). */
@@ -468,6 +509,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         env.DB.prepare('DELETE FROM error_reports WHERE last_at < ?').bind(at - 180 * DAY),
         env.DB.prepare("DELETE FROM error_groups WHERE last_at < ? AND status != 'aberto' AND signature NOT IN (SELECT signature FROM error_reports)").bind(at - 180 * DAY),
         env.DB.prepare('DELETE FROM telemetry WHERE day < ?').bind(dayOf(at - 120 * DAY)),
+        env.DB.prepare('DELETE FROM installs WHERE last_seen < ?').bind(at - 400 * DAY),
         env.DB.prepare('DELETE FROM sessions WHERE expires_at < ? OR revoked = 1').bind(at),
         env.DB.prepare('DELETE FROM admin_links WHERE expires_at < ?').bind(at),
         env.DB.prepare('DELETE FROM admin_sessions WHERE expires_at < ?').bind(at),

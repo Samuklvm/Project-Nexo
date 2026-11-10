@@ -73,25 +73,57 @@
     return out;
   }
 
-  /* ---------- Telemetria: o resumo de cada dia sai uma vez, depois que o dia acaba (src/telemetry.js monta) ---------- */
-  let sending = false;
-  async function sendTelemetry() {
-    const t = Nexo.telemetry;
-    if (!t || sending || !view.status?.configured) return;
-    sending = true;
-    try {
+  /*
+   * ---------- Telemetria (src/telemetry.js monta o resumo) ----------
+   * Cada dia fechado sai uma vez; o dia de HOJE sai como parcial (no máximo a cada 3 h, o processo principal controla),
+   * para quem usa o app um dia só também aparecer. Roda ao abrir e a cada 30 min (o app pode ficar dias aberto na
+   * bandeja). Falha não some mais em silêncio: vai para o registro de erros e para a linha de estado em Privacidade.
+   */
+  let sending = null;
+  function sendTelemetry() {
+    if (sending) return sending;
+    sending = (async () => {
+      const t = Nexo.telemetry;
+      if (!t) return;
+      if (!view.status) { try { view.status = await bridge.cloudStatus(); } catch { return; } }
+      if (!view.status?.configured) return;
       for (const day of t.pending()) {
         // Desligada: o dia fica de fora de vez (o que foi juntado sem a sua permissão nunca sai depois).
         // Mais de 6 dias: o servidor já não aceita.
         if (!view.status?.telemetry || day < t.dayOf(Date.now() - 6 * 86400000)) { t.markSent(day); continue; }
         const data = t.summary(day);
         if (!data) { t.markSent(day); continue; }
-        const result = await bridge.cloudTelemetry({ day, data });
-        if (result?.sent || result?.already || result?.old) t.markSent(day);
+        let result;
+        try { result = await bridge.cloudTelemetry({ day, data }); } catch { return; } // registrado no processo principal
+        if (result?.sent || result?.already || result?.old || result?.invalid) t.markSent(day);
         else break;
       }
-    } catch { /* sem internet ou servidor fora: tenta de novo mais tarde */ }
-    finally { sending = false; }
+      if (view.status?.telemetry) {
+        const data = t.today?.();
+        if (data) await bridge.cloudTelemetry({ day: t.dayOf(), data, partial: true }).catch(() => {});
+      }
+    })().finally(async () => {
+      sending = null;
+      try { view.status = await bridge.cloudStatus(); syncToggles(); renderPrivacyStatus(); } catch { /* fica o estado anterior */ }
+    });
+    return sending;
+  }
+  setInterval(() => { sendTelemetry(); }, 30 * 60000);
+
+  /** Linha de estado embaixo dos interruptores: último envio e o último problema (para a pessoa e para nós). */
+  function renderPrivacyStatus() {
+    const s = view.status;
+    let line = document.getElementById('cloud-share-status');
+    const anchor = document.getElementById('cloud-email-row');
+    if (!anchor) return;
+    if (!line) { line = document.createElement('p'); line.id = 'cloud-share-status'; line.className = 'muted small cloud-share-status'; line.setAttribute('aria-live', 'polite'); anchor.after(line); }
+    if (!s?.configured || (!s.telemetry && !s.errors)) { line.textContent = ''; return; }
+    const parts = [];
+    if (s.telemetry) parts.push(s.lastTelemetryAt ? `Telemetria enviada pela última vez em ${when(s.lastTelemetryAt)}.` : 'Telemetria ligada: o primeiro resumo sai em alguns minutos.');
+    if (s.telemetryProblem) parts.push(`Último problema da telemetria: ${s.telemetryProblem.message}`);
+    if (s.errors && s.errorsProblem) parts.push(`Último problema ao mandar erros: ${s.errorsProblem.message}`);
+    if (s.saveProblem) parts.push(`Não consegui gravar as escolhas no disco (${s.saveProblem.code}).`);
+    line.textContent = parts.join(' ');
   }
   async function pushNow({ quiet = true } = {}) {
     if (!view.status?.connected || !view.status?.sync) return;
@@ -134,12 +166,16 @@
     const disabled = !s?.configured;
     if (telemetry) { telemetry.checked = Boolean(s?.telemetry); telemetry.disabled = disabled; }
     if (errors) { errors.checked = Boolean(s?.errors); errors.disabled = disabled; }
-    if (email) { email.checked = Boolean(s?.errorEmail && s?.connected); email.disabled = disabled || !s?.errors || !s?.connected; }
+    // O e-mail vai com a sincronização ligada (confirmado pelo servidor) OU com a conta Google entrada no app.
+    const hasEmail = Boolean(s?.connected || view.account?.profile?.email);
+    if (email) { email.checked = Boolean(s?.errorEmail && hasEmail); email.disabled = disabled || !s?.errors || !hasEmail; }
+    renderPrivacyStatus();
   }
 
   async function refresh() {
     try { [view.status, view.account] = await Promise.all([bridge.cloudStatus(), bridge.getAccount?.().catch(() => null)]); } catch { view.status = null; }
-    render();
+    // Um erro ao desenhar não pode impedir o resto (antes impedia o envio da telemetria e a pergunta inicial).
+    try { render(); } catch (error) { desktopBridge?.reportError?.({ message: `Privacidade: ${error?.message || error}`, stack: error?.stack, context: { tela: 'settings' } }); }
   }
 
   async function choosePull(device) {
@@ -228,9 +264,9 @@
   Nexo.on('view', (name) => { if (name === 'settings') refresh(); });
   Nexo.on('account', (account) => { view.account = account; bridge.cloudStatus().then((status) => { view.status = status; render(); }).catch(() => render()); });
   Nexo.cloudPolicy = POLICY;
-  refresh().then(() => {
+  refresh().finally(() => {
     setTimeout(askOnce, 20000);
-    setTimeout(sendTelemetry, 60000);
+    setTimeout(() => { sendTelemetry(); }, 60000);
     setTimeout(() => pushNow(), 90000);
   });
   // De hora em hora: o dia (em UTC) que acabou sai logo, mesmo com o Nexo aberto o tempo todo na bandeja.

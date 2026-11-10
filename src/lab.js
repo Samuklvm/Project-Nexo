@@ -156,7 +156,9 @@
     if (sample?.onBattery) return { ok: false, code: 'bateria', reason: 'O PC passou a usar a bateria; o teste parou.' };
     if (!finite(sample?.tempC)) return { ok: false, code: 'sem-temperatura', reason: 'A leitura de temperatura sumiu; sem ela o laboratório não continua.' };
     if (sample.tempC >= limits.maxTempC) return { ok: false, code: 'temperatura', reason: `O processador chegou a ${Math.round(sample.tempC)} °C (limite ${limits.maxTempC} °C).` };
-    if (finite(startTemp) && sample.tempC - startTemp >= limits.maxTempRiseC) return { ok: false, code: 'aquecimento', reason: `A temperatura subiu ${Math.round(sample.tempC - startTemp)} °C desde o início (limite ${limits.maxTempRiseC} °C).` };
+    // startTemp é a temperatura NORMAL deste mesmo teste no plano original (medida no aquecimento e no lado "base" de
+    // cada par) — não a temperatura em repouso: rodar o teste já esquenta o processador, e isso não é culpa do ajuste.
+    if (finite(startTemp) && sample.tempC - startTemp >= limits.maxTempRiseC) return { ok: false, code: 'aquecimento', reason: `Com o ajuste ligado, o processador ficou ${Math.round(sample.tempC - startTemp)} °C mais quente que o normal neste mesmo teste (limite ${limits.maxTempRiseC} °C).` };
     if (errorCount > 0) return { ok: false, code: 'erros-windows', reason: `O Windows registrou ${errorCount} erro(s) grave(s) de hardware, energia ou vídeo durante o teste.` };
     return { ok: true };
   }
@@ -227,7 +229,11 @@
     return () => { state = (state * 16807) % 2147483647; return (state - 1) / 2147483646; };
   }
 
-  async function applyConfig(system, current, target, baseline) {
+  /**
+   * Aplica só o que muda. Se o sistema recusar (ou aplicar pela metade), esquece o estado desses ajustes para a próxima
+   * chamada aplicar tudo de novo — senão `current` diria que já está aplicado e a medição seguinte seria falsa.
+   */
+  async function applyConfig(system, current, target, baseline, arm = null) {
     const changes = [];
     for (const [id, value] of Object.entries(target)) {
       if (current[id] === value) continue;
@@ -235,7 +241,12 @@
       changes.push({ id, sub: knob.sub, setting: knob.setting, value });
     }
     if (!changes.length) return;
-    await system.apply(changes);
+    try { await system.apply(changes); }
+    catch (error) {
+      for (const change of changes) delete current[change.id];
+      if (arm) throw new GuardError('recusado', `O Windows recusou o ajuste: ${String(error?.message || error).slice(0, 160)}`, { arm, soft: true });
+      throw error;
+    }
     for (const change of changes) current[change.id] = change.value;
   }
 
@@ -264,17 +275,53 @@
     const checkCancel = () => { if (signal.cancelled) throw new GuardError('cancelado', 'Você cancelou o teste.'); };
     const overBudget = () => now() - startedAt > limits.budgetMs;
     let began = false;
-    let startTemp = null;
     const current = {};
+    /* Temperatura normal de cada teste no plano ORIGINAL (aquecimento + lado "base" dos pares). A guarda de aquecimento
+       compara o candidato com ela — e não com a temperatura em repouso da pré-checagem, que fazia o teste abortar no
+       aquecimento sem ter mudado nada. */
+    const refTemp = {};
+    const refFor = (bench) => {
+      if (finite(refTemp[bench])) return refTemp[bench];
+      const all = Object.values(refTemp).filter(finite);
+      return all.length ? Math.max(...all) : null;
+    };
+    let lastTemp = null;
+    /* Erros do Windows contados por janela (desde a última conferência), para culpar o ajuste que estava ligado. */
+    let errorCursor = startedAt;
+    result.thermal = { idle: null, reference: refTemp, spikes: 0, cooldowns: 0 };
 
-    const measure = async (bench, arm) => {
+    const measure = async (bench, arm, side = 'cand') => {
       checkCancel();
       const score = await system.bench(bench);
-      const sample = await system.sample();
-      const errorCount = await system.errorEventsSince(startedAt);
-      const guard = evaluateGuards({ sample, startTemp, errorCount, limits });
-      if (!guard.ok) throw new GuardError(guard.code, guard.reason, { arm });
+      let sample = await system.sample();
+      const checkAt = now();
+      const errorCount = await system.errorEventsSince(errorCursor);
+      errorCursor = checkAt;
+      const reference = side === 'cand' ? refFor(bench) : null;
+      let guard = evaluateGuards({ sample, startTemp: reference, errorCount, limits });
+      // Pico de um instante (sensor que pula) não é aquecimento: confere de novo depois de um respiro.
+      if (!guard.ok && guard.code === 'aquecimento') {
+        await system.sleep(1500);
+        sample = await system.sample();
+        guard = evaluateGuards({ sample, startTemp: reference, errorCount: 0, limits });
+        if (guard.ok) result.thermal.spikes += 1;
+      }
+      if (!guard.ok) throw new GuardError(guard.code, guard.reason, { arm: side === 'cand' || guard.code === 'erros-windows' ? arm : null, side, bench });
+      if (side !== 'cand' && finite(sample.tempC)) refTemp[bench] = Math.max(finite(refTemp[bench]) ? refTemp[bench] : -Infinity, sample.tempC);
+      lastTemp = finite(sample.tempC) ? sample.tempC : lastTemp;
       return { score, tempC: sample.tempC };
+    };
+    /** Perto do limite absoluto, espera esfriar (até ~20 s) antes de medir, em vez de abortar por calor acumulado. */
+    const coolDown = async () => {
+      if (!finite(lastTemp) || lastTemp < limits.maxTempC - 8) return;
+      result.thermal.cooldowns += 1;
+      for (let i = 0; i < 10; i += 1) {
+        checkCancel();
+        await system.sleep(2000);
+        const sample = await system.sample();
+        lastTemp = finite(sample?.tempC) ? sample.tempC : lastTemp;
+        if (!finite(lastTemp) || lastTemp < limits.maxTempC - 10) return;
+      }
     };
 
     /** Pares intercalados (base, candidato). `previous` junta medições de uma rodada anterior do mesmo teste. */
@@ -283,16 +330,20 @@
       const cand = previous?.raw.cand || Object.fromEntries(benches.map((bench) => [bench, []]));
       const temps = previous?.raw.temps || { base: [], cand: [] };
       const offset = previous?.pairsDone || 0;
+      let noisy = previous?.noisy || 0;
+      let sides = previous?.sides || 0;
       for (let i = 0; i < pairs; i += 1) {
         // Ordem alternada (base→candidato, candidato→base…): aquecimento e deriva ao longo do teste se anulam.
         const order = (offset + i) % 2 === 0 ? ['base', 'cand'] : ['cand', 'base'];
         for (const side of order) {
-          await applyConfig(system, current, side === 'base' ? result.baseline : config, result.baseline);
+          await applyConfig(system, current, side === 'base' ? result.baseline : config, result.baseline, side === 'cand' ? arm : null);
           await system.sleep(limits.settleMs);
+          await coolDown();
           // Outro programa pesando no processador estragaria a medição: espera ele sossegar (até alguns segundos).
-          if (typeof system.quiet === 'function') { const calm = await system.quiet(); if (calm && calm.ok === false) result.noisy = (result.noisy || 0) + 1; }
+          sides += 1;
+          if (typeof system.quiet === 'function') { const calm = await system.quiet(); if (calm && calm.ok === false) { noisy += 1; result.noisy = (result.noisy || 0) + 1; } }
           for (const bench of benches) {
-            const reading = await measure(bench, arm);
+            const reading = await measure(bench, arm, side);
             (side === 'base' ? base : cand)[bench].push(reading.score);
             temps[side].push(reading.tempC);
           }
@@ -300,10 +351,13 @@
         emit({ type: 'trial', arm: label, pair: i + 1, pairs });
       }
       const results = Object.fromEntries(benches.map((bench) => [bench, judge(base[bench], cand[bench], limits)]));
+      // Mais da metade das medições com outro programa pesando: o resultado não vale (nem para o bem, nem para o mal).
+      if (noisy * 2 > sides) for (const bench of benches) results[bench] = { ...results[bench], verdict: 'inconclusivo', confidence: 'baixa', reason: 'outro programa usou o processador durante a medição' };
+      // Diferença de temperatura do MESMO teste com e sem o ajuste (os dois lados já estão aquecidos).
       const tempDelta = finite(median(temps.cand)) && finite(median(temps.base)) ? round1(median(temps.cand) - median(temps.base)) : null;
-      return { results, tempDelta, ...combine(results, weights), raw: { base, cand, temps }, pairsDone: (previous?.pairsDone || 0) + pairs };
+      return { results, tempDelta, noisy, ...combine(results, weights), raw: { base, cand, temps }, pairsDone: (previous?.pairsDone || 0) + pairs, sides, noisyRaw: noisy };
     };
-    const strip = ({ raw, ...rest }) => rest;
+    const strip = ({ raw, noisyRaw, sides, ...rest }) => rest;
     const describe = (keys) => keys.map((key) => { const [id, value] = key.split('='); const knob = KNOB.get(id); return `${knob?.label || id} → ${knob ? valueLabel(knob, Number(value)) : value}`; }).join(' + ');
     const configOf = (keys) => { const config = { ...result.baseline }; for (const key of keys) { const [id, value] = key.split('='); config[id] = Number(value); } return config; };
     const benchesFor = (keys) => [...new Set(keys.flatMap((key) => benchesOf(KNOB.get(key.split('=')[0]), benchSupportRef.value)))];
@@ -313,7 +367,8 @@
       stage('preflight', 'Conferindo se é seguro começar');
       const pre = await system.preflight();
       const available = assertRunnable(pre, options.consent);
-      startTemp = pre.tempC;
+      result.thermal.idle = pre.tempC;
+      lastTemp = pre.tempC;
       const support = Object.fromEntries(Object.entries(pre.knobs || {}).filter(([, info]) => info?.available));
       const benchSupport = pre.benches || null;
       benchSupportRef.value = benchSupport;
@@ -338,7 +393,10 @@
       const candidates = chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: Math.max(1, Math.min(48, options.maxArms || 4)), allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null, benchSupport });
       const sessionBenches = [...new Set(candidates.flatMap((arm) => arm.benches))];
       stage('aquecer', 'Aquecendo para estabilizar a medição');
-      for (const bench of sessionBenches.length ? sessionBenches : ['single']) await measure(bench, null);
+      // Aquecimento no plano original: só as guardas absolutas valem aqui; o que ele medir vira o "normal" de cada teste.
+      for (const bench of sessionBenches.length ? sessionBenches : ['single']) await measure(bench, null, 'warm');
+      const warm = Object.values(refTemp).filter(finite);
+      if (warm.length) say(`Aquecido: ${Math.round(Math.max(...warm))} °C nos testes com o plano original (em repouso estava ${Math.round(pre.tempC)} °C). A guarda de aquecimento compara cada ajuste com isso.`);
       say(candidates.length ? `Ideias escolhidas para hoje: ${candidates.map((arm) => `${KNOB.get(arm.knob).label} → ${valueLabel(KNOB.get(arm.knob), arm.value)}${arm.untested ? ' (inédito aqui)' : ''}`).join('; ')}.` : 'Nenhuma ideia nova: tudo o que o espaço permite já foi testado ou bloqueado.');
 
       /* Triagem em duas etapas: todos ganham 2 pares; quem mostra sinal de ganho ganha mais pares antes do veredito. */
@@ -348,7 +406,20 @@
         stage('testar', `${knob.label}: ${valueLabel(knob, result.baseline[arm.knob])} → ${valueLabel(knob, arm.value)}`);
         const config = { ...result.baseline, [arm.knob]: arm.value };
         const screenPairs = Math.min(limits.screenPairs, limits.pairs);
-        let outcome = await abTest(config, screenPairs, arm, arm.benches, arm.key);
+        let outcome;
+        try { outcome = await abTest(config, screenPairs, arm, arm.benches, arm.key); }
+        catch (error) {
+          if (!(error instanceof GuardError) || error.code !== 'recusado') throw error;
+          // O PC recusou o valor: vira tabu e a sessão segue com a próxima ideia (o plano volta ao original antes).
+          if (!result.tabu.includes(arm.key)) result.tabu.push(arm.key);
+          result.evidence = updateEvidence(result.evidence, arm.key, { guard: true }, now());
+          const refused = { key: arm.key, knob: arm.knob, group: knob.group, value: arm.value, from: result.baseline[arm.knob], label: knob.label, valueLabel: valueLabel(knob, arm.value), fromLabel: valueLabel(knob, result.baseline[arm.knob]), risk: knob.risk, novelty: arm.novelty, benches: arm.benches, verdict: 'recusado', compositeDelta: null, tempDelta: null, results: {}, reason: error.message };
+          result.arms.push(refused);
+          emit({ type: 'arm', arm: refused });
+          say(`${knob.label} → ${valueLabel(knob, arm.value)}: ${error.message} Não será mais tentado neste PC.`);
+          await applyConfig(system, current, result.baseline, result.baseline);
+          continue;
+        }
         const promising = outcome.verdict === 'melhorou' || (finite(outcome.compositeDelta) && outcome.compositeDelta > limits.minEffectPct / 2 && outcome.verdict !== 'piorou');
         if (promising && limits.pairs > screenPairs && !overBudget()) outcome = await abTest(config, limits.pairs - screenPairs, arm, arm.benches, arm.key, outcome);
         const record = { key: arm.key, knob: arm.knob, group: knob.group, value: arm.value, from: result.baseline[arm.knob], label: knob.label, valueLabel: valueLabel(knob, arm.value), fromLabel: valueLabel(knob, result.baseline[arm.knob]), risk: knob.risk, novelty: arm.novelty, benches: arm.benches, ...strip(outcome) };

@@ -1,16 +1,62 @@
 /* Núcleo: utilitários globais, barramento de eventos, estado compartilhado e atividades. */
 const desktopBridge = window.nexoDesktop;
 
-/* Erros da interface vão para o registro local (Ajustes > Registro de erros). No máximo 40 por abertura do app. */
+/*
+ * Detecção de erros da interface (vão para o registro local; com "relatórios de erro" ligados, os de nível erro vão
+ * para o criador). Pega mais que erro não tratado:
+ *  - erros e promessas rejeitadas sem tratamento (com o stack);
+ *  - console.error / console.warn do próprio app (ex.: um cartão de recurso que quebrou);
+ *  - imagem, script ou folha de estilo do app que não carregou;
+ *  - violação da política de segurança (CSP) — sinal de bug ou de algo tentando injetar conteúdo;
+ *  - tela travada (tarefa longa de 2 s ou mais) e memória da tela perto do limite.
+ * Mesma mensagem não repete na mesma abertura; no máximo 60 relatos por abertura. Nada digitado pela pessoa vai junto.
+ */
 (function watchErrors() {
   let sent = 0;
-  const report = (message, stack) => {
-    if (sent >= 40 || !message) return;
+  const seen = new Set();
+  const report = (message, stack, level = 'erro', extra = {}) => {
+    if (sent >= 60 || !message) return;
+    const key = `${level}|${String(message).slice(0, 160)}|${String(stack || '').split('\n')[1] || ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
     sent += 1;
-    try { desktopBridge?.reportError?.({ message: String(message).slice(0, 600), stack: String(stack || '').slice(0, 4000), context: { tela: window.Nexo?.state?.view || null } }); } catch { /* o registro nunca derruba a tela */ }
+    try { desktopBridge?.reportError?.({ level, message: String(message).slice(0, 600), stack: String(stack || '').slice(0, 4000), context: { tela: window.Nexo?.state?.view || null, ...extra } }); } catch { /* o registro nunca derruba a tela */ }
   };
-  window.addEventListener('error', (event) => report(event.message || event.error?.message, event.error?.stack || (event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : '')));
+  window.addEventListener('error', (event) => {
+    // Recurso que não carregou (img/script/link): o alvo é o elemento, não a janela.
+    const target = event.target;
+    if (target && target !== window && target.tagName) {
+      const url = String(target.src || target.href || '');
+      if (/^(blob:|data:|https?:)/.test(url) && target.tagName === 'IMG') return; // capas e fotos da internet: falha comum, não é bug
+      report(`Arquivo do app não carregou: <${target.tagName.toLowerCase()}> ${url.split(/[?#]/)[0].split('/').slice(-2).join('/')}`, '', 'aviso', { recurso: target.tagName.toLowerCase() });
+      return;
+    }
+    report(event.message || event.error?.message, event.error?.stack || (event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : ''));
+  }, true);
   window.addEventListener('unhandledrejection', (event) => report(event.reason?.message || String(event.reason), event.reason?.stack));
+  document.addEventListener('securitypolicyviolation', (event) => report(`Bloqueado pela política de segurança: ${event.violatedDirective} (${String(event.blockedURI || 'inline').slice(0, 80)})`, '', 'erro', { diretiva: event.violatedDirective }));
+  for (const [method, level] of [['error', 'erro'], ['warn', 'aviso']]) {
+    const original = console[method].bind(console);
+    console[method] = (...args) => {
+      original(...args);
+      try {
+        const error = args.find((arg) => arg instanceof Error);
+        const text = args.map((arg) => (arg instanceof Error ? `${arg.name}: ${arg.message}` : typeof arg === 'string' ? arg : '')).filter(Boolean).join(' ').slice(0, 600);
+        report(text || error?.message, error?.stack, level, { via: `console.${method}` });
+      } catch { /* nunca quebra o console */ }
+    };
+  }
+  try {
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) if (entry.duration >= 2000) report(`A tela travou por ${(entry.duration / 1000).toFixed(1)} s`, '', 'aviso', { ms: Math.round(entry.duration) });
+    }).observe({ type: 'longtask', buffered: false });
+  } catch { /* sem longtask */ }
+  setInterval(() => {
+    const memory = performance.memory;
+    if (memory?.jsHeapSizeLimit && memory.usedJSHeapSize / memory.jsHeapSizeLimit >= 0.85) report('A memória da tela passou de 85% do limite', '', 'aviso', { usadoMB: Math.round(memory.usedJSHeapSize / 1048576) });
+  }, 5 * 60000);
+  // Trilha: cada troca de tela vai para o processo principal (só o nome da tela).
+  setTimeout(() => window.Nexo?.on?.('view', (name) => { try { desktopBridge?.crumb?.('tela', name); } catch { /* sem ponte */ } }), 0);
 })();
 const Nexo = (window.Nexo = {
   state: { snapshot: null, sensors: null, processes: null, cleanup: null, power: null, view: 'home' },
