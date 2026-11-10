@@ -41,7 +41,7 @@
     const formatted = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: digits }).format(value);
     if (unit === 'B') return formatBytes(value);
     if (unit === 'B/s') return `${formatBytes(value)}/s`;
-    return `${formatted}${unit ? ` ${unit}` : ''}`;
+    return unit ? `${formatted} ${unit}` : formatted;
   }
 
   function renderSensorExplorer() {
@@ -101,7 +101,9 @@
     };
     // Com leituras a cada 2 s, reconstruir centenas de linhas travaria a rolagem: se a estrutura é a mesma,
     // só os números mudam (o resto da tabela, a rolagem e a seleção ficam intactos).
-    const structure = visibleDevices.map((device) => `${device.path}|${device.name}:${device.visibleSensors.map((sensor) => `${sensor.name}/${sensor.type}`).join(',')}`).join(';');
+    const sensorKey = (sensor) => `${sensor.name}/${sensor.type}`;
+    const deviceKey = (device) => `${device.path}|${device.name}:${device.visibleSensors.map(sensorKey).join(',')}`;
+    const structure = visibleDevices.map(deviceKey).join(';');
     if (sensorDeviceList.dataset.structure === structure) {
       const valueCells = sensorDeviceList.querySelectorAll('tr[data-sensor-row]');
       const flat = visibleDevices.flatMap((device) => device.visibleSensors);
@@ -124,7 +126,8 @@
       }).join('');
       const deviceCategory = sensorTypeLabels[device.type] || device.type;
       const noSensor = !device.visibleSensors.length;
-      return `<article class="sheet sensor-device-card"><header class="sensor-device-heading"><div><span class="sensor-device-category">${escapeHtml(deviceCategory)}</span><h3>${escapeHtml(device.name)}</h3><small>${escapeHtml(device.path || deviceCategory)}</small></div><span class="sensor-device-total">${device.visibleSensors.length} leituras</span></header>${noSensor ? '<p class="sensor-no-readings">Hardware identificado; nenhum valor de sensor disponível.</p>' : `<div class="sensor-table-wrap"><table class="sensor-table"><thead><tr><th>Sensor</th><th>Métrica</th><th>Agora</th><th>Mín.</th><th>Máx.</th></tr></thead><tbody>${sensorRows}</tbody></table></div>`}</article>`;
+      const table = noSensor ? '<p class="sensor-no-readings">Hardware identificado; nenhum valor de sensor disponível.</p>' : `<div class="sensor-table-wrap"><table class="sensor-table"><thead><tr><th>Sensor</th><th>Métrica</th><th>Agora</th><th>Mín.</th><th>Máx.</th></tr></thead><tbody>${sensorRows}</tbody></table></div>`;
+      return `<article class="sheet sensor-device-card"><header class="sensor-device-heading"><div><span class="sensor-device-category">${escapeHtml(deviceCategory)}</span><h3>${escapeHtml(device.name)}</h3><small>${escapeHtml(device.path || deviceCategory)}</small></div><span class="sensor-device-total">${device.visibleSensors.length} leituras</span></header>${table}</article>`;
     }).join('');
   }
 
@@ -154,7 +157,8 @@
         setText('sensor-status-title', `${snapshot.sensorCount || 0} leituras disponíveis`);
         const deviceCount = (snapshot.devices || []).length;
         const issueCount = (snapshot.issues || []).length;
-        setText('sensor-status-detail', `${deviceCount} componentes detectados · somente leitura local${issueCount ? ` · ${issueCount} componente(s) não responderam` : ''}.`);
+        const issues = issueCount ? ` · ${issueCount} componente(s) não responderam` : '';
+        setText('sensor-status-detail', `${deviceCount} componentes detectados · somente leitura local${issues}.`);
       } else {
         setText('sensor-status-title', 'Leitura detalhada indisponível');
         setText('sensor-status-detail', snapshot.issues?.[0]?.message || 'Este sistema não disponibilizou o coletor de hardware.');
@@ -198,7 +202,7 @@
       recordActivity('Leitura completa de sensores', 'serviço ativo');
     }
     else if (event.declined) showToast('Tudo bem: a leitura completa fica desligada. Dá para ativar em Hardware quando quiser.');
-    else showToast(`Não foi possível ativar a leitura completa${event.note ? `: ${event.note}` : '.'}`);
+    else showToast(event.note ? `Não foi possível ativar a leitura completa: ${event.note}` : 'Não foi possível ativar a leitura completa.');
     renderSensorService();
   });
   Nexo.on?.('view', (view) => { if (view === 'hardware') renderSensorService(); });
@@ -215,7 +219,11 @@
   // Excel em português usa vírgula decimal (e o arquivo usa ";" como separador): "45.5" viraria texto ou data.
   const csvNumber = (value) => (Number.isFinite(value) ? String(Math.round(value * 1000) / 1000).replace('.', ',') : '');
   // Nomes que começam com = + - @ seriam lidos como fórmula pela planilha.
-  const csvCell = (cell) => { const text = String(cell); return `"${(/^[=+\-@]/.test(text) && !/^-?\d/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`; };
+  const csvCell = (cell) => {
+    const text = String(cell);
+    const safe = /^[=+\-@]/.test(text) && !/^-?\d/.test(text) ? `'${text}` : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
   sensorExportButton?.addEventListener('click', () => {
     const rows = [['Componente', 'Categoria', 'Sensor', 'Métrica', 'Valor', 'Unidade', 'Mínimo', 'Máximo', 'Avançado']];
     for (const device of Nexo.state.sensors?.devices || []) {

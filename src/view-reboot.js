@@ -12,34 +12,50 @@
   const dec = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits).replace('.', ',') : '--');
   const signed = (value) => (Number.isFinite(value) ? `${value > 0 ? '+' : ''}${dec(value)}%` : '--');
   const when = (at) => (Number.isFinite(at) ? new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '--');
-  const metricValue = (metric, value) => (Number.isFinite(value) ? `${dec(value, metric.unit === 'pts' || metric.unit === '' ? 0 : 1)}${metric.unit && metric.unit !== 'pts' ? ` ${metric.unit}` : ''}` : '--');
+  const metricValue = (metric, value) => {
+    if (!Number.isFinite(value)) return '--';
+    const number = dec(value, metric.unit === 'pts' || metric.unit === '' ? 0 : 1);
+    return metric.unit && metric.unit !== 'pts' ? `${number} ${metric.unit}` : number;
+  };
+  /** Observação curta da tela (a do estado do teste), ou nada. */
+  const noteLine = (note) => (note ? `<p class="notes-line">${escapeHtml(note)}</p>` : '');
 
   function segment(name, current, entries) {
-    return `<div class="segmented sm" role="group">${entries.map(([value, label]) => `<button type="button" data-rt-${name}="${value}" aria-pressed="${value === current}">${escapeHtml(label)}</button>`).join('')}</div>`;
+    const button = ([value, label]) => `<button type="button" data-rt-${name}="${value}" aria-pressed="${value === current}">${escapeHtml(label)}</button>`;
+    return `<div class="segmented sm" role="group">${entries.map(button).join('')}</div>`;
   }
 
   function timeline(state) {
-    return `<ol class="rt-boots">${state.order.map((config, index) => {
+    const bootItem = (config, index) => {
       const boot = state.boots[index];
       const now = index === state.step && state.status === 'running';
-      return `<li class="${boot ? 'done' : now ? 'now' : ''}"><strong>${config}</strong><span>${boot ? `boot ${index + 1} medido` : now ? 'agora' : `boot ${index + 1}`}</span></li>`;
-    }).join('')}</ol>`;
+      let label = `boot ${index + 1}`;
+      if (boot) label = `boot ${index + 1} medido`;
+      else if (now) label = 'agora';
+      return `<li class="${boot ? 'done' : now ? 'now' : ''}"><strong>${config}</strong><span>${label}</span></li>`;
+    };
+    return `<ol class="rt-boots">${state.order.map(bootItem).join('')}</ol>`;
   }
 
   function resultTable(result) {
     const rows = result.metrics.filter((item) => item.a.length || item.b.length);
-    return `<div class="table-scroll"><table class="exp rt-table"><thead><tr><th>Medida</th><th>Sem (A)</th><th>Com (B)</th><th>Diferença</th><th>Variação entre boots</th><th>Veredito</th></tr></thead><tbody>${rows.map((item) => {
+    const row = (item) => {
       const metric = RT.METRIC.get(item.id);
       const [label, tone] = VERDICT[item.verdict] || [item.verdict, ''];
-      return `<tr><td>${escapeHtml(item.label)}${metric.note ? `<small class="muted"> (${escapeHtml(metric.note)})</small>` : ''}</td><td>${metricValue(metric, item.medianA)}</td><td>${metricValue(metric, item.medianB)}</td><td>${signed(item.gainPct)}</td><td>${Number.isFinite(item.noisePct) ? `±${dec(item.noisePct)}%` : '--'}</td><td><span class="chip ${tone}">${label}</span></td></tr>`;
-    }).join('')}</tbody></table></div>`;
+      const note = metric.note ? `<small class="muted"> (${escapeHtml(metric.note)})</small>` : '';
+      const noise = Number.isFinite(item.noisePct) ? `±${dec(item.noisePct)}%` : '--';
+      return `<tr><td>${escapeHtml(item.label)}${note}</td><td>${metricValue(metric, item.medianA)}</td><td>${metricValue(metric, item.medianB)}</td><td>${signed(item.gainPct)}</td><td>${noise}</td><td><span class="chip ${tone}">${label}</span></td></tr>`;
+    };
+    return `<div class="table-scroll"><table class="exp rt-table"><thead><tr><th>Medida</th><th>Sem (A)</th><th>Com (B)</th><th>Diferença</th><th>Variação entre boots</th><th>Veredito</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
   }
 
   function verdictCard(state, result, final) {
     const [label, tone] = OVERALL[result.overall] || [result.overall, ''];
     const kept = state.kept === 'B' ? 'Os ajustes ficaram aplicados (estão no Diário para reverter).' : 'O PC ficou com os valores de antes.';
+    const discarded = result.discarded ? ` · ${result.discarded} boot(s) com o PC ocupado ficaram de fora` : '';
+    const keptText = final ? ` · ${escapeHtml(kept)}` : '';
     return `<div class="rt-verdict"><span class="chip ${tone}">${label}</span><strong>${escapeHtml(RT.OVERALL_TEXT[result.overall] || '')}</strong>
-      <span class="muted">Ganho composto (objetivo ${escapeHtml(RT.GOALS[state.goal]?.label || state.goal)}): <strong>${signed(result.composite)}</strong> · ${result.counts.A} boot(s) sem e ${result.counts.B} com os ajustes${result.discarded ? ` · ${result.discarded} boot(s) com o PC ocupado ficaram de fora` : ''}${final ? ` · ${escapeHtml(kept)}` : ''}</span></div>${resultTable(result)}`;
+      <span class="muted">Ganho composto (objetivo ${escapeHtml(RT.GOALS[state.goal]?.label || state.goal)}): <strong>${signed(result.composite)}</strong> · ${result.counts.A} boot(s) sem e ${result.counts.B} com os ajustes${discarded}${keptText}</span></div>${resultTable(result)}`;
   }
 
   function composeHtml() {
@@ -47,15 +63,17 @@
     const { order } = RT.PROTOCOLS[view.options.protocol];
     const admin = list.some((change) => change.admin);
     const permissions = RT.permissionCount(order, admin);
+    const changeItem = (change) => `<li><strong>${escapeHtml(change.label)}</strong><span class="muted">${escapeHtml(change.beforeLabel)} → ${escapeHtml(change.afterLabel)}</span></li>`;
+    const permissionText = permissions ? `; o Windows vai pedir permissão ${permissions} vez(es) para trocar os ajustes do sistema` : '';
     return `<div class="rt-head"><div><span class="badge risk sm">TESTE COM REINÍCIO</span><h4>Medir ${list.length} ajuste(s) reiniciando o PC</h4>
         <p class="muted">O Nexo reinicia o PC, mede, aplica os ajustes, reinicia, mede de novo e volta ao original na ordem ${order.join(', ')}. Cada boot é medido do mesmo jeito: tempo até a área de trabalho, processador e memória em repouso, processos e serviços, e os testes de desempenho do laboratório. No fim, só fica o que ganhou nos dois lados.</p></div></div>
-      <ul class="rt-changes">${list.map((change) => `<li><strong>${escapeHtml(change.label)}</strong><span class="muted">${escapeHtml(change.beforeLabel)} → ${escapeHtml(change.afterLabel)}</span></li>`).join('')}</ul>
+      <ul class="rt-changes">${list.map(changeItem).join('')}</ul>
       <div class="rt-options">
         <div class="lab-field"><span>Ordem</span>${segment('protocol', view.options.protocol, Object.entries(RT.PROTOCOLS).map(([id, item]) => [id, item.label.split(' (')[0]]))}<small>${escapeHtml(RT.PROTOCOLS[view.options.protocol].label)}. Mais reinícios separam melhor o efeito da variação normal.</small></div>
         <div class="lab-field"><span>Objetivo</span>${segment('goal', view.options.goal, Object.entries(RT.GOALS).map(([id, item]) => [id, item.label]))}</div>
         <label class="toggle-line"><input type="checkbox" id="rt-auto" ${view.options.auto ? 'checked' : ''} /> Reiniciar sozinho entre as medições (aviso de 60 s, dá para impedir)</label>
       </div>
-      <p class="notes-line">Cerca de ${Math.round(order.length * BOOT_MINUTES)} min no total, ${order.length} reinícios${permissions ? `; o Windows vai pedir permissão ${permissions} vez(es) para trocar os ajustes do sistema` : ''}. Salve o que estiver aberto e não use o PC pesado enquanto ele mede.</p>
+      <p class="notes-line">Cerca de ${Math.round(order.length * BOOT_MINUTES)} min no total, ${order.length} reinícios${permissionText}. Salve o que estiver aberto e não use o PC pesado enquanto ele mede.</p>
       <div class="rt-actions"><button class="btn ghost" type="button" data-rt="close">Voltar</button><button class="btn danger" type="button" data-rt="start">Começar o teste</button></div>`;
   }
 
@@ -74,28 +92,31 @@
       body = '<p>O PC reiniciou. Pronto para medir este boot.</p><div class="rt-actions"><button class="btn primary" type="button" data-rt="continue">Medir agora</button></div>';
     } else {
       const seconds = status.restartAt ? Math.max(0, Math.round((status.restartAt - Date.now()) / 1000)) : null;
+      const restartControl = seconds !== null ? `<span class="chip risk-moderado">reiniciando em ${seconds} s</span><button class="btn ghost" type="button" data-rt="abort-restart">Não reiniciar agora</button>` : '<button class="btn danger" type="button" data-rt="restart">Reiniciar agora</button>';
       body = `<p><strong>Reinicie o PC para medir o boot ${state.step + 1} de ${state.order.length}</strong> (${escapeHtml(CONFIG[config])}). Depois de entrar no Windows, o Nexo abre sozinho e mede.</p>
-        <div class="rt-actions">${seconds !== null ? `<span class="chip risk-moderado">reiniciando em ${seconds} s</span><button class="btn ghost" type="button" data-rt="abort-restart">Não reiniciar agora</button>` : '<button class="btn danger" type="button" data-rt="restart">Reiniciar agora</button>'}</div>`;
+        <div class="rt-actions">${restartControl}</div>`;
     }
+    const preview = status.preview ? `<details class="rt-preview"><summary>Parcial até agora</summary>${verdictCard(state, status.preview, false)}</details>` : '';
     return `<div class="rt-head"><div><span class="badge risk sm">TESTE COM REINÍCIO</span><h4>${state.changes.length} ajuste(s) em teste · começou ${when(state.createdAt)}</h4></div><button class="btn ghost sm" type="button" data-rt="cancel">Cancelar teste (volta ao original)</button></div>
-      ${timeline(state)}${state.note ? `<p class="notes-line">${escapeHtml(state.note)}</p>` : ''}${body}
-      ${status.preview ? `<details class="rt-preview"><summary>Parcial até agora</summary>${verdictCard(state, status.preview, false)}</details>` : ''}`;
+      ${timeline(state)}${noteLine(state.note)}${body}
+      ${preview}`;
   }
 
   function finishedHtml(status) {
     const { state } = status;
     return `<div class="rt-head"><div><span class="badge risk sm">TESTE COM REINÍCIO</span><h4>${state.status === 'cancelled' ? 'Teste cancelado' : 'Resultado'} · ${state.changes.length} ajuste(s) · ${when(state.finishedAt)}</h4></div><button class="btn ghost sm" type="button" data-rt="hide">Fechar</button></div>
-      ${timeline(state)}${state.note ? `<p class="notes-line">${escapeHtml(state.note)}</p>` : ''}
+      ${timeline(state)}${noteLine(state.note)}
       ${state.result ? verdictCard(state, state.result, true) : '<p class="muted">Sem boots suficientes para um veredito. O PC ficou com os valores de antes.</p>'}`;
   }
 
   function historyHtml(status) {
     const list = (status?.history || []).filter((item) => item.id !== status?.state?.id);
     if (!list.length) return '';
-    return `<details class="rt-history"><summary>Testes com reinício anteriores (${list.length})</summary><ul>${list.map((item) => {
+    const pastItem = (item) => {
       const [label, tone] = OVERALL[item.result?.overall] || ['sem veredito', ''];
       return `<li><span class="chip ${tone}">${label}</span><span>${when(item.finishedAt || item.createdAt)} · ${item.changes.length} ajuste(s): ${escapeHtml(item.changes.slice(0, 3).map((change) => change.label).join(', '))}${item.changes.length > 3 ? '…' : ''}</span><span class="muted">${Number.isFinite(item.result?.composite) ? signed(item.result.composite) : ''} · ${item.kept === 'B' ? 'ajustes ficaram' : 'voltou ao original'}</span></li>`;
-    }).join('')}</ul></details>`;
+    };
+    return `<details class="rt-history"><summary>Testes com reinício anteriores (${list.length})</summary><ul>${list.map(pastItem).join('')}</ul></details>`;
   }
 
   function render() {

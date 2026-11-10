@@ -112,9 +112,10 @@
     const displays = list(facts.displays).filter((display) => finite(display.current) && display.current > 1);
     if (displays.length) {
       const low = displays.find((display) => display.current <= 60 && finite(display.max) && display.max >= 100);
+      const hz = (display) => `${display.current} Hz`;
       out.refresh = low
         ? { state: 'atencao', text: `${low.name} está a ${low.current} Hz e a placa informa suporte até ${low.max} Hz. Se o seu monitor for de alta taxa, ajuste em Configurações > Tela > Avançado.` }
-        : { state: 'info', text: `Taxa atual: ${displays.map((display) => `${display.current} Hz`).join(', ')}. Confira se é a máxima do seu monitor.` };
+        : { state: 'info', text: `Taxa atual: ${displays.map(hz).join(', ')}. Confira se é a máxima do seu monitor.` };
     }
     out.hags = facts.hags === 2 ? { state: 'info', text: 'Ligado neste PC.' } : facts.hags === 1 ? { state: 'info', text: 'Desligado neste PC.' } : { state: 'desconhecido', text: 'Não exposto pelo driver (ou não suportado).' };
     out.gameMode = facts.gameMode === 0 ? { state: 'atencao', text: 'Desligado neste PC.' } : { state: 'ok', text: 'Ligado (padrão).' };

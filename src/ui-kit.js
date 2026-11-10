@@ -33,9 +33,12 @@
       const cancel = () => finish(false, true);
       takeOver(cancel);
       const previousFocus = document.activeElement;
+      const bodyHtml = body ? `<p>${escapeHtml(body)}</p>` : '';
+      const itemHtml = (item) => `<li>${escapeHtml(item)}</li>`;
+      const listHtml = items.length ? `<ul>${items.map(itemHtml).join('')}</ul>` : '';
       root.innerHTML = `<div class="modal-backdrop"><div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title">
-        <h3 id="modal-title">${escapeHtml(title)}</h3>${body ? `<p>${escapeHtml(body)}</p>` : ''}
-        ${items.length ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : ''}
+        <h3 id="modal-title">${escapeHtml(title)}</h3>${bodyHtml}
+        ${listHtml}
         <div class="modal-actions"><button class="btn" data-answer="no" type="button">${escapeHtml(cancelLabel)}</button><button class="btn ${tone === 'danger' ? 'danger' : 'primary'}" data-answer="yes" type="button">${escapeHtml(confirmLabel)}</button></div></div></div>`;
       function finish(answer, replaced = false) {
         if (settled) return;

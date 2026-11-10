@@ -22,16 +22,22 @@
     const groups = (state.data?.groups || []).filter((group) => state.warnings || group.level !== 'aviso');
     const hiddenWarnings = (state.data?.groups || []).filter((group) => group.level === 'aviso').length;
     if (!groups.length) {
-      box.innerHTML = `<p class="muted">Nenhum erro registrado${!state.warnings && hiddenWarnings ? ` (${hiddenWarnings} aviso(s) escondido(s))` : ''}. Tudo certo por aqui.</p>`;
+      const hidden = !state.warnings && hiddenWarnings ? ` (${hiddenWarnings} aviso(s) escondido(s))` : '';
+      box.innerHTML = `<p class="muted">Nenhum erro registrado${hidden}. Tudo certo por aqui.</p>`;
       return;
     }
-    box.innerHTML = `<ul class="errors-list">${groups.slice(0, 60).map((group) => `
+    const item = (group) => {
+      const context = group.context ? ` · ${escapeHtml(pretty(group.context).slice(0, 160))}` : '';
+      const stack = group.stack ? `<details data-signature="${escapeHtml(group.signature)}"${state.open.has(group.signature) ? ' open' : ''}><summary>Detalhes técnicos</summary><pre>${escapeHtml(group.stack.split('\n').slice(0, 12).join('\n'))}</pre></details>` : '';
+      return `
       <li class="${group.level === 'aviso' ? 'is-warning' : ''}">
         <div class="errors-main"><strong>${escapeHtml(group.message)}</strong>
-          <span class="muted">${escapeHtml(SOURCE[group.source] || group.source)}${group.context ? ` · ${escapeHtml(pretty(group.context).slice(0, 160))}` : ''}</span>
+          <span class="muted">${escapeHtml(SOURCE[group.source] || group.source)}${context}</span>
           <div class="chips-row"><span class="chip ${group.level === 'aviso' ? 'risk-moderado' : 'risk-alto'}">${group.level === 'aviso' ? 'aviso' : 'erro'}</span><span class="chip">${group.count}×</span><span class="chip">última vez ${when(group.lastAt)}</span><span class="chip">versão ${escapeHtml(group.versions.join(', '))}</span></div>
-          ${group.stack ? `<details data-signature="${escapeHtml(group.signature)}"${state.open.has(group.signature) ? ' open' : ''}><summary>Detalhes técnicos</summary><pre>${escapeHtml(group.stack.split('\n').slice(0, 12).join('\n'))}</pre></details>` : ''}
-        </div></li>`).join('')}</ul>
+          ${stack}
+        </div></li>`;
+    };
+    box.innerHTML = `<ul class="errors-list">${groups.slice(0, 60).map(item).join('')}</ul>
       <p class="muted">${state.data.total} ocorrência(s) no total. O registro fica em ${escapeHtml(state.data.dir || 'logs')}.</p>`;
   }
 

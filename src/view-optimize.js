@@ -27,9 +27,10 @@
     list().innerHTML = categories.map((category) => {
       const empty = !category.fileCount;
       const checked = !empty && !category.destructive;
+      const count = empty ? 'nada para limpar' : `${category.fileCount.toLocaleString('pt-BR')} itens`;
       return `<li data-id="${category.id}"><label class="check"><input type="checkbox" ${checked ? 'checked' : ''} ${empty ? 'disabled' : ''} aria-label="${escapeHtml(category.label)}"><i></i></label>
         <div><strong>${escapeHtml(category.label)}<button class="info" type="button" data-op="cleanup-${category.id}" aria-label="Detalhes da operação: ${escapeHtml(category.label)}">i</button>${category.destructive ? '<span class="warn-tag">não pode ser desfeito</span>' : ''}</strong><small>${escapeHtml(category.description)}</small></div>
-        <div class="size">${empty ? '—' : formatBytes(category.bytes)}<small>${empty ? 'nada para limpar' : `${category.fileCount.toLocaleString('pt-BR')} itens`}</small></div></li>`;
+        <div class="size">${empty ? '—' : formatBytes(category.bytes)}<small>${count}</small></div></li>`;
     }).join('');
     $$('input', list()).forEach((input) => input.addEventListener('change', updateTotals));
     Nexo.state.cleanupTotals = categories.filter((category) => !category.destructive).reduce((total, category) => ({ bytes: total.bytes + (category.bytes || 0), fileCount: total.fileCount + (category.fileCount || 0) }), { bytes: 0, fileCount: 0 });
@@ -179,10 +180,11 @@
     const current = Nexo.state.power.active;
     if (!plan) return;
     const info = NexoCatalog.get('power-plan-switch');
+    const currentName = current ? ` (${escapeHtml(current.name)})` : '';
     const choice = await Nexo.dialog({
       title: `Trocar para “${plan.name}”?`, wide: true,
       html: `<p>${escapeHtml(info.oQueAltera)}</p>
-        <ul><li><strong>${NexoCatalog.RISK_LABEL[info.risco]}, reversível:</strong> o plano atual${current ? ` (${escapeHtml(current.name)})` : ''} fica guardado no Diário e você pode voltar a qualquer momento.</li>
+        <ul><li><strong>${NexoCatalog.RISK_LABEL[info.risco]}, reversível:</strong> o plano atual${currentName} fica guardado no Diário e você pode voltar a qualquer momento.</li>
         <li><strong>Pode não ajudar:</strong> ${escapeHtml(info.quandoNaoAjuda)}</li>
         <li><strong>Quer saber se ajuda neste PC?</strong> “Trocar e medir” compara a velocidade do processador antes e depois (cerca de 20 s).</li></ul>`,
       actions: [{ id: 'no', label: 'Cancelar' }, { id: 'switch', label: 'Só trocar' }, { id: 'measure', label: 'Trocar e medir', tone: 'primary' }]

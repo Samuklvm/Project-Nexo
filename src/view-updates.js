@@ -114,7 +114,8 @@
       setText('update-progress-size', `${formatBytes(Number(status.transferred) || 0)} de ${formatBytes(Number(status.total))}`);
       const speed = Number(status.bytesPerSecond) || 0;
       const eta = speed > 0 ? formatUpdateEta((status.total - (status.transferred || 0)) / speed) : '';
-      setText('update-progress-speed', speed > 0 ? `${formatBytes(speed)}/s${eta ? ` · ${eta}` : ''}` : 'Calculando velocidade…');
+      const etaText = eta ? ` · ${eta}` : '';
+      setText('update-progress-speed', speed > 0 ? `${formatBytes(speed)}/s${etaText}` : 'Calculando velocidade…');
     } else {
       setText('update-progress-size', isDownloading ? 'Preparando o download…' : '');
       setText('update-progress-speed', '');

@@ -127,12 +127,20 @@
       container.innerHTML = `<div class="all-good"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div><strong>Nada preocupante por enquanto.</strong><div class="muted">As medições, o histórico e a previsão de disco estão dentro do que o Nexo considera normal.</div></div></div>`;
       return;
     }
-    container.innerHTML = insights.slice(0, limit).map((insight) => `<article class="insight" data-severity="${insight.severity}">
-      <div class="insight-head"><span class="sev" aria-hidden="true"><svg><use href="#${insight.severity === 'info' ? 'i-spark' : 'i-alert'}"/></svg></span><strong>${escapeHtml(insight.title)}</strong><span>confiança ${insight.confidence}%${insight.votes >= 3 ? ` · ajustada por ${insight.votes} avaliações` : ''}</span></div>
+    const evidenceItem = (line) => `<li>${escapeHtml(line)}</li>`;
+    const actionButton = (action) => `<button class="btn sm" type="button" data-insight-action="${action.type}">${escapeHtml(action.label)}</button>`;
+    const feedback = (insight) => (withFeedback ? `<span class="ask">Isso ajudou?</span><button class="btn sm ghost" type="button" data-feedback="${insight.category}" data-helpful="1">Sim</button><button class="btn sm ghost" type="button" data-feedback="${insight.category}" data-helpful="0">Não</button>` : '');
+    const card = (insight) => {
+      const votes = insight.votes >= 3 ? ` · ajustada por ${insight.votes} avaliações` : '';
+      const actions = insight.actions.length || withFeedback ? `<div class="insight-actions">${insight.actions.map(actionButton).join('')}${feedback(insight)}</div>` : '';
+      return `<article class="insight" data-severity="${insight.severity}">
+      <div class="insight-head"><span class="sev" aria-hidden="true"><svg><use href="#${insight.severity === 'info' ? 'i-spark' : 'i-alert'}"/></svg></span><strong>${escapeHtml(insight.title)}</strong><span>confiança ${insight.confidence}%${votes}</span></div>
       <p>${escapeHtml(insight.summary)}</p>
-      <ul>${insight.evidence.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
-      ${(insight.actions.length || withFeedback) ? `<div class="insight-actions">${insight.actions.map((action) => `<button class="btn sm" type="button" data-insight-action="${action.type}">${escapeHtml(action.label)}</button>`).join('')}${withFeedback ? `<span class="ask">Isso ajudou?</span><button class="btn sm ghost" type="button" data-feedback="${insight.category}" data-helpful="1">Sim</button><button class="btn sm ghost" type="button" data-feedback="${insight.category}" data-helpful="0">Não</button>` : ''}</div>` : ''}
-    </article>`).join('');
+      <ul>${insight.evidence.map(evidenceItem).join('')}</ul>
+      ${actions}
+    </article>`;
+    };
+    container.innerHTML = insights.slice(0, limit).map(card).join('');
   };
 
   Nexo.currentInsights = function currentInsights() {

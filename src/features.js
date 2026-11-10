@@ -45,7 +45,7 @@
       const s = Math.round(seconds);
       if (s < 60) return `${s} s`;
       const m = Math.floor(s / 60); if (m < 60) return `${m} min`;
-      const h = Math.floor(m / 60); if (h < 48) return `${h} h ${m % 60 ? `${m % 60} min` : ''}`.trim();
+      const h = Math.floor(m / 60); const minutes = m % 60 ? `${m % 60} min` : ''; if (h < 48) return `${h} h ${minutes}`.trim();
       return `${Math.floor(h / 24)} d ${h % 24} h`;
     },
     ago(ts, now = Date.now()) {
@@ -276,11 +276,20 @@
     const tone = empty ? '' : out.tone || '';
     const actionLabel = def.action ? (typeof def.action.label === 'function' ? def.action.label(ctx, out) : def.action.label) : null;
     const actionHidden = def.action && def.action.when && !def.action.when(ctx, out);
-    return `<article class="feat${pinned ? ' pinned' : ''}" data-id="${def.id}" data-kind="${def.kind}"${tone ? ` data-tone="${tone}"` : ''}${empty ? ' data-state="empty"' : ''}>
+    // Cada pedaço opcional do cartão é montado à parte; o cartão só junta.
+    const toneAttr = tone ? ` data-tone="${tone}"` : '';
+    const unit = !empty && out.unit ? `<small>${escapeHtml(out.unit)}</small>` : '';
+    const spark = !empty && out.spark ? sparkSvg(out.spark) : '';
+    const bar = !empty && fin(out.bar) ? `<div class="feat-bar"><i data-css="width:${(H.clamp(out.bar, 0, 1) * 100).toFixed(1)}%"></i></div>` : '';
+    const listItem = ([k, v]) => `<span><em>${escapeHtml(String(k))}</em><b>${escapeHtml(String(v))}</b></span>`;
+    const list = !empty && out.list?.length ? `<div class="feat-list">${out.list.slice(0, 4).map(listItem).join('')}</div>` : '';
+    const action = def.action && !actionHidden ? `<button class="feat-action" type="button" data-act="${def.id}">${escapeHtml(actionLabel)}</button>` : '';
+    const detail = escapeHtml(empty ? (def.emptyDetail || def.hint || '') : (out.detail || def.hint || ''));
+    return `<article class="feat${pinned ? ' pinned' : ''}" data-id="${def.id}" data-kind="${def.kind}"${toneAttr}${empty ? ' data-state="empty"' : ''}>
       <div class="feat-top"><span class="feat-icon">${icon(def.icon)}</span><span class="feat-title">${escapeHtml(def.title)}</span><button class="feat-pin" type="button" data-pin="${def.id}" aria-pressed="${pinned}" title="${pinned ? 'Desafixar' : 'Fixar no topo'}" aria-label="${pinned ? 'Desafixar' : 'Fixar'} ${escapeHtml(def.title)}">★</button></div>
-      <div class="feat-value${isText ? ' text' : ''}">${escapeHtml(String(value))}${!empty && out.unit ? `<small>${escapeHtml(out.unit)}</small>` : ''}</div>
-      <div class="feat-body">${!empty && out.spark ? sparkSvg(out.spark) : ''}${!empty && fin(out.bar) ? `<div class="feat-bar"><i data-css="width:${(H.clamp(out.bar, 0, 1) * 100).toFixed(1)}%"></i></div>` : ''}<div class="feat-detail">${escapeHtml(empty ? (def.emptyDetail || def.hint || '') : (out.detail || def.hint || ''))}</div>${!empty && out.list?.length ? `<div class="feat-list">${out.list.slice(0, 4).map(([k, v]) => `<span><em>${escapeHtml(String(k))}</em><b>${escapeHtml(String(v))}</b></span>`).join('')}</div>` : ''}</div>
-      <div class="feat-foot"><span class="feat-kind">${KINDS[def.kind] || ''}</span>${def.action && !actionHidden ? `<button class="feat-action" type="button" data-act="${def.id}">${escapeHtml(actionLabel)}</button>` : ''}</div>
+      <div class="feat-value${isText ? ' text' : ''}">${escapeHtml(String(value))}${unit}</div>
+      <div class="feat-body">${spark}${bar}<div class="feat-detail">${detail}</div>${list}</div>
+      <div class="feat-foot"><span class="feat-kind">${KINDS[def.kind] || ''}</span>${action}</div>
     </article>`;
   }
 
@@ -292,8 +301,10 @@
     section = document.createElement('section');
     section.className = 'feats';
     section.dataset.feats = view;
+    const filterButton = ([id, label]) => `<button type="button" data-filter="${id}" aria-pressed="false">${label}</button>`;
+    const filters = [['todos', 'Todos'], ['leitura', 'Leituras'], ['ferramenta', 'Ferramentas'], ['acao', 'Ações'], ['fixados', 'Fixados']].map(filterButton).join('');
     section.innerHTML = `<header class="feats-head"><div><h2>Recursos ${VIEW_TITLE[view] || ''} <span class="feats-count"></span></h2><p>Leituras, ferramentas e atalhos desta tela. Fixe os seus favoritos com a estrela.</p></div>
-      <div class="feats-tools"><div class="segmented sm" role="group" aria-label="Filtrar recursos">${[['todos', 'Todos'], ['leitura', 'Leituras'], ['ferramenta', 'Ferramentas'], ['acao', 'Ações'], ['fixados', 'Fixados']].map(([id, label]) => `<button type="button" data-filter="${id}" aria-pressed="false">${label}</button>`).join('')}</div>
+      <div class="feats-tools"><div class="segmented sm" role="group" aria-label="Filtrar recursos">${filters}</div>
       <input type="search" placeholder="Buscar recurso" aria-label="Buscar recurso" data-feat-search /></div></header>
       <div class="feats-body"></div>`;
     panel.append(section);
@@ -347,8 +358,9 @@
         const all = kind === 'fixados' || open.includes(kind) || defs2.length <= GROUP_LIMIT + 2;
         const shown = all ? defs2 : defs2.slice(0, GROUP_LIMIT);
         const rest = defs2.length - GROUP_LIMIT;
+        const moreLabel = all ? 'Mostrar menos' : `Ver mais ${rest} ${title.toLowerCase()}`;
         const more = defs2.length > GROUP_LIMIT + 2 && kind !== 'fixados'
-          ? `<button class="feats-more-btn" type="button" data-more="${kind}" aria-expanded="${String(all)}">${all ? 'Mostrar menos' : `Ver mais ${rest} ${title.toLowerCase()}`}</button>` : '';
+          ? `<button class="feats-more-btn" type="button" data-more="${kind}" aria-expanded="${String(all)}">${moreLabel}</button>` : '';
         return `<div class="feats-group" data-group="${kind}"><div class="feats-group-head"><h3>${title} <span>${defs2.length}</span></h3><p>${text}</p></div>${grid(shown)}${more}</div>`;
       }).join('');
     }

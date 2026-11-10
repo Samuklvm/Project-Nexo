@@ -51,7 +51,11 @@
     const signature = drives.map((drive) => drive.driveLetter).join(',');
     if (select.dataset.signature !== signature) {
       const previous = select.value || Nexo.state.snapshot?.primaryDrive?.driveLetter;
-      select.innerHTML = drives.length ? drives.map((drive) => `<option value="${escapeHtml(drive.driveLetter)}">${escapeHtml(drive.name || `${drive.driveLetter}: Disco local`)}</option>`).join('') : '<option value="">Nenhuma unidade</option>';
+      const option = (drive) => {
+        const label = drive.name || `${drive.driveLetter}: Disco local`;
+        return `<option value="${escapeHtml(drive.driveLetter)}">${escapeHtml(label)}</option>`;
+      };
+      select.innerHTML = drives.length ? drives.map(option).join('') : '<option value="">Nenhuma unidade</option>';
       if (drives.some((drive) => drive.driveLetter === previous)) select.value = previous;
       select.dataset.signature = signature;
     }

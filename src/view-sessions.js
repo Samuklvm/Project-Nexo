@@ -26,7 +26,11 @@
     if (!ok) showToast('Não foi possível guardar a sessão neste computador.');
     else if (kept.length < Math.min(list.length, MAX_SESSIONS)) console.warn('[sessões] espaço local cheio: as sessões mais antigas saíram', { guardadas: kept.length });
   };
-  const clock = (total) => { const s = Math.max(0, Math.round(total)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const r = s % 60; return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0').padStart(2, '0')}:${String(r).padStart(2, '0')}`; };
+  const clock = (total) => {
+    const s = Math.max(0, Math.round(total)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const r = s % 60;
+    const minutesAndSeconds = `${String(m).padStart(h ? 2 : 1, '0').padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+    return h ? `${h}:${minutesAndSeconds}` : minutesAndSeconds;
+  };
   const pct = (value) => (Number.isFinite(value) ? `${Math.round(value)}%` : '--');
   const dec = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits).replace('.', ',') : '--');
   const when = (at) => new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -268,33 +272,41 @@
 
   /* ---------- Relatório ---------- */
   const chip = (text, extra = '') => `<span class="chip ${extra}">${escapeHtml(text)}</span>`;
+  const lineItem = (line) => `<li>${escapeHtml(line)}</li>`;
 
   function findingHtml(finding) {
+    const limits = finding.limits?.length ? `<ul class="limits">${finding.limits.map(lineItem).join('')}</ul>` : '';
     return `<article class="insight" data-severity="${finding.severity}"><div class="insight-head"><span class="sev" aria-hidden="true"><svg><use href="#${finding.severity === 'info' ? 'i-spark' : 'i-alert'}"/></svg></span><strong>${escapeHtml(finding.title)}</strong><span>confiança ${finding.confidence}%</span></div>
-      <p>${escapeHtml(finding.detail)}</p><ul>${finding.evidence.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>
-      ${finding.limits?.length ? `<ul class="limits">${finding.limits.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>` : ''}</article>`;
+      <p>${escapeHtml(finding.detail)}</p><ul>${finding.evidence.map(lineItem).join('')}</ul>
+      ${limits}</article>`;
   }
 
   function fpsHtml(summary) {
     const rows = [['FPS médio', dec(summary.avgFps, 0)], ['1% baixo', dec(summary.p1LowFps, 0)], ['0,1% baixo', dec(summary.p01LowFps, 0)], ['Tempo de quadro (mediana)', `${dec(summary.frameMs.p50)} ms`], ['Tempo de quadro (p99)', `${dec(summary.frameMs.p99)} ms`], ['Quadros lentos', String(summary.stutterCount)]];
     if (summary.hasBusy) rows.push(['Quadros limitados pela GPU', `${dec(summary.gpuBoundShare * 100, 0)}%`], ['Quadros limitados pela CPU', `${dec(summary.cpuBoundShare * 100, 0)}%`]);
-    return `<h4>FPS e tempo de quadro</h4><table class="exp"><tbody>${rows.map(([name, value]) => `<tr><th>${name}</th><td>${value}</td></tr>`).join('')}</tbody></table><div class="chart-body rep-chart"><canvas id="rep-fps" role="img" aria-label="FPS ao longo da sessão"></canvas></div>
+    const row = ([name, value]) => `<tr><th>${name}</th><td>${value}</td></tr>`;
+    return `<h4>FPS e tempo de quadro</h4><table class="exp"><tbody>${rows.map(row).join('')}</tbody></table><div class="chart-body rep-chart"><canvas id="rep-fps" role="img" aria-label="FPS ao longo da sessão"></canvas></div>
       <p class="muted">“1% baixo” é o FPS correspondente ao percentil 99 do tempo de quadro. “Quadro lento” é o que levou mais que o dobro da mediana e mais de 30 ms.</p>`;
   }
 
   function reportHtml(record) {
     const r = record.report;
     const m = r.meta;
-    const fg = r.foreground.length ? `<ul class="fg-list">${r.foreground.map((item) => `<li><span>${escapeHtml(item.name)}</span><b>${clock(item.seconds)}</b>${item.isGame ? chip('jogo', 'risk-baixo') : ''}</li>`).join('')}</ul>` : '<p class="muted">Sem dados de primeiro plano (observação detalhada desligada ou indisponível).</p>';
+    const fgItem = (item) => `<li><span>${escapeHtml(item.name)}</span><b>${clock(item.seconds)}</b>${item.isGame ? chip('jogo', 'risk-baixo') : ''}</li>`;
+    const fg = r.foreground.length ? `<ul class="fg-list">${r.foreground.map(fgItem).join('')}</ul>` : '<p class="muted">Sem dados de primeiro plano (observação detalhada desligada ou indisponível).</p>';
     const bg = [r.background.cpu ? `CPU: ${r.background.cpu.name} (média ${dec(r.background.cpu.avg)}% em ${dec(r.background.cpu.presence * 100, 0)}% das leituras)` : null, r.background.gpu ? `GPU: ${r.background.gpu.name} (média ${dec(r.background.gpu.avg)}%)` : null].filter(Boolean);
-    return `<div class="chips-row">${chip(`${clock(m.durationS)} de sessão`)}${chip(NexoProfiles.get(record.profile).nome)}${r.game ? chip(`Jogo: ${r.game.name}`, 'risk-baixo') : ''}${chip(m.hasFps ? 'FPS medido' : 'Sem FPS')}${chip(m.hasGpuSensor ? 'Sensor de GPU' : 'Sem sensor de GPU')}</div>
+    const durationChip = chip(`${clock(m.durationS)} de sessão`);
+    const gameChip = r.game ? chip(`Jogo: ${r.game.name}`, 'risk-baixo') : '';
+    const background = bg.length ? `<h4>Quem pesou em segundo plano</h4><ul>${bg.map(lineItem).join('')}</ul>` : '';
+    const overhead = r.overhead ? `<h4>Custo do Nexo</h4><p>Média de ${dec(r.overhead.cpuAvg)}% da CPU (pico ${dec(r.overhead.cpuMax)}%) e ${dec(r.overhead.memMB, 0)} MB. ${escapeHtml(r.overhead.note)}</p>` : '';
+    return `<div class="chips-row">${durationChip}${chip(NexoProfiles.get(record.profile).nome)}${gameChip}${chip(m.hasFps ? 'FPS medido' : 'Sem FPS')}${chip(m.hasGpuSensor ? 'Sensor de GPU' : 'Sem sensor de GPU')}</div>
       <p class="verdict">${escapeHtml(r.conclusion)}</p>
       <div class="findings">${r.findings.map(findingHtml).join('')}</div>
       <h4>Linha do tempo</h4><div class="chart-body rep-chart"><canvas id="rep-chart" role="img" aria-label="Uso de CPU, vídeo e memória ao longo da sessão"></canvas></div>
       ${r.fps ? fpsHtml(r.fps) : ''}
       <h4>Programas em primeiro plano</h4>${fg}
-      ${bg.length ? `<h4>Quem pesou em segundo plano</h4><ul>${bg.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>` : ''}
-      ${r.overhead ? `<h4>Custo do Nexo</h4><p>Média de ${dec(r.overhead.cpuAvg)}% da CPU (pico ${dec(r.overhead.cpuMax)}%) e ${dec(r.overhead.memMB, 0)} MB. ${escapeHtml(r.overhead.note)}</p>` : ''}
+      ${background}
+      ${overhead}
       <p class="muted">${escapeHtml(r.limits)}</p>`;
   }
 
@@ -347,14 +359,16 @@
     const list = load();
     const box = document.getElementById('sess-list');
     document.getElementById('sess-clear').hidden = list.length === 0;
-    box.innerHTML = list.length ? list.map((record) => {
+    const card = (record) => {
       const findings = record.report.findings.filter((finding) => finding.severity !== 'info').slice(0, 3);
+      const fps = record.report.fps ? ` · ${dec(record.report.fps.avgFps, 0)} FPS médios` : '';
       return `<article class="sheet sess-card" data-id="${escapeHtml(record.id)}"><header><strong>${escapeHtml(record.name)}</strong>${record.report.game ? chip('jogo', 'risk-baixo') : ''}${record.auto ? chip('automática') : ''}</header>
-        <div class="j-meta">${when(record.startedAt)} · ${clock(record.report.meta.durationS)} · ${escapeHtml(NexoProfiles.get(record.profile).nome)}${record.report.fps ? ` · ${dec(record.report.fps.avgFps, 0)} FPS médios` : ''}</div>
+        <div class="j-meta">${when(record.startedAt)} · ${clock(record.report.meta.durationS)} · ${escapeHtml(NexoProfiles.get(record.profile).nome)}${fps}</div>
         <p class="sess-concl">${escapeHtml(record.report.conclusion)}</p>
         <div class="chips-row">${findings.map((finding) => chip(finding.title, finding.severity === 'bad' ? 'risk-alto' : 'risk-moderado')).join('')}</div>
         <button class="btn sm" type="button" data-open="${escapeHtml(record.id)}">Ver relatório</button></article>`;
-    }).join('') : `<div class="sheet empty-art">${Nexo.constellation()}<span>Nenhuma sessão gravada ainda. Inicie uma enquanto joga ou trabalha para ver onde está o limite do seu PC.</span></div>`;
+    };
+    box.innerHTML = list.length ? list.map(card).join('') : `<div class="sheet empty-art">${Nexo.constellation()}<span>Nenhuma sessão gravada ainda. Inicie uma enquanto joga ou trabalha para ver onde está o limite do seu PC.</span></div>`;
   }
 
   /* ---------- Ligações ---------- */
@@ -376,7 +390,8 @@
       const result = await bridge.testProbe();
       if (!result.ok) { setText('probe-result', result.reason); return; }
       const { sample } = result;
-      setText('probe-result', `Funcionou. Primeiro plano: ${sample.fg ? `${sample.fg.name}${sample.fg.isGame ? ' (jogo)' : ''}` : 'nenhum'}. CPU por programa: ${sample.cpu.length ? 'sim' : 'nenhum programa se destacou agora'}. GPU por programa: ${sample.gpu.length ? 'sim' : 'nenhum programa usando a GPU agora ou contador indisponível'}. Custo da sonda: cerca de ${dec(sample.self?.cpu)}% da CPU e ${dec(sample.self?.memMB, 0)} MB.`);
+      const foreground = sample.fg ? `${sample.fg.name}${sample.fg.isGame ? ' (jogo)' : ''}` : 'nenhum';
+      setText('probe-result', `Funcionou. Primeiro plano: ${foreground}. CPU por programa: ${sample.cpu.length ? 'sim' : 'nenhum programa se destacou agora'}. GPU por programa: ${sample.gpu.length ? 'sim' : 'nenhum programa usando a GPU agora ou contador indisponível'}. Custo da sonda: cerca de ${dec(sample.self?.cpu)}% da CPU e ${dec(sample.self?.memMB, 0)} MB.`);
     } catch (error) { setText('probe-result', error.message || 'O teste falhou.'); }
     finally { setButtonBusy(button, false); }
   });

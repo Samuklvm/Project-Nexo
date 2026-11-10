@@ -212,7 +212,9 @@ function renderActivity(entries = readJSON(Nexo.keys.activity, [])) {
     const label = document.createElement('strong');
     const meta = document.createElement('span');
     label.textContent = entry.title;
-    meta.textContent = `${new Date(entry.timestamp).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${entry.detail || ''}${entry.count > 1 ? ` · ${entry.count} vezes` : ''}`;
+    const when = new Date(entry.timestamp).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const repeated = entry.count > 1 ? ` · ${entry.count} vezes` : '';
+    meta.textContent = `${when} · ${entry.detail || ''}${repeated}`;
     item.append(label, meta);
     return item;
   }));

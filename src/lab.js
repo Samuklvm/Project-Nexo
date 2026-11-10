@@ -57,6 +57,8 @@
   const armKey = (arm) => `${arm.knob}=${arm.value}`;
   const comboKey = (keys) => `combo:${[...keys].sort((a, b) => (a < b ? -1 : Number(a > b))).join('+')}`;
   const valueLabel = (knob, value) => (knob.names?.[value] ? `${knob.names[value]}` : `${String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${knob.unit || ''}`);
+  /** " (+1,2%)" depois do veredito, quando a medição deu um ganho ou uma perda. */
+  const deltaText = (outcome) => (finite(outcome?.compositeDelta) ? ` (${outcome.compositeDelta > 0 ? '+' : ''}${outcome.compositeDelta}%)` : '');
   /** Testes que medem o ajuste; `benchSupport` tira os que este PC não consegue rodar (ex.: rede sem roteador). */
   const benchesOf = (knob, benchSupport = null) => (knob?.affects || ['single', 'multi', 'burst']).filter((bench) => BENCHES.includes(bench) && (!benchSupport || benchSupport[bench] !== false));
 
@@ -379,7 +381,8 @@
       const support = Object.fromEntries(Object.entries(pre.knobs || {}).filter(([, info]) => info?.available));
       const benchSupport = pre.benches || null;
       benchSupportRef.value = benchSupport;
-      say(`Pré-checagem ok: na tomada, ${Math.round(pre.tempC)} °C, processador ${finite(pre.cpuLoad) ? `${Math.round(pre.cpuLoad)}%` : '?'} ocupado. Ajustes disponíveis neste PC: ${available.length}${pre.hybrid === true ? ' (processador híbrido)' : ''}. Objetivo: ${GOALS[goal].label}.`);
+      const load = finite(pre.cpuLoad) ? `${Math.round(pre.cpuLoad)}%` : '?';
+      say(`Pré-checagem ok: na tomada, ${Math.round(pre.tempC)} °C, processador ${load} ocupado. Ajustes disponíveis neste PC: ${available.length}${pre.hybrid === true ? ' (processador híbrido)' : ''}. Objetivo: ${GOALS[goal].label}.`);
 
       stage('ponto', 'Criando ponto de restauração do Windows');
       checkCancel();
@@ -405,7 +408,8 @@
       for (const [index, bench] of warmBenches.entries()) await measure(bench, null, 'warm', index === warmBenches.length - 1);
       const warm = Object.values(refTemp).filter(finite);
       if (warm.length) say(`Aquecido: ${Math.round(Math.max(...warm))} °C nos testes com o plano original (em repouso estava ${Math.round(pre.tempC)} °C). A guarda de aquecimento compara cada ajuste com isso.`);
-      say(candidates.length ? `Ideias escolhidas para hoje: ${candidates.map((arm) => `${KNOB.get(arm.knob).label} → ${valueLabel(KNOB.get(arm.knob), arm.value)}${arm.untested ? ' (inédito aqui)' : ''}`).join('; ')}.` : 'Nenhuma ideia nova: tudo o que o espaço permite já foi testado ou bloqueado.');
+      const armLabel = (arm) => `${KNOB.get(arm.knob).label} → ${valueLabel(KNOB.get(arm.knob), arm.value)}${arm.untested ? ' (inédito aqui)' : ''}`;
+      say(candidates.length ? `Ideias escolhidas para hoje: ${candidates.map(armLabel).join('; ')}.` : 'Nenhuma ideia nova: tudo o que o espaço permite já foi testado ou bloqueado.');
 
       /* Triagem em duas etapas: todos ganham 2 pares; quem mostra sinal de ganho ganha mais pares antes do veredito. */
       for (const arm of candidates) {
@@ -434,7 +438,8 @@
         result.arms.push(record);
         result.evidence = updateEvidence(result.evidence, arm.key, { delta: outcome.compositeDelta, verdict: outcome.verdict }, now());
         emit({ type: 'arm', arm: record });
-        say(`${knob.label} → ${record.valueLabel}: ${outcome.verdict}${finite(outcome.compositeDelta) ? ` (${outcome.compositeDelta > 0 ? '+' : ''}${outcome.compositeDelta}%)` : ''}${outcome.pairsDone > screenPairs ? `, com ${outcome.pairsDone} pares` : ''}.`);
+        const pairsText = outcome.pairsDone > screenPairs ? `, com ${outcome.pairsDone} pares` : '';
+        say(`${knob.label} → ${record.valueLabel}: ${outcome.verdict}${deltaText(outcome)}${pairsText}.`);
       }
 
       const winners = new Map();
@@ -476,7 +481,7 @@
         result.combos.push(record);
         result.evidence = updateEvidence(result.evidence, combo.key, { delta: outcome.compositeDelta, verdict: outcome.verdict }, now());
         emit({ type: 'combo', combo: record });
-        say(`Combinação inédita ${describe(combo.keys)}: ${outcome.verdict}${finite(outcome.compositeDelta) ? ` (${outcome.compositeDelta > 0 ? '+' : ''}${outcome.compositeDelta}%)` : ''}.`);
+        say(`Combinação inédita ${describe(combo.keys)}: ${outcome.verdict}${deltaText(outcome)}.`);
       }
 
       /* Confirmação: a melhor candidata (os vencedores juntos e/ou a melhor combinação inédita) com 5 pares. */
@@ -486,12 +491,13 @@
       if (bestNovel && (!finalists.length || bestNovel.compositeDelta > finalists[0].expected)) finalists.push({ keys: bestNovel.keys, expected: bestNovel.compositeDelta });
       for (const finalist of finalists) {
         if (result.budgetHit || overBudget()) { result.budgetHit = true; break; }
-        stage('confirmar', `Confirmando ${finalist.keys.length > 1 ? `a combinação (${finalist.keys.length} ajustes)` : 'o melhor ajuste'} com ${limits.confirmPairs} repetições`);
+        const what = finalist.keys.length > 1 ? `a combinação (${finalist.keys.length} ajustes)` : 'o melhor ajuste';
+        stage('confirmar', `Confirmando ${what} com ${limits.confirmPairs} repetições`);
         const outcome = strip(await abTest(configOf(finalist.keys), limits.confirmPairs, null, benchesFor(finalist.keys), 'combinacao'));
         const confirmed = { config: configOf(finalist.keys), knobs: finalist.keys, replicates: limits.confirmPairs, ...outcome };
         if (finalist.keys.length > 1) result.evidence = updateEvidence(result.evidence, comboKey(finalist.keys), { delta: outcome.compositeDelta, verdict: outcome.verdict }, now());
         emit({ type: 'combination', combination: confirmed });
-        say(`Confirmação de ${describe(finalist.keys)}: ${outcome.verdict}${finite(outcome.compositeDelta) ? ` (${outcome.compositeDelta > 0 ? '+' : ''}${outcome.compositeDelta}%)` : ''}.`);
+        say(`Confirmação de ${describe(finalist.keys)}: ${outcome.verdict}${deltaText(outcome)}.`);
         const better = !result.combination || (confirmed.verdict === 'melhorou' && (result.combination.verdict !== 'melhorou' || confirmed.compositeDelta > result.combination.compositeDelta));
         if (better) result.combination = confirmed;
       }

@@ -37,7 +37,12 @@
 
   function renderEpisodes() {
     const episodes = Nexo.store.brain.recentEpisodes(14 * 24 * 3600e3).slice(0, 8);
-    document.getElementById('episode-list').innerHTML = episodes.length ? episodes.map((e) => `<li data-kind="${escapeHtml(e.kind)}"><i class="dot"></i><div><strong>${escapeHtml(KIND_LABEL[e.kind] || e.kind)}${e.ongoing ? ' · em andamento' : ''}</strong><small>${(e.peak ?? null) !== null ? `${e.kind === 'throttle' ? 'mínimo' : 'pico'} ${Math.round(e.peak)}${e.kind === 'thermal' ? ' °C' : '%'} · ` : ''}${e.minutes} min${e.culprit ? ` · ${escapeHtml(e.culprit)}` : ''}</small></div><time>${formatRelative(e.start)}</time></li>`).join('')
+    const episodeItem = (e) => {
+      const peak = (e.peak ?? null) !== null ? `${e.kind === 'throttle' ? 'mínimo' : 'pico'} ${Math.round(e.peak)}${e.kind === 'thermal' ? ' °C' : '%'} · ` : '';
+      const culprit = e.culprit ? ` · ${escapeHtml(e.culprit)}` : '';
+      return `<li data-kind="${escapeHtml(e.kind)}"><i class="dot"></i><div><strong>${escapeHtml(KIND_LABEL[e.kind] || e.kind)}${e.ongoing ? ' · em andamento' : ''}</strong><small>${peak}${e.minutes} min${culprit}</small></div><time>${formatRelative(e.start)}</time></li>`;
+    };
+    document.getElementById('episode-list').innerHTML = episodes.length ? episodes.map(episodeItem).join('')
       : `<li class="empty-art">${Nexo.constellation()}<span>Nenhuma lentidão sustentada registrada. Quando houver, ela aparece aqui com o programa que mais pesou.</span></li>`;
   }
 
@@ -60,7 +65,8 @@
         const value = grid[day][hour];
         const isNow = day === now.getDay() && hour === now.getHours();
         const alpha = value === null ? 0.05 : 0.14 + Math.min(1, value / Math.max(40, max)) * 0.78;
-        html += `<span class="cell${isNow ? ' now' : ''}" data-css="background:rgba(${rgb},${alpha.toFixed(2)})" title="${DAY_SHORT[day]} ${String(hour).padStart(2, '0')}h — ${value === null ? 'sem dados ainda' : `média ${Math.round(value)}%`}"></span>`;
+        const average = value === null ? 'sem dados ainda' : `média ${Math.round(value)}%`;
+        html += `<span class="cell${isNow ? ' now' : ''}" data-css="background:rgba(${rgb},${alpha.toFixed(2)})" title="${DAY_SHORT[day]} ${String(hour).padStart(2, '0')}h — ${average}"></span>`;
       }
     }
     document.getElementById('habit-grid').innerHTML = html;

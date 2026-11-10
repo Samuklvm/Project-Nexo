@@ -36,12 +36,16 @@
     const names = scan.groups || GROUPS;
     const rank = Object.keys(names);
     const ordered = [...groups].sort((a, b) => (rank.indexOf(a[0]) + 1 || 99) - (rank.indexOf(b[0]) + 1 || 99));
+    const labLine = lab ? `<span>Otimização extrema inteira: <strong>${usable.length + lab.knobs}</strong> ajustes e <strong>${options + lab.options}</strong> opções</span>` : '';
+    const missingText = missing ? ` · ${missing} não existem neste PC` : '';
+    const groupBlock = ([group, items], index) => `<details class="scan-group"${index === 0 || state.filter ? ' open' : ''}><summary><strong>${escapeHtml(names[group] || GROUPS[group] || group)}</strong><span class="muted">${items.length} ajustes · ${items.reduce((total, item) => total + item.options.length, 0)} opções</span></summary><ul class="scan-list">${items.map(row).join('')}</ul></details>`;
+    const refusedItem = (item) => `<li><div class="scan-main"><strong>${escapeHtml(item.label)}</strong><span class="muted">${escapeHtml(item.reason)}</span></div><span class="chip risk-alto">recusado</span></li>`;
     body().innerHTML = `
-      <div class="scan-summary"><span><strong>${usable.length}</strong> ajustes e <strong>${options}</strong> opções neste PC</span><span><strong>${changed}</strong> fora do padrão do Windows</span>${lab ? `<span>Otimização extrema inteira: <strong>${usable.length + lab.knobs}</strong> ajustes e <strong>${options + lab.options}</strong> opções</span>` : ''}<span>Segurança baseada em virtualização: <strong>${escapeHtml(scan.vbs)}</strong></span><span class="muted">varrido às ${new Date(scan.scannedAt).toLocaleTimeString('pt-BR')}${missing ? ` · ${missing} não existem neste PC` : ''}</span></div>
+      <div class="scan-summary"><span><strong>${usable.length}</strong> ajustes e <strong>${options}</strong> opções neste PC</span><span><strong>${changed}</strong> fora do padrão do Windows</span>${labLine}<span>Segurança baseada em virtualização: <strong>${escapeHtml(scan.vbs)}</strong></span><span class="muted">varrido às ${new Date(scan.scannedAt).toLocaleTimeString('pt-BR')}${missingText}</span></div>
       <div class="scan-filters"><label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="scan-filter" type="search" placeholder="Filtrar ajustes (ex.: rede, mouse, Xbox)" autocomplete="off" value="${escapeHtml(state.filter)}" /></label><label class="toggle-line"><input type="checkbox" id="scan-only-changed" ${state.onlyChanged ? 'checked' : ''} /> Só o que está fora do padrão</label></div>
       ${shown.length ? '' : '<p class="muted">Nada com esse filtro.</p>'}
-      ${ordered.map(([group, items], index) => `<details class="scan-group"${index === 0 || state.filter ? ' open' : ''}><summary><strong>${escapeHtml(names[group] || GROUPS[group] || group)}</strong><span class="muted">${items.length} ajustes · ${items.reduce((total, item) => total + item.options.length, 0)} opções</span></summary><ul class="scan-list">${items.map(row).join('')}</ul></details>`).join('')}
-      <details class="scan-group refused"><summary><strong>O que o Nexo encontra e se recusa a mudar</strong><span class="muted">${scan.refused.length} itens</span></summary><ul class="scan-list">${scan.refused.map((item) => `<li><div class="scan-main"><strong>${escapeHtml(item.label)}</strong><span class="muted">${escapeHtml(item.reason)}</span></div><span class="chip risk-alto">recusado</span></li>`).join('')}</ul></details>
+      ${ordered.map(groupBlock).join('')}
+      <details class="scan-group refused"><summary><strong>O que o Nexo encontra e se recusa a mudar</strong><span class="muted">${scan.refused.length} itens</span></summary><ul class="scan-list">${scan.refused.map(refusedItem).join('')}</ul></details>
       <div class="scan-foot"><button class="btn ghost sm" type="button" id="scan-recommended">Marcar os recomendados</button><span class="muted" id="scan-count">Nada marcado.</span>${Nexo.composeRebootTest ? '<button class="btn ghost" type="button" id="scan-reboot-test" disabled title="Reinicia o PC algumas vezes e mede com e sem os ajustes marcados">Testar com reinício</button>' : ''}<button class="btn danger" type="button" id="scan-apply" disabled>Aplicar marcados</button></div>`;
     updateCount();
   }
@@ -112,12 +116,14 @@
         recorded += 1;
       }
       Nexo.emit('journal');
-      recordActivity('Raio-X do PC', `${recorded} ajuste(s) aplicado(s)${failed.size ? `, ${failed.size} recusado(s) pelo Windows` : ''}`);
+      const refusedCount = failed.size ? `, ${failed.size} recusado(s) pelo Windows` : '';
+      recordActivity('Raio-X do PC', `${recorded} ajuste(s) aplicado(s)${refusedCount}`);
       state.scan = after || state.scan;
       state.picks.clear();
       render();
       const refusedNames = list.filter(({ item }) => failed.has(item.id)).map(({ item }) => item.label);
-      if (refusedNames.length) showToast(`${result?.declined ? 'Sem a permissão do Windows' : 'O Windows recusou'}: ${refusedNames.slice(0, 3).join(', ')}${refusedNames.length > 3 ? ` e mais ${refusedNames.length - 3}` : ''}. O resto foi aplicado e está no Diário.`);
+      const moreNames = refusedNames.length > 3 ? ` e mais ${refusedNames.length - 3}` : '';
+      if (refusedNames.length) showToast(`${result?.declined ? 'Sem a permissão do Windows' : 'O Windows recusou'}: ${refusedNames.slice(0, 3).join(', ')}${moreNames}. O resto foi aplicado e está no Diário.`);
       else showToast(list.some(({ item }) => item.reboot === 'reiniciar') ? 'Aplicado. Reinicie o PC para valer tudo; dá para reverter pelo Diário.' : 'Aplicado. Dá para reverter pelo Diário (Atividade).');
     } catch (error) { showToast(error.message || 'Não foi possível aplicar.'); }
     finally { state.busy = false; setButtonBusy(button, false); updateCount(); }

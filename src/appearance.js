@@ -45,8 +45,10 @@
     if (!box || !Nexo.sky) return;
     const prefs = Nexo.sky.prefs();
     const row = (key, title, text, checked) => `<label class="switch compact sky-row"><input type="checkbox" data-sky="${key}" ${checked ? 'checked' : ''} /><i></i><span><strong>${title}</strong><small>${text}</small></span></label>`;
+    const densityButton = (d) => `<button type="button" data-density="${d}" aria-pressed="${String(prefs.density === d)}">${d[0].toUpperCase() + d.slice(1)}</button>`;
+    const densityButtons = ['pouco', 'normal', 'muito'].map(densityButton).join('');
     box.innerHTML = `<div class="setting-row"><div><strong>Céu vivo</strong><p class="muted">Tudo leve: no máximo 30 quadros por segundo, e para com o app fora de foco ou no modo Leve.</p></div>
-      <div class="segmented sm" role="group" aria-label="Quantidade no céu">${['pouco', 'normal', 'muito'].map((d) => `<button type="button" data-density="${d}" aria-pressed="${String(prefs.density === d)}">${d[0].toUpperCase() + d.slice(1)}</button>`).join('')}</div></div>
+      <div class="segmented sm" role="group" aria-label="Quantidade no céu">${densityButtons}</div></div>
       <div class="sky-grid">
         ${row('fireflies', 'Vagalumes', 'Luzes que vagam perto das flores.', prefs.fireflies)}
         ${row('cursor', 'Vagalumes curiosos', 'Chegam perto do mouse.', prefs.cursor)}

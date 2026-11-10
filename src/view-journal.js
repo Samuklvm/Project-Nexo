@@ -30,14 +30,19 @@
       const info = NexoCatalog.get(entry.actionId);
       const canRevert = entry.status === 'applied' && entry.reversible === true;
       const measured = measureLine(entry.measure);
+      const reverted = entry.revertedAt ? ` · revertida em ${when(entry.revertedAt)}` : '';
+      const measureRow = measured ? `<div class="j-measure">Medição: ${escapeHtml(measured)}</div>` : '';
+      const noteRow = entry.revertNote && entry.status !== 'reverted' ? `<div class="j-meta">${escapeHtml(entry.revertNote)}</div>` : '';
+      const revertButton = canRevert ? `<button class="btn sm" type="button" data-revert="${escapeHtml(entry.id)}">Reverter</button>` : '';
+      const infoButton = info ? `<button class="btn sm ghost" type="button" data-op="${escapeHtml(entry.actionId)}">Detalhes da operação</button>` : '';
       return `<li class="j-item" data-id="${escapeHtml(entry.id)}" data-status="${escapeHtml(entry.status)}">
         <div class="j-head"><strong>${escapeHtml(entry.title)}</strong>
           <span class="chip risk-${escapeHtml(entry.risk)}">${escapeHtml(NexoCatalog.RISK_LABEL[entry.risk] || entry.risk)}</span>
           <span class="chip status-${escapeHtml(entry.status)}">${escapeHtml(STATUS[entry.status] || entry.status)}</span>${entry.riskSession ? '<span class="chip risk-alto">sessão de risco</span>' : ''}</div>
-        <div class="j-meta">${when(entry.at)} · ${escapeHtml(summaryOf(entry))}${entry.revertedAt ? ` · revertida em ${when(entry.revertedAt)}` : ''}</div>
-        ${measured ? `<div class="j-measure">Medição: ${escapeHtml(measured)}</div>` : ''}
-        ${entry.revertNote && entry.status !== 'reverted' ? `<div class="j-meta">${escapeHtml(entry.revertNote)}</div>` : ''}
-        <div class="j-actions">${canRevert ? `<button class="btn sm" type="button" data-revert="${escapeHtml(entry.id)}">Reverter</button>` : ''}${info ? `<button class="btn sm ghost" type="button" data-op="${escapeHtml(entry.actionId)}">Detalhes da operação</button>` : ''}</div>
+        <div class="j-meta">${when(entry.at)} · ${escapeHtml(summaryOf(entry))}${reverted}</div>
+        ${measureRow}
+        ${noteRow}
+        <div class="j-actions">${revertButton}${infoButton}</div>
       </li>`;
     }).join('');
   }
@@ -52,13 +57,18 @@
       ['O que pode mudar', entry.oQuePodeMudar], ['Como é feito', entry.mecanismo], ['Como reverter', entry.reversao], ['Como medimos', entry.medicao],
       ['Compatibilidade', `${entry.compat.windows}. ${entry.compat.hardware}.`], ['Estado de validação', entry.estado]
     ];
-    const sources = entry.fontes.map((source) => `<li>${source.url ? `<button class="link" type="button" data-doc="${escapeHtml(source.url)}">${escapeHtml(source.titulo)}</button>` : escapeHtml(source.titulo)} <span class="chip">${source.evidencia === 'oficial' ? 'fonte oficial' : source.evidencia}</span></li>`).join('');
+    const sourceItem = (source) => {
+      const title = source.url ? `<button class="link" type="button" data-doc="${escapeHtml(source.url)}">${escapeHtml(source.titulo)}</button>` : escapeHtml(source.titulo);
+      return `<li>${title} <span class="chip">${source.evidencia === 'oficial' ? 'fonte oficial' : source.evidencia}</span></li>`;
+    };
+    const sources = entry.fontes.map(sourceItem).join('');
+    const rowItem = ([name, text]) => `<div><dt>${name}</dt><dd>${escapeHtml(text)}</dd></div>`;
     const dialog = Nexo.dialog({
       title: entry.titulo, wide: true,
       html: `<div class="chips-row"><span class="chip risk-${entry.risco}">${NexoCatalog.RISK_LABEL[entry.risco]}</span>
         <span class="chip">${entry.reversivel === true ? 'Reversível' : entry.reversivel === 'parcial' ? 'Reversão parcial' : 'Não reversível'}</span>
         <span class="chip">${entry.persistente ? 'Persistente' : 'Temporária'}</span><span class="chip">${entry.exigeReinicio ? 'Exige reiniciar' : 'Sem reinício'}</span><span class="chip">${admin}</span></div>
-        <dl class="op">${rows.map(([name, text]) => `<div><dt>${name}</dt><dd>${escapeHtml(text)}</dd></div>`).join('')}<div><dt>Fontes</dt><dd><ul class="sources">${sources}</ul></dd></div></dl>`,
+        <dl class="op">${rows.map(rowItem).join('')}<div><dt>Fontes</dt><dd><ul class="sources">${sources}</ul></dd></div></dl>`,
       actions: [{ id: 'close', label: 'Fechar', tone: 'primary' }]
     });
     document.querySelector('.dialog-body').addEventListener('click', (event) => {

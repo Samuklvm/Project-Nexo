@@ -20,16 +20,20 @@
 
   function html(entry, index, total) {
     const date = entry.date ? new Date(`${entry.date}T12:00:00`).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+    const star = (_, i) => `<i data-css="--x:${(i * 53) % 100}%;--y:${(i * 37) % 100}%;--d:${(i % 7) * 0.4}s;--s:${1 + (i % 3)}px"></i>`;
+    const dateLine = date ? `<small>${escapeHtml(date)}</small>` : '';
+    const item = (it, i) => `<li data-css="--i:${i}"><span class="nv-item-emoji" aria-hidden="true">${it.emoji || '•'}</span><div><strong>${escapeHtml(it.title)}</strong><p>${escapeHtml(it.text)}</p></div></li>`;
+    const section = (part) => `<section class="nv-section" data-tone="${part.tone || 'new'}">
+          <h3><span>${part.emoji || ''}</span>${escapeHtml(part.title)}<em>${escapeHtml(TONES[part.tone] || '')}</em></h3>
+          <ul>${part.items.map(item).join('')}</ul>
+        </section>`;
     return `<div class="nv-banner">
-        <div class="nv-stars" aria-hidden="true">${Array.from({ length: 18 }, (_, i) => `<i data-css="--x:${(i * 53) % 100}%;--y:${(i * 37) % 100}%;--d:${(i % 7) * 0.4}s;--s:${1 + (i % 3)}px"></i>`).join('')}</div>
+        <div class="nv-stars" aria-hidden="true">${Array.from({ length: 18 }, star).join('')}</div>
         <div class="nv-emoji" aria-hidden="true">${entry.emoji || '✨'}</div>
-        <div class="nv-head"><span class="nv-kicker">Novidades da versão ${escapeHtml(entry.version)}</span><h2 id="nv-title">${escapeHtml(entry.title)}</h2><p>${escapeHtml(entry.tagline || '')}</p>${date ? `<small>${escapeHtml(date)}</small>` : ''}</div>
+        <div class="nv-head"><span class="nv-kicker">Novidades da versão ${escapeHtml(entry.version)}</span><h2 id="nv-title">${escapeHtml(entry.title)}</h2><p>${escapeHtml(entry.tagline || '')}</p>${dateLine}</div>
         <button class="nv-close" type="button" data-nv="close" aria-label="Fechar">×</button>
       </div>
-      <div class="nv-body">${entry.sections.map((section) => `<section class="nv-section" data-tone="${section.tone || 'new'}">
-          <h3><span>${section.emoji || ''}</span>${escapeHtml(section.title)}<em>${escapeHtml(TONES[section.tone] || '')}</em></h3>
-          <ul>${section.items.map((item, i) => `<li data-css="--i:${i}"><span class="nv-item-emoji" aria-hidden="true">${item.emoji || '•'}</span><div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p></div></li>`).join('')}</ul>
-        </section>`).join('')}</div>
+      <div class="nv-body">${entry.sections.map(section).join('')}</div>
       <footer class="nv-foot">
         <div class="nv-nav"><button type="button" class="btn sm ghost" data-nv="older" ${index >= total - 1 ? 'disabled' : ''} aria-label="Versão anterior">‹ Anterior</button><span>${index + 1} de ${total}</span><button type="button" class="btn sm ghost" data-nv="newer" ${index <= 0 ? 'disabled' : ''} aria-label="Versão mais nova">Mais nova ›</button></div>
         <button type="button" class="btn primary" data-nv="close">Bora! 🚀</button>

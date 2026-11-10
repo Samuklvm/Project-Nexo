@@ -183,7 +183,9 @@
       const box = state.tip;
       if (!box || !info || !info.readings.length) { if (box) box.hidden = true; return; }
       const unit = state.options.unit || '';
-      box.innerHTML = `<b>${new Date(info.t).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</b> ${info.readings.map(({ serie, point }) => `<span data-css="color:${escapeHtml(serie.color)}">●</span> ${escapeHtml(serie.label)} ${escapeHtml(point[1].toFixed(0))}${escapeHtml(unit)}`).join(' · ')}`;
+      const reading = ({ serie, point }) => `<span data-css="color:${escapeHtml(serie.color)}">●</span> ${escapeHtml(serie.label)} ${escapeHtml(point[1].toFixed(0))}${escapeHtml(unit)}`;
+      const when = new Date(info.t).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+      box.innerHTML = `<b>${when}</b> ${info.readings.map(reading).join(' · ')}`;
       box.hidden = false;
       box.style.left = `${Math.min(rect.width - 80, Math.max(80, info.x))}px`;
       box.style.top = '14px';

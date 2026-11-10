@@ -52,12 +52,16 @@
     return { single, multi, temp: Nexo.store.hottest(Nexo.store.live().slice(-1)[0] || {}) };
   }
 
+  const noteItem = (text) => `<li>${escapeHtml(text)}</li>`;
+  /** Lista de observações (vazia vira nada). */
+  const notesList = (items) => (items.length ? `<ul class="notes">${items.map(noteItem).join('')}</ul>` : '');
+
   function resultHtml(current, target, a, b, single, multi, verdict, warnings) {
     const row = (name, before, after, cmp) => `<tr><th>${name}</th><td>${num(cmp.a.median)}</td><td>${num(cmp.b.median)}</td><td class="delta ${cmp.verdict}">${signed(cmp.deltaPct)}</td><td>±${num(cmp.noisePct)}%</td></tr>`;
     return `<table class="exp"><thead><tr><th></th><th>${escapeHtml(current.name)}</th><th>${escapeHtml(target.name)}</th><th>Mudança</th><th>Ruído</th></tr></thead>
       <tbody>${row('Um núcleo', a.single, b.single, single)}${row('Vários núcleos', a.multi, b.multi, multi)}</tbody></table>
       <p class="verdict v-${verdict}">${VERDICT_TEXT[verdict]}</p>
-      ${[...warnings, ...single.notes, ...multi.notes].length ? `<ul class="notes">${[...new Set([...warnings, ...single.notes, ...multi.notes])].map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : ''}
+      ${notesList([...new Set([...warnings, ...single.notes, ...multi.notes])])}
       <p class="muted">Valores em milhões de operações por segundo (Mops/s) de uma carga sintética de inteiros, mediana de ${REPS} repetições. Mede velocidade bruta de CPU: não mede FPS, jogos nem tempo de abertura de programas.</p>`;
   }
 
@@ -69,7 +73,7 @@
 
     const check = await precheck();
     if (check.blockers.length) {
-      await Nexo.dialog({ title: 'Agora não é um bom momento para medir', html: `<ul class="notes">${check.blockers.map((text) => `<li>${escapeHtml(text)}</li>`).join('')}</ul>`, actions: [{ id: 'ok', label: 'Entendi', tone: 'primary' }] }).done;
+      await Nexo.dialog({ title: 'Agora não é um bom momento para medir', html: notesList(check.blockers), actions: [{ id: 'ok', label: 'Entendi', tone: 'primary' }] }).done;
       return;
     }
     const answer = await Nexo.dialog({
@@ -78,7 +82,7 @@
         <ul><li>Dura cerca de <strong>20 segundos</strong>, com o processador em carga máxima. O computador pode ficar lento nesse intervalo.</li>
         <li>Você pode cancelar a qualquer momento. Se cancelar depois da troca, o plano anterior volta sozinho.</li>
         <li>No fim, você escolhe manter o novo plano ou voltar. A troca fica registrada no Diário de alterações.</li></ul>
-        ${check.warnings.length ? `<ul class="notes">${check.warnings.map((text) => `<li>${escapeHtml(text)}</li>`).join('')}</ul>` : ''}`,
+        ${notesList(check.warnings)}`,
       actions: [{ id: 'no', label: 'Cancelar' }, { id: 'go', label: 'Iniciar o teste', tone: 'primary' }]
     }).done;
     if (answer !== 'go') return;
@@ -91,7 +95,8 @@
       title: 'Experimento em andamento', wide: true, dismissible: false, html: '',
       actions: [{ id: 'cancel', label: 'Cancelar teste', keepOpen: true, onClick: () => { cancelled = true; desktopBridge.cancelCpuBench(); } }]
     });
-    ctx.render = () => dialog.setBody(`<ol class="steps">${steps.map((step) => `<li data-state="${step.state}">${escapeHtml(step.label)}</li>`).join('')}</ol><p class="muted" aria-live="polite">${escapeHtml(ctx.detail)}</p>`);
+    const stepItem = (step) => `<li data-state="${step.state}">${escapeHtml(step.label)}</li>`;
+    ctx.render = () => dialog.setBody(`<ol class="steps">${steps.map(stepItem).join('')}</ol><p class="muted" aria-live="polite">${escapeHtml(ctx.detail)}</p>`);
     const mark = (index, state) => { steps[index].state = state; ctx.render(); };
 
     try {

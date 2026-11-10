@@ -21,11 +21,15 @@
     document.getElementById('atlas-grid').innerHTML = items.length ? items.map((item) => {
       const finding = item.fact ? state.findings[item.fact] : null;
       const action = item.page && Nexo.platform === 'linux' && !item.goto ? '' : item.goto ? `<button class="btn sm" type="button" data-goto-view="${item.goto}">${item.status === 'laboratorio' ? 'Testar no laboratório' : 'Abrir'}</button>` : item.page ? `<button class="btn sm ghost" type="button" data-settings="${item.page}">Abrir no Windows</button>` : '';
+      let findingHtml = '';
+      if (finding) findingHtml = `<div class="atlas-finding" data-state="${finding.state}"><b>${STATE_LABEL[finding.state]}</b><span>${escapeHtml(finding.text)}</span></div>`;
+      else if (item.fact && !state.checked) findingHtml = '<div class="atlas-finding" data-state="pending"><b>ainda não conferido</b><span>Use “Conferir este PC”.</span></div>';
+      const actionRow = action ? `<div class="btn-row">${action}</div>` : '';
       return `<article class="atlas-card" data-status="${item.status}">
         <header><span class="atlas-tag">${escapeHtml(NexoAtlas.STATUS[item.status])}</span><span class="chip">${escapeHtml(NexoAtlas.AREA[item.area])}</span><span class="chip">${escapeHtml(NexoAtlas.FAME[item.fama])}</span></header>
         <h3>${escapeHtml(item.titulo)}</h3><p>${escapeHtml(item.resumo)}</p><p class="muted">${escapeHtml(item.porque)}</p>
-        ${finding ? `<div class="atlas-finding" data-state="${finding.state}"><b>${STATE_LABEL[finding.state]}</b><span>${escapeHtml(finding.text)}</span></div>` : item.fact && !state.checked ? '<div class="atlas-finding" data-state="pending"><b>ainda não conferido</b><span>Use “Conferir este PC”.</span></div>' : ''}
-        ${action ? `<div class="btn-row">${action}</div>` : ''}</article>`;
+        ${findingHtml}
+        ${actionRow}</article>`;
     }).join('') : '<p class="empty">Nada com esse filtro.</p>';
   }
 

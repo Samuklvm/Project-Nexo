@@ -154,9 +154,13 @@
     }
     const devices = view.devices?.devices || null;
     const others = devices ? devices.filter((device) => !device.current) : [];
-    box.innerHTML = `<p>Sincronizando como <strong>${escapeHtml(s.email)}</strong>${s.lastSyncAt ? ` · cópia deste PC enviada em ${when(s.lastSyncAt)}` : ' · ainda sem cópia deste PC'}.</p>
+    const lastCopy = s.lastSyncAt ? ` · cópia deste PC enviada em ${when(s.lastSyncAt)}` : ' · ainda sem cópia deste PC';
+    const deviceItem = (device) => `<li><div><strong>${escapeHtml(device.name)}</strong><span class="muted">cópia de ${when(device.updatedAt)} · ${size(device.size)} · Nexo ${escapeHtml(device.appVersion || '?')}</span></div><div class="btn-row"><button class="btn sm primary" type="button" data-pull="${escapeHtml(device.deviceId)}">Trazer dados</button><button class="btn sm ghost" type="button" data-forget="${escapeHtml(device.deviceId)}">Apagar a cópia</button></div></li>`;
+    let deviceList = '';
+    if (devices) deviceList = others.length ? `<ul class="cloud-devices">${others.map(deviceItem).join('')}</ul>` : '<p class="muted">Nenhum outro PC com cópia nesta conta. Ligue a sincronização no outro PC e ele aparece aqui.</p>';
+    box.innerHTML = `<p>Sincronizando como <strong>${escapeHtml(s.email)}</strong>${lastCopy}.</p>
       <div class="btn-row"><button class="btn sm" type="button" data-cloud="push">Enviar a cópia agora</button><button class="btn sm" type="button" data-cloud="devices">Trazer dados de outro PC</button>${s.admin ? '<button class="btn sm primary" type="button" data-cloud="admin">Abrir o painel do criador</button>' : ''}</div>
-      ${devices ? (others.length ? `<ul class="cloud-devices">${others.map((device) => `<li><div><strong>${escapeHtml(device.name)}</strong><span class="muted">cópia de ${when(device.updatedAt)} · ${size(device.size)} · Nexo ${escapeHtml(device.appVersion || '?')}</span></div><div class="btn-row"><button class="btn sm primary" type="button" data-pull="${escapeHtml(device.deviceId)}">Trazer dados</button><button class="btn sm ghost" type="button" data-forget="${escapeHtml(device.deviceId)}">Apagar a cópia</button></div></li>`).join('')}</ul>` : '<p class="muted">Nenhum outro PC com cópia nesta conta. Ligue a sincronização no outro PC e ele aparece aqui.</p>') : ''}
+      ${deviceList}
       <div class="btn-row cloud-danger"><button class="btn sm ghost" type="button" data-cloud="disconnect">Desligar a sincronização</button><button class="btn sm ghost danger-text" type="button" data-cloud="delete">Apagar meus dados do servidor</button></div>`;
   }
 
@@ -184,9 +188,10 @@
     const names = device.sections.filter((name) => SECTIONS[name]);
     if (!names.length) { showToast('Essa cópia não tem nada que este Nexo saiba trazer. Atualize o Nexo nos dois PCs.'); return; }
     let picked = [];
+    const choice = (name) => `<label class="switch"><input type="checkbox" data-section="${name}" checked /><i></i><span><strong>${escapeHtml(SECTIONS[name].label)}</strong><small>${escapeHtml(SECTIONS[name].hint)}</small></span></label>`;
     const dialog = Nexo.dialog({
       title: `Trazer dados de ${device.name}?`,
-      html: `<p class="muted">Escolha o que trazer. Preferências e perfil substituem os deste PC; sessões e atividades se juntam às daqui. Nada mais muda.</p><div class="cloud-pick">${names.map((name) => `<label class="switch"><input type="checkbox" data-section="${name}" checked /><i></i><span><strong>${escapeHtml(SECTIONS[name].label)}</strong><small>${escapeHtml(SECTIONS[name].hint)}</small></span></label>`).join('')}</div>`,
+      html: `<p class="muted">Escolha o que trazer. Preferências e perfil substituem os deste PC; sessões e atividades se juntam às daqui. Nada mais muda.</p><div class="cloud-pick">${names.map(choice).join('')}</div>`,
       actions: [{ id: 'cancel', label: 'Cancelar' }, { id: 'ok', label: 'Trazer o que marquei', tone: 'primary', onClick: () => { picked = [...document.querySelectorAll('.cloud-pick [data-section]')].filter((input) => input.checked).map((input) => input.dataset.section); } }]
     });
     if (await dialog.done !== 'ok' || !picked.length) return;

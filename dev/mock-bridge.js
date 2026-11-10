@@ -90,7 +90,10 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
 })();
 // ---- 0.5.0 (simulado): biblioteca, laboratório, Atlas, conta e segundo plano. Nomes de jogos inventados.
 (function () {
-  const cover = (title, hue, shape) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='600' height='900'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='hsl(${hue},70%,55%)'/><stop offset='1' stop-color='hsl(${hue + 40},60%,12%)'/></linearGradient><radialGradient id='s' cx='.7' cy='.3' r='.6'><stop offset='0' stop-color='hsl(${hue + 180},90%,75%)' stop-opacity='.9'/><stop offset='1' stop-color='hsl(${hue + 180},90%,75%)' stop-opacity='0'/></radialGradient></defs><rect width='600' height='900' fill='url(#g)'/><circle cx='420' cy='260' r='${shape}' fill='url(#s)'/><path d='M0 700 L160 560 L300 650 L460 500 L600 620 L600 900 L0 900Z' fill='hsl(${hue + 20},50%,8%)' opacity='.85'/><text x='40' y='800' font-family='Segoe UI,Arial' font-weight='800' font-size='58' fill='white'>${title}</text></svg>`)}`;
+  const cover = (title, hue, shape) => {
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='600' height='900'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='hsl(${hue},70%,55%)'/><stop offset='1' stop-color='hsl(${hue + 40},60%,12%)'/></linearGradient><radialGradient id='s' cx='.7' cy='.3' r='.6'><stop offset='0' stop-color='hsl(${hue + 180},90%,75%)' stop-opacity='.9'/><stop offset='1' stop-color='hsl(${hue + 180},90%,75%)' stop-opacity='0'/></radialGradient></defs><rect width='600' height='900' fill='url(#g)'/><circle cx='420' cy='260' r='${shape}' fill='url(#s)'/><path d='M0 700 L160 560 L300 650 L460 500 L600 620 L600 900 L0 900Z' fill='hsl(${hue + 20},50%,8%)' opacity='.85'/><text x='40' y='800' font-family='Segoe UI,Arial' font-weight='800' font-size='58' fill='white'>${title}</text></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  };
   const day = 86400000; const now = Date.now();
   const games = [
     ['Aurora Drift', 'steam', 'Steam', 205, 140, 1], ['Cinder Vale', 'steam', 'Steam', 18, 200, 3], ['Hollow Signal', 'epic', 'Epic Games', 280, 0, 6], ['Neon Tide', 'steam', 'Steam', 320, 180, 9],
@@ -155,6 +158,25 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     setGameCover: async () => ({ canceled: true }), addGame: async () => ({ canceled: true }), removeManualGame: async () => ({ games }), onGamesUpdated: () => () => {},
     getSettings: async () => ({ ...settings }), setSettings: async (patch) => { Object.assign(settings, patch); listeners.settings.forEach((cb) => cb({ ...settings })); return { ...settings }; },
     onSettingsChanged: (cb) => { listeners.settings.add(cb); return () => listeners.settings.delete(cb); }, onWatchGame: () => () => {}, currentWatchedGame: async () => null,
+    // Página do jogo: loja, conquistas e novidades de exemplo (o formato que o processo principal devolve).
+    getGameDetails: async (id) => {
+      if (!settings.onlineCovers) return { consent: false };
+      await wait(300);
+      const game = games.find((item) => item.id === id) || games[0];
+      const shot = (hue) => cover(game.name, hue, 120);
+      return {
+        consent: true, appid: 1234560, matched: game.source !== 'steam',
+        store: { appid: 1234560, description: `${game.name} é um jogo de exemplo da prévia.`, about: 'Texto longo da loja, só para a prévia.', developers: ['Estúdio Exemplo'], publishers: ['Editora Exemplo'], release: '12 de mar. de 2024', comingSoon: false,
+          genres: ['Ação', 'Aventura', 'Indie', 'RPG'], price: 'R$ 59,99', recommendations: 12345, achievementsTotal: 3, controller: 'partial', screenshots: [{ thumb: shot(30), full: shot(30) }, { thumb: shot(200), full: shot(200) }],
+          categories: ['Um jogador', 'Conquistas da Steam'], requirements: { minimum: 'SO: Windows 10\nMemória: 8 GB', recommended: 'SO: Windows 11\nMemória: 16 GB' }, header: shot(260), metacritic: 64 },
+        achievements: { state: 'ok', unlocked: 1, total: 3, list: [
+          { name: 'Primeiros passos', description: 'Termine o tutorial.', icon: shot(120), achieved: true, unlockedAt: Date.now() - 3 * 86400000, percent: 71.5, hidden: false },
+          { name: 'Raridade', description: 'Algo difícil.', icon: null, achieved: false, unlockedAt: null, percent: 2.4, hidden: false },
+          { name: 'Segredo', description: '', icon: null, achieved: false, unlockedAt: null, percent: null, hidden: true }] },
+        news: [{ kind: 'atualizacao', date: Date.now() - 86400000, source: 'Steam', title: 'Atualização 1.2', summary: 'Correções e desempenho.', url: 'https://store.steampowered.com/news/' },
+          { kind: 'noticia', date: null, source: 'Blog', title: 'Notícia', summary: 'Algo aconteceu.', url: null }]
+      };
+    },
     getFpsAccess: async () => ({ platform: 'win32', inToken: false, member: false, admin: false, ready: false, needsRelogin: false }),
     grantFpsAccess: async () => ({ ok: true, changed: true, declined: false, access: { platform: 'win32', inToken: false, member: true, admin: false, ready: false, needsRelogin: true } }), revokeFpsAccess: async () => ({ ok: true }),
     getSystemFacts: async () => ({ platform: 'win32', memory: [{ speed: 3600, configured: 2666, capacity: 16e9 }, { speed: 3600, configured: 2666, capacity: 16e9 }], displays: [{ name: 'NVIDIA GeForce RTX 4060', current: 60, max: 165 }], hags: 2, gameMode: 1, capture: 1, vbs: 2, hvci: true }),

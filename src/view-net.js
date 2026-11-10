@@ -25,9 +25,11 @@
     if (!result) { box.innerHTML = '<p class="muted">Leva uns 15 segundos e não muda nada no PC.</p>'; return; }
     const main = result.fixes.filter((fix) => !fix.lastResort && result.checks.some((check) => check.fix === fix.id));
     const extra = result.fixes.filter((fix) => fix.lastResort || !result.checks.some((check) => check.fix === fix.id));
+    const checkItem = (check) => `<li data-level="${check.level}"><span class="net-dot" aria-hidden="true">${ICON[check.level] || '•'}</span><div><b>${escapeHtml(check.title)}</b><p>${escapeHtml(check.detail)}</p></div></li>`;
+    const mainFixes = main.length ? `<div class="net-fixes"><h4>Correções sugeridas</h4>${main.map((fix) => fixRow(fix, true)).join('')}</div>` : '';
     box.innerHTML = `<p class="net-summary ${result.problems ? 'bad' : result.warnings ? 'warn' : 'good'}">${escapeHtml(result.summary)} <small>Medido ${escapeHtml(new Date(result.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}.</small></p>
-      <ul class="net-checks">${result.checks.map((check) => `<li data-level="${check.level}"><span class="net-dot" aria-hidden="true">${ICON[check.level] || '•'}</span><div><b>${escapeHtml(check.title)}</b><p>${escapeHtml(check.detail)}</p></div></li>`).join('')}</ul>
-      ${main.length ? `<div class="net-fixes"><h4>Correções sugeridas</h4>${main.map((fix) => fixRow(fix, true)).join('')}</div>` : ''}
+      <ul class="net-checks">${result.checks.map(checkItem).join('')}</ul>
+      ${mainFixes}
       <details class="net-more"><summary>Outras ferramentas de rede</summary>${extra.map((fix) => fixRow(fix, false)).join('')}</details>`;
   }
   const fixRow = (fix, primary) => `<div class="net-fix${fix.lastResort ? ' danger' : ''}"><div><b>${escapeHtml(fix.label)}</b><p class="muted">${escapeHtml((FIX_TEXT[fix.id] || (() => ''))(fix))}</p></div>
