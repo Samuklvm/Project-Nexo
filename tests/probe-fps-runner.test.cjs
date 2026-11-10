@@ -4,6 +4,7 @@ const { PassThrough } = require('node:stream');
 const { EventEmitter } = require('node:events');
 const { createProbe, normalizeProbe, PROBE_SCRIPT } = require('../electron/probe.cjs');
 const { createFpsRunner, ACCESS_HINT } = require('../electron/fps-runner.cjs');
+const { systemTool } = require('../electron/system-path.cjs');
 
 function fakeChild() {
   const child = new EventEmitter();
@@ -32,7 +33,7 @@ test('sonda: o script não usa interpolação do JavaScript nem aspas que quebre
 
 test('sonda: lê linhas do processo filho, ignora lixo, autodiagnostica e encerra', async () => {
   const children = []; const emitted = [];
-  const probe = createProbe({ platform: 'win32', emit: (sample) => emitted.push(sample), spawnFn: (cmd, args) => { assert.equal(cmd, 'powershell.exe'); assert.ok(args.includes('-NonInteractive')); const c = fakeChild(); children.push(c); return c; } });
+  const probe = createProbe({ platform: 'win32', emit: (sample) => emitted.push(sample), spawnFn: (cmd, args) => { assert.equal(cmd, systemTool('powershell.exe')); assert.match(cmd, /powershell\.exe$/i); assert.ok(args.includes('-NonInteractive')); const c = fakeChild(); children.push(c); return c; } });
   assert.deepEqual(probe.start(), { ok: true });
   assert.deepEqual(probe.start(), { ok: true });
   assert.equal(children.length, 1, 'não abre uma segunda sonda');

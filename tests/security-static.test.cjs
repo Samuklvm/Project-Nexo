@@ -7,7 +7,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.join(__dirname, '..');
-const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+// No Windows o checkout vem com CRLF: normaliza para as expressões valerem nos dois sistemas.
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
 const list = (dir, ext) => fs.readdirSync(path.join(root, dir)).filter((name) => ext.some((e) => name.endsWith(e))).map((name) => `${dir}/${name}`);
 const code = [...list('src', ['.js']), ...list('electron', ['.cjs']), ...list('electron/workers', ['.cjs']), 'main.cjs', 'preload.cjs', 'app.js', 'installer-launcher/main.cjs', 'installer-launcher/renderer.js'];
 const csp = (html) => /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)?.[1] || '';
