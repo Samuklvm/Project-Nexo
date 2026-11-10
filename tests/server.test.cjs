@@ -447,3 +447,14 @@ test('login com cabeçalho JWT malformado devolve 401, nunca 500 (A25)', async (
   assert.equal((await call('POST', '/v1/auth/google', { body: { idToken: '%%%.***.###', deviceId: 'pc-aaaaaaaa' } })).status, 401);
   assert.equal(certFetches(), 0, 'nada malformado chega a buscar as chaves do Google');
 });
+
+test('painel: papel de parede próprio servido pelo servidor (a política de segurança só aceita imagens dele)', async () => {
+  const { call } = setup();
+  const wall = await call('GET', '/painel/fundo.svg', { raw: true });
+  assert.equal(wall.status, 200);
+  assert.match(wall.headers.get('content-type'), /image\/svg\+xml/);
+  assert.match(await wall.text(), /^<svg[\s\S]*<\/svg>$/);
+  const css = await (await call('GET', '/painel/app.css', { raw: true })).text();
+  assert.match(css, /url\('\/painel\/fundo\.svg'\)/);
+  assert.doesNotMatch(css, /https?:\/\//, 'nada de fora');
+});

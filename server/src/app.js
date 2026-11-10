@@ -14,7 +14,7 @@
 import { open, randomId, seal, sha256Hex, signToken, verifyToken } from './crypto.js';
 import { verifyGoogleIdToken } from './google.js';
 import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTelemetry, compareVersions, dayOf, isCalendarDay, redact, text } from './validate.js';
-import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED } from './panel.js';
+import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED, PANEL_WALLPAPER } from './panel.js';
 import { createSteam } from './steam.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -487,6 +487,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     if (path === '/painel' && method === 'GET') return (await adminSession(request, env)) ? page(PANEL_HTML, 'text/html; charset=utf-8') : page(PANEL_LOCKED('Abra o painel pelo Nexo: Ajustes > Painel do criador.'), 'text/html; charset=utf-8', 401);
     if (path === '/painel/app.js' && method === 'GET') return page(PANEL_JS, 'text/javascript; charset=utf-8');
     if (path === '/painel/app.css' && method === 'GET') return page(PANEL_CSS, 'text/css; charset=utf-8');
+    // Papel de parede do painel (público como o CSS: é só arte, sem dado nenhum).
+    if (path === '/painel/fundo.svg' && method === 'GET') return page(PANEL_WALLPAPER, 'image/svg+xml; charset=utf-8', 200, { 'cache-control': 'public, max-age=86400' });
     if (path.startsWith('/painel/api/')) return adminApi(request, env, url, path.slice('/painel/api/'.length));
     if (path.startsWith('/v1/steam/')) { const answer = await steam.route(request, env, url, path, method); if (answer) return answer; }
     throw new HttpError(404, 'Não encontrado.');
@@ -608,6 +610,19 @@ export function aggregateTelemetry(rows) {
     metric('Memória do PC, média do dia (%)', data.health?.mem);
     metric('Vídeo do PC, média do dia (%)', data.health?.gpu);
     metric('Maior temperatura do dia (°C)', data.health?.tempMax);
+    // O que limita os PCs: minutos com carga por classe e o veredito das sessões de jogo; números da GPU com carga.
+    for (const [kind, n] of Object.entries(data.bottleneck?.limiter || {})) if (num(n)) count('limiter', kind, n);
+    for (const [kind, n] of Object.entries(data.bottleneck?.sessionLimiter || {})) if (num(n)) count('sessionLimiter', kind, n);
+    const b = data.bottleneck || {};
+    metric('GPU com carga: uso típico (%)', b.gpu?.busyP50);
+    metric('GPU com carga: clock em % do máximo dela', num(b.gpu?.clockRatioP50) === null ? null : b.gpu.clockRatioP50 * 100);
+    metric('GPU com carga: energia em % do limite', b.gpu?.powerPctP50);
+    metric('GPU em 95%+ (% do tempo com carga)', num(b.gpu?.saturatedShare) === null ? null : b.gpu.saturatedShare * 100);
+    metric('Memória de vídeo, pico do dia (%)', b.gpu?.vramPctMax);
+    metric('Núcleo mais ocupado da CPU (p90, %)', b.cpu?.maxCoreP90);
+    metric('Minutos com carga no dia', b.minutes);
+    metric('FPS médio nas sessões', b.fps?.avg);
+    metric('1% baixo nas sessões (FPS)', b.fps?.p1Low);
   }
   const top = (name) => [...(maps[name] || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n: Math.round(n * 10) / 10 }));
   const pick = (list, p) => list[Math.min(list.length - 1, Math.max(0, Math.ceil(p * list.length) - 1))];
@@ -617,6 +632,6 @@ export function aggregateTelemetry(rows) {
   const ipcSlow = slow('ipcMsSum', 'ipcCalls');
   const sourceSlow = slow('sourceMsSum', 'sourceOk', 'sourceFails');
   const ipcMax = [...(maps.ipcMax || new Map())].sort((a, b) => b[1] - a[1]).map(([key, n]) => ({ key, n }));
-  const names = ['updatedFrom', 'ageDays', 'ipcFails', 'events', 'featsEmpty', 'featsCrashed', 'sourceFails', 'versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
+  const names = ['limiter', 'sessionLimiter', 'updatedFrom', 'ageDays', 'ipcFails', 'events', 'featsEmpty', 'featsCrashed', 'sourceFails', 'versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
   return { activeByDay: [...perDay].sort((a, b) => a[0].localeCompare(b[0])).map(([day, set]) => ({ day, n: set.size })), installs: latest.size, reports: parsed.length, numbers, ipcSlow, ipcMax, sourceSlow, ...Object.fromEntries(names.map((name) => [name, top(name)])) };
 }

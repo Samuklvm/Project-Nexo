@@ -84,10 +84,11 @@ errorLog.record = (entry = {}) => {
   return recordRaw(entry);
 };
 /** Interrupção que não foi a pessoa que pediu (guarda, prazo, falha de serviço): vai para o registro como erro. */
+const INTERRUPTION_LABEL = { laboratorio: 'Otimização extrema', 'teste-com-reinicio': 'Teste com reinício', sensores: 'Leitura de sensores', powershell: 'Comando do Windows', atualizacao: 'Atualização do app', 'observador-de-jogos': 'Observador de jogos' };
 function noteInterruption(what, reason, context = {}, level = 'erro') {
   crumb('parou', what);
   diag.count(`interrompido.${what}`);
-  errorLog.record({ source: 'servico', level, message: `${what}: interrompido — ${String(reason || 'motivo desconhecido').slice(0, 300)}`, context: { etapa: what, ...context } });
+  errorLog.record({ source: 'servico', level, message: `${INTERRUPTION_LABEL[what] || what} interrompido(a): ${String(reason || 'motivo desconhecido').slice(0, 300)}`, context: { etapa: what, ...context } });
 }
 /** Erro de programação (TypeError, ReferenceError…) é bug nosso; recusa do UAC, cancelamento e rede, não. */
 const isBug = (error) => ['TypeError', 'ReferenceError', 'RangeError', 'SyntaxError', 'URIError', 'EvalError'].includes(error?.name) || error instanceof TypeError || error instanceof ReferenceError || error instanceof RangeError;
