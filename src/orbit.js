@@ -29,7 +29,7 @@
   }
 
   function blend(hex, toward, amount) {
-    const read = (value) => [1, 3, 5].map((i) => parseInt(value.slice(i, i + 2), 16));
+    const read = (value) => [1, 3, 5].map((i) => Number.parseInt(value.slice(i, i + 2), 16));
     const a = read(hex);
     const b = read(toward);
     return `rgb(${a.map((channel, i) => Math.round(channel + (b[i] - channel) * amount)).join(',')})`;

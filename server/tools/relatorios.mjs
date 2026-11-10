@@ -52,9 +52,14 @@ export function plan(groups, issues) {
 async function main() {
   const { NEXO_SERVER_URL, NEXO_TOOLS_KEY, GITHUB_TOKEN, GITHUB_REPOSITORY } = process.env;
   if (!NEXO_SERVER_URL || !NEXO_TOOLS_KEY || !GITHUB_TOKEN || !GITHUB_REPOSITORY) throw new Error('Faltam NEXO_SERVER_URL, NEXO_TOOLS_KEY, GITHUB_TOKEN ou GITHUB_REPOSITORY.');
-  const server = await fetch(`${NEXO_SERVER_URL.replace(/\/+$/, '')}/v1/tools/errors`, { headers: { authorization: `Bearer ${NEXO_TOOLS_KEY}` } });
-  if (!server.ok) throw new Error(`O servidor respondeu ${server.status}.`);
-  const { groups } = await server.json();
+  // Só a origem do servidor (https, sem caminho): conferido pela API de URL, sem regex no fim do texto.
+  const origin = new URL(NEXO_SERVER_URL);
+  if (origin.protocol !== 'https:') throw new Error('NEXO_SERVER_URL precisa ser https.');
+  const server = await fetch(`${origin.origin}/v1/tools/errors`, { headers: { authorization: `Bearer ${NEXO_TOOLS_KEY}` } });
+  if (!server.ok) throw new Error(`O servidor respondeu ${Number(server.status) || 0}.`);
+  const answer = await server.json();
+  // O que veio do servidor é conferido antes de usar (e nada dele vai cru para o log).
+  const groups = Array.isArray(answer?.groups) ? answer.groups.filter((group) => group && /^[0-9a-f]{16}$/.test(String(group.signature))) : [];
   const gh = async (method, route, body) => {
     const response = await fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}${route}`, { method, headers: { authorization: `Bearer ${GITHUB_TOKEN}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     if (!response.ok) throw new Error(`GitHub ${method} ${route}: ${response.status}`);
@@ -72,7 +77,9 @@ async function main() {
     if (action.type === 'update') await gh('PATCH', `/issues/${action.number}`, { title: action.title, body: action.body });
     if (action.type === 'close') await gh('PATCH', `/issues/${action.number}`, { state: 'closed', state_reason: 'completed' });
   }
-  console.log(`${groups.length} erro(s) aberto(s): ${actions.filter((a) => a.type === 'create').length} nova(s), ${actions.filter((a) => a.type === 'update').length} atualizada(s), ${actions.filter((a) => a.type === 'close').length} fechada(s).`);
+  const counts = { open: groups.length, create: 0, update: 0, close: 0 };
+  for (const action of actions) counts[action.type] += 1;
+  console.log('%d erro(s) aberto(s): %d nova(s), %d atualizada(s), %d fechada(s).', counts.open, counts.create, counts.update, counts.close);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((error) => { console.error(error.message); process.exit(1); });

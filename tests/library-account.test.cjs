@@ -108,6 +108,10 @@ test('retorno do navegador: state errado e cancelamento são recusados', () => {
   assert.deepEqual(Account.parseCallback('/?code=abc&state=s1', 's1'), { code: 'abc' });
   assert.ok(Account.parseCallback('/?code=abc&state=outro', 's1').error);
   assert.match(Account.parseCallback('/?error=access_denied', 's1').error, /cancelou/);
+  // State vale só pelo tempo do login e uma vez só.
+  assert.match(Account.parseCallback('/?code=abc&state=s1', 's1', { issuedAt: 0, maxAgeMs: 1000, now: 5000 }).error, /venceu/);
+  assert.match(Account.parseCallback('/?code=abc&state=s1', 's1', { used: true }).error, /já foi usado/);
+  assert.deepEqual(Account.parseCallback('/?code=abc&state=s1', 's1', { issuedAt: 0, maxAgeMs: 1000, now: 500 }), { code: 'abc' });
   assert.equal(Account.parseCallback('/favicon.ico', 's1').ignore, true);
 });
 

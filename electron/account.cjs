@@ -16,7 +16,7 @@ const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 const SCOPES = ['openid', 'email', 'profile'];
 const ISSUERS = new Set(['https://accounts.google.com', 'accounts.google.com']);
 
-const base64url = (buffer) => Buffer.from(buffer).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const base64url = (buffer) => Buffer.from(buffer).toString('base64url'); // codificação nativa (sem regex no fim do texto)
 
 function createPkce(randomBytes = crypto.randomBytes) {
   const verifier = base64url(randomBytes(48));
@@ -40,14 +40,19 @@ function buildAuthUrl({ clientId, redirectUri, challenge, state, loginHint = nul
   return `${AUTH_URL}?${params.toString()}`;
 }
 
-/** Lê o retorno do navegador; recusa "state" diferente (proteção contra CSRF). */
-function parseCallback(url, expectedState) {
+/**
+ * Lê o retorno do navegador; recusa "state" diferente (proteção contra CSRF), vencido ou já usado. `issuedAt` e
+ * `maxAgeMs`: o state vale só pelo tempo do login (5 min); `used`: um state serve para UMA resposta.
+ */
+function parseCallback(url, expectedState, { issuedAt = null, maxAgeMs = 5 * 60 * 1000, now = Date.now(), used = false } = {}) {
   let parsed;
   try { parsed = new URL(url, 'http://127.0.0.1'); } catch { return { error: 'endereço inválido' }; }
   const params = parsed.searchParams;
   if (params.get('error')) return { error: params.get('error') === 'access_denied' ? 'você cancelou o login' : `o Google respondeu: ${params.get('error')}` };
   if (!params.get('code')) return { ignore: true };
   if (params.get('state') !== expectedState) return { error: 'resposta de login não confere (state)' };
+  if (used) return { error: 'este login já foi usado; comece de novo pelo Nexo' };
+  if (Number.isFinite(issuedAt) && now - issuedAt > maxAgeMs) return { error: 'o login venceu; comece de novo pelo Nexo' };
   return { code: params.get('code') };
 }
 
@@ -79,11 +84,14 @@ function signIn({ config, createServer, openExternal, fetch, randomBytes = crypt
   if (!config?.clientId) return Promise.reject(new Error('O login com Google não foi configurado nesta build.'));
   const pkce = createPkce(randomBytes);
   const state = base64url(randomBytes(24));
+  const issuedAt = now();
+  let used = false;
   return new Promise((resolve, reject) => {
     let settled = false;
     const server = createServer(async (request, response) => {
-      const result = parseCallback(request.url, state);
+      const result = parseCallback(request.url, state, { issuedAt, maxAgeMs: timeoutMs, now: now(), used: used || settled });
       if (result.ignore) { response.writeHead(404); response.end(); return; }
+      if (result.code) used = true;
       const finish = (ok, message) => { response.writeHead(ok ? 200 : 400, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(DONE_PAGE(ok, message)); };
       if (result.error) { finish(false, `${result.error}. Pode fechar esta aba.`); done(new Error(result.error)); return; }
       try {
@@ -129,11 +137,12 @@ function signIn({ config, createServer, openExternal, fetch, randomBytes = crypt
 function loopbackAuthorize({ buildUrl, createServer, openExternal, randomBytes = crypto.randomBytes, timeoutMs = 5 * 60 * 1000, host = '127.0.0.1', redirectHost = host, appName = 'Nexo' }) {
   const pkce = createPkce(randomBytes);
   const state = base64url(randomBytes(24));
+  const issuedAt = Date.now();
   return new Promise((resolve, reject) => {
     let settled = false;
     let redirectUri = null;
     const server = createServer((request, response) => {
-      const result = parseCallback(request.url, state);
+      const result = parseCallback(request.url, state, { issuedAt, maxAgeMs: timeoutMs, used: settled });
       if (result.ignore) { response.writeHead(404); response.end(); return; }
       response.writeHead(result.error ? 400 : 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       response.end(DONE_PAGE(!result.error, result.error ? `${result.error}. Pode fechar esta aba.` : `Conta conectada ao ${appName}. Pode fechar esta aba e voltar ao aplicativo.`));

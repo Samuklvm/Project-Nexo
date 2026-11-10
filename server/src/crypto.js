@@ -11,7 +11,10 @@ export function b64url(bytes) {
   let text = '';
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   for (let i = 0; i < view.length; i += 1) text += String.fromCharCode(view[i]);
-  return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const b64 = btoa(text).replaceAll('+', '-').replaceAll('/', '_');
+  let end = b64.length;
+  while (end > 0 && b64[end - 1] === '=') end -= 1; // sem o preenchimento, sem regex no fim do texto
+  return b64.slice(0, end);
 }
 export function fromB64url(text) {
   const normal = String(text).replace(/-/g, '+').replace(/_/g, '/');

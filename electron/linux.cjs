@@ -12,7 +12,7 @@ const PROFILES = { 'power-saver': 'Economia de energia', balanced: 'Equilibrado'
 const PROFILE_ORDER = ['power-saver', 'balanced', 'performance'];
 
 /* ---------- Leitores puros (testáveis com texto) ---------- */
-const unescapeMount = (value) => String(value).replace(/\\(\d{3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
+const unescapeMount = (value) => String(value).replace(/\\(\d{3})/g, (_, octal) => String.fromCharCode(Number.parseInt(octal, 8)));
 function parseMounts(text) {
   const seen = new Set();
   const out = [];
@@ -205,8 +205,10 @@ function createLinux({ fs, path, os, run, env = process.env }) {
     return result.code === 0 ? parseProfiles(result.stdout) : [];
   }
   async function setPowerProfile(id) {
-    if (!PROFILES[id]) throw new Error('Perfil de energia não reconhecido.');
-    const result = await run('powerprofilesctl', ['set', id]);
+    // O valor que vai para o comando sai da lista fixa (não do que chegou da tela).
+    const profile = PROFILE_ORDER.find((name) => name === id);
+    if (!profile) throw new Error('Perfil de energia não reconhecido.');
+    const result = await run('powerprofilesctl', ['set', profile]);
     if (result.code !== 0) throw new Error('O power-profiles-daemon recusou a troca de perfil.');
   }
 

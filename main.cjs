@@ -12,6 +12,7 @@ const { createProbe } = require('./electron/probe.cjs');
 const { createFpsRunner } = require('./electron/fps-runner.cjs');
 const { createElevator, toolLauncher, PAWNIO } = require('./electron/elevate.cjs');
 const { decodeConsole } = require('./electron/console-text.cjs');
+const { systemTool } = require('./electron/system-path.cjs');
 const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
 const { createSystemScan, validateChange: validateScanChange } = require('./electron/system-scan.cjs');
@@ -155,7 +156,7 @@ function runPowerShell(script, timeout = 15000) {
     throw new Error('Esta operação está disponível somente no Windows.');
   }
 
-  return execFileAsync('powershell.exe', [
+  return execFileAsync(systemTool('powershell'), [
     '-NoLogo',
     '-NoProfile',
     '-NonInteractive',
@@ -172,7 +173,7 @@ function runPowerShell(script, timeout = 15000) {
 function runPowerShellCode(script, timeout = 15000) {
   return new Promise((resolve) => {
     if (process.platform !== 'win32') { resolve({ code: -1, stdout: '' }); return; }
-    execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PS_UTF8_OUTPUT + script], { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
+    execFile(systemTool('powershell'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PS_UTF8_OUTPUT + script], { windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 }, (error, stdout) => {
       if (error) notePowerShellTimeout(error, script, timeout);
       resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || '') });
     });
@@ -180,7 +181,7 @@ function runPowerShellCode(script, timeout = 15000) {
 }
 function runCode(file, args, timeout = 20000) {
   return new Promise((resolve) => {
-    execFile(file, args, { windowsHide: true, timeout, maxBuffer: 2 * 1024 * 1024 }, (error, stdout) => {
+    execFile(systemTool(file), args, { windowsHide: true, timeout, maxBuffer: 2 * 1024 * 1024 }, (error, stdout) => {
       resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || '') });
     });
   });
@@ -855,7 +856,7 @@ registerIpcHandler('system:task-manager', async () => {
   }
 
   await new Promise((resolve, reject) => {
-    const taskManager = spawn('taskmgr.exe', [], { detached: true, stdio: 'ignore' });
+    const taskManager = spawn(systemTool('taskmgr'), [], { detached: true, stdio: 'ignore' });
     taskManager.once('spawn', () => {
       taskManager.unref();
       resolve();
@@ -1067,7 +1068,7 @@ async function listPowerPlans() {
   if (plans.length) return plans;
   // Alternativa: o próprio powercfg (lista independente do idioma; nomes conhecidos traduzidos pelo GUID).
   // Bytes crus: a saída vem na página de código do console (CP850), e lida como UTF-8 estragava os acentos ("M�ximo").
-  const { stdout } = await execFileAsync('powercfg', ['/list'], { windowsHide: true, timeout: 10000, encoding: 'buffer' }).catch(() => ({ stdout: Buffer.alloc(0) }));
+  const { stdout } = await execFileAsync(systemTool('powercfg'), ['/list'], { windowsHide: true, timeout: 10000, encoding: 'buffer' }).catch(() => ({ stdout: Buffer.alloc(0) }));
   return LabParsers.parseList(decodeConsole(stdout)).filter((plan) => GUID_PATTERN.test(plan.guid)).map((plan) => ({ ...plan, name: KNOWN_PLANS[plan.guid] || plan.name }));
 }
 
@@ -1079,7 +1080,7 @@ registerIpcHandler('power:set', async (_event, guid) => {
   const plans = await listPowerPlans();
   const target = plans.find((plan) => plan.guid === String(guid || '').toLowerCase());
   if (!target) throw new Error('Plano de energia não reconhecido.');
-  await execFileAsync('powercfg', ['/setactive', target.guid], { windowsHide: true, timeout: 10000 });
+  await execFileAsync(systemTool('powercfg'), ['/setactive', target.guid], { windowsHide: true, timeout: 10000 });
   return { ok: true, plans: await listPowerPlans() };
 });
 
@@ -1098,178 +1099,41 @@ registerIpcHandler('startup:list', async () => {
   }));
 });
 
+/*
+ * Trabalhos de medição em arquivos próprios (electron/workers/*.cjs), nunca código montado em texto (nada de eval).
+ * Ficam fora do app.asar (asarUnpack no package.json) porque o worker_threads lê o arquivo direto do disco.
+ */
+const workerFile = (name) => path.join(__dirname, 'electron', 'workers', name).replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 // ---- Benchmark curto de CPU (experimento A/B do plano de energia) ----
 // Carga determinística de inteiros; mede iterações por segundo em cada worker. Sempre iniciado pelo usuário.
-const BENCH_WORKER = String.raw`
-const { parentPort, workerData } = require('worker_threads');
-let x = 0x9e3779b9 | 0;
-let iterations = 0;
-const started = performance.now();
-const end = started + workerData.ms;
-while (performance.now() < end) {
-  for (let i = 0; i < 100000; i += 1) {
-    x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d);
-    x ^= x >>> 12;
-    x = Math.imul(x, 0x297a2d39);
-    x ^= x >>> 15;
-  }
-  iterations += 100000;
-}
-parentPort.postMessage({ iterations, seconds: (performance.now() - started) / 1000, checksum: x >>> 0 });
-`;
+const BENCH_WORKER = workerFile('bench.cjs');
 // Rajadas: 30 ms de trabalho depois de 70 ms parado, repetido. Mede o quão rápido o processador "acorda" e acelera,
 // que é o que planos e políticas de energia mais mudam (resposta a cliques, carregamentos curtos, quadros irregulares).
-const BURST_WORKER = String.raw`
-const { parentPort, workerData } = require('worker_threads');
-const pause = new Int32Array(new SharedArrayBuffer(4));
-let x = 0x9e3779b9 | 0;
-let iterations = 0;
-let busy = 0;
-const end = performance.now() + workerData.ms;
-while (performance.now() < end) {
-  Atomics.wait(pause, 0, 0, 70);
-  const start = performance.now();
-  while (performance.now() - start < 30) {
-    for (let i = 0; i < 20000; i += 1) { x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d); x ^= x >>> 12; }
-    iterations += 20000;
-  }
-  busy += performance.now() - start;
-}
-parentPort.postMessage({ iterations, seconds: busy / 1000, checksum: x >>> 0 });
-`;
+const BURST_WORKER = workerFile('burst.cjs');
 /*
  * Latência para acordar um núcleo: um trabalhador dorme (Atomics.wait sem prazo) e o outro o acorda depois de uma pausa
  * de 0,5 a 3 ms, medindo a ida e volta no próprio relógio. Isso é o que estados ociosos, estacionamento de núcleos e
  * dicas de latência mudam (e não depende da resolução do timer do Windows, porque o acordar vem de um aviso, não do relógio).
  * Pontuação: quanto maior, mais rápido (1.000.000 / média do percentil 50 e 90 em µs).
  */
-const LATENCY_WORKER = String.raw`
-const { parentPort, workerData } = require('worker_threads');
-const flags = new Int32Array(workerData.buffer);
-if (workerData.role === 'sleeper') {
-  let seen = 0;
-  for (;;) {
-    Atomics.wait(flags, 0, seen);
-    seen = Atomics.load(flags, 0);
-    if (seen < 0) break;
-    Atomics.store(flags, 1, seen);
-  }
-  parentPort.postMessage({ done: true });
-} else {
-  const latencies = [];
-  const end = performance.now() + workerData.ms;
-  let seed = 12345;
-  for (let i = 1; performance.now() < end; i += 1) {
-    seed = (seed * 16807) % 2147483647;
-    const gapEnd = performance.now() + 0.5 + (seed / 2147483647) * 2.5;
-    while (performance.now() < gapEnd) { /* pausa: o outro núcleo tem tempo de dormir */ }
-    const start = performance.now();
-    Atomics.store(flags, 0, i);
-    Atomics.notify(flags, 0);
-    const limit = start + 50;
-    while (Atomics.load(flags, 1) !== i && performance.now() < limit) { /* espera a resposta */ }
-    latencies.push((performance.now() - start) * 1000);
-  }
-  Atomics.store(flags, 0, -1);
-  Atomics.notify(flags, 0);
-  latencies.sort((a, b) => a - b);
-  const pick = (q) => latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * q))] || 0;
-  parentPort.postMessage({ samples: latencies.length, p50: pick(0.5), p90: pick(0.9) });
-}
-`;
+const LATENCY_WORKER = workerFile('latency.cjs');
 /*
  * Disco: gravações de 4 KB com fsync (a gravação só termina quando o disco confirma) num arquivo de 4 MB do próprio
  * laboratório, com pausas de 3, 30 e 150 ms entre elas, para o SSD/link ter tempo de entrar em economia. Mede o que as
  * opções de energia de SATA, NVMe e PCI Express mudam: o atraso da primeira operação depois de uma pausa.
  * Pontuação: 1.000.000 / média em µs. O arquivo é apagado no fim da sessão.
  */
-const DISK_WORKER = String.raw`
-const { parentPort, workerData } = require('worker_threads');
-const fs = require('fs');
-const SIZE = 4 * 1024 * 1024;
-const fd = fs.openSync(workerData.file, fs.existsSync(workerData.file) ? 'r+' : 'w+');
-try {
-  if (fs.fstatSync(fd).size < SIZE) fs.ftruncateSync(fd, SIZE);
-  const block = Buffer.alloc(4096, 7);
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  const gaps = [3, 30, 150];
-  const times = [];
-  const end = performance.now() + workerData.ms;
-  let seed = 777;
-  for (let i = 0; performance.now() < end; i += 1) {
-    Atomics.wait(pause, 0, 0, gaps[i % gaps.length]);
-    seed = (seed * 16807) % 2147483647;
-    const offset = (seed % (SIZE / 4096)) * 4096;
-    block.writeUInt32LE(i, 0);
-    const start = performance.now();
-    fs.writeSync(fd, block, 0, block.length, offset);
-    fs.fsyncSync(fd);
-    times.push((performance.now() - start) * 1000);
-  }
-  times.sort((a, b) => a - b);
-  const mean = times.reduce((sum, value) => sum + value, 0) / Math.max(1, times.length);
-  parentPort.postMessage({ samples: times.length, meanUs: mean, p50: times[Math.floor(times.length / 2)] || 0 });
-} finally { fs.closeSync(fd); }
-`;
+const DISK_WORKER = workerFile('disk.cjs');
 /*
  * Ritmo de quadros: simula um jogo a 60 quadros por segundo. Cada quadro faz a mesma quantidade de trabalho e depois
  * espera o próximo quadro (o processador fica livre e pode baixar a frequência, como num jogo de verdade).
  * Pontuação: 1000 / percentil 95 do tempo de trabalho por quadro em ms (os quadros lentos é que dão engasgo).
  */
-const FRAMES_WORKER = String.raw`
-const { parentPort, workerData } = require('worker_threads');
-const pause = new Int32Array(new SharedArrayBuffer(4));
-let x = 0x2545f491 | 0;
-const spin = (n) => { for (let i = 0; i < n; i += 1) { x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d); x ^= x >>> 12; } };
-if (workerData.calibrate) {
-  const start = performance.now(); let n = 0;
-  while (performance.now() - start < 250) { spin(20000); n += 20000; }
-  parentPort.postMessage({ perMs: n / (performance.now() - start) });
-} else {
-  const frames = [];
-  const end = performance.now() + workerData.ms;
-  let deadline = performance.now();
-  while (performance.now() < end) {
-    deadline += 1000 / 60;
-    const start = performance.now();
-    spin(workerData.work);
-    frames.push(performance.now() - start);
-    const left = deadline - performance.now();
-    if (left > 0) Atomics.wait(pause, 0, 0, left); else deadline = performance.now();
-  }
-  frames.sort((a, b) => a - b);
-  parentPort.postMessage({ frames: frames.length, p50: frames[Math.floor(frames.length / 2)] || 0, p95: frames[Math.min(frames.length - 1, Math.floor(frames.length * 0.95))] || 0, checksum: x >>> 0 });
-}
-`;
+const FRAMES_WORKER = workerFile('frames.cjs');
 /* Precisão do timer: pede para dormir 1 ms e mede quanto passou de verdade. Pontuação: 1000 / (atraso médio + p95) em ms. */
-const TIMER_WORKER = String.raw`
-const { parentPort, workerData } = require('worker_threads');
-const pause = new Int32Array(new SharedArrayBuffer(4));
-const over = [];
-const end = performance.now() + workerData.ms;
-while (performance.now() < end) {
-  const start = performance.now();
-  Atomics.wait(pause, 0, 0, 1);
-  over.push(Math.max(0, performance.now() - start - 1));
-}
-over.sort((a, b) => a - b);
-const mean = over.reduce((sum, value) => sum + value, 0) / Math.max(1, over.length);
-parentPort.postMessage({ samples: over.length, meanMs: mean, p95: over[Math.min(over.length - 1, Math.floor(over.length * 0.95))] || 0 });
-`;
+const TIMER_WORKER = workerFile('timer.cjs');
 /* Latência da memória: percorre 32 MB em ordem aleatória (cada leitura depende da anterior, sem ajuda do cache). Pontuação: leituras por µs. */
-const MEMORY_WORKER = String.raw`
-const { parentPort, workerData } = require('worker_threads');
-const size = 8 * 1024 * 1024;
-const next = new Uint32Array(size);
-for (let i = 0; i < size; i += 1) next[i] = i;
-let seed = 0x9e3779b9 >>> 0;
-for (let i = size - 1; i > 0; i -= 1) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; const j = seed % i; const t = next[i]; next[i] = next[j]; next[j] = t; }
-let p = 0; let reads = 0;
-const start = performance.now();
-const end = start + workerData.ms;
-while (performance.now() < end) { for (let k = 0; k < 100000; k += 1) p = next[p]; reads += 100000; }
-parentPort.postMessage({ readsPerUs: reads / ((performance.now() - start) * 1000), p });
-`;
+const MEMORY_WORKER = workerFile('memory.cjs');
 let activeBench = null;
 let framesWork = 0;
 
@@ -1304,7 +1168,7 @@ function connectTime(host, port) {
 
 function runWorker(source, workerData, state) {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(source, { eval: true, workerData });
+    const worker = new Worker(source, { workerData });
     state.workers.push(worker);
     worker.once('message', resolve);
     worker.once('error', reject);
@@ -1386,7 +1250,7 @@ async function runCpuBench(mode, ms) {
   activeBench = state;
   try {
     const results = await Promise.all(Array.from({ length: threads }, () => new Promise((resolve, reject) => {
-      const worker = new Worker(mode === 'burst' ? BURST_WORKER : BENCH_WORKER, { eval: true, workerData: { ms } });
+      const worker = new Worker(mode === 'burst' ? BURST_WORKER : BENCH_WORKER, { workerData: { ms } });
       state.workers.push(worker);
       worker.once('message', resolve);
       worker.once('error', reject);
@@ -1502,15 +1366,30 @@ const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings
   gamemode: 'ms-settings:gaming-gamemode', display: 'ms-settings:display-advanced', captures: 'ms-settings:gaming-gamedvr', recovery: 'ms-settings:recovery', coreisolation: 'windowsdefender://coreisolation' };
 registerIpcHandler('system:open-settings', async (_event, page) => {
   if (IS_LINUX) throw new Error('Esta tela é das Configurações do Windows; no Linux, use as configurações do seu ambiente (GNOME, KDE…).');
-  const uri = SETTINGS_PAGES[page];
+  const uri = Object.hasOwn(SETTINGS_PAGES, String(page)) ? SETTINGS_PAGES[page] : null;
   if (!uri) throw new Error('Página de configurações não permitida.');
   await shell.openExternal(uri);
   return { ok: true };
 });
 
+/**
+ * Links externos conferidos pela API de URL (não só por regex): https, sem usuário/senha nem porta, host exatamente
+ * igual a um da lista. Devolve o endereço normalizado que vai para o navegador, ou null.
+ */
+function safeExternalUrl(value, hosts) {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+  if (!hosts.includes(url.hostname.toLowerCase())) return null;
+  return url.href;
+}
+const DOC_HOSTS = ['learn.microsoft.com', 'support.microsoft.com'];
+const STORE_HOSTS = ['store.steampowered.com', 'steamcommunity.com', 'steamstore-a.akamaihd.net'];
 registerIpcHandler('app:open-doc', async (_event, url) => {
-  if (typeof url !== 'string' || !/^https:\/\/(learn|support)\.microsoft\.com\/[\w\-./()%?=&#]*$/.test(url)) throw new Error('Link não permitido.');
-  await shell.openExternal(url);
+  const safe = safeExternalUrl(url, DOC_HOSTS);
+  if (!safe) throw new Error('Link não permitido.');
+  await shell.openExternal(safe);
   return { ok: true };
 });
 
@@ -1525,7 +1404,7 @@ const EXTERNAL_LINKS = {
   releases: 'https://github.com/Samuklvm/Project-Nexo/releases'
 };
 registerIpcHandler('app:open-link', async (_event, key) => {
-  const url = EXTERNAL_LINKS[key];
+  const url = Object.hasOwn(EXTERNAL_LINKS, String(key)) ? EXTERNAL_LINKS[key] : null;
   if (!url) throw new Error('Link não permitido.');
   await shell.openExternal(url);
   return { ok: true };
@@ -1597,14 +1476,14 @@ async function readSharePreference() {
   if (IS_LINUX) { try { return { shareWithCreator: JSON.parse(await fs.readFile(PRIVACY_FILE(), 'utf8')).shareWithCreator === true }; } catch { return { shareWithCreator: false }; } }
   if (process.platform !== 'win32') return { shareWithCreator: false };
   try {
-    const { stdout } = await execFileAsync('reg', ['query', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn'], { windowsHide: true, timeout: 5000 });
+    const { stdout } = await execFileAsync(systemTool('reg'), ['query', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn'], { windowsHide: true, timeout: 5000 });
     return { shareWithCreator: /0x1\b/i.test(stdout) };
   } catch { return { shareWithCreator: false }; }
 }
 async function writeSharePreference(enabled) {
   if (IS_LINUX) { await fs.writeFile(PRIVACY_FILE(), JSON.stringify({ shareWithCreator: Boolean(enabled) }), 'utf8'); return { shareWithCreator: Boolean(enabled) }; }
   if (process.platform !== 'win32') return { shareWithCreator: false };
-  await execFileAsync('reg', ['add', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', enabled ? '1' : '0', '/f'], { windowsHide: true, timeout: 5000 });
+  await execFileAsync(systemTool('reg'), ['add', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', enabled ? '1' : '0', '/f'], { windowsHide: true, timeout: 5000 });
   return { shareWithCreator: Boolean(enabled) };
 }
 registerIpcHandler('privacy:get', async () => readSharePreference());
@@ -1879,8 +1758,9 @@ registerIpcHandler('games:details', async (_event, id) => {
 });
 const STORE_URL = /^https:\/\/(store\.steampowered\.com|steamcommunity\.com|steamstore-a\.akamaihd\.net)\/[\w\-./?=&%#:]*$/;
 registerIpcHandler('app:open-store-url', async (_event, url) => {
-  if (typeof url !== 'string' || !STORE_URL.test(url)) throw new Error('Link não permitido.');
-  await shell.openExternal(url);
+  const safe = typeof url === 'string' && STORE_URL.test(url) ? safeExternalUrl(url, STORE_HOSTS) : null;
+  if (!safe) throw new Error('Link não permitido.');
+  await shell.openExternal(safe);
   return { ok: true };
 });
 registerIpcHandler('games:list', async () => coverUrl(library.list()));
@@ -2590,7 +2470,7 @@ registerIpcHandler('app:uninstall', async () => {
       `rm -rf ${quote(app.getPath('userData'))} ${quote(path.join(os.homedir(), '.cache', 'nexo-device-care'))} ${quote(path.join(os.homedir(), '.cache', 'nexo-device-care-updater'))} ${quote(AUTOSTART_FILE())}`,
       process.env.APPIMAGE ? `rm -f ${quote(process.env.APPIMAGE)}` : '',
       removePackage ? removePackage.map(quote).join(' ') : ''].filter(Boolean).join('; ');
-    spawn('sh', ['-c', script], { detached: true, stdio: 'ignore' }).unref();
+    spawn(systemTool('sh'), ['-c', script], { detached: true, stdio: 'ignore' }).unref();
     await labSystem.recover().catch(() => {});
     setTimeout(() => app.quit(), 400);
     return { ok: true };
@@ -2603,7 +2483,7 @@ registerIpcHandler('app:uninstall', async () => {
   const uninstallerName = names.find((name) => /^Uninstall .*\.exe$/i.test(name));
   if (!uninstallerName) throw new Error('Não encontrei o desinstalador desta instalação.');
   const script = buildRemovalScript({ installDir, uninstaller: path.join(installDir, uninstallerName), pid: process.pid });
-  const helper = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', script], {
+  const helper = spawn(systemTool('powershell'), ['-NoLogo', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', script], {
     detached: true, stdio: 'ignore', windowsHide: true
   });
   helper.unref();

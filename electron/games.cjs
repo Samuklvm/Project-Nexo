@@ -9,6 +9,12 @@
  *    tamanho, última vez jogado e a capa já copiada para a pasta de dados do Nexo.
  */
 const LAUNCHER_NAMES = /^(steam|steamworks common redistributables|epic games launcher|epic online services|ea app|ea desktop|origin|battle\.net|riot client|riot vanguard|ubisoft connect|uplay|gog galaxy|rockstar games launcher|rockstar games social club|xbox|gaming services|microsoft gameinput|nvidia app|geforce experience|amd software|directx|microsoft visual c\+\+.*|vulkan run ?time.*|easy ?anti-?cheat.*|battleye.*|punkbuster.*|physx.*)$/i;
+/** Tira barras do fim (\\ ou /) sem regex: um loop do fim para o começo, linear em qualquer texto. */
+function trimSlashes(text) {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === '/' || text[end - 1] === '\\')) end -= 1;
+  return text.slice(0, end);
+}
 const NOT_A_GAME = /redistributable|^proton\b|steam linux runtime|steamvr|dedicated server|\bsdk\b|soundtrack|benchmark tool|^steamworks|bonus content|\bartbook\b|\bart book\b|digital extras|season pass/i;
 /** Programas da Steam que não são jogos: aparecem em “Apps”, fora dos destaques e da gravação automática. */
 const STEAM_APPS = new Set(['431960', '629520', '993090', '1905180', '365670', '1840', '1250410', '388080', '1454400', '774361', '440900', '607380', '1066780']);
@@ -22,16 +28,21 @@ const SOURCE_LABEL = { steam: 'Steam', epic: 'Epic Games', gog: 'GOG', ubisoft: 
 function parseVdf(text) {
   const tokens = [];
   const source = String(text);
-  for (let i = 0; i < source.length; i += 1) {
+  // Leitor com cursor explícito (while): cada ramo diz quanto avança, sem mexer no contador de um for.
+  let i = 0;
+  while (i < source.length) {
     const ch = source[i];
     if (ch === '"') {
       let value = '';
-      for (i += 1; i < source.length && source[i] !== '"'; i += 1) {
-        if (source[i] === '\\' && i + 1 < source.length) { i += 1; value += source[i] === 'n' ? '\n' : source[i]; } else value += source[i];
+      let j = i + 1;
+      while (j < source.length && source[j] !== '"') {
+        if (source[j] === '\\' && j + 1 < source.length) { value += source[j + 1] === 'n' ? '\n' : source[j + 1]; j += 2; } else { value += source[j]; j += 1; }
       }
       tokens.push({ s: value });
-    } else if (ch === '{' || ch === '}') tokens.push({ b: ch });
-    else if (ch === '/' && source[i + 1] === '/') { while (i < source.length && source[i] !== '\n') i += 1; }
+      i = j + 1;
+    } else if (ch === '{' || ch === '}') { tokens.push({ b: ch }); i += 1; }
+    else if (ch === '/' && source[i + 1] === '/') { const end = source.indexOf('\n', i); i = end < 0 ? source.length : end + 1; }
+    else i += 1;
   }
   let index = 0;
   const readObject = () => {
@@ -326,7 +337,7 @@ function createLibrary({ fs, path, runPowerShell, getFileIcon, coversDir, manual
     steamRoot = registry.steam ? winPath(registry.steam) : null;
     const gog = asList(registry.gog).filter((item) => item.name && item.path).map((item) => ({ id: `gog-${String(item.id).replace(/\D/g, '') || slug(item.name)}`, source: 'gog', name: item.name, installDir: item.path, installed: true,
       exe: item.exe || null, gogId: String(item.id).replace(/\D/g, '') || null, iconFile: item.id ? path.join(item.path, `goggame-${String(item.id).replace(/\D/g, '')}.ico`) : null }));
-    const ubisoft = asList(registry.ubisoft).filter((item) => item.path).map((item) => ({ id: `ubisoft-${String(item.id).replace(/\D/g, '')}`, source: 'ubisoft', name: path.basename(String(item.path).replace(/[\\/]+$/, '')), installDir: item.path, installed: true, launchUri: `uplay://launch/${String(item.id).replace(/\D/g, '')}/0` }));
+    const ubisoft = asList(registry.ubisoft).filter((item) => item.path).map((item) => ({ id: `ubisoft-${String(item.id).replace(/\D/g, '')}`, source: 'ubisoft', name: path.basename(trimSlashes(String(item.path))), installDir: item.path, installed: true, launchUri: `uplay://launch/${String(item.id).replace(/\D/g, '')}/0` }));
     const others = asList(registry.uninstall).map(classifyUninstall).filter(Boolean).map((item) => ({ ...item, installed: true, id: `${item.source}-${slug(item.name)}` }));
     const lists = await Promise.all([scanSteam(steamRoot), scanEpic(), scanXbox(asList(registry.drives)), loadManual()]);
     const account = await extras(steamRoot).catch(() => ({}));
@@ -401,7 +412,7 @@ function createLibrary({ fs, path, runPowerShell, getFileIcon, coversDir, manual
     const lower = String(exePath).toLowerCase();
     for (const game of games) {
       if (!game.installed) continue;
-      const dir = String(game.installDir || '').toLowerCase().replace(/[\\/]+$/, '');
+      const dir = trimSlashes(String(game.installDir || '').toLowerCase());
       if (dir.length > 3 && (lower.startsWith(`${dir}\\`) || lower.startsWith(`${dir}/`))) return game;
       if (game.exe && lower === String(game.exe).toLowerCase()) return game;
     }

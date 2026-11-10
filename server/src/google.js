@@ -56,6 +56,6 @@ export async function verifyGoogleIdToken(idToken, { clientIds, fetchImpl = fetc
   if (typeof payload.sub !== 'string' || !payload.sub || payload.sub.length > 255) throw fail('Login sem identificador.');
   if (payload.email_verified !== true && payload.email_verified !== 'true') throw fail('O e-mail desta conta Google não está verificado.');
   const email = String(payload.email || '').toLowerCase().slice(0, 254);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail('Login sem e-mail.');
+  if (!/^[^\s@]{1,64}@[^\s@.]{1,63}(?:\.[^\s@.]{1,63}){1,8}$/.test(email)) throw fail('Login sem e-mail.');
   return { sub: payload.sub, email, name: typeof payload.name === 'string' ? payload.name.slice(0, 120) : null };
 }

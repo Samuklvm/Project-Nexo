@@ -18,7 +18,7 @@ function toText(value, max = 2000) {
     .replace(/\[img\][\s\S]*?\[\/img\]|\[previewyoutube[^\]]*\][\s\S]*?\[\/previewyoutube\]/gi, '');
   // Remove marcações até não sobrar nenhuma (uma passada só deixaria restos como "<scr<b>ipt>").
   let previous;
-  do { previous = text; text = text.replace(/<[^<>]*>|\[\/?[a-z]+[^\]]*\]/gi, ''); } while (text !== previous);
+  do { previous = text; text = text.replace(/<[^<>]*>|\[\/?[a-z][^\]]*\]/gi, ''); } while (text !== previous);
   return text
     .replace(/[<>]/g, '')
     .replace(/&(#?\w+);/g, (match, code) => ENTITIES[code] ?? match)

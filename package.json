@@ -49,6 +49,9 @@
       "electron/**/*",
       "assets/**/*"
     ],
+    "asarUnpack": [
+      "electron/workers/**"
+    ],
     "extraResources": [
       {
         "from": "THIRD-PARTY-NOTICES.md",

@@ -22,7 +22,7 @@
 
   function decode(text) {
     return String(text)
-      .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
       .replace(/&#(\d+);/g, (match, dec) => (ENTITIES[`#${dec}`] ?? String.fromCodePoint(Number(dec))))
       .replace(/&([a-z]+);/gi, (match, name) => ENTITIES[name.toLowerCase()] ?? match);
   }

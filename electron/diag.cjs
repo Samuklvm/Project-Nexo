@@ -41,7 +41,7 @@ function sanitize(data) {
     }
     days[day] = { ipc, events };
   }
-  return Object.fromEntries(Object.keys(days).sort().slice(-KEEP_DAYS).map((key) => [key, days[key]]));
+  return Object.fromEntries(Object.keys(days).sort((a, b) => a.localeCompare(b)).slice(-KEEP_DAYS).map((key) => [key, days[key]]));
 }
 
 function createDiag({ fs, path, file, now = Date.now, onError = () => {} }) {
@@ -61,7 +61,7 @@ function createDiag({ fs, path, file, now = Date.now, onError = () => {} }) {
     const day = dayOf(now());
     if (!days[day]) {
       days[day] = { ipc: {}, events: {} };
-      days = Object.fromEntries(Object.keys(days).sort().slice(-KEEP_DAYS).map((key) => [key, days[key]]));
+      days = Object.fromEntries(Object.keys(days).sort((a, b) => a.localeCompare(b)).slice(-KEEP_DAYS).map((key) => [key, days[key]]));
     }
     return days[day];
   }

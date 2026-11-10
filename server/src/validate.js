@@ -46,7 +46,7 @@ export function redact(value) {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g, 'Bearer <oculto>')
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b/g, '<jwt oculto>')
     .replace(/\b[0-9A-F]{32}\b/g, '<chave oculta>')
-    .replace(/\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}\b/g, '<e-mail>');
+    .replace(/\b[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b/g, '<e-mail>');
 }
 
 /**

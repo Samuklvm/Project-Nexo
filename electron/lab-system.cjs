@@ -32,14 +32,16 @@ function parseList(text) {
   return String(text).split(/\r?\n/).map((line) => {
     const guid = line.match(GUID);
     if (!guid) return null;
-    const name = line.match(/\(([^)]*)\)/);
-    return { guid: guid[0].toLowerCase(), name: name ? name[1].trim() : 'Plano', active: /\*\s*$/.test(line.trim()) };
+    // Nome entre parênteses: indexOf em vez de regex (linear mesmo com muitos parênteses).
+    const open = line.indexOf('(');
+    const close = open >= 0 ? line.indexOf(')', open + 1) : -1;
+    return { guid: guid[0].toLowerCase(), name: close > open ? line.slice(open + 1, close).trim() : 'Plano', active: line.trim().endsWith('*') };
   }).filter(Boolean);
 }
 const parseDuplicate = parseActive;
 /** Na saída de /qh, os dois últimos 0x… são o índice na tomada (AC) e na bateria (DC). */
 function parseIndexes(text) {
-  const values = [...String(text).matchAll(/0x([0-9a-f]{8})/gi)].map((match) => parseInt(match[1], 16));
+  const values = [...String(text).matchAll(/0x([0-9a-f]{8})/gi)].map((match) => Number.parseInt(match[1], 16));
   if (values.length < 2) return null;
   return { ac: values[values.length - 2], dc: values[values.length - 1] };
 }
@@ -89,9 +91,9 @@ function parseQueryAll(text) {
     lastGuidLine = null;
     if (!current) continue;
     const index = line.match(/:\s*(\d{3})\s*$/);
-    if (index) { current.indexes.push(parseInt(index[1], 10)); continue; }
+    if (index) { current.indexes.push(Number.parseInt(index[1], 10)); continue; }
     const value = line.match(/0x([0-9a-f]{8})/i);
-    if (value) current.hex.push(parseInt(value[1], 16));
+    if (value) current.hex.push(Number.parseInt(value[1], 16));
   }
   flush();
   return map;
@@ -216,7 +218,7 @@ function createLabSystem(deps) {
       const providers = ERROR_PROVIDERS.map((name) => `'${name}'`).join(',');
       const script = `$s=[DateTimeOffset]::FromUnixTimeMilliseconds(${Math.floor(Number(since) || 0)}).LocalDateTime; $p=@(${providers}); $n=@(Get-WinEvent -FilterHashtable @{LogName='System'; Level=1,2; StartTime=$s} -ErrorAction SilentlyContinue | Where-Object { $p -contains $_.ProviderName }).Count; [Console]::Out.Write($n)`;
       const result = await runPowerShell(script, 15000);
-      const count = parseInt(String(result.stdout).trim(), 10);
+      const count = Number.parseInt(String(result.stdout).trim(), 10);
       return Number.isFinite(count) ? count : 0;
     },
     async restore() {

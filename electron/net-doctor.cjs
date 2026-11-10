@@ -144,7 +144,9 @@ function createNetDoctor({ dns, net, https, os, fs, platform = process.platform,
     } catch { /* sem rota */ }
     const proxy = process.env.https_proxy || process.env.HTTPS_PROXY || '';
     info.proxyEnable = proxy ? 1 : 0;
-    info.proxyServer = proxy.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    // Só o host:porta do proxy (sem esquema nem caminho), sem regex que volta atrás em textos longos.
+    const bare = proxy.replace(/^https?:\/\//, '');
+    info.proxyServer = bare.includes('/') ? bare.slice(0, bare.indexOf('/')) : bare;
     return info;
   }
 

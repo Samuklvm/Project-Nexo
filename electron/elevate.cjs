@@ -246,7 +246,8 @@ function toolLauncher(name, arg) {
   if (!build) throw new Error('Ferramenta não permitida.');
   const [file, args] = build(arg);
   // Recusar o UAC faz o Start-Process lançar: vira o código 1223 (ERROR_CANCELLED), igual ao resto do Nexo.
-  return `try { $process = Start-Process -FilePath ${psQuote(file)} -ArgumentList @(${args.map(psQuote).join(', ')}) -Verb RunAs -Wait -PassThru } catch { exit 1223 }; exit $process.ExitCode`;
+  // Caminho completo em System32 (nunca o PATH), montado pelo próprio PowerShell a partir do Windows instalado.
+  return `try { $process = Start-Process -FilePath (Join-Path $env:SystemRoot ${psQuote(`System32\\${file}`)}) -ArgumentList @(${args.map(psQuote).join(', ')}) -Verb RunAs -Wait -PassThru } catch { exit 1223 }; exit $process.ExitCode`;
 }
 
 /** Linux: pkexec (polkit) mostra a janela de senha do próprio sistema. Só comandos fixos. */
@@ -272,7 +273,7 @@ function createElevator({ runPowerShell, fs, path, dir, now = Date.now }) {
     await fs.mkdir(dir, { recursive: true });
     const outPath = path.join(dir, `${task}-${now()}.json`);
     const body = `$ErrorActionPreference = 'Stop'\n$NexoOut = ${psQuote(outPath)}\n${build(args)}`;
-    const launcher = `try { $p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand','${encode(body)}'); exit $p.ExitCode } catch { exit 1223 }`;
+    const launcher = `try { $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand','${encode(body)}'); exit $p.ExitCode } catch { exit 1223 }`;
     const response = await runPowerShell(launcher, 240000);
     let result = null;
     try { result = JSON.parse(String(await fs.readFile(outPath, 'utf8')).replace(/^﻿/, '')); } catch { /* sem resposta */ }

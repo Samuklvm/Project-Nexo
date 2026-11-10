@@ -17,11 +17,19 @@ const ERROR_BATCHES = 5;
 const DEFAULTS = { sync: false, telemetry: false, errors: false, errorEmail: true, asked: false };
 
 const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+/** Endereço do servidor: https, só host (e porta), sem caminho, usuário ou senha — conferido pela API de URL. */
+function serverBase(value) {
+  if (typeof value !== 'string' || value.length > 300) return null;
+  let url;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || (url.pathname && url.pathname !== '/')) return null;
+  return url.origin;
+}
 const randomId = (bytes = 18) => crypto.randomBytes(bytes).toString('base64url');
 
 function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version, platform = process.platform, errorLog, accountEmail = async () => null, now = Date.now, timeoutMs = REQUEST_TIMEOUT_MS }) {
   const file = path.join(dir, 'cloud.json');
-  const base = typeof serverUrl === 'string' && /^https:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(serverUrl.replace(/\/+$/, '')) ? serverUrl.replace(/\/+$/, '') : null;
+  const base = serverBase(serverUrl);
   let state = null;
   let chain = Promise.resolve();
   let memoryToken = null; // sem cofre do sistema, o token fica só aqui

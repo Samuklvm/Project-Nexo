@@ -466,7 +466,9 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
 
   async function route(request, env, ctx) {
     const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+$/, '') || '/';
+    let end = url.pathname.length;
+    while (end > 1 && url.pathname[end - 1] === '/') end -= 1; // tira as barras do fim sem regex
+    const path = url.pathname.slice(0, end) || '/';
     const method = request.method;
     if (method === 'OPTIONS') return new Response(null, { status: 204, headers: SECURITY_HEADERS });
     if (path === '/' || path === '/health') return json({ ok: true, service: 'nexo-api', version: SERVER_VERSION });

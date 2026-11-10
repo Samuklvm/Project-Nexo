@@ -6,11 +6,12 @@
 const Fps = require('../src/fps.js');
 
 /** Lê as linhas novas do CSV; o cabeçalho de dados começa com "fps,frametime". Devolve tempos de quadro em ms. */
-function parseMangoChunk(text, state = { header: null, rest: '' }) {
-  const lines = (state.rest + text).split('\n');
+function parseMangoChunk(text, state = null) {
+  const previous = state || { header: null, rest: '' }; // estado novo a cada chamada (nada de objeto padrão compartilhado)
+  const lines = (previous.rest + text).split('\n');
   const rest = lines.pop();
   const frames = [];
-  let header = state.header;
+  let header = previous.header;
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) continue;

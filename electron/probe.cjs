@@ -12,6 +12,7 @@
 const { spawn } = require('child_process');
 const readline = require('readline');
 const Session = require('../src/session.js');
+const { systemTool } = require('./system-path.cjs');
 
 const PROBE_SCRIPT = String.raw`
 $ErrorActionPreference = 'SilentlyContinue'
@@ -158,7 +159,7 @@ function createProbe({ spawnFn = spawn, emit = () => {}, platform = process.plat
   function start() {
     if (child) return { ok: true };
     if (platform !== 'win32') return { ok: false, reason: 'A sonda só existe no Windows.' };
-    const spawned = spawnFn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PROBE_SCRIPT], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    const spawned = spawnFn(systemTool('powershell'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', PROBE_SCRIPT], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     child = spawned;
     reader = readline.createInterface({ input: spawned.stdout });
     reader.on('line', (line) => {

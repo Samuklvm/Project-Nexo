@@ -7,7 +7,7 @@
 const crypto = require('node:crypto');
 
 const ID64 = /^7656119\d{10}$/;
-const base64url = (bytes) => Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const base64url = (bytes) => Buffer.from(bytes).toString('base64url');
 
 const PAGE = (ok, text) => `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Nexo e Steam</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#070b1f;color:#eef2ff;font:16px/1.5 system-ui,"Segoe UI",sans-serif}main{max-width:460px;padding:28px;border:1px solid rgba(150,175,255,.2);border-radius:18px;background:rgba(16,24,60,.7);text-align:center}h1{font-size:20px;margin:0 0 8px}</style></head>

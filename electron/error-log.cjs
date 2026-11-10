@@ -50,7 +50,7 @@ function makeRedactor({ home = '', user = '' } = {}) {
   rules.push([/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b/g, '<jwt oculto>']);
   rules.push([/\b[0-9A-F]{32}\b/g, '<chave oculta>']);
   // E-mails (o e-mail de quem aceitou mandar vai em campo próprio, nunca no texto do erro).
-  rules.push([/\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}\b/g, '<e-mail>']);
+  rules.push([/\b[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b/g, '<e-mail>']);
   return (value) => {
     let text = String(value ?? '');
     for (const [pattern, replacement] of rules) text = text.replace(pattern, replacement);
@@ -73,13 +73,31 @@ function cleanContext(value, redact, depth = 0) {
   return String(value).slice(0, 80);
 }
 
+const isDigits = (text) => text.length > 0 && [...text].every((ch) => ch >= '0' && ch <= '9');
+/**
+ * Uma linha do stack sem linha:coluna e sem a pasta (só o arquivo): "at f (C:\\a\\b.js:10:5)" → "f (b.js".
+ * Feito com indexOf/lastIndexOf (linear em qualquer texto) e com o mesmo resultado das versões anteriores, para as
+ * assinaturas dos erros já registrados não mudarem.
+ */
+function frameKey(line) {
+  let text = line;
+  const closing = text.endsWith(')') ? 1 : 0;
+  const last = text.lastIndexOf(':', text.length - closing - 1);
+  const prev = last > 0 ? text.lastIndexOf(':', last - 1) : -1;
+  if (prev >= 0 && isDigits(text.slice(last + 1, text.length - closing)) && isDigits(text.slice(prev + 1, last))) text = text.slice(0, prev);
+  const open = text.indexOf('(');
+  const slash = Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\'));
+  if (open >= 0 && slash > open) text = `${text.slice(0, open + 1)}${text.slice(slash + 1)}`;
+  return text.startsWith('at ') ? text.slice(3).trimStart() : text;
+}
+
 /** Assinatura estável do erro: a mesma falha em outra hora, outro PC ou outra linha de log cai no mesmo grupo. */
 function signatureOf({ source, message, stack }) {
   // Sem números, textos entre aspas e caminhos: o mesmo erro com outro arquivo continua sendo o mesmo erro.
   const normalized = String(message || '').replace(/(?:[A-Za-z]:|~|\.{1,2})?(?:[\\/][^\\/\s"'`]+)+[\\/]?/g, '<caminho>')
     .replace(/\d+(\.\d+)?/g, '#').replace(/'[^']*'|"[^"]*"/g, '…').slice(0, 200);
   const frames = String(stack || '').split('\n').slice(1).map((line) => line.trim()).filter((line) => line.startsWith('at '))
-    .slice(0, 3).map((line) => line.replace(/:\d+:\d+\)?$/, '').replace(/\(.*[\\/]/, '(').replace(/^at\s+/, ''));
+    .slice(0, 3).map(frameKey);
   return crypto.createHash('sha256').update(`${source}|${normalized}|${frames.join('|')}`).digest('hex').slice(0, 16);
 }
 

@@ -7,6 +7,7 @@
 const { spawn } = require('child_process');
 const readline = require('readline');
 const Session = require('../src/session.js');
+const { systemTool } = require('./system-path.cjs');
 
 const WATCH_SCRIPT = String.raw`
 $ErrorActionPreference = 'SilentlyContinue'
@@ -131,7 +132,7 @@ function createWatcher({ spawnFn = spawn, platform = process.platform, match, al
     wanted = true;
     if (child || restartTimer) return { ok: true };
     let spawned;
-    try { spawned = spawnFn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', WATCH_SCRIPT], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }); }
+    try { spawned = spawnFn(systemTool('powershell'), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', WATCH_SCRIPT], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }); }
     catch (error) { child = null; state = 'falhou'; try { onProblem('nao-iniciou', error?.message || String(error)); } catch { /* registro indisponível */ } return { ok: false, reason: 'não consegui iniciar o observador' }; }
     child = spawned;
     state = 'ativo';
