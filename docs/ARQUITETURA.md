@@ -32,7 +32,7 @@ Módulos de lógica **pura** (rodam e são testados fora do Electron): `brain.js
 renderer (src/*.js) ──IPC──> main.cjs ──> PowerShell / powercfg / reg / sfc / Optimize-Volume
                                       ├─> sensor-host (stdout JSON) ──> LibreHardwareMonitorLib
                                       ├─> worker_threads (benchmark)
-                                      ├─> electron/cloud.cjs ──HTTPS──> servidor do Nexo (Cloudflare Worker + D1; só o que a pessoa ligar)
+                                      ├─> electron/cloud.cjs ──HTTPS──> servidor do Nexo (Cloudflare Worker + D1; relatórios de erro sempre, o resto só se a pessoa ligar)
                                       └─> electron-updater ──> GitHub Releases
 brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 ```
@@ -42,24 +42,27 @@ brain.js / catalog.js / journal.js / experiment.js  (puros; sem dependências)
 Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `net10.0` · LibreHardwareMonitorLib 0.9.6 · Node 20+ no CI (os testes foram rodados no Node 22). Windows 10/11 x64.
 
 ## 52.05 Estado dos testes
-`npm test` roda 23 arquivos, 237 testes, todos passando no Linux:
+`npm test` roda 25 arquivos, 283 testes, todos passando no Linux:
 
 - `linux.test.cjs` (9): montagens, `/proc/<pid>/stat`, powerprofilesctl, `.desktop`, xprop, detecção de jogos via Proton/Heroic, MangoHud em pedaços, laboratório com perfis de energia, biblioteca Steam+Heroic num HOME temporário, pkexec validado e leitura real do `/proc` e `/sys` desta máquina.
 - `brain.test.cjs` (8) e `catalog-journal-experiment.test.cjs` (13, incluindo os perfis).
-- `main-ipc.test.cjs` (15): carrega o `main.cjs` real com Electron simulado (inclusive os canais do Raio-X, do teste com reinício, do registro de erros e do servidor, que fica desligado sem endereço).
+- `main-ipc.test.cjs` (15): carrega o `main.cjs` real com Electron simulado (inclusive os canais do Raio-X, do teste com reinício, do registro de erros e do servidor: os relatórios de erro ficam sempre ligados e a tela não consegue desligá-los).
 - `session-fps.test.cjs` (15): sessões sintéticas de cada tipo de gargalo, detecção de jogo, parser de FPS nos formatos novo e antigo.
+- `monitoring.test.cjs` (12): monitoramento honesto — GPU a 100% só é "placa no limite" com clock alto, RAM alta só conta com 5 s seguidos, GPU quente não vira calor do processador, "1% baixo" como média do pior 1% e acumulador que cobre a sessão inteira, régua de clock que esquece turbo de um núcleo, jogo com caminho protegido (anticheat), observador que falha ao abrir (A21), leitura atrasada depois de parar no Linux (A22) e jogo reconhecido na segunda leitura (A26).
 - `probe-fps-runner.test.cjs` (7): sonda e executor de FPS com processos filhos simulados; política do hash do PresentMon.
-- `lab.test.cjs` (28): motor do laboratório contra um PC simulado — espaço fechado, faixa do PC, escolha (inédito → UCB, tabu, variedade por grupo), juiz A/B com ruído e consistência, ordem ABBA, combinações, guardas, cancelamento, restauração que falha, orçamento de tempo, consentimento.
+- `lab.test.cjs` (33): motor do laboratório contra um PC simulado — espaço fechado, faixa do PC, escolha (inédito → UCB, tabu, variedade por grupo), juiz A/B com ruído e consistência, ordem ABBA, combinações, guardas (aquecimento comparado com o mesmo teste no plano original, pico de um instante, erro do Windows por janela), ajuste recusado pelo PC, medição com outro programa pesando, cancelamento, restauração que falha, orçamento de tempo, consentimento.
 - `lab-system.test.cjs` (14): adaptador real contra um `powercfg` simulado em português — leitura completa do `/qh`, clone sem tocar o original, trava + RunOnce, recuperação, queda no Equilibrado, adoção, UAC recusado, ponta a ponta e análise estática (nada de bcdedit/Defender/VBS/leitura de memória; **uma única** elevação no código: `electron/elevate.cjs`).
 - `system-scan.test.cjs` (14): catálogo do Raio-X (chaves seguras, sem política em HKCU, sem entrada repetida), serviços proibidos fora, plano de energia pelo `/qh` e pelo `powercfg`, falha parcial, recusa do UAC, tamanho da linha de comando elevada.
 - `reboot-test.test.cjs` (10): plano ABBA, máquina de estados (só mede depois de um boot novo), veredito com ruído entre boots, estado adulterado, executor com Windows simulado (RunOnce, troca A↔B, UAC recusado, cancelamento, reinício automático).
 - `fuzz.test.cjs` (7): milhares de entradas aleatórias com semente fixa contra o laboratório, o Raio-X (validação, reversão, script elevado) e o veredito do teste com reinício.
-- `error-log.test.cjs` (5): registro de erros local (limpeza de pastas e nome de usuário, agrupamento por assinatura, limite por hora, rotação).
-- `server.test.cjs` (13): servidor do Nexo (Cloudflare Worker) no Node, com D1 simulado em SQLite e um Google de teste: login só com id_token verdadeiro, sessões, sincronização cifrada e isolada por conta, erros agrupados com e-mail só da sessão, telemetria limpa, painel (link único, cookie, CSRF, papéis da equipe), chaves de ferramenta e limpeza diária.
-- `cloud.test.cjs` (8): o lado do app (`electron/cloud.cjs`) contra o servidor real em memória: nada sai sem ligar, cópia cifrada no banco, escolher o que trazer, outra conta não enxerga, sessão recusada desliga, erros só depois de ligar e sem nome de usuário, telemetria uma vez por dia e sem a conta, cada dia fechado sai uma vez com o próprio dia.
-- `telemetry.test.cjs` (4): o resumo do dia montado pela interface (`src/telemetry.js`) só com dias fechados, contagens do dia inteiro e nada pessoal; saúde dos recursos; diagnóstico do processo principal (`electron/diag.cjs`); e um dia cheio passa no servidor dentro do limite.
+- `error-log.test.cjs` (10): registro de erros local — limpeza de pastas, nome de usuário e segredos (inclusive em JSON e cabeçalhos), agrupamento por assinatura, limite por hora com a contagem do resto gravada, rotação que falha sem passar do limite, limpar que só diz "apagado" se apagou, limpar e gravar na mesma fila, cursor por sequência.
+- `server.test.cjs` (20): servidor do Nexo (Cloudflare Worker) no Node, com D1 simulado em SQLite e um Google de teste: login só com id_token verdadeiro (cabeçalho malformado é 401), sessões, sincronização cifrada e isolada por conta, erros agrupados e reabertos se voltarem (pré-versões comparadas campo a campo), e-mail da sessão (confirmado) ou informado pelo app (não confirmado) e "esquecer o e-mail", telemetria com esquema fechado e números finitos, parcial de hoje e dia futuro recusado, usuários novos, painel (link único, cookie, CSRF, papéis da equipe, papel de parede), chaves de ferramenta, rotina de relatórios e limpeza diária.
+- `cloud.test.cjs` (17): o lado do app (`electron/cloud.cjs`) contra o servidor real em memória: sincronização e telemetria desligadas por padrão e relatórios de erro sempre ligados (quem tinha desligado só manda o que acontecer depois da atualização), cópia cifrada no banco, escolher o que trazer, sessão recusada desliga, mais de 50 erros diferentes chegam em lotes, e-mail "não confirmado" sem sincronização e desmarcar o e-mail mesmo sem conexão, falha ao gravar a escolha avisada, token fora do disco sem cofre, telemetria uma vez por dia (o parcial de hoje a cada 3 h), sem envio duplicado e com prazo.
+- `telemetry.test.cjs` (6): o resumo do dia montado pela interface (`src/telemetry.js`) só com dias fechados, contagens do dia inteiro e nada pessoal; saúde dos recursos; diagnóstico do processo principal (`electron/diag.cjs`) que persiste de verdade e nunca lança; e um dia cheio passa no servidor dentro do limite.
 - `features.test.cjs` (7): os recursos de cada tela num contexto isolado: pelo menos 30 por tela no Windows e no Linux, ids e ícones válidos, todo cálculo roda sem erro com o PC vazio e com um PC cheio de dados, e a versão atual tem notas na janela de novidades.
-- `connections.test.cjs` (12), `library-account.test.cjs` (20), `sensor-service.test.cjs` (5), `release-notes.test.cjs` (3) e `syntax.test.cjs` (7: todo script compila, nenhum carregado duas vezes, ordem de dependências, lista fixa de recursos da telemetria, todo arquivo da interface no instalador).
+- `net-doctor.test.cjs` (8): diagnóstico de rede com respostas simuladas (DNS da rede lento, tudo lento, IPv6 quebrado, proxy morto, Linux) e tarefas com administrador só com dados válidos.
+- `security-static.test.cjs` (6): nada de código a partir de texto (eval, `new Function`, Worker com eval), política de segurança das telas fechada, programas do sistema pelo caminho completo (inclusive o nvidia-smi), listas fixas por chave própria e workflows com token só de leitura no topo e instalação sem scripts.
+- `connections.test.cjs` (12), `library-account.test.cjs` (20), `steam-login.test.cjs` (3), `sensor-service.test.cjs` (5), `release-notes.test.cjs` (4) e `syntax.test.cjs` (8: todo script compila, nenhum carregado duas vezes, ordem de dependências, saída do console em UTF-8 ou CP850, lista fixa de recursos da telemetria, todo arquivo da interface no instalador, nenhuma animação decorativa em loop de CSS).
 
 **Não existe** teste automatizado de: NSIS, PowerShell real, registro, `powercfg`, sensor-host, PresentMon real, interface dentro do Electron real. Isso exige Windows (ver 52.15).
 
@@ -78,7 +81,7 @@ Electron 37.2.0 · electron-builder 26.0.12 · electron-updater 6.8.9 · .NET `n
 | Custo do próprio Nexo | `app.getAppMetrics` + custo da sonda | desprezível; **não inclui o PresentMon** |
 
 ## 52.07 Lacunas para telemetria profunda
-Continuam **sem** leitura: latência de DPC/ISR, fila e latência de disco por processo, contadores de rede por processo, causa de picos de frequência (limite de energia contra térmico) e motivos de limitação da GPU (existem no `nvidia-smi`, ainda não integrados). Passaram a ser **possíveis, mas não validados em Windows real**: programa em primeiro plano, GPU por programa e FPS. Mesmo com FPS, o Nexo só aponta indícios: um achado nunca é dado como causa provada.
+Continuam **sem** leitura: latência de DPC/ISR, fila e latência de disco por processo, contadores de rede por processo, e causa de picos de frequência do processador (limite de energia contra térmico). Os motivos de limitação da placa NVIDIA (energia, calor, desaceleração) já vêm do `nvidia-smi` desde a 0.11.1. Passaram a ser **possíveis, mas não validados em Windows real**: programa em primeiro plano, GPU por programa e FPS. Mesmo com FPS, o Nexo só aponta indícios: um achado nunca é dado como causa provada.
 
 ## 52.08 Riscos técnicos e de segurança
 
@@ -150,7 +153,7 @@ Tudo em `localStorage` do app (pasta de dados do usuário), exceto o papel de pa
 ## 52.14 Dependências candidatas (a validar antes de adotar)
 - **PresentMon (adotado como componente opcional)**: licença MIT (Copyright Intel), versão mais recente conferida v2.6.0, flags da 2.x conferidas no README oficial. Exige o grupo “Performance Log Users” ou administrador. Versão e SHA-256 ficam em `third-party/presentmon.lock.json`; **sem hash fixado nada é embutido**. Compatibilidade com anti-cheats: **a validar**, não afirmada.
 - **LibreHardwareMonitorLib** (já em uso): acompanhar suporte a CPUs/GPUs novas.
-- **NVML / `nvidia-smi`** para motivos de limitação da GPU: candidata, ainda não integrada (o nome do campo mudou entre versões do driver).
+- **`nvidia-smi`** para motivos de limitação da GPU: **integrado na 0.11.1** (`clocks_throttle_reasons.active`, com volta para a consulta básica em driver antigo que não conhece o campo); chamado pelo caminho do driver, nunca pelo PATH. NVML direto continua candidato.
 - **SQLite** para histórico estruturado: avaliar `better-sqlite3` (módulo nativo, afeta o empacotamento) contra `node:sqlite`.
 - **ADB** para Android: executável de terceiros baixado só com consentimento, com verificação de integridade.
 

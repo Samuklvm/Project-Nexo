@@ -1,20 +1,21 @@
 # Servidor do Nexo
 
-Um Worker da Cloudflare (`server/`) com banco D1. Serve para três coisas, todas opcionais e desligadas por padrão no app:
+Um Worker da Cloudflare (`server/`) com banco D1. Recebe os relatórios de erro do app (sempre enviados desde a 0.11.1, sem nada pessoal) e, se a pessoa ligar, a telemetria diária e a sincronização entre PCs; também serve o painel do criador:
 
 | Parte | Rota | Quem chama |
 |---|---|---|
 | Sincronização entre PCs (login do Google) | `POST /v1/auth/google`, `GET/DELETE /v1/me`, `GET /v1/sync`, `PUT/GET/DELETE /v1/sync/:pc` | o app, com a sincronização ligada |
-| Relatórios de erro | `POST /v1/errors` | o app, com os relatórios ligados |
+| Relatórios de erro | `POST /v1/errors`, `POST /v1/errors/forget-email` | o app (sempre); o segundo quando a pessoa desmarca o e-mail nos relatórios |
 | Telemetria diária | `POST /v1/telemetry` | o app, com a telemetria ligada |
+| Entrar com a Steam | `GET /v1/steam/start`, `/back`, `/me`, `/library`, `/achievements` | o app, quando a pessoa conecta a conta Steam |
 | Painel do criador | `/painel` | navegador (link de uso único que o app abre) |
 | Leitura para ferramentas | `GET /v1/tools/errors` | chave `nexo_…` criada no painel (só erros, sem e-mails) |
 
-O que cada parte guarda, por quanto tempo e como apagar está em [PRIVACIDADE.md](../PRIVACIDADE.md#servidor-do-nexo-opcional-e-desligado-por-padrão).
+O que cada parte guarda, por quanto tempo e como apagar está em [PRIVACIDADE.md](../PRIVACIDADE.md#servidor-do-nexo).
 
 ## Plano gratuito
 
-O plano grátis da Cloudflare dá 100 mil pedidos por dia, 10 ms de CPU por pedido e 5 GB no D1. O app faz poucos pedidos por PC: telemetria: um resumo por dia, erros só quando há erro novo (no máximo a cada 30 min) e uma cópia da sincronização a cada 30 min, se ligada.
+O plano grátis da Cloudflare dá 100 mil pedidos por dia, 10 ms de CPU por pedido e 5 GB no D1. O app faz poucos pedidos por PC: telemetria (se ligada): um resumo por dia, mais o parcial de hoje no máximo a cada 3 horas; erros só quando há erro novo (no máximo a cada 30 min) e uma cópia da sincronização a cada 30 min, se ligada.
 
 ## Testar sem a Cloudflare
 
