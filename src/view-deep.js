@@ -125,15 +125,19 @@
 
   // Cada etapa tem a cor e o ícone da peça que ela examina; a de "por trás" é lilás e a de carga, cor de brasa.
   const STAGE_LOOK = { parts: ['cpu', 'i-chip'], memory: ['memory', 'i-ram'], video: ['gpu', 'i-gpu'], disk: ['disk', 'i-disk'], windows: ['network', 'i-win'], behind: ['board', 'i-eye'], load: ['heat', 'i-bolt'] };
+  /** Nome da etapa na plataforma: no Linux a do sistema não se chama "Windows". */
+  const stageName = (stage) => (stage?.id === 'windows' && Nexo.platform === 'linux' ? 'Sistema e rede' : stage?.label || '');
   function paintStages(index, status) {
     const box = document.getElementById('deep-stages');
     if (!box) return;
-    if (!box.dataset.ready) {
+    if (box.dataset.ready !== Nexo.platform) {
       box.innerHTML = STAGES.map((stage) => {
-        const [node, ico] = STAGE_LOOK[stage.id] || ['windows', 'i-spark'];
-        return `<li data-node="${node}" data-state="pending"><span class="stage-ico">${icon(ico)}</span>${el('span', 'stage-name', stage.label)}</li>`;
+        let [node, ico] = STAGE_LOOK[stage.id] || ['windows', 'i-spark'];
+        // No Linux a etapa do sistema não é "Windows": ícone da rede no lugar do logotipo.
+        if (stage.id === 'windows' && Nexo.platform === 'linux') { ico = 'i-net'; node = 'network'; }
+        return `<li data-node="${node}" data-state="pending"><span class="stage-ico">${icon(ico)}</span>${el('span', 'stage-name', stageName(stage))}</li>`;
       }).join('');
-      box.dataset.ready = '1';
+      box.dataset.ready = Nexo.platform || 'win32';
     }
     [...box.children].forEach((li, i) => {
       let state = 'pending';
@@ -189,7 +193,7 @@
     const fill = document.getElementById('deep-bar-fill');
     if (fill) fill.dataset.css = `width:${pct.toFixed(1)}%`;
     document.getElementById('deep-bar')?.setAttribute('aria-valuenow', String(index + 1));
-    setText('deep-count', `Etapa ${index + 1} de ${STAGES.length}: ${stage.label}`);
+    setText('deep-count', `Etapa ${index + 1} de ${STAGES.length}: ${stageName(stage)}`);
     paintStages(index, progress.status);
     let action = progress.action || '…';
     if (progress.status === 'cancelled') action = 'Análise cancelada.';
@@ -385,16 +389,20 @@
     return `<section class="deep-card deep-behind">${cardTitle('i-eye', games.length ? 'O que roda por trás do jogo' : 'O que roda por trás')}${el('p', 'muted', intro)}${pills}${body}${el('small', 'muted', stats)}</section>`;
   }
 
-  /** Termômetro de 30 °C até o limite da peça: verde com folga, amarelo perto, vermelho no limite. */
+  /**
+   * Termômetro de 30 °C até o limite da peça: verde com folga, amarelo perto, vermelho no limite. `limitText` diz o que é
+   * o limite ("o limite do processador" ou "o ponto em que a maioria das placas começa a frear").
+   */
   function meterHtml(label, value, limit, limitText = 'o limite') {
     if (!Number.isFinite(value)) return '';
     const low = 30;
     const pct = Math.max(0, Math.min(100, ((value - low) / (limit - low)) * 100));
-    const room = Math.round(limit - value);
+    const room = limit - value;
     let zone = 'cool';
     if (room <= 5) zone = 'hot';
     else if (room <= 15) zone = 'warm';
-    const note = room > 0 ? `${room} °C de folga até ${limitText} (${limit} °C)` : `chegou a ${limitText} (${limit} °C)`;
+    const where = limitText.includes('°C') ? limitText : limitText + ' (' + limit + ' °C)';
+    const note = room > 0.5 ? `${Math.round(room)} °C de folga até ${where}` : `chegou ${/^os? /.test(where) ? 'a' + where : 'a ' + where}`;
     return `<div class="meter" data-zone="${zone}"><div class="meter-head">${el('span', '', label)}<strong>${n(value)} °C</strong></div><div class="meter-track"><i data-css="left:${pct.toFixed(1)}%"></i></div>${el('small', '', note)}</div>`;
   }
 
@@ -403,10 +411,13 @@
     if (!width) return '';
     const total = Math.max(width, maxWidth || width);
     const lanes = Array.from({ length: Math.min(16, total) }, (_, i) => `<i${i < width ? ' class="on"' : ''}></i>`).join('');
-    const parts = [gen ? `PCIe ${gen}.0 x${width}` : `x${width}`];
-    if (maxGen && gen && maxGen > gen) parts.push(`a placa aceita ${maxGen}.0`);
-    if (maxWidth && maxWidth > width) parts.push(`e x${maxWidth}`);
-    return `<div class="lanes"><div class="meter-head">${el('span', '', 'Link da placa de vídeo')}<strong>${escapeHtml(parts[0])}</strong></div><div class="lane-row" aria-hidden="true">${lanes}</div>${el('small', '', parts.length > 1 ? parts.slice(1).join(' ') : plural(width, 'pista', 'pistas') + ' em uso')}</div>`;
+    const now = gen ? `PCIe ${gen}.0 x${width}` : `x${width}`;
+    const betterGen = maxGen && gen && maxGen > gen;
+    const wider = maxWidth && maxWidth > width;
+    let note = `${plural(width, 'pista', 'pistas')} em uso`;
+    const accepts = [betterGen ? 'PCIe ' + maxGen + '.0' : '', wider ? 'x' + maxWidth : ''].filter(Boolean).join(' ');
+    if (accepts) note = 'a placa aceita ' + accepts;
+    return `<div class="lanes"><div class="meter-head">${el('span', '', 'Link da placa de vídeo')}<strong>${escapeHtml(now)}</strong></div><div class="lane-row" aria-hidden="true">${lanes}</div>${el('small', '', note)}</div>`;
   }
 
   function loadHtml(report) {
@@ -421,9 +432,9 @@
     const maxGen = gpuInfo.pcieGenMax || linkFromDevice?.maxGen || null;
     const clocks = [[load.clock?.allCoreMHz, 'todos os núcleos'], [load.clock?.singleMHz, 'um núcleo (turbo)']].filter(([value]) => Number.isFinite(value) && value > 0);
     const nums = clocks.length ? '<div class="load-nums">' + list(clocks, ([value, label]) => `<div><strong>${n(value)}</strong><span>MHz · ${escapeHtml(label)}</span></div>`) + '</div>' : '';
-    const cpuMeter = meterHtml('Temperatura no pico', load.temps?.cpuPeak, NexoDeep.tjMaxOf ? NexoDeep.tjMaxOf(cpu) : 100);
+    const cpuMeter = meterHtml('Temperatura no pico', load.temps?.cpuPeak, NexoDeep.tjMaxOf ? NexoDeep.tjMaxOf(cpu) : 100, 'o limite');
     const cpuBlock = nums || cpuMeter ? `<div class="load-block" data-node="cpu">${el('span', 'load-cap', 'Processador em carga')}${nums}${cpuMeter}</div>` : '';
-    const gpuMeter = meterHtml('Temperatura no pico', load.temps?.gpuPeak, 90, 'onde a maioria das placas começa a frear');
+    const gpuMeter = meterHtml('Temperatura no pico', load.temps?.gpuPeak, 90, 'os 90 °C, onde a maioria das placas começa a frear');
     const lanes = lanesHtml(gen, width, maxWidth, maxGen);
     const gpuBlock = gpuMeter || lanes ? `<div class="load-block" data-node="gpu">${el('span', 'load-cap', 'Placa de vídeo acordada')}${gpuMeter}${lanes}</div>` : '';
     const single = load.bench?.single ? '<strong>' + n(load.bench.single, 0) + '</strong>' + el('small', '', 'um núcleo') : '';
@@ -523,7 +534,7 @@
       const badge = count ? `<g class="deep-badge" transform="translate(25 -3)"><circle r="10.5" /><text y="4">${count}</text></g>` : '';
       const name = names[item.id] ? `<text class="deep-name" y="${top ? -30 : 60}">${escapeHtml(names[item.id])}</text>` : '';
       return `<g class="deep-star${name ? ' named' : ''}" data-node="${item.id}" data-state="${nodes[item.id] || 'done'}" data-order="${index}" transform="translate(${x} ${y})">
-        ${starLight('deep-chart', item.id, 36, 22)}<circle class="deep-ring" r="19" /><circle class="deep-core" r="6.5" />${badge}
+        <circle class="deep-hit" r="30" />${starLight('deep-chart', item.id, 36, 22)}<circle class="deep-ring" r="19" /><circle class="deep-core" r="6.5" />${badge}
         <text class="deep-label" y="${top ? (name ? -52 : -30) : 40}">${escapeHtml(labelOf(item, platform))}</text>${name}</g>`;
     }).join('');
     return `<defs>${defs}</defs><g class="deep-nebula" aria-hidden="true">${nebula}</g>${orbits}<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g><g class="deep-stars">${stars}</g>`;
@@ -582,7 +593,7 @@
           <div class="deep-head-text">${el('span', 'deep-kicker', fromDisk ? 'Seu PC, da última análise' : 'Seu PC, entendido')}${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${story.verdict ? el('p', 'deep-verdict', story.verdict) : ''}${story.good ? el('p', 'deep-good', story.good) : ''}${tallyHtml(count, more, ok)}</div>
           <div class="deep-hero-actions"><button class="btn primary" type="button" data-deep-again="1">Analisar de novo</button>${el('small', 'muted', stamp(report, fromDisk))}</div>
         </div>
-        <svg class="deep-sky deep-chart" id="deep-report-sky" viewBox="0 0 1000 320" role="img" aria-label="Carta celeste do seu PC: cada estrela é uma peça; as amarelas têm algo para ajustar. Toque numa para ver a peça.">${chartSvg(names, nodes, counts, report.platform || report.profile?.os?.platform)}</svg>
+        <svg class="deep-sky deep-chart" id="deep-report-sky" viewBox="0 0 1000 320" role="group" aria-label="Carta celeste do seu PC: cada estrela é uma peça; as amarelas têm algo para ajustar. Toque numa para ver a peça.">${chartSvg(names, nodes, counts, report.platform || report.profile?.os?.platform)}</svg>
         <p class="deep-chart-hint">Cada estrela é uma peça do seu PC. As amarelas têm algo para ajustar; toque numa para ver os detalhes dela.</p>
       </div>
       <div class="deep-grid">

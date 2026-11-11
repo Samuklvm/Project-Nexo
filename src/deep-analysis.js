@@ -370,6 +370,12 @@
     const total = memory.totalBytes || health?.memory?.totalKB * 1024 || null;
     const gb = total ? total / 1024 ** 3 : null;
     const laptop = profile.kind === 'laptop' || profile.kind === 'handheld';
+    // Plataforma de 3 ou 4 canais (X79/X99/X299, Xeon E5, LGA1356) com menos pentes que canais: parte da largura fica
+    // parada. Só quando a placa tem slots para isso e não é o caso do canal único (que já tem o próprio aviso).
+    const channels = cpu.memoryChannels || 2;
+    const sticks = memory.modules?.length || 0;
+    const roomForMore = memory.slots === null || memory.slots === undefined || memory.slots >= channels;
+    const wideIncomplete = channels > 2 && sticks >= 2 && sticks < channels && roomForMore && memory.layout !== 'single';
     if (gb !== null && gb < 7.5) add(F('mem-pouca', 'memoria', 'alta', `Pouca memória: ${Hardware.gbText(total)}`, 'Com menos de 8 GB, o Windows e um navegador já ocupam quase tudo; o jogo passa a disputar memória e o PC usa o disco como memória (bem mais lento).', { evidence: [`${Hardware.gbText(total)} no total`], action: { how: memory.freeSlots ? `Há ${plural(memory.freeSlots, 'slot livre', 'slots livres')}: um pente do mesmo tipo (${memory.type || 'DDR'}) resolve.` : 'Aumentar a memória é a melhoria de maior efeito aqui.' } }));
     else if (gb !== null && gb < 15) add(F('mem-8gb', 'memoria', 'media', `${Hardware.gbText(total)} de memória: o mínimo para jogos atuais`, 'Jogos lançados de 2023 para cá costumam pedir 16 GB. Com 8 GB, fechar o navegador e apps de chat antes de jogar faz diferença.', { evidence: [`${Hardware.gbText(total)} no total`], confidence: 'media', action: { how: memory.freeSlots ? `Há ${plural(memory.freeSlots, 'slot livre', 'slots livres')} para mais um pente.` : 'Ao trocar, prefira 2 pentes iguais (dual channel).' } }));
     if (memory.layout === 'single') {
@@ -382,9 +388,8 @@
         evidence: memory.modules.map((module) => `${module.slot || '?'}${module.bank ? ' (' + module.bank + ')' : ''}: ${Hardware.gbText(module.capacityBytes)}`), confidence: 'media',
         action: { how: 'Com o PC desligado e fora da tomada, mova um dos pentes para o outro canal. O manual da placa indica os slots certos para dois pentes (quase sempre A2 e B2).' }
       }));
-    } else if (memory.layout === 'dual' || memory.layout === 'quad') add(F('mem-canais-ok', 'memoria', 'ok', memory.layout === 'quad' ? 'Memória em quatro canais' : 'Memória em dual channel', null));
-    // Plataforma de 4 canais (X79/X99/X299 e Xeon E5) com menos de 4 pentes: metade da largura de memória parada.
-    if (cpu.memoryChannels === 4 && memory.modules?.length > 0 && memory.modules.length < 4) add(F('mem-quad-incompleto', 'memoria', 'baixa', `Plataforma de 4 canais usando ${memory.modules.length === 1 ? 'só 1' : 'só ' + memory.modules.length}`, `Este processador (${Hardware.cpuTitle(cpu)}) tem 4 canais de memória. Com ${plural(memory.modules.length, 'pente', 'pentes')}, ${memory.modules.length === 1 ? 'só um canal trabalha' : 'só ' + memory.modules.length + ' canais trabalham'}; em jogos que dependem do processador, completar os 4 canais ajuda.`, {
+    } else if ((memory.layout === 'dual' || memory.layout === 'quad') && !wideIncomplete) add(F('mem-canais-ok', 'memoria', 'ok', { 3: 'Memória em três canais', 4: 'Memória em quatro canais' }[memory.channels] || (memory.layout === 'quad' ? 'Memória em quatro canais' : 'Memória em dual channel'), null));
+    if (wideIncomplete) add(F('mem-quad-incompleto', 'memoria', 'baixa', `Plataforma de ${channels} canais usando só ${sticks}`, `Este processador (${Hardware.cpuTitle(cpu)}) tem ${channels} canais de memória. Com ${sticks} pentes, só ${sticks} canais trabalham; em jogos que dependem do processador, completar os ${channels} canais ajuda.`, {
       evidence: [Hardware.memoryLine(memory), memory.slots ? `${memory.slots} slots, ${plural(memory.freeSlots ?? 0, 'livre', 'livres')}` : null], confidence: 'media',
       action: { how: 'Complete com pentes iguais (mesmo modelo e capacidade), um em cada canal: o manual da placa indica os slots certos.' }
     }));
@@ -609,6 +614,8 @@
   function tjMaxOf(cpu) {
     const c = cpu || {};
     if (c.vendor !== 'AMD') return 100;
+    // FX, Phenom II, Athlon antigos e APU série A medem bem mais baixo (limite de ~61–74 °C na especificação).
+    if (!c.zen && /^(FX|Phenom|Athlon II|A\d{1,2}$)|Kabini|K10|Kaveri|Bristol|Trinity|Richland|Llano/i.test(`${c.family || ''} ${c.architecture || ''}`)) return 70;
     return c.segment === 'desktop' && ['zen2', 'zen3'].includes(c.zen) && !c.apuPcie3 && (c.cores || 0) >= 8 ? 90 : 95;
   }
 

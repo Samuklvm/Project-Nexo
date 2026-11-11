@@ -477,6 +477,64 @@ test('reconhecimento universal: processadores, placas de vídeo, chipsets e rede
   assert.ok(D.buildFindings({ profile: xeon }).some((item) => item.id === 'mem-quad-incompleto'));
 });
 
+test('revisão de 11/11 (2ª rodada): identificações erradas e avisos de memória', () => {
+  const line = (name, cores = 4, threads = 8) => H.cpuLine(H.decodeCpu({ name, cores, threads }));
+  const cpu = (name) => H.decodeCpu({ name, cores: 4, threads: 8 });
+  // "12-core" não faz um Snapdragon virar Intel; o modelo diz se é X Elite ou X Plus.
+  assert.match(line('Snapdragon(R) X 12-core X1E80100 @ 3.40 GHz'), /^Qualcomm Snapdragon X Elite X1E80100 · Oryon/);
+  assert.match(line('Snapdragon(R) X 10-core X1P64100 @ 3.40 GHz'), /^Qualcomm Snapdragon X Plus/);
+  // Canais de memória de verdade: Kaby Lake-X é dual; Xeon E5-24xx/14xx (LGA1356) tem 3.
+  assert.equal(cpu('Intel(R) Core(TM) i7-7740X CPU @ 4.30GHz').memoryChannels, 2);
+  assert.deepEqual([cpu('Intel(R) Xeon(R) CPU E5-2450 v2 @ 2.50GHz').socket, cpu('Intel(R) Xeon(R) CPU E5-2450 v2 @ 2.50GHz').memoryChannels], ['LGA1356', 3]);
+  assert.equal(cpu('Intel(R) Xeon(R) CPU E5-1650 v2 @ 3.50GHz').memoryChannels, 4);
+  // Pentium e Celeron numeram diferente.
+  assert.match(line('Intel(R) Celeron(R) CPU G3900 @ 2.80GHz'), /Skylake \/ Kaby Lake.*LGA1151/);
+  assert.match(line('Intel(R) Celeron(R) CPU G1840 @ 2.80GHz'), /Haswell.*LGA1150/);
+  assert.match(line('Intel(R) Pentium(R) CPU G6950 @ 2.80GHz'), /Clarkdale.*LGA1156/);
+  assert.match(line('Intel(R) Celeron(R) G6900 CPU @ 3.40GHz'), /Alder Lake.*LGA1700/);
+  assert.match(line('Intel(R) Celeron(R) CPU G530 @ 2.40GHz'), /LGA1155/);
+  // Atom de netbook não é Alder Lake-N.
+  assert.match(line('Intel(R) Atom(TM) CPU N270 @ 1.60GHz'), /Atom N270 · Diamondville/);
+  assert.match(line('Intel(R) Atom(TM) CPU N450 @ 1.66GHz'), /Pineview/);
+  assert.equal(cpu('Intel(R) Atom(TM) CPU N450 @ 1.66GHz').efficiencyOnly, undefined);
+  assert.match(line('Intel(R) Atom(TM) CPU Z3735F @ 1.33GHz'), /Bay Trail/);
+  // Athlon antigo não é Zen de notebook; série A com P é notebook.
+  assert.match(line('AMD Athlon(tm) 5350 APU with Radeon(tm) R3'), /Kabini.*AM1/);
+  assert.equal(cpu('AMD Athlon(tm) 7750 Dual-Core Processor').segment, 'entrada');
+  assert.equal(cpu('AMD Athlon(tm) 7750 Dual-Core Processor').zen, undefined);
+  assert.equal(cpu('AMD A12-9720P RADEON R7, 12 COMPUTE CORES 4C+8G').segment, 'laptop');
+  assert.equal(cpu('AMD A12-9720P RADEON R7, 12 COMPUTE CORES 4C+8G').socket, null);
+  // Xeon E-2xxxG tem vídeo integrado.
+  assert.equal(cpu('Intel(R) Xeon(R) E-2286G CPU @ 4.00GHz').igpu, true);
+  assert.equal(cpu('Intel(R) Xeon(R) E-2236 CPU @ 3.40GHz').igpu, false);
+  // Geração dos de baixo consumo.
+  assert.match(line('Intel(R) Celeron(R) N5095 @ 2.00GHz'), /Jasper Lake/);
+  assert.match(line('Intel(R) Celeron(R) 7305'), /Alder Lake/);
+  assert.match(line('Intel(R) Core(TM) M-5Y10c CPU @ 0.80GHz'), /Core M-5Y10 · Broadwell/);
+  // Placas de vídeo e chipsets.
+  assert.equal(H.decodeGpu({ name: 'NVIDIA GeForce GTX TITAN X', vendorId: '10DE' }).architecture, 'Kepler / Maxwell');
+  assert.equal(H.decodeGpu({ name: 'NVIDIA TITAN Xp', vendorId: '10DE' }).architecture, 'Pascal');
+  assert.equal(H.shortNames({ gpus: [H.decodeGpu({ name: 'NVIDIA RTX 2000 Ada Generation Laptop GPU', vendorId: '10DE' })] }).gpu, 'RTX 2000 Ada');
+  assert.equal(H.decodeGpu({ name: 'Intel(R) Arc(TM) Pro A40 Graphics', vendorId: '8086' }).discrete, true);
+  assert.equal(H.decodeGpu({ name: 'Intel(R) UHD Graphics', vendorId: '8086' }).architecture, null, 'UHD sem número: não dá para afirmar a geração');
+  assert.deepEqual(['AB350M-Gaming 3', 'AB350N-Gaming WIFI', 'P8P67 PRO', 'P8H67-M'].map((product) => H.decodeChipset(product)?.id), ['B350', 'B350', 'P67', 'H67']);
+  // Limite de temperatura dos AMD antes do Ryzen.
+  assert.equal(D.tjMaxOf(cpu('AMD FX(tm)-8350 Eight-Core Processor')), 70);
+  assert.equal(D.tjMaxOf(cpu('AMD Ryzen 7 5800X3D 8-Core Processor')), 95);
+  // Memória: avisos de canais sem contradição.
+  const GB = 1024 ** 3;
+  const mem = (n, slots) => ({ modules: Array.from({ length: n }, (_, i) => ({ capacity: 8 * GB, speed: 2133, configured: 2133, type: 26, formFactor: 8, locator: ['DIMM_A1', 'DIMM_B1', 'DIMM_C1', 'DIMM_D1'][i] })), slots });
+  const ids = (cpuName, n, slots) => D.buildFindings({ profile: H.identify(baseInventory({ cpu: { name: cpuName, cores: 4, threads: 8 }, board: { manufacturer: 'HUANANZHI', product: 'X99-F8' }, memory: mem(n, slots) })) }).map((item) => item.id);
+  const xeon = 'Intel(R) Xeon(R) CPU E5-2670 v3 @ 2.30GHz';
+  assert.ok(ids(xeon, 2, 8).includes('mem-quad-incompleto'));
+  assert.ok(!ids(xeon, 2, 8).includes('mem-canais-ok'), '"dual channel ok" contradiz o aviso de 4 canais');
+  assert.ok(!ids(xeon, 2, 2).includes('mem-quad-incompleto'), 'placa de 2 slots não tem como completar');
+  assert.ok(!ids(xeon, 1, 8).includes('mem-quad-incompleto'), 'com 1 pente o aviso é o do canal único');
+  assert.ok(!ids('Intel(R) Core(TM) i7-7740X CPU @ 4.30GHz', 2, 4).includes('mem-quad-incompleto'), 'Kaby Lake-X é dual');
+  // Pentes de tamanhos diferentes aparecem um a um.
+  assert.equal(H.memoryLine(H.decodeMemory({ modules: [{ capacity: 8 * GB, type: 26, locator: 'DIMM_A1' }, { capacity: 4 * GB, type: 26, locator: 'DIMM_B1' }] })).split(',')[0], '2 pentes (8 GB + 4 GB)');
+});
+
 test('entender o setup: o que cada peça significa e o plano para este PC', () => {
   const profile = H.identify(baseInventory({ cpu: { name: 'AMD Ryzen 7 5700X3D 8-Core Processor', cores: 8, threads: 16 }, memory: { modules: baseInventory().memory.modules, slots: 4, maxBytes: 128 * GB }, nvme: [{ name: 'NVMe', link: { curSpeed: 3, maxSpeed: 4, curWidth: 4, maxWidth: 4 } }], network: [{ description: 'Intel Wi-Fi 6 AX201', up: true, kind: 'wifi', wifi: { signal: 70, standard: '802.11ax', band: 5 } }] }));
   const traits = H.traits(profile);

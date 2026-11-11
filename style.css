@@ -1446,3 +1446,4 @@ body.lite .deep-facts li.fresh { animation: none; }
 .deep-chart .deep-star:hover .deep-glow, .deep-chart .deep-star:focus-visible .deep-glow { opacity: 1; transform: scale(1.25); }
 .deep-chart .deep-milky { opacity: 0.9; pointer-events: none; }
 .cost-note { display: block; margin-top: 3px; font-size: 11px; }
+.deep-chart .deep-hit { fill: transparent; }
