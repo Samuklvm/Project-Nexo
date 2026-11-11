@@ -353,6 +353,10 @@
   const GPU_DRIVER_MODULES = /^(nvwgf2umx|nvwgf2um|nvoglv64|nvd3dumx|nvlddmkm|atiumd64|atidxx64|amdxx64|amdvlk64|atig6pxx|igd10iumd64|igd12umd64|igxelpicd64|igc64)\.dll$/i;
   const TDR_VENDOR = { nvlddmkm: 'NVIDIA', amdkmdag: 'AMD', atikmdag: 'AMD', atikmpag: 'AMD', igdkmd64: 'Intel', igdkmdn64: 'Intel', igdkmdnd64: 'Intel' };
 
+  function virtualFindings(profile, add) {
+    if (profile.virtual) add(F('maquina-virtual', 'processador', 'info', 'Rodando numa máquina virtual', 'As peças que o sistema mostra são virtuais (disco, vídeo e rede da máquina virtual). Conselhos sobre peças ficam de fora; o que roda por trás e o teste de carga continuam valendo.', { evidence: [[profile.system?.maker, profile.system?.model].filter(Boolean).join(' ') || 'hipervisor detectado'] }));
+  }
+
   function memoryFindings(profile, health, add) {
     const memory = profile.memory || {};
     const chipset = profile.board?.chipset || null;
@@ -369,7 +373,7 @@
       }));
     } else if (memory.layout === 'same-channel') {
       add(F('mem-mesmo-canal', 'memoria', 'alta', 'Os pentes parecem estar no mesmo canal', `Os slots informados (${memory.modules.map((module) => module.slot).filter(Boolean).join(', ')}) pertencem ao mesmo canal, então a memória pode estar rodando como canal único mesmo com ${memory.modules.length} pentes.`, {
-        evidence: memory.modules.map((module) => `${module.slot || '?'}${module.bank ? ` (${module.bank})` : ''}: ${Hardware.gbText(module.capacityBytes)}`), confidence: 'media',
+        evidence: memory.modules.map((module) => `${module.slot || '?'}${module.bank ? ' (' + module.bank + ')' : ''}: ${Hardware.gbText(module.capacityBytes)}`), confidence: 'media',
         action: { how: 'Com o PC desligado e fora da tomada, mova um dos pentes para o outro canal. O manual da placa indica os slots certos para dois pentes (quase sempre A2 e B2).' }
       }));
     } else if (memory.layout === 'dual' || memory.layout === 'quad') add(F('mem-canais-ok', 'memoria', 'ok', memory.layout === 'quad' ? 'Memória em quatro canais' : 'Memória em dual channel', null));
@@ -380,7 +384,7 @@
       const locked = chipset && chipset.memOc === false;
       const profileName = cpu.vendor === 'AMD' ? (cpu.socket === 'AM5' ? 'EXPO (ou XMP)' : 'XMP (DOCP/A-XMP na BIOS de algumas placas)') : 'XMP';
       if (kit && !locked && !laptop) {
-        add(F('mem-xmp', 'memoria', 'media', `Memória abaixo da velocidade da caixa: ${memory.configured} em vez de ${memory.rated}`, `${memory.modules.length > 1 ? 'Os pentes são vendidos' : 'O pente é vendido'} para ${memory.rated}${memory.cl ? ` CL${memory.cl}` : ''}, mas está rodando no padrão de fábrica (${memory.configured}). Isso acontece quando o perfil ${profileName} não está ligado na BIOS.`, {
+        add(F('mem-xmp', 'memoria', 'media', `Memória abaixo da velocidade da caixa: ${memory.configured} em vez de ${memory.rated}`, `${memory.modules.length > 1 ? 'Os pentes são vendidos' : 'O pente é vendido'} para ${memory.rated}${memory.cl ? ' CL' + memory.cl : ''}, mas está rodando no padrão de fábrica (${memory.configured}). Isso acontece quando o perfil ${profileName} não está ligado na BIOS.`, {
           evidence: [`${kit.part} → ${kit.rated} pelo código do pente`, `rodando a ${memory.configured}`, chipset ? `chipset ${chipset.id}: aceita perfil de memória` : null],
           gain: cpu.vendor === 'AMD' ? 'processadores Ryzen ganham mais que a média com memória mais rápida' : 'ganho típico de alguns % a mais de 10% em jogos que dependem do processador',
           action: { how: `Na BIOS, ligue o perfil ${profileName} e salve. Se o PC não ligar ou travar depois, volte a BIOS ao padrão (o perfil fica desligado de novo).${cpu.vendor === 'AMD' && cpu.socket === 'AM4' && memory.rated > 3600 ? ' Em Ryzen AM4, até 3600 com FCLK 1800 costuma ser o ponto ideal.' : ''}${cpu.socket === 'AM5' && memory.rated > 6400 ? ' Em AM5, 6000 a 6400 costuma ser o ponto ideal.' : ''}` }
@@ -403,7 +407,7 @@
     for (const gpu of gpus.filter((item) => item.basicDriver)) add(F('gpu-sem-driver', 'video', 'alta', 'Placa de vídeo sem driver', 'O Windows está usando o "Adaptador de Vídeo Básico": sem aceleração de verdade, jogos rodam muito mal ou nem abrem.', { evidence: [gpu.name], action: { how: 'Instale o driver do site do fabricante da placa (NVIDIA, AMD ou Intel) ou pelo Windows Update.', settings: 'windowsupdate' } }));
     for (const display of profile.displays || []) {
       if (display.hz && display.maxHz && display.maxHz - display.hz >= 10) {
-        add(F(`tela-hz-${display.name || display.adapter || 'monitor'}`, 'video', 'alta', `Monitor a ${display.hz} Hz, mas ele aceita ${display.maxHz} Hz`, `${display.name || 'O monitor'} está configurado abaixo da taxa máxima dele${display.width ? ` em ${display.width}×${display.height}` : ''}. Você vê no máximo ${display.hz} quadros por segundo, por mais FPS que o jogo faça.`, {
+        add(F(`tela-hz-${display.name || display.adapter || 'monitor'}`, 'video', 'alta', `Monitor a ${display.hz} Hz, mas ele aceita ${display.maxHz} Hz`, `${display.name || 'O monitor'} está configurado abaixo da taxa máxima dele${display.width ? ' em ' + display.width + '×' + display.height : ''}. Você vê no máximo ${display.hz} quadros por segundo, por mais FPS que o jogo faça.`, {
           evidence: [Hardware.displayLine(display), display.output ? `ligado por ${display.output}` : null],
           action: { how: `Configurações > Sistema > Tela > Tela avançada > "Escolher uma taxa de atualização" e escolha ${display.maxHz} Hz.${display.output === 'HDMI' ? ' Se a opção não aparecer, o cabo HDMI pode ser antigo; DisplayPort costuma liberar a taxa máxima.' : ''}`, settings: 'display' }
         }));
@@ -432,12 +436,14 @@
       const platformGen = Math.min(...[profile.cpu?.pcie, pcieOfChipset(profile.board?.chipset), nv?.pcieGenHostMax].filter(finite));
       if (gen && maxGen && gen < maxGen) {
         if (finite(platformGen) && gen >= platformGen) {
-          add(F('gpu-pcie-plataforma', 'video', maxWidth && maxWidth <= 8 ? 'media' : 'info', `Placa de vídeo em PCIe ${gen}.0 (ela aceita ${maxGen}.0)`, `${profile.cpu?.apuPcie3 ? `O ${profile.cpu.family} ${profile.cpu.model} só tem PCIe 3.0, mesmo numa placa-mãe mais nova.` : 'É o máximo deste processador/placa-mãe.'} ${maxWidth && maxWidth <= 8 ? `Como a placa usa só x${maxWidth}, a perda é maior que o normal (até uns 10% em alguns jogos).` : 'Para placas x16 a perda costuma ser pequena.'}`, { evidence: [`link com a placa acordada: PCIe ${gen}.0`, `a placa aceita ${maxGen}.0`], confidence: 'alta' }));
+          const whyPlatform = profile.cpu?.apuPcie3 ? `O ${profile.cpu.family} ${profile.cpu.model} só tem PCIe 3.0, mesmo numa placa-mãe mais nova.` : 'É o máximo deste processador/placa-mãe.';
+          const widthNote = maxWidth && maxWidth <= 8 ? `Como a placa usa só x${maxWidth}, a perda é maior que o normal (até uns 10% em alguns jogos).` : 'Para placas x16 a perda costuma ser pequena.';
+          add(F('gpu-pcie-plataforma', 'video', maxWidth && maxWidth <= 8 ? 'media' : 'info', `Placa de vídeo em PCIe ${gen}.0 (ela aceita ${maxGen}.0)`, `${whyPlatform} ${widthNote}`, { evidence: [`link com a placa acordada: PCIe ${gen}.0`, `a placa aceita ${maxGen}.0`], confidence: 'alta' }));
         } else if (nv || load?.links?.length) {
           add(F('gpu-pcie-baixo', 'video', 'media', `Placa de vídeo em PCIe ${gen}.0 com a placa acordada (ela aceita ${maxGen}.0)`, 'Com a placa trabalhando, o link deveria subir ao máximo que a placa-mãe aceita. Pode ser opção da BIOS (velocidade do slot fixada), riser antigo ou o slot errado.', { evidence: [`medido durante o teste de vídeo: PCIe ${gen}.0`], confidence: 'media', action: { how: 'Na BIOS, procure a velocidade do slot PCIe (PCIe Speed / PEG) e deixe em "Auto". Se usa riser, teste sem ele.' } }));
         }
       }
-      if (gpu.driver?.ageDays !== null && gpu.driver?.ageDays > 270 && (gpu.vendor === 'NVIDIA' || gpu.vendor === 'AMD' || gpu.family?.startsWith('Arc'))) add(F(`gpu-driver-${gpu.vendor}`, 'video', 'baixa', `Driver de vídeo de ${Math.round(gpu.driver.ageDays / 30)} meses atrás`, 'Drivers novos trazem correções e ganhos para jogos recentes. Para jogos lançados depois do seu driver, a diferença pode ser grande.', { evidence: [`${gpu.name}: driver ${gpu.driver.version ? `${gpu.driver.version} ` : ''}de ${gpu.driver.date}`], action: { how: `Atualize pelo app do fabricante (${gpu.vendor === 'NVIDIA' ? 'NVIDIA App' : gpu.vendor === 'AMD' ? 'AMD Software' : 'Intel Graphics Software'}) ou pelo site dele.` } }));
+      if (gpu.driver?.ageDays !== null && gpu.driver?.ageDays > 270 && (gpu.vendor === 'NVIDIA' || gpu.vendor === 'AMD' || gpu.family?.startsWith('Arc'))) add(F(`gpu-driver-${gpu.vendor}`, 'video', 'baixa', `Driver de vídeo de ${Math.round(gpu.driver.ageDays / 30)} meses atrás`, 'Drivers novos trazem correções e ganhos para jogos recentes. Para jogos lançados depois do seu driver, a diferença pode ser grande.', { evidence: [`${gpu.name}: driver ${gpu.driver.version ? gpu.driver.version + ' ' : ''}de ${gpu.driver.date}`], action: { how: `Atualize pelo app do fabricante (${gpu.vendor === 'NVIDIA' ? 'NVIDIA App' : gpu.vendor === 'AMD' ? 'AMD Software' : 'Intel Graphics Software'}) ou pelo site dele.` } }));
       if (gpu.legacyDriver && gpu.vendor === 'NVIDIA') add(F('gpu-legado', 'video', 'info', `${gpu.family}: fim das atualizações de driver`, 'A NVIDIA anunciou que a série 580 de drivers é a última com suporte às placas GTX 900 e GTX 10 (Maxwell e Pascal). Jogos novos podem não receber otimizações para ela.', { evidence: [gpu.name], confidence: 'media' }));
       if (gpu.needsRebar) {
         const bar = nv?.bar1MB ?? null;
@@ -456,8 +462,10 @@
   const rebarPlatform = (cpu) => (cpu?.vendor === 'Intel' && (cpu.generation >= 10 || /Ultra/.test(cpu.family || ''))) || (cpu?.vendor === 'AMD' && ['zen2', 'zen3', 'zen3+', 'zen4', 'zen5'].includes(cpu.zen));
 
   function diskFindings(profile, health, drives, add) {
+    const linux = profile.os?.platform === 'linux';
+    const systemName = linux ? 'o sistema' : 'o Windows';
     for (const disk of profile.disks || []) {
-      if (disk.system && disk.kind === 'hdd') add(F('disco-hd-sistema', 'disco', 'alta', 'O Windows está num HD (disco mecânico)', 'Um HD é dezenas de vezes mais lento que um SSD para abrir programas e carregar jogos; o PC parece travado ao ligar, ao atualizar e quando o antivírus verifica. É a troca de maior efeito num PC assim.', { evidence: [Hardware.diskLine(disk)], action: { how: 'Um SSD (mesmo SATA) com o Windows instalado nele muda o PC inteiro. O HD pode continuar como disco de arquivos.' } }));
+      if (disk.system && disk.kind === 'hdd' && !profile.virtual) add(F('disco-hd-sistema', 'disco', 'alta', `${linux ? 'O sistema' : 'O Windows'} está num HD (disco mecânico)`, 'Um HD é dezenas de vezes mais lento que um SSD para abrir programas e carregar jogos; o PC parece travado ao ligar, ao atualizar e quando o antivírus verifica. É a troca de maior efeito num PC assim.', { evidence: [Hardware.diskLine(disk, systemName)], action: { how: `Um SSD (mesmo SATA) com ${systemName} instalado nele muda o PC inteiro. O HD pode continuar como disco de arquivos.` } }));
       if (disk.health && !/healthy|saud/i.test(disk.health) && disk.kind !== 'usb') add(F(`disco-saude-${disk.model}`, 'disco', 'alta', `${disk.model || 'Um disco'} com aviso de saúde`, 'O próprio disco está avisando que pode falhar. Faça cópia do que importa agora.', { evidence: [`estado informado: ${disk.health}`] }));
       if (finite(disk.wear) && disk.wear >= 50) add(F(`disco-desgaste-${disk.model}`, 'disco', disk.wear >= 80 ? 'alta' : 'baixa', `${disk.model || 'SSD'} com ${disk.wear}% de desgaste`, 'SSDs têm um limite de gravação. Perto do fim, ficam lentos ou param; antes disso, dá tempo de trocar com calma.', { evidence: [`desgaste informado pelo SSD: ${disk.wear}%`] }));
     }
@@ -475,7 +483,7 @@
     const system = (drives || []).find((drive) => drive.system) || (drives || [])[0];
     if (system && finite(system.sizeBytes) && finite(system.freeBytes) && system.sizeBytes > 0) {
       const freePct = (system.freeBytes / system.sizeBytes) * 100;
-      if (freePct < 10 || system.freeBytes < 15 * 1024 ** 3) add(F('disco-cheio', 'disco', freePct < 5 ? 'alta' : 'media', `Disco do sistema quase cheio: ${mbText(system.freeBytes)} livres`, 'Com pouco espaço, atualizações falham, o arquivo de paginação não cresce e SSDs ficam mais lentos para gravar.', { evidence: [`${comma(freePct, 0)}% livre em ${system.driveLetter ? `${system.driveLetter}:` : 'disco do sistema'}`], action: { how: 'A Limpeza segura do Nexo libera temporários; jogos grandes podem ir para outro disco.', goto: 'optimize' } }));
+      if (freePct < 10 || system.freeBytes < 15 * 1024 ** 3) add(F('disco-cheio', 'disco', freePct < 5 ? 'alta' : 'media', `Disco do sistema quase cheio: ${mbText(system.freeBytes)} livres`, 'Com pouco espaço, atualizações falham, o arquivo de paginação não cresce e SSDs ficam mais lentos para gravar.', { evidence: [`${comma(freePct, 0)}% livre em ${system.driveLetter ? system.driveLetter + ':' : 'disco do sistema'}`], action: { how: 'A Limpeza segura do Nexo libera temporários; jogos grandes podem ir para outro disco.', goto: 'optimize' } }));
     }
   }
   const shortDate = (iso) => { const at = Date.parse(String(iso || '')); return Number.isFinite(at) ? new Date(at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : null; };
@@ -540,15 +548,19 @@
     const system = observation.system || {};
     const totalBytes = profile.memory?.totalBytes || null;
     for (const program of (observation.background || []).filter((item) => item.impact === 'alto' || item.impact === 'medio').slice(0, 6)) {
-      const parts = [program.cpuAvg >= 1 ? `processador ${comma(program.cpuAvg, 1)}% em média${program.cpuPeak >= program.cpuAvg * 2 && program.cpuPeak >= 10 ? ` (picos de ${Math.round(program.cpuPeak)}%)` : ''}` : null, program.ioAvg >= MB ? `disco ${rateText(program.ioAvg)}` : null, program.gpuAvg >= 2 ? `placa de vídeo ${comma(program.gpuAvg, 1)}%${program.engine ? ` (${program.engine})` : ''}` : null].filter(Boolean);
-      const label = program.kind === 'desconhecido' ? program.name : `${program.label}${program.label.toLowerCase() !== program.name.toLowerCase() ? ` (${program.name})` : ''}`;
+      const peak = program.cpuPeak >= program.cpuAvg * 2 && program.cpuPeak >= 10 ? ` (picos de ${Math.round(program.cpuPeak)}%)` : '';
+      const engine = program.engine ? ` (${program.engine})` : '';
+      const parts = [program.cpuAvg >= 1 ? `processador ${comma(program.cpuAvg, 1)}% em média${peak}` : null, program.ioAvg >= MB ? `disco ${rateText(program.ioAvg)}` : null, program.gpuAvg >= 2 ? `placa de vídeo ${comma(program.gpuAvg, 1)}%${engine}` : null].filter(Boolean);
+      const suffix = program.label.toLowerCase() === program.name.toLowerCase() ? '' : ` (${program.name})`;
+      const label = program.kind === 'desconhecido' ? program.name : program.label + suffix;
       add(F(`fundo-${program.name}`, 'fundo', program.impact === 'alto' ? 'alta' : 'media', `${label} pesando por trás`, program.tip || (program.kind === 'desconhecido' ? `Um programa que eu não reconheço (${program.name}) ficou usando o PC durante a observação. Se você não sabe o que é, vale olhar no Gerenciador de Tarefas.` : null), {
         evidence: [parts.join(' · '), program.count > 1 ? `${program.count} processos` : null, program.services ? `serviços: ${program.services.join(', ')}` : null],
         confidence: program.spiky ? 'media' : 'alta', action: program.protect ? null : { how: program.kind === 'desconhecido' ? 'Abra o Gerenciador de Tarefas para ver o que é.' : null, settings: program.settings || null, goto: program.goto || null, taskManager: !program.settings && !program.goto }
       }));
     }
     for (const program of (observation.background || []).filter((item) => item.impact === 'presenca' || item.impact === 'memoria').slice(0, 4)) {
-      add(F(`fundo-presenca-${program.name}`, 'fundo', 'baixa', program.impact === 'memoria' ? `${program.label} ocupando ${mbText(program.memBytes)} de memória` : `${program.label} aberto em segundo plano`, program.tip, { evidence: [program.impact === 'memoria' ? `${mbText(program.memBytes)}${totalBytes ? ` (${Math.round((program.memBytes / totalBytes) * 100)}% da memória)` : ''}` : 'pouco uso agora, mas é o tipo de programa que pesa durante o jogo'], confidence: 'media', action: program.protect ? null : { settings: program.settings || null, goto: program.goto || null } }));
+      const share = totalBytes ? ` (${Math.round((program.memBytes / totalBytes) * 100)}% da memória)` : '';
+      add(F(`fundo-presenca-${program.name}`, 'fundo', 'baixa', program.impact === 'memoria' ? `${program.label} ocupando ${mbText(program.memBytes)} de memória` : `${program.label} aberto em segundo plano`, program.tip, { evidence: [program.impact === 'memoria' ? mbText(program.memBytes) + share : 'pouco uso agora, mas é o tipo de programa que pesa durante o jogo'], confidence: 'media', action: program.protect ? null : { settings: program.settings || null, goto: program.goto || null } }));
     }
     if (finite(system.dpcAvg) && (system.dpcAvg >= 2.5 || (system.dpcPeak || 0) >= 8)) add(F('dpc', 'fundo', system.dpcAvg >= 5 ? 'alta' : 'media', 'Drivers interrompendo o processador (latência de DPC)', 'Uma parte do tempo do processador vai para chamadas adiadas de drivers (DPC). Em excesso, causa engasgos, estalos no áudio e travadinhas mesmo com FPS alto. Os culpados mais comuns: rede/Wi-Fi, som, USB e software de RGB.', { evidence: [`DPC: ${comma(system.dpcAvg, 1)}% em média, picos de ${comma(system.dpcPeak || 0, 1)}%`, finite(system.irqAvg) ? `interrupções: ${comma(system.irqAvg, 1)}%` : null], confidence: 'media', action: { how: 'Atualize os drivers de rede, som e chipset. Para achar o driver exato, o LatencyMon (gratuito) mostra qual demora mais.' } }));
     const total = totalBytes ? totalBytes / MB : null;
@@ -623,8 +635,9 @@
       seen.add(finding.id);
       list.push(finding);
     };
+    virtualFindings(profile, add);
     memoryFindings(profile, health, add);
-    videoFindings(profile, facts, load, add);
+    if (!profile.virtual) videoFindings(profile, facts, load, add);
     diskFindings(profile, health, drives, add);
     windowsFindings(profile, health, facts, startup, now, add);
     backgroundFindings(observation, profile, add);
@@ -634,13 +647,57 @@
   }
 
   /* ======================================================================================================
+   * Plano para este PC: o que fazer na BIOS, o que o laboratório testa NESTE setup e o que acompanhar
+   * ==================================================================================================== */
+  const LAB_KNOBS = {
+    cpu: ['perfepp', 'boostmode', 'minstate', 'incpol', 'boostpol'], hybrid: ['perfepp1', 'minstate1', 'maxstate1', 'incpol1', 'decpol1', 'heteropolicy', 'schedpolicy', 'shortschedpolicy'], parking: ['mincores'],
+    cooling: ['cooling'], amd: ['amdslider'], nvme: ['nvmeidle', 'nvmeidle2', 'nvmetol', 'nvmetol2', 'nvmenoppme'], sata: ['ahcilpm', 'ahciadaptive'], aspm: ['aspm'], wifi: ['wifipower']
+  };
+  function plan(profile, findings = []) {
+    const steps = [];
+    const P = (id, kind, title, why, extra = {}) => steps.push({ id, kind, title, why, ...extra });
+    const cpu = profile.cpu || {};
+    const memory = profile.memory || {};
+    const chip = profile.board?.chipset || null;
+    const laptop = profile.kind === 'laptop' || profile.kind === 'handheld';
+    const windows = profile.os?.platform !== 'linux';
+    const has = (id) => findings.some((item) => item.id === id);
+    const cpuName = [cpu.family, cpu.model].filter(Boolean).join(' ') || 'este processador';
+    if (!profile.virtual) {
+      if (has('mem-xmp')) {
+        const kit = memory.rated ? 'Os pentes são de ' + memory.rated : 'A memória é mais rápida do que está rodando';
+        P('bios-xmp', 'bios', `Ligar o perfil ${cpu.socket === 'AM5' ? 'EXPO' : 'XMP'} da memória`, `${kit} e ${chip ? 'a ' + chip.id : 'a placa'} aceita.`);
+      }
+      const gpu = (profile.gpus || []).find((item) => item.discrete && item.rebarCapable);
+      if (gpu && !laptop && (has('gpu-rebar') || has('gpu-rebar-arc') || !has('gpu-rebar-ok'))) P('bios-rebar', 'bios', 'Conferir o Resizable BAR', `A ${gpu.name} aceita${cpu.apuPcie3 ? '' : ' e a plataforma também'}; na BIOS ficam "Above 4G Decoding" e "Re-Size BAR".`, { done: has('gpu-rebar-ok') });
+      if (cpu.raptorRisk) P('bios-microcode', 'bios', 'BIOS com microcódigo 0x12B ou mais novo', `Protege o ${cpuName} do desgaste de tensão.`, { done: !has('raptor-bios') });
+      if (cpu.socket === 'AM5' && has('am5-bios')) P('bios-am5', 'bios', 'Atualizar a BIOS AM5', 'As primeiras versões permitiam tensão alta demais no SoC.');
+    }
+    if (windows) {
+      P('lab-cpu', 'laboratorio', 'Política de energia do processador', `EPP, turbo, piso e resposta a picos: o ponto ideal muda de processador para processador. O laboratório mede no ${cpuName}.`, { knobs: LAB_KNOBS.cpu });
+      if (cpu.hybrid) P('lab-hybrid', 'laboratorio', 'Núcleos de eficiência', 'Como os núcleos E entram em ação muda engasgos em jogo; o laboratório testa a política deles separada.', { knobs: LAB_KNOBS.hybrid });
+      if (cpu.dualCcdX3d || (cpu.cores || 0) >= 12) P('lab-parking', 'laboratorio', 'Estacionamento de núcleos', `${cpu.dualCcdX3d ? 'No X3D de dois blocos, o estacionamento decide onde o jogo roda.' : 'Com muitos núcleos, quantos ficam acordados muda a resposta.'}`, { knobs: LAB_KNOBS.parking });
+      if (laptop) P('lab-cooling', 'laboratorio', 'Política de resfriamento', 'Em notebook, reduzir o clock antes de acelerar a ventoinha pode cortar desempenho cedo.', { knobs: LAB_KNOBS.cooling });
+      if (laptop && cpu.vendor === 'AMD') P('lab-amd', 'laboratorio', 'Modo de energia da AMD', 'Notebooks Ryzen têm um seletor de energia próprio além do do Windows.', { knobs: LAB_KNOBS.amd });
+      const disks = profile.disks || [];
+      if (disks.some((disk) => disk.kind === 'nvme')) P('lab-nvme', 'laboratorio', 'Economia de energia do SSD NVMe', 'O cochilo do SSD economiza, mas o primeiro acesso depois dele demora; o laboratório mede esse atraso.', { knobs: LAB_KNOBS.nvme });
+      if (disks.some((disk) => disk.kind === 'ssd')) P('lab-sata', 'laboratorio', 'Economia de energia do SSD SATA', 'Mesma ideia no SATA (gerenciamento de energia do link).', { knobs: LAB_KNOBS.sata });
+      if ((profile.gpus || []).some((gpu) => gpu.discrete) || disks.some((disk) => disk.kind === 'nvme')) P('lab-aspm', 'laboratorio', 'Economia do PCI Express (ASPM)', 'Em alguns PCs o link acordando causa engasgos; em outros não muda nada. Só medindo.', { knobs: LAB_KNOBS.aspm });
+      if ((profile.network || []).some((adapter) => adapter.kind === 'wifi' && adapter.up)) P('lab-wifi', 'laboratorio', 'Economia de energia do Wi-Fi', 'Cochilos do adaptador sobem o ping e a variação dele.', { knobs: LAB_KNOBS.wifi });
+    }
+    P('watch-session', 'acompanhar', 'Gravar uma sessão de jogo', 'Mostra o que limita o PC no jogo de verdade (processador, um núcleo, placa de vídeo, memória) e confirma se os ajustes renderam.', { goto: 'sessions' });
+    P('watch-again', 'acompanhar', 'Repetir esta análise depois de cada mudança', 'O Nexo compara com esta e mostra o que melhorou, o que piorou e se o desempenho caiu com o tempo.');
+    return steps;
+  }
+
+  /* ======================================================================================================
    * Perfil guardado (o que o Nexo aprendeu deste PC) e nota geral
    * ==================================================================================================== */
   function fingerprintOf(profile) {
     const parts = {
       cpu: profile.cpu ? [profile.cpu.vendor, profile.cpu.family, profile.cpu.model].filter(Boolean).join(' ') || profile.cpu.name || null : null,
       board: [profile.board?.maker, profile.board?.product].filter(Boolean).join(' ') || null,
-      memory: profile.memory?.totalBytes ? `${Hardware.gbText(profile.memory.totalBytes)}${profile.memory.type ? ` ${profile.memory.type}` : ''}` : null,
+      memory: profile.memory?.totalBytes ? Hardware.gbText(profile.memory.totalBytes) + (profile.memory.type ? ' ' + profile.memory.type : '') : null,
       gpu: (profile.gpus || []).filter((gpu) => gpu.discrete || gpu.integrated).map((gpu) => gpu.name).join(' + ') || null,
       disk: (profile.disks || []).filter((disk) => disk.system).map((disk) => disk.model).join(' + ') || null
     };
@@ -668,5 +725,5 @@
     return Math.max(5, Math.min(100, Math.round(100 - lost)));
   }
 
-  return { NODES, STAGES, MIN_TOTAL_MS, classifyProcess, summarizeObservation, needsMoreTime, summarizeLoad, cpuSensors, buildFindings, compareRuns, runRecord, fingerprintOf, healthScore, BACKGROUND, SEVERITY_ORDER, impactOf };
+  return { NODES, STAGES, MIN_TOTAL_MS, plan, LAB_KNOBS, classifyProcess, summarizeObservation, needsMoreTime, summarizeLoad, cpuSensors, buildFindings, compareRuns, runRecord, fingerprintOf, healthScore, BACKGROUND, SEVERITY_ORDER, impactOf };
 });

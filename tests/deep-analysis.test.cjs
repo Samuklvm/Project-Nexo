@@ -30,6 +30,8 @@ test('processador: geração, arquitetura, socket e recursos pelo nome (Intel e 
     ['AMD Ryzen 5 5600X 6-Core Processor', 6, 12, { vendor: 'AMD', architecture: 'Zen 3', socket: 'AM4', pcie: 4, igpu: false }],
     ['AMD Ryzen 5 5600G with Radeon Graphics', 6, 12, { apuPcie3: true, pcie: 3, igpu: true }],
     ['AMD Ryzen 5 5500', 6, 12, { apuPcie3: true, igpu: false }],
+    ['AMD Ryzen 7 5700X3D 8-Core Processor', 8, 16, { apuPcie3: false, x3d: true, pcie: 4, architecture: 'Zen 3' }],
+    ['AMD Ryzen 7 5700X 8-Core Processor', 8, 16, { apuPcie3: false, pcie: 4 }],
     ['AMD Ryzen 9 7950X3D 16-Core Processor', 16, 32, { socket: 'AM5', x3d: true, dualCcdX3d: true, pcie: 5 }],
     ['AMD Ryzen 7 9800X3D 8-Core Processor', 8, 16, { architecture: 'Zen 5', x3d: true, dualCcdX3d: false }],
     ['AMD Ryzen 5 5500U with Radeon Graphics', 6, 12, { architecture: 'Zen 2', segment: 'laptop' }],
@@ -349,4 +351,24 @@ test('orquestração: cancelar no meio para tudo e não salva nada', async () =>
   assert.equal(saved.length, 0);
   assert.equal(emitted[emitted.length - 1].status, 'cancelled');
   assert.equal(analysis.isRunning(), false);
+});
+
+test('entender o setup: o que cada peça significa e o plano para este PC', () => {
+  const profile = H.identify(baseInventory({ cpu: { name: 'AMD Ryzen 7 5700X3D 8-Core Processor', cores: 8, threads: 16 }, memory: { modules: baseInventory().memory.modules, slots: 4, maxBytes: 128 * GB }, nvme: [{ name: 'NVMe', link: { curSpeed: 3, maxSpeed: 4, curWidth: 4, maxWidth: 4 } }], network: [{ description: 'Intel Wi-Fi 6 AX201', up: true, kind: 'wifi', wifi: { signal: 70, standard: '802.11ax', band: 5 } }] }));
+  const traits = H.traits(profile);
+  assert.ok(traits.cpu.some((line) => /cache 3D/.test(line)) && traits.cpu.some((line) => /soquete AM4: fim de linha/.test(line)));
+  assert.ok(!traits.board.some((line) => /cai para PCIe 3.0/.test(line)), 'nota da B550 só aparece com Ryzen derivado de APU');
+  assert.ok(traits.memory.some((line) => /DIMM_A2 · .*vendido para 3200 CL16, rodando a 2133/.test(line)), 'cada pente com slot, código e velocidades');
+  assert.ok(traits.memory.some((line) => /4 slots, 2 livres; aceita até 128 GB/.test(line)));
+  assert.ok(traits.disk.some((line) => /PCIe 3.0 x4 \(aceita 4.0 x4\)/.test(line)));
+  const findings = D.buildFindings({ profile });
+  const steps = D.plan(profile, findings);
+  const ids = steps.map((step) => step.id);
+  assert.ok(ids.includes('bios-xmp') && ids.includes('lab-cpu') && ids.includes('lab-nvme') && ids.includes('lab-wifi') && ids.includes('watch-session'));
+  assert.ok(!ids.includes('lab-hybrid') && !ids.includes('lab-cooling'), 'nada de núcleos E nem resfriamento de notebook num Ryzen de desktop');
+  const laptop = D.plan(H.identify(baseInventory({ cpu: { name: '12th Gen Intel(R) Core(TM) i7-12700H', cores: 14, threads: 20 }, system: { chassis: [10] } })), []).map((step) => step.id);
+  assert.ok(laptop.includes('lab-hybrid') && laptop.includes('lab-cooling') && laptop.includes('lab-parking'));
+  const linux = D.plan(H.identify({ ...baseInventory(), os: { platform: 'linux', name: 'Ubuntu' } }), []).map((step) => step.id);
+  assert.ok(!linux.some((id) => id.startsWith('lab-')), 'o laboratório de energia é do Windows');
+  for (const step of steps.filter((item) => item.kind === 'laboratorio')) for (const knob of step.knobs) assert.ok(require('../src/lab-space.js').SPACE.some((entry) => entry.id === knob), `ajuste do laboratório existe: ${knob}`);
 });

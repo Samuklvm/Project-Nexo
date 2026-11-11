@@ -165,7 +165,8 @@ function createDeepAnalysis(deps) {
       if (state.announced.has(`b:${program.label}`)) continue;
       state.announced.add(`b:${program.label}`);
       const what = program.cpuAvg >= 1 ? `${String(program.cpuAvg).replace('.', ',')}% do processador` : program.ioAvg >= 1048576 ? `${Math.round(program.ioAvg / 1048576)} MB/s de disco` : `${String(program.gpuAvg).replace('.', ',')}% da placa de vídeo`;
-      fact(state, null, `${program.label}${program.kind === 'desconhecido' ? '' : ` (${program.name})`}: ${what}`, 'warn');
+      const who = program.kind === 'desconhecido' ? program.label : `${program.label} (${program.name})`;
+      fact(state, null, `${who}: ${what}`, 'warn');
     }
     const done = state.observed?.done || 0;
     setAction(state, `observando o que roda por trás: leitura ${done} de ${state.observed?.of || 10}`);
@@ -309,7 +310,7 @@ function createDeepAnalysis(deps) {
       const rated = profile.memory?.modules?.find((module) => module.ratedSource === 'código do pente');
       await pace(state, stageStart, Deep.STAGES[1].minMs, [
         memoryText && { node: 'memory', text: memoryText },
-        rated && { node: 'memory', text: `${rated.part}: vendido para ${rated.rated}${rated.cl ? ` CL${rated.cl}` : ''}${rated.jedec ? ' (padrão, sem perfil XMP)' : ''}` },
+        rated && { node: 'memory', text: `${rated.part}: vendido para ${rated.rated}${rated.cl ? ' CL' + rated.cl : ''}${rated.jedec ? ' (padrão, sem perfil XMP)' : ''}` },
         () => setAction(state, 'conferindo o arquivo de paginação e a memória livre…'),
         ...[...topLine(findings, ['memoria']), ...okLine(findings, ['memoria'])].map((line) => ({ node: 'memory', ...line })),
         () => node(state, 'memory', levelOf(findings, ['memoria']))
@@ -370,7 +371,10 @@ function createDeepAnalysis(deps) {
       setAction(state, 'preparando o teste de carga…');
       const load = await loadTest(state, profile);
       if (cancelled(state)) return finishCancelled(state);
-      if (load?.temps?.cpuPeak) fact(state, 'cpu', `sob carga: ${Math.round(load.temps.cpuPeak)} °C${load.clock?.allCoreMHz ? `, ${load.clock.allCoreMHz} MHz em todos os núcleos` : ''}`, 'info');
+      if (load?.temps?.cpuPeak) {
+        const clockText = load.clock?.allCoreMHz ? `, ${load.clock.allCoreMHz} MHz em todos os núcleos` : '';
+        fact(state, 'cpu', `sob carga: ${Math.round(load.temps.cpuPeak)} °C${clockText}`, 'info');
+      }
       await pace(state, stageStart, Deep.STAGES[6].minMs, []);
       while (!cancelled(state) && now() - state.startedAt < Deep.MIN_TOTAL_MS) { setAction(state, 'juntando tudo…'); await sleep(500); }
       if (cancelled(state)) return finishCancelled(state);
@@ -385,10 +389,11 @@ function createDeepAnalysis(deps) {
       const comparison = Deep.compareRuns(record, previous);
       const finalFindings = comparison ? Deep.buildFindings({ profile, health, facts: factsValue, observation, load, drives: drivesMarked, startup: startupValue, comparison, onBattery: battery, now: at }) : draft;
       record.findings = finalFindings.map((item) => ({ id: item.id, severity: item.severity, title: item.title }));
+      record.score = Deep.healthScore(finalFindings);
       const report = {
         id: state.id, at, durationMs: at - state.startedAt, platform, onBattery: battery,
         profile: publicProfile(profile), lines, health: publicHealth(health), observation, load, findings: finalFindings,
-        score: Deep.healthScore(finalFindings), comparison, history: [...(history.runs || []), record].slice(-8).map(({ at: when, scores, temps }) => ({ at: when, scores, temps }))
+        score: record.score, comparison, history: [...(history.runs || []), record].filter((run) => run.fingerprint === record.fingerprint).slice(-8).map(({ at: when, scores, temps, score }) => ({ at: when, scores, temps, score: Number.isFinite(score) ? score : null }))
       };
       const runs = [...(history.runs || []), record].slice(-HISTORY_LIMIT);
       await quiet(store?.save({ version: 1, runs, last: report }));

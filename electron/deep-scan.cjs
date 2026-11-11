@@ -562,7 +562,7 @@ function createLinuxCollector({ fs, path, os, run = async () => ({ code: 1, stdo
       cpu: { name: (cpuinfo.match(/model name\s*:\s*(.+)/) || [])[1] || cpus[0]?.model || '', manufacturer: (cpuinfo.match(/vendor_id\s*:\s*(.+)/) || [])[1] || '', cores: physical.size || null, threads: cpus.length, baseMHz: num(Number(await read('/sys/devices/system/cpu/cpu0/cpufreq/base_frequency')) / 1000, 100, 10000) },
       board: { manufacturer: (await dmi('board_vendor')) || '', product: (await dmi('board_name')) || '', version: (await dmi('board_version')) || '' },
       bios: { vendor: (await dmi('bios_vendor')) || '', version: (await dmi('bios_version')) || '', date: dateMatch ? `${dateMatch[3]}-${dateMatch[1]}-${dateMatch[2]}` : null },
-      system: { manufacturer: (await dmi('sys_vendor')) || '', model: (await dmi('product_name')) || '', family: (await dmi('product_family')) || '', chassis: [Number(await dmi('chassis_type'))].filter(Number.isInteger) },
+      system: { manufacturer: (await dmi('sys_vendor')) || '', model: (await dmi('product_name')) || '', family: (await dmi('product_family')) || '', chassis: [Number(await dmi('chassis_type'))].filter(Number.isInteger), hypervisor: /^flags\s*:.*\bhypervisor\b/m.test(cpuinfo) },
       memory: { modules: [], totalBytes: Number.isFinite(memKB) ? memKB * 1024 : null },
       gpus, displays, disks, network, battery, nvme: [],
       os: { platform: 'linux', name: pretty.slice(0, 60), kernel: os.release() }

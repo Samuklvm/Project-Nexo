@@ -102,7 +102,7 @@ async function parses(name, script) {
   console.log(`     laboratório: ${found.length} de ${LabSpace.SPACE.length} ajustes existem neste Windows`);
 
   // 6. Análise profunda: os scripts compilam, rodam sem administrador e o resultado é decodificado.
-  for (const name of ['INVENTORY_SCRIPT', 'HEALTH_SCRIPT', 'OBSERVE_SCRIPT', 'LOAD_SCRIPT', 'LINK_SCRIPT']) await parses(`análise profunda: ${name}`, DeepScan[name]);
+  for (const name of ['INVENTORY_SCRIPT', 'HEALTH_SCRIPT', 'OBSERVE_SCRIPT', 'LOAD_SCRIPT', 'LINK_SCRIPT']) await parses(`analise-profunda-${name}`, DeepScan[name]);
   const invRun = await ps(DeepScan.INVENTORY_SCRIPT, 90000);
   const inventory = DeepScan.parseInventory(invRun.stdout);
   check(inventory && inventory.cpu.name && inventory.cpu.cores >= 1, `inventário: ${inventory ? `${inventory.cpu.name}, ${inventory.cpu.cores} núcleos` : invRun.stdout.slice(0, 400) || invRun.stderr.slice(0, 800)}`);

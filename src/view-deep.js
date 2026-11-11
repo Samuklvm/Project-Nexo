@@ -40,7 +40,8 @@
         <circle class="deep-halo" r="22" /><circle class="deep-ring" r="15" /><circle class="deep-core" r="5.5" />
         <text class="deep-label" y="${item.id === 'cpu' || item.id === 'memory' ? -26 : 34}">${escapeHtml(item.label)}</text></g>`;
     }).join('');
-    const comets = `<g class="deep-orbit" aria-hidden="true">${[0, 1, 2].map((i) => `<circle class="deep-comet" cx="${310 + 118 * Math.cos(i * 2.1)}" cy="${148 + 62 * Math.sin(i * 2.1)}" r="2.4" />`).join('')}</g>`;
+    const comet = (i) => '<circle class="deep-comet" cx="' + (310 + 118 * Math.cos(i * 2.1)).toFixed(1) + '" cy="' + (148 + 62 * Math.sin(i * 2.1)).toFixed(1) + '" r="2.4" />';
+    const comets = `<g class="deep-orbit" aria-hidden="true">${[0, 1, 2].map(comet).join('')}</g>`;
     sky.innerHTML = `<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g>${comets}<g class="deep-stars">${stars}</g>`;
     sky.dataset.ready = '1';
   }
@@ -90,7 +91,10 @@
     for (const edge of sky.querySelectorAll('.deep-edge')) {
       const a = edge.dataset.a;
       const b = edge.dataset.b;
-      edge.dataset.state = done(a) && done(b) ? 'done' : lit(a) && lit(b) ? 'seen' : 'pending';
+      let edgeState = 'pending';
+      if (done(a) && done(b)) edgeState = 'done';
+      else if (lit(a) && lit(b)) edgeState = 'seen';
+      edge.dataset.state = edgeState;
     }
   }
 
@@ -113,7 +117,10 @@
     if (fill) fill.dataset.css = `width:${pct.toFixed(1)}%`;
     document.getElementById('deep-bar')?.setAttribute('aria-valuenow', String(index + 1));
     setText('deep-count', `${index + 1} de ${STAGES.length} · ${stage.label}`);
-    setText('deep-action', progress.status === 'cancelled' ? 'Análise cancelada.' : progress.status === 'error' ? `Não consegui terminar: ${progress.error || 'erro desconhecido'}` : `${progress.action || '…'}`);
+    let action = progress.action || '…';
+    if (progress.status === 'cancelled') action = 'Análise cancelada.';
+    else if (progress.status === 'error') action = `Não consegui terminar: ${progress.error || 'erro desconhecido'}`;
+    setText('deep-action', action);
     const facts = (progress.facts || []).slice(-5);
     const key = facts.map((item) => item.text).join('|');
     if (factsList.dataset.key !== key) {
@@ -164,41 +171,99 @@
   const n = (value, digits = 0) => (Number.isFinite(value) ? Number(value).toLocaleString('pt-BR', { maximumFractionDigits: digits, minimumFractionDigits: digits }) : '—');
   const mb = (bytes) => (bytes >= 1048576 * 10 ? `${Math.round(bytes / 1048576)} MB/s` : `${n(bytes / 1048576, 1)} MB/s`);
   const duration = (ms) => { const s = Math.round(ms / 1000); return s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`; };
-  const toneOf = (score) => (score >= 80 ? 'good' : score >= 55 ? 'warn' : 'bad');
+  const toneOf = (score) => {
+    if (score >= 80) return 'good';
+    return score >= 55 ? 'warn' : 'bad';
+  };
+  const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+  /** Pedaço de HTML com texto escapado: el('p', 'muted', 'texto'). */
+  const el = (name, cls, text) => `<${name}${cls ? ' class="' + cls + '"' : ''}>${escapeHtml(text)}</${name}>`;
+  const list = (items, render) => items.map(render).join('');
 
   function actionButton(action) {
     if (!action) return '';
     if (action.settings && Nexo.platform !== 'linux') return `<button class="btn sm" type="button" data-deep-settings="${escapeHtml(action.settings)}">Abrir no Windows</button>`;
     if (action.goto) return `<button class="btn sm" type="button" data-deep-goto="${escapeHtml(action.goto)}">Abrir no Nexo</button>`;
-    if (action.taskManager) return `<button class="btn sm" type="button" data-deep-taskmgr="1">Gerenciador de Tarefas</button>`;
+    if (action.taskManager) return '<button class="btn sm" type="button" data-deep-taskmgr="1">Gerenciador de Tarefas</button>';
     return '';
   }
 
   function findingHtml(item) {
     const evidence = (item.evidence || []).filter(Boolean);
+    const detail = item.detail ? el('p', '', item.detail) : '';
+    const proof = evidence.length ? '<ul class="finding-evidence">' + list(evidence, (line) => el('li', '', line)) + '</ul>' : '';
+    const how = item.action?.how ? '<p class="finding-how"><b>O que fazer:</b> ' + escapeHtml(item.action.how) + '</p>' : '';
+    const trust = [CONFIDENCE[item.confidence], item.gain].filter(Boolean).join(' · ');
     return `<article class="finding" data-severity="${escapeHtml(item.severity)}">
-      <header><span class="finding-tag">${escapeHtml(SEVERITY[item.severity] || item.severity)}</span><strong>${escapeHtml(item.title)}</strong><span class="finding-area">${escapeHtml(AREA[item.area] || '')}</span></header>
-      ${item.detail ? `<p>${escapeHtml(item.detail)}</p>` : ''}
-      ${evidence.length ? `<ul class="finding-evidence">${evidence.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>` : ''}
-      ${item.action?.how ? `<p class="finding-how"><b>O que fazer:</b> ${escapeHtml(item.action.how)}</p>` : ''}
-      <footer><span>${escapeHtml(CONFIDENCE[item.confidence] || '')}${item.gain ? ` · ${escapeHtml(item.gain)}` : ''}</span>${actionButton(item.action)}</footer>
+      <header>${el('span', 'finding-tag', SEVERITY[item.severity] || item.severity)}${el('strong', '', item.title)}${el('span', 'finding-area', AREA[item.area] || '')}</header>
+      ${detail}${proof}${how}
+      <footer>${el('span', '', trust)}${actionButton(item.action)}</footer>
     </article>`;
   }
 
+  /** Seu PC: cada peça identificada e, embaixo, o que ela significa (limites, recursos, caminho de upgrade). */
   function pcHtml(report) {
     const lines = report.lines || [];
     const profile = report.profile || {};
+    let traits = {};
+    try { traits = NexoHardware.traits(profile); } catch { traits = {}; }
     const rows = NODES.map((item) => {
       const mine = lines.filter((line) => line.node === item.id);
       if (item.id === 'windows' && profile.os?.name) mine.push({ text: [profile.os.name, profile.kindLabel].filter(Boolean).join(' · ') });
-      if (!mine.length) return '';
-      return `<li data-node="${item.id}"><span class="pc-node">${escapeHtml(item.label)}</span><div>${mine.map((line) => `<p>${escapeHtml(line.text)}</p>`).join('')}</div></li>`;
+      const means = traits[item.id] || [];
+      if (!mine.length && !means.length) return '';
+      const meaning = means.length ? '<ul class="pc-means">' + list(means, (line) => el('li', '', line)) + '</ul>' : '';
+      return `<li data-node="${item.id}">${el('span', 'pc-node', item.label)}<div>${list(mine, (line) => el('p', '', line.text))}${meaning}</div></li>`;
     }).join('');
-    const chip = profile.board?.chipset;
     const cpu = profile.cpu || {};
-    const knows = [chip ? `Chipset ${chip.id}: ${chip.cpus}; ${chip.ddr}; ${chip.pcie || 'PCIe conforme a placa'}; ${chip.cpuOc ? 'aceita overclock do processador' : 'sem overclock do processador'}; ${chip.memOc === true ? 'aceita XMP/EXPO' : chip.memOc === false ? 'memória presa na velocidade oficial' : 'XMP limitado'}.` : null,
-      cpu.known === false && cpu.name ? `Não reconheci "${cpu.name}" pela nomenclatura; usei o que o sistema informa dele.` : null].filter(Boolean);
-    return `<section class="deep-card deep-pc"><h4>Seu PC</h4><ul class="pc-list">${rows || '<li><div><p>Não consegui ler as peças neste sistema.</p></div></li>'}</ul>${knows.map((line) => `<p class="muted pc-know">${escapeHtml(line)}</p>`).join('')}</section>`;
+    const unknown = cpu.known === false && cpu.name ? el('p', 'muted pc-know', `Não reconheci "${cpu.name}" pela nomenclatura; usei o que o sistema informa dele.`) : '';
+    return `<section class="deep-card deep-pc"><h4>Seu PC, peça por peça</h4><ul class="pc-list">${rows || '<li><div><p>Não consegui ler as peças neste sistema.</p></div></li>'}</ul>${unknown}</section>`;
+  }
+
+  /** O que o laboratório já mediu de cada ajuste (memória local do laboratório). */
+  function labStatus(knobs) {
+    let evidence = {};
+    try { evidence = readJSON('nexo-lab-v1', null)?.evidence || {}; } catch { evidence = {}; }
+    const tested = Object.entries(evidence).filter(([key, value]) => knobs.some((knob) => key.startsWith(knob + '=')) && value?.n > 0);
+    if (!tested.length) return { tested: 0, best: null };
+    const best = Math.max(...tested.map(([, value]) => Number(value.mean) || 0));
+    return { tested: tested.length, best };
+  }
+
+  /** Plano para este PC: na BIOS, no laboratório (o Nexo testa e mede) e o que acompanhar. */
+  function planHtml(report) {
+    const steps = NexoDeep.plan(report.profile || {}, report.findings || []);
+    if (!steps.length) return '';
+    const GROUPS = [['bios', 'Na BIOS (você faz uma vez)'], ['laboratorio', 'No laboratório (o Nexo testa e mede neste PC)'], ['acompanhar', 'Acompanhar']];
+    const item = (step) => {
+      let status = '';
+      if (step.kind === 'laboratorio') {
+        const lab = labStatus(step.knobs || []);
+        const best = lab.best > 0 ? ', melhor +' + n(lab.best, 1) + '%' : '';
+        status = lab.tested ? `<span class="pill" data-role="done">testado: ${plural(lab.tested, 'opção', 'opções')}${best}</span>` : '<span class="pill">a testar</span>';
+      } else if (step.done) status = '<span class="pill" data-role="done">feito</span>';
+      return `<li>${el('strong', '', step.title)}${status}${el('p', 'muted', step.why)}</li>`;
+    };
+    const groups = GROUPS.map(([kind, label]) => {
+      const mine = steps.filter((step) => step.kind === kind);
+      return mine.length ? `<div class="plan-group">${el('h5', '', label)}<ul class="plan-list">${list(mine, item)}</ul></div>` : '';
+    }).join('');
+    const labButton = steps.some((step) => step.kind === 'laboratorio') ? '<button class="btn sm" type="button" data-deep-goto="lab">Abrir o laboratório</button>' : '';
+    return `<section class="deep-card deep-plan"><h4>Plano para este PC</h4>${el('p', 'muted', 'Montado a partir das peças: o que vale fazer, o que testar e o que acompanhar. Cada teste do laboratório fica guardado e o plano vai se ajustando.')}${groups}${labButton}</section>`;
+  }
+
+  function behindRow(item, top, weight) {
+    const width = Math.max(4, Math.min(100, (weight(item) / top) * 100));
+    const gpuFirst = item.gpuAvg > item.cpuAvg;
+    const peak = item.cpuPeak >= item.cpuAvg * 2 && item.cpuPeak >= 8 ? ` (pico ${n(item.cpuPeak)}%)` : '';
+    const main = gpuFirst ? `${n(item.gpuAvg, 1)}% vídeo` : `${n(item.cpuAvg, 1)}% CPU${peak}`;
+    let second = null;
+    if (gpuFirst && item.cpuAvg >= 0.5) second = `CPU ${n(item.cpuAvg, 1)}%`;
+    else if (!gpuFirst && item.gpuAvg >= 1) second = `vídeo ${n(item.gpuAvg, 1)}%`;
+    const extra = [item.ioAvg >= 1048576 ? `disco ${mb(item.ioAvg)}` : null, second, item.impact === 'memoria' ? `${n(item.memBytes / 1073741824, 1)} GB de memória` : null].filter(Boolean).join(' · ');
+    const known = item.kind !== 'desconhecido';
+    const sub = [known && item.label.toLowerCase() !== item.name.toLowerCase() ? item.name : null, extra].filter(Boolean).join(' · ');
+    return `<li data-impact="${escapeHtml(item.impact)}"><div class="row">${el('strong', '', known ? item.label : item.name)}${el('span', '', main)}</div><div class="bar"><i data-css="width:${width.toFixed(1)}%"></i></div>${sub ? el('small', '', sub) : ''}</li>`;
   }
 
   function behindHtml(report) {
@@ -208,24 +273,18 @@
     const launchers = (obs.launchers || []).slice(0, 4).map((item) => `<span class="pill" data-role="launcher">${escapeHtml(item.label)}</span>`);
     const weight = (item) => Math.max(item.cpuAvg, item.gpuAvg, item.ioAvg / 1048576 / 2);
     const top = Math.max(10, ...(obs.background || []).map(weight));
-    const rows = (obs.background || []).filter((item) => item.impact !== 'nenhum').slice(0, 8).map((item) => {
-      const width = Math.max(4, Math.min(100, (weight(item) / top) * 100));
-      const gpuFirst = item.gpuAvg > item.cpuAvg;
-      const main = gpuFirst ? `${n(item.gpuAvg, 1)}% vídeo` : `${n(item.cpuAvg, 1)}% CPU${item.cpuPeak >= item.cpuAvg * 2 && item.cpuPeak >= 8 ? ` (pico ${n(item.cpuPeak)}%)` : ''}`;
-      const extra = [item.ioAvg >= 1048576 ? `disco ${mb(item.ioAvg)}` : null, gpuFirst ? (item.cpuAvg >= 0.5 ? `CPU ${n(item.cpuAvg, 1)}%` : null) : item.gpuAvg >= 1 ? `vídeo ${n(item.gpuAvg, 1)}%` : null, item.impact === 'memoria' ? `${n(item.memBytes / 1073741824, 1)} GB de memória` : null].filter(Boolean).join(' · ');
-      return `<li data-impact="${escapeHtml(item.impact)}"><div class="row"><strong>${escapeHtml(item.kind === 'desconhecido' ? item.name : item.label)}</strong><span>${main}</span></div><div class="bar"><i data-css="width:${width.toFixed(1)}%"></i></div>${extra || item.kind !== 'desconhecido' ? `<small>${escapeHtml([item.kind !== 'desconhecido' && item.label.toLowerCase() !== item.name.toLowerCase() ? item.name : null, extra].filter(Boolean).join(' · '))}</small>` : ''}</li>`;
-    }).join('');
+    const rows = (obs.background || []).filter((item) => item.impact !== 'nenhum').slice(0, 8).map((item) => behindRow(item, top, weight)).join('');
     const sys = obs.system || {};
-    const stats = [Number.isFinite(sys.cpuAvg) ? `processador ${n(sys.cpuAvg)}% no total` : null, Number.isFinite(sys.dpcAvg) ? `DPC ${n(sys.dpcAvg, 1)}%` : null, Number.isFinite(sys.diskBusyAvg) ? `disco ocupado ${n(sys.diskBusyAvg)}%` : null, Number.isFinite(sys.availMBMin) ? `memória livre mín. ${n(sys.availMBMin / 1024, 1)} GB` : null].filter(Boolean).join(' · ');
-    return `<section class="deep-card deep-behind"><h4>O que roda por trás${games.length ? ' do jogo' : ''}</h4>
-      <p class="muted">Observei por ${n(obs.seconds)} s (${obs.samples} leituras). ${games.length ? 'O jogo, os launchers e o próprio Nexo ficam fora da conta.' : 'Nenhum jogo aberto: o que pesa agora pesa também quando você joga, se não fechar antes.'}</p>
-      ${games.length || launchers.length ? `<div class="pill-row">${[...games, ...launchers].join('')}</div>` : ''}
-      ${rows ? `<ul class="ledger deep-ledger">${rows}</ul>` : '<p class="deep-clean">Nada pesando por trás. 👌</p>'}
-      <small class="muted">${escapeHtml(stats)}${obs.self?.cpuAvg ? ` · o próprio Nexo usou ${n(obs.self.cpuAvg, 1)}% medindo (já descontado)` : ''}</small></section>`;
+    const stats = [Number.isFinite(sys.cpuAvg) ? `processador ${n(sys.cpuAvg)}% no total` : null, Number.isFinite(sys.dpcAvg) ? `DPC ${n(sys.dpcAvg, 1)}%` : null, Number.isFinite(sys.diskBusyAvg) ? `disco ocupado ${n(sys.diskBusyAvg)}%` : null,
+      Number.isFinite(sys.availMBMin) ? `memória livre mín. ${n(sys.availMBMin / 1024, 1)} GB` : null, obs.self?.cpuAvg ? `o próprio Nexo usou ${n(obs.self.cpuAvg, 1)}% medindo (já descontado)` : null].filter(Boolean).join(' · ');
+    const intro = `Observei por ${n(obs.seconds)} s (${plural(obs.samples, 'leitura', 'leituras')}). ${games.length ? 'O jogo, os launchers e o próprio Nexo ficam fora da conta.' : 'Nenhum jogo aberto: o que pesa agora pesa também quando você joga, se não fechar antes.'}`;
+    const pills = games.length || launchers.length ? '<div class="pill-row">' + [...games, ...launchers].join('') + '</div>' : '';
+    const body = rows ? '<ul class="ledger deep-ledger">' + rows + '</ul>' : '<p class="deep-clean">Nada pesando por trás. 👌</p>';
+    return `<section class="deep-card deep-behind">${el('h4', '', games.length ? 'O que roda por trás do jogo' : 'O que roda por trás')}${el('p', 'muted', intro)}${pills}${body}${el('small', 'muted', stats)}</section>`;
   }
 
   function loadHtml(report) {
-    const load = report.load;
+    const { load } = report;
     if (!load) return '';
     const linkText = (gen, width) => (gen ? `PCIe ${gen}.0${width ? ' x' + width : ''}` : null);
     const link = linkText(load.gpu?.pcieGen, load.gpu?.pcieWidth) || (load.links || []).map((item) => linkText(item.link?.gen, item.link?.width)).find(Boolean) || null;
@@ -239,43 +298,104 @@
     ].filter(([, value]) => value);
     const signed = (value, digits) => (value >= 0 ? '+' : '') + n(value, digits);
     const changes = (report.comparison?.changes || []).map((item) => (item.pct === undefined ? `${item.label}: ${signed(item.delta, 0)} °C` : `${item.label}: ${signed(item.pct, 1)}%`));
-    return `<section class="deep-card deep-load"><h4>Teste de carga</h4>${tiles.length ? `<div class="deep-tiles">${tiles.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>` : '<p class="muted">Sem leituras de sensores neste PC.</p>'}
-      ${changes.length ? `<p class="muted">Desde a análise de ${escapeHtml(new Date(report.comparison.at).toLocaleDateString('pt-BR'))}: ${escapeHtml(changes.join(' · '))}</p>` : ''}</section>`;
+    const grid = tiles.length ? '<div class="deep-tiles">' + list(tiles, ([label, value]) => '<div>' + el('span', '', label) + el('strong', '', value) + '</div>') + '</div>' : '<p class="muted">Sem leituras de sensores neste PC.</p>';
+    const since = changes.length ? el('p', 'muted', `Desde a análise de ${new Date(report.comparison.at).toLocaleDateString('pt-BR')}: ${changes.join(' · ')}`) : '';
+    return `<section class="deep-card deep-load"><h4>Teste de carga</h4>${grid}${since}</section>`;
+  }
+
+  /*
+   * Sua rotina: o que o Nexo aprendeu com o tempo (cérebro local) cruzado com o que a análise viu agora. Um programa
+   * pesando por trás que já causou lentidões antes ganha esse histórico como evidência (e sobe de "sugestão").
+   */
+  const nameKey = (value) => String(value || '').toLowerCase().replace(/\.exe$/, '');
+  function routineOf(report) {
+    const brain = Nexo.store?.brain;
+    if (!brain) return null;
+    const ledger = brain.ledger();
+    const byName = new Map(ledger.map((entry) => [nameKey(entry.name), entry]));
+    const now = new Map((report.observation?.background || []).map((item) => [nameKey(item.name), item]));
+    const episodes = brain.recentEpisodes(14 * 24 * 3600e3);
+    return { info: brain.learning(), ledger, byName, now, episodes };
+  }
+
+  function withRoutine(findings, routine) {
+    if (!routine) return findings;
+    return findings.map((item) => {
+      const name = item.id.startsWith('fundo-') ? nameKey(item.id.replace(/^fundo-(presenca-)?/, '')) : null;
+      const past = name ? routine.byName.get(name) : null;
+      if (!past) return item;
+      const note = `o Nexo já viu ele por trás de ${plural(past.events, 'lentidão', 'lentidões')} (${past.minutes} min no total)`;
+      return { ...item, severity: item.severity === 'baixa' ? 'media' : item.severity, confidence: 'alta', evidence: [...(item.evidence || []), note] };
+    });
+  }
+
+  function routineHtml(routine) {
+    if (!routine) return '';
+    const { info, ledger, now, episodes } = routine;
+    const facts = [`${plural(info.days, 'dia', 'dias')} de convivência`, `${info.coverage}% da rotina semanal conhecida`, plural(episodes.length, 'lentidão nos últimos 14 dias', 'lentidões nos últimos 14 dias')];
+    const rows = ledger.slice(0, 4).map((entry) => {
+      const live = now.get(nameKey(entry.name));
+      const stats = plural(entry.events, 'episódio', 'episódios') + ' · ' + entry.minutes + ' min';
+      return `<li>${el('strong', '', entry.name)}${el('span', '', stats)}${live ? '<span class="pill" data-role="now">pesando agora</span>' : ''}</li>`;
+    }).join('');
+    const empty = info.days < 1 ? el('p', 'muted', 'O Nexo ainda está conhecendo a sua rotina; a cada dia ele aprende mais e cruza com as próximas análises.') : '';
+    return `<section class="deep-card deep-routine"><h4>Sua rotina</h4>${el('p', 'muted', facts.join(' · '))}${rows ? '<ul class="routine-list">' + rows + '</ul>' : ''}${empty}</section>`;
+  }
+
+  /** Mini gráfico da nota nas últimas análises deste PC. */
+  function scoreTrend(history) {
+    const points = (history || []).filter((item) => Number.isFinite(item.score));
+    if (points.length < 2) return '';
+    const xs = points.map((_, i) => 4 + (i * 112) / (points.length - 1));
+    const ys = points.map((item) => 30 - (item.score / 100) * 26);
+    const line = xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+    const label = `Nota nas últimas análises: ${points.map((item) => item.score).join(', ')}`;
+    return `<svg class="deep-trend" viewBox="0 0 120 34" role="img" aria-label="${escapeHtml(label)}"><polyline points="${line}" /><circle cx="${xs[xs.length - 1].toFixed(1)}" cy="${ys[ys.length - 1].toFixed(1)}" r="2.6" /></svg>`;
+  }
+
+  function headline(main, more, ok, count) {
+    const parts = [count('alta') ? `${count('alta')} para resolver` : null, count('media') ? `${count('media')} que vale ajustar` : null, more.length ? plural(more.length, 'sugestão', 'sugestões') : null].filter(Boolean);
+    const right = ok.length ? ` e ${plural(ok.length, 'coisa já certa', 'coisas já certas')}` : '';
+    if (parts.length) return `${parts.join(', ')}${right}.`;
+    return ok.length ? `Nada para resolver; ${plural(ok.length, 'coisa conferida e certa', 'coisas conferidas e certas')}.` : 'Nada para resolver.';
+  }
+
+  function stamp(report, fromDisk) {
+    const when = new Date(report.at);
+    const comparison = report.comparison;
+    const since = comparison ? [comparison.resolved?.length ? plural(comparison.resolved.length, 'resolvido', 'resolvidos') + ' desde a última análise' : null, comparison.appeared?.length ? plural(comparison.appeared.length, 'novo', 'novos') : null].filter(Boolean).join(', ') : '';
+    const time = when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return [`${fromDisk ? 'Última análise: ' : ''}${when.toLocaleDateString('pt-BR')} às ${time}`, `${duration(report.durationMs)} de análise`, report.onBattery ? 'na bateria' : null, since || null].filter(Boolean).join(' · ');
   }
 
   function renderReport(report, { fromDisk = false } = {}) {
     if (!report || !Array.isArray(report.findings)) return;
     lastReport = report;
     Nexo.state.deep = report;
-    const findings = report.findings;
+    const { comparison } = report;
+    const routine = routineOf(report);
+    const findings = withRoutine(report.findings, routine).sort((a, b) => NexoDeep.SEVERITY_ORDER[a.severity] - NexoDeep.SEVERITY_ORDER[b.severity]);
     const count = (severity) => findings.filter((item) => item.severity === severity).length;
     const main = findings.filter((item) => item.severity === 'alta' || item.severity === 'media');
     const more = findings.filter((item) => item.severity === 'baixa' || item.severity === 'info');
     const ok = findings.filter((item) => item.severity === 'ok');
-    const head = [count('alta') ? `${count('alta')} para resolver` : null, count('media') ? `${count('media')} que vale ajustar` : null, more.length ? `${more.length} ${more.length > 1 ? 'sugestões' : 'sugestão'}` : null].filter(Boolean);
-    const comparison = report.comparison;
-    const since = comparison ? [comparison.resolved?.length ? `${comparison.resolved.length} resolvido${comparison.resolved.length > 1 ? 's' : ''} desde a última análise` : null, comparison.appeared?.length ? `${comparison.appeared.length} novo${comparison.appeared.length > 1 ? 's' : ''}` : null].filter(Boolean).join(', ') : '';
-    const when = new Date(report.at);
+    const mainHtml = main.length ? list(main, findingHtml) : '<p class="deep-clean">Nada importante para resolver. 🎉</p>';
+    const moreHtml = more.length ? `<details class="deep-more"${main.length ? '' : ' open'}><summary>${plural(more.length, 'sugestão', 'sugestões e observações')}</summary>${list(more, findingHtml)}</details>` : '';
+    const resolved = comparison?.resolved?.length ? el('p', 'deep-resolved', 'Resolvido desde a última vez: ' + comparison.resolved.join(' · ')) : '';
+    const okHtml = ok.length ? '<section class="deep-card deep-ok"><h4>Já está certo</h4><ul>' + list(ok, (item) => el('li', '', item.title)) + '</ul></section>' : '';
     reportBox.innerHTML = `<div class="deep-head">
-        <div class="deep-score" data-tone="${toneOf(report.score)}"><strong>${report.score}</strong><span>de 100</span></div>
-        <div class="deep-head-text"><h3>${main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'}</h3>
-          <p>${escapeHtml(head.length ? `${head.join(', ')}${ok.length ? ` e ${ok.length} coisa${ok.length > 1 ? 's' : ''} já certa${ok.length > 1 ? 's' : ''}` : ''}.` : `Nada para resolver${ok.length ? `; ${ok.length} coisas conferidas e certas` : ''}.`)}</p>
-          <small class="muted">${escapeHtml(`${fromDisk ? 'Última análise: ' : ''}${when.toLocaleDateString('pt-BR')} às ${when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${duration(report.durationMs)} de análise${report.onBattery ? ' · na bateria' : ''}${since ? ` · ${since}` : ''}`)}</small></div>
+        <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(report.score)}"><strong>${report.score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
+        <div class="deep-head-text">${el('h3', '', main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem')}${el('p', '', headline(main, more, ok, count))}${el('small', 'muted', stamp(report, fromDisk))}</div>
         <div class="deep-head-actions"><button class="btn sm primary" type="button" data-deep-again="1">Analisar de novo</button></div>
       </div>
       <div class="deep-grid">
         <div class="deep-col">
-          <section class="deep-card deep-findings"><h4>O que fazer, do mais importante para o menos</h4>${main.length ? main.map(findingHtml).join('') : '<p class="deep-clean">Nada importante para resolver. 🎉</p>'}
-            ${more.length ? `<details class="deep-more"${main.length ? '' : ' open'}><summary>${more.length} ${more.length > 1 ? 'sugestões e observações' : 'sugestão'}</summary>${more.map(findingHtml).join('')}</details>` : ''}
-            ${comparison?.resolved?.length ? `<p class="deep-resolved">Resolvido desde a última vez: ${escapeHtml(comparison.resolved.join(' · '))}</p>` : ''}
-          </section>
+          <section class="deep-card deep-findings"><h4>O que fazer, do mais importante para o menos</h4>${mainHtml}${moreHtml}${resolved}</section>
           ${behindHtml(report)}
-        </div>
-        <div class="deep-col">
-          ${pcHtml(report)}
           ${loadHtml(report)}
-          ${ok.length ? `<section class="deep-card deep-ok"><h4>Já está certo</h4><ul>${ok.map((item) => `<li>${escapeHtml(item.title)}</li>`).join('')}</ul></section>` : ''}
+          ${routineHtml(routine)}
         </div>
+        <div class="deep-col">${pcHtml(report)}${planHtml(report)}${okHtml}</div>
       </div>`;
     show('report');
   }
