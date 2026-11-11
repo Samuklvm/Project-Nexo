@@ -17,6 +17,12 @@
   const NODES = NexoDeep.NODES;
   const STAGES = NexoDeep.STAGES;
   const POS = { cpu: [190, 70], memory: [420, 58], board: [310, 148], gpu: [522, 152], disk: [108, 178], windows: [236, 238], network: [452, 236] };
+  // Carta celeste do relatório: a mesma constelação, mais larga, com o nome de cada peça embaixo da estrela.
+  const CHART = { cpu: [250, 86], memory: [640, 72], board: [480, 160], gpu: [815, 150], disk: [130, 190], windows: [345, 238], network: [680, 236] };
+  const NODE_HEX = { cpu: '#5ad7ff', board: '#c4a1ff', memory: '#ff8ce8', gpu: '#6ef2c2', disk: '#c8f56b', network: '#7f9bff', windows: '#dfe7ff' };
+  const TOP = new Set(['cpu', 'memory']);
+  /** No Linux a estrela do sistema se chama "Sistema", não "Windows". */
+  const labelOf = (item, platform = Nexo.platform) => (item.id === 'windows' && platform === 'linux' ? 'Sistema' : item.label);
   const EDGES = [['cpu', 'memory'], ['cpu', 'board'], ['memory', 'board'], ['board', 'gpu'], ['board', 'disk'], ['board', 'windows'], ['board', 'network'], ['windows', 'network'], ['gpu', 'network'], ['disk', 'windows'], ['memory', 'gpu']];
   const SEVERITY = { alta: 'Resolver', media: 'Vale ajustar', baixa: 'Sugestão', info: 'Para saber', ok: 'Certo' };
   const CONFIDENCE = { alta: 'confiança alta', media: 'confiança média', baixa: 'confiança baixa' };
@@ -38,15 +44,19 @@
     const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     const dust = Array.from({ length: 46 }, () => `<circle class="deep-dust" cx="${Math.round(rand() * 640)}" cy="${Math.round(rand() * 280)}" r="${(0.5 + rand() * 1.1).toFixed(2)}" />`).join('');
     const edges = EDGES.map(([a, b]) => `<line class="deep-edge" data-a="${a}" data-b="${b}" x1="${POS[a][0]}" y1="${POS[a][1]}" x2="${POS[b][0]}" y2="${POS[b][1]}" pathLength="1" />`).join('');
+    // Nebulosa de cada peça: acende junto com a estrela (âmbar quando ela tem algo para ajustar).
+    const prefix = target.id || 'sky';
+    const glow = (id, color) => `<radialGradient id="${prefix}-neb-${id}"><stop offset="0" stop-color="${color}" stop-opacity="0.4" /><stop offset="1" stop-color="${color}" stop-opacity="0" /></radialGradient>`;
+    const defs = `<defs>${NODES.map((item) => glow(item.id, NODE_HEX[item.id])).join('')}${glow('warn', '#ffc46b')}</defs>`;
     const stars = NODES.map((item) => {
       const [x, y] = POS[item.id];
       return `<g class="deep-star" data-node="${item.id}" data-state="pending" transform="translate(${x} ${y})">
-        <circle class="deep-halo" r="22" /><circle class="deep-ring" r="15" /><circle class="deep-core" r="5.5" />
-        <text class="deep-label" y="${item.id === 'cpu' || item.id === 'memory' ? -26 : 34}">${escapeHtml(item.label)}</text></g>`;
+        <circle class="deep-neb" r="84" fill="url(#${prefix}-neb-${item.id})" /><circle class="deep-neb deep-neb-warn" r="96" fill="url(#${prefix}-neb-warn)" /><circle class="deep-halo" r="22" /><circle class="deep-ring" r="15" /><circle class="deep-core" r="5.5" />
+        <text class="deep-label" y="${TOP.has(item.id) ? -26 : 34}">${escapeHtml(labelOf(item))}</text><text class="deep-name" y="${TOP.has(item.id) ? -26 : 52}"></text></g>`;
     }).join('');
     const comet = (i) => '<circle class="deep-comet" cx="' + (310 + 118 * Math.cos(i * 2.1)).toFixed(1) + '" cy="' + (148 + 62 * Math.sin(i * 2.1)).toFixed(1) + '" r="2.4" />';
     const comets = `<g class="deep-orbit" aria-hidden="true">${[0, 1, 2].map(comet).join('')}</g>`;
-    target.innerHTML = `<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g>${comets}<g class="deep-stars">${stars}</g>`;
+    target.innerHTML = `${defs}<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g>${comets}<g class="deep-stars">${stars}</g>`;
     target.dataset.ready = '1';
   }
   const calm = () => reduce.matches || Nexo.effectsLite;
@@ -62,7 +72,7 @@
     const orbit = () => sky.querySelector('.deep-orbit');
     const dot = panel.querySelector('.deep-dot');
     motion = (now) => {
-      if (!running || runBox.hidden) { motion = null; if (dot) { dot.style.opacity = ''; } return false; }
+      if (!running || runBox.hidden) { motion = null; if (dot) { dot.style.opacity = ''; } panel.querySelector('.deep-stages li[data-state="active"]')?.style.removeProperty('--pulse'); return false; }
       if (calm() || document.hidden || sky.dataset.stage === 'load') return true;
       const t = now / 1000;
       for (const star of sky.querySelectorAll('.deep-star[data-state="active"]')) {
@@ -71,6 +81,8 @@
       }
       if (sky.dataset.stage === 'behind') orbit()?.setAttribute('transform', `rotate(${Math.round((t * 40) % 360)} 310 148)`);
       if (dot) dot.style.opacity = (0.65 + 0.35 * Math.cos(t * 5.2)).toFixed(2);
+      const step = panel.querySelector('.deep-stages li[data-state="active"]');
+      if (step) step.style.setProperty('--pulse', (0.5 + 0.5 * Math.sin(t * 3.4)).toFixed(2));
       return true;
     };
     Nexo.clock.add(motion);
@@ -90,6 +102,40 @@
       else if (lit(edge.dataset.a) && lit(edge.dataset.b)) edgeState = 'seen';
       edge.dataset.state = edgeState;
     }
+  }
+
+  /** Escreve o nome curto de cada peça embaixo da estrela assim que ela é identificada ("Ryzen 7 5700X3D"). */
+  function paintNames(target, names, nodes) {
+    for (const star of target.querySelectorAll('.deep-star')) {
+      const id = star.dataset.node;
+      const name = (nodes?.[id] || 'pending') !== 'pending' && names?.[id] ? String(names[id]) : '';
+      const text = star.querySelector('.deep-name');
+      if (!text || text.textContent === name) continue;
+      text.textContent = name;
+      if (TOP.has(id)) star.querySelector('.deep-label')?.setAttribute('y', name ? '-44' : '-26');
+      star.classList.toggle('named', Boolean(name));
+    }
+  }
+
+  // Cada etapa tem a cor e o ícone da peça que ela examina; a de "por trás" é lilás e a de carga, cor de brasa.
+  const STAGE_LOOK = { parts: ['cpu', 'i-chip'], memory: ['memory', 'i-ram'], video: ['gpu', 'i-gpu'], disk: ['disk', 'i-disk'], windows: ['network', 'i-win'], behind: ['board', 'i-eye'], load: ['heat', 'i-bolt'] };
+  function paintStages(index, status) {
+    const box = document.getElementById('deep-stages');
+    if (!box) return;
+    if (!box.dataset.ready) {
+      box.innerHTML = STAGES.map((stage) => {
+        const [node, ico] = STAGE_LOOK[stage.id] || ['windows', 'i-spark'];
+        return `<li data-node="${node}" data-state="pending"><span class="stage-ico">${icon(ico)}</span>${el('span', 'stage-name', stage.label)}</li>`;
+      }).join('');
+      box.dataset.ready = '1';
+    }
+    [...box.children].forEach((li, i) => {
+      let state = 'pending';
+      if (status === 'done' || i < index) state = 'done';
+      else if (i === index) state = status === 'running' ? 'active' : 'stopped';
+      if (li.dataset.state !== state) li.dataset.state = state;
+      if (state === 'active') li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+    });
   }
 
   function paintSky(progress) {
@@ -126,6 +172,7 @@
     if (!progress || progress.status === 'done') return;
     show('run');
     paintSky(progress);
+    paintNames(sky, progress.names, progress.nodes);
     startedAt = Date.now() - (Number(progress.elapsedMs) || 0);
     tickClock();
     const index = Math.min(STAGES.length - 1, progress.stageIndex || 0);
@@ -136,7 +183,8 @@
     const fill = document.getElementById('deep-bar-fill');
     if (fill) fill.dataset.css = `width:${pct.toFixed(1)}%`;
     document.getElementById('deep-bar')?.setAttribute('aria-valuenow', String(index + 1));
-    setText('deep-count', `${index + 1} de ${STAGES.length} · ${stage.label}`);
+    setText('deep-count', `Etapa ${index + 1} de ${STAGES.length}: ${stage.label}`);
+    paintStages(index, progress.status);
     let action = progress.action || '…';
     if (progress.status === 'cancelled') action = 'Análise cancelada.';
     else if (progress.status === 'error') action = `Não consegui terminar: ${progress.error || 'erro desconhecido'}`;
@@ -204,6 +252,7 @@
   /** Pedaço de HTML com texto escapado: el('p', 'muted', 'texto'). */
   const el = (name, cls, text) => `<${name}${cls ? ' class="' + cls + '"' : ''}>${escapeHtml(text)}</${name}>`;
   const list = (items, render) => items.map(render).join('');
+  const cardTitle = (ico, text) => `<h4>${icon(ico)}${escapeHtml(text)}</h4>`;
 
   function actionButton(action) {
     if (!action) return '';
@@ -220,29 +269,47 @@
     const how = item.action?.how ? '<p class="finding-how"><b>O que fazer:</b> ' + escapeHtml(item.action.how) + '</p>' : '';
     const trust = [CONFIDENCE[item.confidence], item.gain].filter(Boolean).join(' · ');
     return `<article class="finding" data-severity="${escapeHtml(item.severity)}" data-node="${AREA_NODE[item.area] || 'windows'}">
-      <header>${icon(AREA_ICON[item.area] || 'i-spark')}${el('span', 'finding-tag', SEVERITY[item.severity] || item.severity)}${el('strong', '', item.title)}${el('span', 'finding-area', AREA[item.area] || '')}</header>
+      <header><span class="finding-badge">${icon(AREA_ICON[item.area] || 'i-spark')}</span>${el('span', 'finding-tag', SEVERITY[item.severity] || item.severity)}${el('strong', '', item.title)}${el('span', 'finding-area', item.area === 'windows' && Nexo.platform === 'linux' ? 'Sistema' : AREA[item.area] || '')}</header>
       ${detail}${proof}${how}
       <footer>${el('span', '', trust)}${actionButton(item.action)}</footer>
     </article>`;
   }
 
-  /** Seu PC: cada peça identificada e, embaixo, o que ela significa (limites, recursos, caminho de upgrade). */
+  /**
+   * Linha de uma peça em título + etiquetas: "AMD Ryzen 7 5700X3D · Zen 3, Ryzen 5000 · 8 núcleos" vira o título
+   * "AMD Ryzen 7 5700X3D" e as etiquetas "Zen 3", "Ryzen 5000" e "8 núcleos".
+   */
+  function splitLine(text) {
+    const value = String(text || '');
+    const m = value.match(/^(.*?)(?: · | → |: )(.*)$/);
+    let title = value;
+    let rest = '';
+    if (m) { title = m[1]; rest = m[2]; } else { const parts = value.split(', '); title = parts[0]; rest = parts.slice(1).join(', '); }
+    const chips = rest.replace(/[()]/g, ', ').split(/ · |, /).map((part) => part.trim()).filter(Boolean).slice(0, 7);
+    return { title, chips };
+  }
+
+  /** Seu PC: cada peça identificada (nome grande + etiquetas) e, embaixo, o que ela significa (limites, recursos, upgrade). */
   function pcHtml(report) {
     const lines = report.lines || [];
     const profile = report.profile || {};
     let traits = {};
     try { traits = NexoHardware.traits(profile); } catch { traits = {}; }
     const rows = NODES.map((item) => {
-      const mine = lines.filter((line) => line.node === item.id);
-      if (item.id === 'windows' && profile.os?.name) mine.push({ text: [profile.os.name, profile.kindLabel].filter(Boolean).join(' · ') });
+      const mine = lines.filter((line) => line.node === item.id).map((line) => line.text);
+      if (item.id === 'windows' && profile.os?.name) mine.unshift([profile.os.name, profile.kindLabel].filter(Boolean).join(' · '));
       const means = traits[item.id] || [];
       if (!mine.length && !means.length) return '';
+      const head = mine.length ? splitLine(mine[0]) : { title: labelOf(item, profile.os?.platform), chips: [] };
+      const chips = head.chips.length ? '<div class="pc-chips">' + list(head.chips, (chip) => el('span', '', chip)) + '</div>' : '';
+      const others = list(mine.slice(1), (line) => el('p', 'pc-more', line));
       const meaning = means.length ? '<ul class="pc-means">' + list(means, (line) => el('li', '', line)) + '</ul>' : '';
-      return `<li data-node="${item.id}"><span class="pc-node">${icon(NODE_ICON[item.id])}${escapeHtml(item.label)}</span><div>${list(mine, (line) => el('p', '', line.text))}${meaning}</div></li>`;
+      return `<li data-node="${item.id}"><span class="pc-badge">${icon(NODE_ICON[item.id])}</span><div class="pc-body">${el('span', 'pc-type', labelOf(item, profile.os?.platform))}${el('strong', 'pc-title', head.title)}${chips}${others}${meaning}</div></li>`;
     }).join('');
     const cpu = profile.cpu || {};
     const unknown = cpu.known === false && cpu.name ? el('p', 'muted pc-know', `Não reconheci "${cpu.name}" pela nomenclatura; usei o que o sistema informa dele.`) : '';
-    return `<section class="deep-card deep-pc"><h4>Seu PC, peça por peça</h4><ul class="pc-list">${rows || '<li><div><p>Não consegui ler as peças neste sistema.</p></div></li>'}</ul>${unknown}</section>`;
+    const body = rows ? '<ul class="pc-list">' + rows + '</ul>' : el('p', 'muted', 'Este relatório não guardou as peças. Rode a análise de novo para ver cada uma delas aqui.');
+    return `<section class="deep-card deep-pc">${cardTitle('i-chip', 'Seu PC, peça por peça')}${body}${unknown}</section>`;
   }
 
   /** O que o laboratório já mediu de cada ajuste (memória local do laboratório). */
@@ -255,26 +322,27 @@
     return { tested: tested.length, best };
   }
 
-  /** Plano para este PC: na BIOS, no laboratório (o Nexo testa e mede) e o que acompanhar. */
+  /** Plano para este PC, como uma rota: primeiro a BIOS (uma vez), depois o laboratório (o Nexo testa), depois acompanhar. */
   function planHtml(report) {
     const steps = NexoDeep.plan(report.profile || {}, report.findings || []);
     if (!steps.length) return '';
-    const GROUPS = [['bios', 'Na BIOS (você faz uma vez)'], ['laboratorio', 'No laboratório (o Nexo testa e mede neste PC)'], ['acompanhar', 'Acompanhar']];
+    const GROUPS = [['bios', 'Na BIOS', 'você faz uma vez', 'i-board'], ['laboratorio', 'No laboratório', 'o Nexo testa e mede neste PC', 'i-flask'], ['acompanhar', 'Acompanhar', 'para ver se melhorou', 'i-eye']];
     const item = (step) => {
       let status = '';
       if (step.kind === 'laboratorio') {
         const lab = labStatus(step.knobs || []);
         const best = lab.best > 0 ? ', melhor +' + n(lab.best, 1) + '%' : '';
-        status = lab.tested ? `<span class="pill" data-role="done">testado: ${plural(lab.tested, 'opção', 'opções')}${best}</span>` : '<span class="pill">a testar</span>';
+        status = lab.tested ? `<span class="pill" data-role="done">testado: ${plural(lab.tested, 'opção', 'opções')}${best}</span>` : '<span class="pill" data-role="todo">a testar</span>';
       } else if (step.done) status = '<span class="pill" data-role="done">feito</span>';
-      return `<li>${el('strong', '', step.title)}${status}${el('p', 'muted', step.why)}</li>`;
+      return `<li${step.done ? ' data-done="1"' : ''}>${el('strong', '', step.title)}${status}${el('p', 'muted', step.why)}</li>`;
     };
-    const groups = GROUPS.map(([kind, label]) => {
+    const groups = GROUPS.map(([kind, label, hint, ico]) => {
       const mine = steps.filter((step) => step.kind === kind);
-      return mine.length ? `<div class="plan-group" data-kind="${kind}">${el('h5', '', label)}<ul class="plan-list">${list(mine, item)}</ul></div>` : '';
+      if (!mine.length) return '';
+      return `<li class="plan-stop" data-kind="${kind}"><span class="plan-mark">${icon(ico)}</span><div><h5>${escapeHtml(label)} <span>${escapeHtml(hint)}</span></h5><ul class="plan-list">${list(mine, item)}</ul></div></li>`;
     }).join('');
     const labButton = steps.some((step) => step.kind === 'laboratorio') ? '<button class="btn sm" type="button" data-deep-goto="lab">Abrir o laboratório</button>' : '';
-    return `<section class="deep-card deep-plan"><h4>Plano para este PC</h4>${el('p', 'muted', 'Montado a partir das peças: o que vale fazer, o que testar e o que acompanhar. Cada teste do laboratório fica guardado e o plano vai se ajustando.')}${groups}${labButton}</section>`;
+    return `<section class="deep-card deep-plan">${cardTitle('i-flask', 'Plano para este PC')}${el('p', 'muted', 'Montado a partir das peças. Cada teste do laboratório fica guardado e o plano vai se ajustando.')}<ol class="plan-route">${groups}</ol>${labButton}</section>`;
   }
 
   function behindRow(item, top, weight) {
@@ -308,27 +376,57 @@
     const intro = `Observei por ${n(obs.seconds)} s (${plural(obs.samples, 'leitura', 'leituras')}). ${games.length ? 'O jogo, os launchers e o próprio Nexo ficam fora da conta.' : 'Nenhum jogo aberto: o que pesa agora pesa também quando você joga, se não fechar antes.'}`;
     const pills = games.length || launchers.length ? '<div class="pill-row">' + [...games, ...launchers].join('') + '</div>' : '';
     const body = rows ? '<ul class="ledger deep-ledger">' + rows + '</ul>' : '<p class="deep-clean">Nada pesando por trás. 👌</p>';
-    return `<section class="deep-card deep-behind">${el('h4', '', games.length ? 'O que roda por trás do jogo' : 'O que roda por trás')}${el('p', 'muted', intro)}${pills}${body}${el('small', 'muted', stats)}</section>`;
+    return `<section class="deep-card deep-behind">${cardTitle('i-eye', games.length ? 'O que roda por trás do jogo' : 'O que roda por trás')}${el('p', 'muted', intro)}${pills}${body}${el('small', 'muted', stats)}</section>`;
+  }
+
+  /** Termômetro de 30 °C até o limite da peça: verde com folga, amarelo perto, vermelho no limite. */
+  function meterHtml(label, value, limit, limitText = 'o limite') {
+    if (!Number.isFinite(value)) return '';
+    const low = 30;
+    const pct = Math.max(0, Math.min(100, ((value - low) / (limit - low)) * 100));
+    const room = Math.round(limit - value);
+    let zone = 'cool';
+    if (room <= 5) zone = 'hot';
+    else if (room <= 15) zone = 'warm';
+    const note = room > 0 ? `${room} °C de folga até ${limitText} (${limit} °C)` : `chegou a ${limitText} (${limit} °C)`;
+    return `<div class="meter" data-zone="${zone}"><div class="meter-head">${el('span', '', label)}<strong>${n(value)} °C</strong></div><div class="meter-track"><i data-css="left:${pct.toFixed(1)}%"></i></div>${el('small', '', note)}</div>`;
+  }
+
+  /** As pistas do PCIe desenhadas: acesas as que estão em uso, apagadas as que a placa aceitaria. */
+  function lanesHtml(gen, width, maxWidth, maxGen) {
+    if (!width) return '';
+    const total = Math.max(width, maxWidth || width);
+    const lanes = Array.from({ length: Math.min(16, total) }, (_, i) => `<i${i < width ? ' class="on"' : ''}></i>`).join('');
+    const parts = [gen ? `PCIe ${gen}.0 x${width}` : `x${width}`];
+    if (maxGen && gen && maxGen > gen) parts.push(`a placa aceita ${maxGen}.0`);
+    if (maxWidth && maxWidth > width) parts.push(`e x${maxWidth}`);
+    return `<div class="lanes"><div class="meter-head">${el('span', '', 'Link da placa de vídeo')}<strong>${escapeHtml(parts[0])}</strong></div><div class="lane-row" aria-hidden="true">${lanes}</div>${el('small', '', parts.length > 1 ? parts.slice(1).join(' ') : plural(width, 'pista', 'pistas') + ' em uso')}</div>`;
   }
 
   function loadHtml(report) {
     const { load } = report;
     if (!load) return '';
-    const linkText = (gen, width) => (gen ? `PCIe ${gen}.0${width ? ' x' + width : ''}` : null);
-    const link = linkText(load.gpu?.pcieGen, load.gpu?.pcieWidth) || (load.links || []).map((item) => linkText(item.link?.gen, item.link?.width)).find(Boolean) || null;
-    const tiles = [
-      ['Todos os núcleos', load.clock?.allCoreMHz ? `${n(load.clock.allCoreMHz)} MHz` : null, 'cpu'],
-      ['Um núcleo (turbo)', load.clock?.singleMHz ? `${n(load.clock.singleMHz)} MHz` : null, 'cpu'],
-      ['Processador em carga', Number.isFinite(load.temps?.cpuPeak) ? `${n(load.temps.cpuPeak)} °C` : null, 'heat'],
-      ['Placa de vídeo', Number.isFinite(load.temps?.gpuPeak) ? `${n(load.temps.gpuPeak)} °C` : null, 'gpu'],
-      ['Link da placa de vídeo', link, 'network'],
-      ['Pontuação', load.bench?.multi ? `${n(load.bench.multi, 0)} · ${n(load.bench.single, 0)} (1 núcleo)` : null, 'board']
-    ].filter(([, value]) => value);
+    const cpu = report.profile?.cpu || {};
+    const gpuInfo = load.gpu || {};
+    const linkFromDevice = (load.links || []).map((item) => item.link).find((link) => link?.width);
+    const gen = gpuInfo.pcieGen || linkFromDevice?.gen || null;
+    const width = gpuInfo.pcieWidth || linkFromDevice?.width || null;
+    const maxWidth = gpuInfo.pcieWidthMax || linkFromDevice?.maxWidth || null;
+    const maxGen = gpuInfo.pcieGenMax || linkFromDevice?.maxGen || null;
+    const clocks = [[load.clock?.allCoreMHz, 'todos os núcleos'], [load.clock?.singleMHz, 'um núcleo (turbo)']].filter(([value]) => Number.isFinite(value) && value > 0);
+    const nums = clocks.length ? '<div class="load-nums">' + list(clocks, ([value, label]) => `<div><strong>${n(value)}</strong><span>MHz · ${escapeHtml(label)}</span></div>`) + '</div>' : '';
+    const cpuMeter = meterHtml('Temperatura no pico', load.temps?.cpuPeak, NexoDeep.tjMaxOf ? NexoDeep.tjMaxOf(cpu) : 100);
+    const cpuBlock = nums || cpuMeter ? `<div class="load-block" data-node="cpu">${el('span', 'load-cap', 'Processador em carga')}${nums}${cpuMeter}</div>` : '';
+    const gpuMeter = meterHtml('Temperatura no pico', load.temps?.gpuPeak, 90, 'onde a maioria das placas começa a frear');
+    const lanes = lanesHtml(gen, width, maxWidth, maxGen);
+    const gpuBlock = gpuMeter || lanes ? `<div class="load-block" data-node="gpu">${el('span', 'load-cap', 'Placa de vídeo acordada')}${gpuMeter}${lanes}</div>` : '';
+    const single = load.bench?.single ? '<strong>' + n(load.bench.single, 0) + '</strong>' + el('small', '', 'um núcleo') : '';
+    const bench = load.bench?.multi ? `<div class="load-bench" data-node="board">${el('span', '', 'Pontuação do Nexo')}<strong>${n(load.bench.multi, 0)}</strong>${el('small', '', 'todos os núcleos')}${single}</div>` : '';
     const signed = (value, digits) => (value >= 0 ? '+' : '') + n(value, digits);
     const changes = (report.comparison?.changes || []).map((item) => (item.pct === undefined ? `${item.label}: ${signed(item.delta, 0)} °C` : `${item.label}: ${signed(item.pct, 1)}%`));
-    const grid = tiles.length ? '<div class="deep-tiles">' + list(tiles, ([label, value, node]) => `<div data-node="${node}">` + el('span', '', label) + el('strong', '', value) + '</div>') + '</div>' : '<p class="muted">Sem leituras de sensores neste PC.</p>';
-    const since = changes.length ? el('p', 'muted', `Desde a análise de ${new Date(report.comparison.at).toLocaleDateString('pt-BR')}: ${changes.join(' · ')}`) : '';
-    return `<section class="deep-card deep-load"><h4>Teste de carga</h4>${grid}${since}</section>`;
+    const body = cpuBlock || gpuBlock ? `<div class="load-grid">${cpuBlock}${gpuBlock}</div>${bench}` : `${bench}<p class="muted">Sem leituras de sensores neste PC.</p>`;
+    const since = changes.length ? el('p', 'muted load-since', `Desde a análise de ${new Date(report.comparison.at).toLocaleDateString('pt-BR')}: ${changes.join('; ')}`) : '';
+    return `<section class="deep-card deep-load">${cardTitle('i-bolt', 'Teste de carga')}${body}${since}</section>`;
   }
 
   /*
@@ -367,7 +465,7 @@
       return `<li>${el('strong', '', entry.name)}${el('span', '', stats)}${live ? '<span class="pill" data-role="now">pesando agora</span>' : ''}</li>`;
     }).join('');
     const empty = info.days < 1 ? el('p', 'muted', 'O Nexo ainda está conhecendo a sua rotina; a cada dia ele aprende mais e cruza com as próximas análises.') : '';
-    return `<section class="deep-card deep-routine"><h4>Sua rotina</h4>${el('p', 'muted', facts.join(' · '))}${rows ? '<ul class="routine-list">' + rows + '</ul>' : ''}${empty}</section>`;
+    return `<section class="deep-card deep-routine">${cardTitle('i-clock', 'Sua rotina')}${el('p', 'muted', facts.join(' · '))}${rows ? '<ul class="routine-list">' + rows + '</ul>' : ''}${empty}</section>`;
   }
 
   /** Mini gráfico da nota nas últimas análises deste PC. */
@@ -396,6 +494,47 @@
     return [`${fromDisk ? 'Última análise: ' : ''}${when.toLocaleDateString('pt-BR')} às ${time}`, `${duration(report.durationMs)} de análise`, report.onBattery ? 'na bateria' : null, since || null].filter(Boolean).join(' · ');
   }
 
+  /**
+   * Carta celeste do relatório: nebulosa na cor de cada peça (âmbar onde há o que ajustar), órbitas de fundo, poeira,
+   * as ligações e cada estrela com o tipo e o nome da peça. O número na estrela é quantos pontos ela tem para ajustar.
+   */
+  function chartSvg(names, nodes, counts, platform) {
+    let seed = 11;
+    const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const stop = (color, opacity) => `<stop offset="0" stop-color="${color}" stop-opacity="${opacity}" /><stop offset="1" stop-color="${color}" stop-opacity="0" />`;
+    const defs = NODES.map((item) => `<radialGradient id="deep-neb-${item.id}">${stop(NODE_HEX[item.id], 0.42)}</radialGradient>`).join('') + `<radialGradient id="deep-neb-warn">${stop('#ffc46b', 0.5)}</radialGradient>`;
+    const nebula = NODES.map((item) => {
+      const [x, y] = CHART[item.id];
+      const warn = nodes[item.id] === 'warn';
+      return `<circle cx="${x}" cy="${y}" r="${warn ? 150 : 118}" fill="url(#deep-neb-${warn ? 'warn' : item.id})" />`;
+    }).join('');
+    const dust = Array.from({ length: 120 }, () => `<circle class="deep-dust" cx="${Math.round(rand() * 1000)}" cy="${Math.round(rand() * 320)}" r="${(0.5 + rand() * 1.3).toFixed(2)}" />`).join('');
+    const orbits = '<g class="deep-orbitlines" aria-hidden="true"><ellipse cx="480" cy="166" rx="430" ry="138" /><ellipse cx="480" cy="166" rx="280" ry="90" /><ellipse cx="480" cy="166" rx="132" ry="44" /></g>';
+    const edges = EDGES.map(([a, b]) => `<line class="deep-edge" data-a="${a}" data-b="${b}" x1="${CHART[a][0]}" y1="${CHART[a][1]}" x2="${CHART[b][0]}" y2="${CHART[b][1]}" pathLength="1" />`).join('');
+    const stars = NODES.map((item, index) => {
+      const [x, y] = CHART[item.id];
+      const top = TOP.has(item.id);
+      const count = counts[item.id] || 0;
+      const badge = count ? `<g class="deep-badge" transform="translate(25 -3)"><circle r="10.5" /><text y="4">${count}</text></g>` : '';
+      const name = names[item.id] ? `<text class="deep-name" y="${top ? -30 : 60}">${escapeHtml(names[item.id])}</text>` : '';
+      return `<g class="deep-star${name ? ' named' : ''}" data-node="${item.id}" data-state="${nodes[item.id] || 'done'}" data-order="${index}" transform="translate(${x} ${y})">
+        <circle class="deep-halo" r="30" /><circle class="deep-ring" r="19" /><circle class="deep-core" r="7.5" />${badge}
+        <text class="deep-label" y="${top ? (name ? -52 : -30) : 40}">${escapeHtml(labelOf(item, platform))}</text>${name}</g>`;
+    }).join('');
+    return `<defs>${defs}</defs><g class="deep-nebula" aria-hidden="true">${nebula}</g>${orbits}<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g><g class="deep-stars">${stars}</g>`;
+  }
+
+  /** Placar em fichas: quantos para resolver, para ajustar, sugestões e o que já está certo (cada ficha leva até a lista). */
+  function tallyHtml(count, more, ok) {
+    const chips = [
+      ['alta', count('alta'), 'para resolver', 'findings'],
+      ['media', count('media'), count('media') === 1 ? 'vale ajustar' : 'valem ajustar', 'findings'],
+      ['baixa', more.length, more.length === 1 ? 'sugestão' : 'sugestões', 'more'],
+      ['ok', ok.length, ok.length === 1 ? 'já certa' : 'já certas', 'ok']
+    ].filter(([, value]) => value > 0);
+    return chips.length ? '<div class="deep-tally">' + list(chips, ([sev, value, label, jump]) => `<button type="button" class="tally" data-sev="${sev}" data-jump="${jump}"><b>${value}</b>${escapeHtml(label)}</button>`) + '</div>' : '';
+  }
+
   /** Nota de 0 a 100 sempre numérica: relatório antigo ou corrompido recalcula pelos achados. */
   function scoreOf(report) {
     const raw = typeof report?.score === 'number' && Number.isFinite(report.score) ? report.score : NexoDeep.healthScore(report?.findings || []);
@@ -415,21 +554,35 @@
     const ok = findings.filter((item) => item.severity === 'ok');
     const mainHtml = main.length ? list(main, findingHtml) : '<p class="deep-clean">Nada importante para resolver. 🎉</p>';
     const moreHtml = more.length ? `<details class="deep-more"${main.length ? '' : ' open'}><summary>${plural(more.length, 'sugestão', 'sugestões e observações')}</summary>${list(more, findingHtml)}</details>` : '';
-    const resolved = comparison?.resolved?.length ? el('p', 'deep-resolved', 'Resolvido desde a última vez: ' + comparison.resolved.join(' · ')) : '';
-    const okHtml = ok.length ? '<section class="deep-card deep-ok"><h4>Já está certo</h4><ul>' + list(ok, (item) => el('li', '', item.title)) + '</ul></section>' : '';
+    const resolved = comparison?.resolved?.length ? el('p', 'deep-resolved', 'Resolvido desde a última vez: ' + comparison.resolved.join('; ')) : '';
+    const okHtml = ok.length ? `<section class="deep-card deep-ok">${cardTitle('i-check', 'Já está certo')}<ul>` + list(ok, (item) => el('li', '', item.title)) + '</ul></section>' : '';
     const score = scoreOf(report);
     let story = { identity: '', verdict: '', good: null };
-    try { story = NexoDeep.narrative(report.profile || {}, findings); } catch { /* relatório antigo sem perfil */ }
+    if (report.profile?.cpu) { try { story = NexoDeep.narrative(report.profile, findings); } catch { /* perfil incompleto */ } }
+    let names = {};
+    try { names = NexoHardware.shortNames(report.profile || {}); } catch { names = {}; }
+    const nodes = Object.fromEntries(NODES.map((item) => [item.id, 'done']));
+    const counts = {};
+    for (const item of main) {
+      const id = AREA_NODE[item.area];
+      if (!id) continue;
+      nodes[id] = 'warn';
+      counts[id] = (counts[id] || 0) + 1;
+    }
     const ring = 2 * Math.PI * 42;
-    const footnote = headline(main, more, ok, count) + ' · ' + stamp(report, fromDisk);
-    reportBox.innerHTML = `<div class="deep-head">
-        <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(score)}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-bg" cx="50" cy="50" r="42" /><circle class="ring" cx="50" cy="50" r="42" stroke-dasharray="${ring.toFixed(1)}" stroke-dashoffset="${ring.toFixed(1)}" data-target="${(ring * (1 - score / 100)).toFixed(1)}" /></svg><strong>${score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
-        <div class="deep-head-text"><span class="deep-kicker">Seu PC, entendido</span>${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${el('p', 'deep-verdict', story.verdict)}${story.good ? el('p', 'deep-good', story.good) : ''}${el('small', 'muted', footnote)}</div>
-        <div class="deep-head-side"><svg class="deep-sky deep-mini" id="deep-report-sky" viewBox="0 0 640 280" role="img" aria-label="Constelação do seu PC: peças em amarelo têm algo para ajustar; toque numa para ver"></svg><button class="btn sm primary" type="button" data-deep-again="1">Analisar de novo</button></div>
+    const ticks = Array.from({ length: 40 }, (_, i) => { const a = (i / 40) * Math.PI * 2; const r1 = i % 5 ? 47 : 45.5; return `<line x1="${(50 + r1 * Math.cos(a)).toFixed(2)}" y1="${(50 + r1 * Math.sin(a)).toFixed(2)}" x2="${(50 + 49 * Math.cos(a)).toFixed(2)}" y2="${(50 + 49 * Math.sin(a)).toFixed(2)}" />`; }).join('');
+    reportBox.innerHTML = `<div class="deep-hero">
+        <div class="deep-hero-top">
+          <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(score)}"><svg viewBox="0 0 100 100" aria-hidden="true"><g class="ring-ticks">${ticks}</g><circle class="ring-bg" cx="50" cy="50" r="42" /><circle class="ring" cx="50" cy="50" r="42" stroke-dasharray="${ring.toFixed(1)}" stroke-dashoffset="${ring.toFixed(1)}" data-target="${(ring * (1 - score / 100)).toFixed(1)}" /></svg><strong>${score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
+          <div class="deep-head-text">${el('span', 'deep-kicker', fromDisk ? 'Seu PC, da última análise' : 'Seu PC, entendido')}${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${story.verdict ? el('p', 'deep-verdict', story.verdict) : ''}${story.good ? el('p', 'deep-good', story.good) : ''}${tallyHtml(count, more, ok)}</div>
+          <div class="deep-hero-actions"><button class="btn primary" type="button" data-deep-again="1">Analisar de novo</button>${el('small', 'muted', stamp(report, fromDisk))}</div>
+        </div>
+        <svg class="deep-sky deep-chart" id="deep-report-sky" viewBox="0 0 1000 320" role="img" aria-label="Carta celeste do seu PC: cada estrela é uma peça; as amarelas têm algo para ajustar. Toque numa para ver a peça.">${chartSvg(names, nodes, counts, report.platform || report.profile?.os?.platform)}</svg>
+        <p class="deep-chart-hint">Cada estrela é uma peça do seu PC. As amarelas têm algo para ajustar; toque numa para ver os detalhes dela.</p>
       </div>
       <div class="deep-grid">
         <div class="deep-col">
-          <section class="deep-card deep-findings"><h4>O que fazer, do mais importante para o menos</h4>${mainHtml}${moreHtml}${resolved}</section>
+          <section class="deep-card deep-findings">${cardTitle('i-spark', 'O que fazer, do mais importante para o menos')}${mainHtml}${moreHtml}${resolved}</section>
           ${behindHtml(report)}
           ${loadHtml(report)}
           ${routineHtml(routine)}
@@ -437,26 +590,25 @@
         <div class="deep-col">${pcHtml(report)}${planHtml(report)}${okHtml}</div>
       </div>`;
     show('report');
-    finishReport(findings);
+    finishReport();
   }
 
-  /** Depois de montar: constelação final (clicável), anel da nota enchendo e cartões entrando em sequência. */
-  function finishReport(findings) {
-    const mini = document.getElementById('deep-report-sky');
-    buildSky(mini);
-    // Cada estrela do relatório leva à peça em "Seu PC" (mouse, toque ou teclado).
-    for (const star of mini.querySelectorAll('.deep-star')) {
+  /** Depois de montar: estrelas acendendo uma a uma, anel da nota enchendo e cartões entrando em sequência. */
+  function finishReport() {
+    const chart = document.getElementById('deep-report-sky');
+    for (const star of chart.querySelectorAll('.deep-star')) {
       star.setAttribute('tabindex', '0');
       star.setAttribute('role', 'button');
-      star.setAttribute('aria-label', `Ver ${star.querySelector('.deep-label')?.textContent || 'peça'} em Seu PC`);
+      const label = star.querySelector('.deep-label')?.textContent || 'peça';
+      const name = star.querySelector('.deep-name')?.textContent;
+      star.setAttribute('aria-label', 'Ver ' + (name ? label + ': ' + name : label) + ' em Seu PC');
+      star.style.setProperty('--i', star.dataset.order || '0');
     }
-    const nodes = Object.fromEntries(NODES.map((item) => [item.id, 'done']));
-    for (const item of findings) if ((item.severity === 'alta' || item.severity === 'media') && AREA_NODE[item.area]) nodes[AREA_NODE[item.area]] = 'warn';
-    paintStates(mini, nodes);
+    paintStates(chart, Object.fromEntries([...chart.querySelectorAll('.deep-star')].map((star) => [star.dataset.node, star.dataset.state])));
     reportBox.querySelectorAll('.deep-card').forEach((card, index) => card.style.setProperty('--i', String(index)));
     const ring = reportBox.querySelector('.deep-score .ring');
     const go = () => { if (ring) ring.style.strokeDashoffset = ring.dataset.target; };
-    if (calm()) { go(); reportBox.classList.add('calm'); } else requestAnimationFrame(() => requestAnimationFrame(go));
+    if (calm()) { go(); reportBox.classList.add('calm'); } else { reportBox.classList.remove('calm'); requestAnimationFrame(() => requestAnimationFrame(go)); }
   }
 
   /* ---------------- Fluxo ---------------- */
@@ -505,7 +657,7 @@
   function paintIntro() {
     const intro = document.getElementById('deep-intro-sky');
     buildSky(intro);
-    paintStates(intro, { cpu: 'seen', board: 'done', memory: 'seen', gpu: 'seen', disk: 'seen', network: 'seen', windows: 'seen' });
+    paintStates(intro, Object.fromEntries(NODES.map((item) => [item.id, 'done'])));
   }
 
   async function loadLast() {
@@ -537,6 +689,13 @@
     }
     const target = event.target.closest('button');
     if (!target) return;
+    if (target.dataset.jump) {
+      const where = { findings: '.deep-findings', more: '.deep-more', ok: '.deep-ok' }[target.dataset.jump];
+      const box = where ? reportBox.querySelector(where) : null;
+      if (box?.tagName === 'DETAILS') box.open = true;
+      box?.scrollIntoView({ behavior: calm() ? 'auto' : 'smooth', block: 'start' });
+      return;
+    }
     if (target.dataset.deepAgain) start();
     else if (target.dataset.deepSettings) bridge?.openWindowsSettings?.(target.dataset.deepSettings).catch((error) => showToast(error.message));
     else if (target.dataset.deepGoto) Nexo.go(target.dataset.deepGoto);

@@ -318,6 +318,7 @@ if (window.__nexoPlatform === 'linux') {
       const stop = () => { clearInterval(tick); state.status = 'cancelled'; push(); return { cancelled: true }; };
       const profile = NexoHardware.identify(inventory);
       const lines = NexoHardware.factLines(profile);
+      state.names = NexoHardware.shortNames(profile);
       const pick = (node) => lines.filter((line) => line.node === node);
       nodes({ cpu: 'active', board: 'active' }); go(0, 'lendo processador, placa-mãe, memória, vídeo, discos e rede…');
       await wait(2500); facts('cpu', pick('cpu')[0].text); nodes({ cpu: 'done' });

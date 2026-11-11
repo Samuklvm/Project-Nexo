@@ -331,6 +331,8 @@ test('orquestração: 7 etapas na ordem, no mínimo 60 s, relatório sem caminho
   assert.deepEqual(stages, [...stages].sort((a, b) => a - b), 'as etapas só andam para a frente');
   assert.deepEqual([...new Set(stages)], [0, 1, 2, 3, 4, 5, 6, 7]);
   assert.equal(emitted[emitted.length - 1].status, 'done');
+  assert.equal(emitted[emitted.length - 1].names.cpu, 'Ryzen 5 5600G', 'cada estrela ganha o nome curto da peça');
+  assert.equal(emitted[emitted.length - 1].names.board, 'ASUS B550');
   assert.ok(emitted.some((progress) => progress.facts.some((item) => /Roblox aberto/.test(item.text))), 'o jogo é anunciado e deixado de fora');
   assert.ok(report.observation.games.some((game) => game.label === 'Roblox'));
   assert.ok(report.findings.some((item) => item.id === 'reinicio-pendente'));
@@ -386,6 +388,13 @@ test('revisão: casos que já enganaram os decodificadores e as regras', () => {
   const tr = H.decodeCpu({ name: 'AMD Ryzen Threadripper 3990X 64-Core Processor', cores: 64, threads: 128 });
   assert.equal(tr.vendor, 'AMD');
   assert.equal(H.decodeCpu({ name: 'AMD Ryzen AI 9 HX 370 w/ Radeon 890M', cores: 12, threads: 24 }).vendor, 'AMD');
+  // Nome curto embaixo de cada estrela.
+  const names = H.shortNames(H.identify(baseInventory({ network: [{ description: 'Intel Wi-Fi 6 AX201', up: true, kind: 'wifi', wifi: { standard: '802.11ax' } }] })));
+  assert.deepEqual([names.cpu, names.board, names.memory, names.gpu, names.disk, names.network, names.windows], ['Ryzen 5 5600G', 'ASUS B550', '2×8 GB DDR4', 'RTX 3060', 'SSD NVMe 1 TB', 'Wi-Fi 6', 'Windows 11 24H2']);
+  assert.deepEqual(H.shortNames({}), {});
+  // Servidor de nuvem (o runner do GitHub é um EPYC 9V45): nome e geração, nunca só "AMD".
+  assert.match(H.cpuLine(H.decodeCpu({ name: 'AMD EPYC 9V45 96-Core Processor', cores: 2, threads: 4 })), /^AMD EPYC 9V45 · Zen 5/);
+  assert.match(H.cpuLine(H.decodeCpu({ name: 'AMD Custom APU 0405', cores: 4, threads: 8 })), /^AMD Custom APU 0405/);
   assert.equal(H.decodeCpu({ name: 'Intel(R) Core(TM) 5 120F', cores: 6, threads: 12 }).vendor, 'Intel');
   // DDR5 na Intel: Controller0-ChannelA e Controller1-ChannelA são dois canais (dual channel), não o mesmo.
   const ddr5 = H.decodeMemory({ modules: [{ capacity: 16 * GB, speed: 4800, type: 34, formFactor: 8, locator: 'Controller0-ChannelA-DIMM0', bank: 'BANK 0' }, { capacity: 16 * GB, speed: 4800, type: 34, formFactor: 8, locator: 'Controller1-ChannelA-DIMM0', bank: 'BANK 0' }] });

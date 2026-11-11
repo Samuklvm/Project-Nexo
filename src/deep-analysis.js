@@ -600,12 +600,18 @@
     if (!(observation.background || []).some((item) => item.impact === 'alto' || item.impact === 'medio') && !(finite(system.dpcAvg) && system.dpcAvg >= 2.5)) add(F('fundo-limpo', 'fundo', 'ok', 'Nada pesando por trás', null));
   }
 
+  /** Limite de temperatura (TjMax): Intel 100 °C; Ryzen 95 °C, menos os de desktop Zen 2/3 com 8 núcleos ou mais (90 °C). */
+  function tjMaxOf(cpu) {
+    const c = cpu || {};
+    if (c.vendor !== 'AMD') return 100;
+    return c.segment === 'desktop' && ['zen2', 'zen3'].includes(c.zen) && !c.apuPcie3 && (c.cores || 0) >= 8 ? 90 : 95;
+  }
+
   function loadFindings(load, profile, facts, onBattery, add) {
     if (!load) return;
     const cpu = profile.cpu || {};
     const laptop = profile.kind === 'laptop' || profile.kind === 'handheld';
-    // Limite de temperatura (TjMax): Intel 100 °C; Ryzen 95 °C, menos os de desktop Zen 2/3 com 8 núcleos ou mais (90 °C).
-    const tj = cpu.vendor === 'AMD' ? (cpu.segment === 'desktop' && ['zen2', 'zen3'].includes(cpu.zen) && !cpu.apuPcie3 && (cpu.cores || 0) >= 8 ? 90 : 95) : 100;
+    const tj = tjMaxOf(cpu);
     const peak = load.temps?.cpuPeak;
     const drop = load.clock?.dropPct;
     if (finite(peak)) {
@@ -780,5 +786,5 @@
     return Math.max(5, Math.min(100, Math.round(100 - lost)));
   }
 
-  return { NODES, STAGES, MIN_TOTAL_MS, plan, narrative, LAB_KNOBS, classifyProcess, summarizeObservation, needsMoreTime, summarizeLoad, cpuSensors, buildFindings, compareRuns, runRecord, fingerprintOf, healthScore, BACKGROUND, SEVERITY_ORDER, impactOf };
+  return { NODES, STAGES, MIN_TOTAL_MS, plan, narrative, LAB_KNOBS, classifyProcess, summarizeObservation, needsMoreTime, summarizeLoad, cpuSensors, buildFindings, compareRuns, runRecord, fingerprintOf, healthScore, BACKGROUND, SEVERITY_ORDER, impactOf, tjMaxOf };
 });

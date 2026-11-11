@@ -200,7 +200,15 @@
     if (m) return decodeRyzen(m[1], m[2], m[3]);
     if (/\bFX\b|FX-\d{4}/i.test(name)) return { vendor: 'AMD', family: 'FX', model: (name.match(/FX-?(\d{4})/i) || [])[1] || null, architecture: 'Bulldozer / Piledriver', socket: 'AM3+', memoryTypes: ['DDR3'], pcie: 2, segment: 'desktop', igpu: false, year: 2012, known: true };
     if (/Athlon|\bA\d{1,2}-\d{4}|Sempron|Phenom/i.test(name)) return { vendor: 'AMD', family: (name.match(/Athlon|Sempron|Phenom|A\d{1,2}/i) || [''])[0], model: null, segment: 'entrada', known: false, igpu: /with Radeon|Vega/i.test(name) || null };
-    return { vendor: 'AMD', known: false };
+    m = name.match(/EPYC\s+(?:Embedded\s+)?([0-9A-Z]{4,5}[A-Z]?)/i);
+    if (m) {
+      // O último dígito do número diz a geração (7xx1 Naples … 9xx5 Turin); vale também para os modelos de nuvem (9V45).
+      const zen = { 1: 'zen', 2: 'zen2', 3: 'zen3', 4: 'zen4', 5: 'zen5' }[(m[1].match(/(\d)[A-Z]?$/) || [])[1]] || null;
+      return { vendor: 'AMD', family: 'EPYC', model: m[1].toUpperCase(), generationLabel: 'servidor', architecture: zen ? AMD_ZEN[zen] : null, zen, segment: 'servidor', igpu: false, hybrid: false, known: Boolean(zen), year: zen ? AMD_YEAR[zen] : null };
+    }
+    // Desconhecido: guarda o nome limpo ("AMD Foo 123") para não mostrar só "AMD".
+    const rest = name.replace(/\bAMD\b|\bProcessor\b|\b\d+-Core\b|with Radeon.*$|w\/ Radeon.*$|\(tm\)|\(r\)/gi, ' ').replace(/\s+/g, ' ').trim();
+    return { vendor: 'AMD', family: rest || null, known: false };
   }
 
   /**
@@ -642,6 +650,63 @@
     return disk.model ? `${disk.model}: ${details.filter(Boolean).join(', ')}` : details.filter(Boolean).join(', ');
   }
 
+  /**
+   * Nome curtinho de cada peça, escrito embaixo da estrela na constelação: "Ryzen 7 5700X3D", "ASUS B550",
+   * "2×8 GB DDR4", "RTX 4060 Ti", "SSD NVMe 1 TB", "Wi-Fi 6", "Windows 11 24H2". Peça desconhecida fica sem nome.
+   */
+  function shortNames(profile) {
+    const p = profile && typeof profile === 'object' ? profile : {};
+    const cut = (text, max = 24) => {
+      const clean = String(text || '').replace(/\s+/g, ' ').trim();
+      return clean.length > max ? `${clean.slice(0, max - 1).trim()}…` : clean;
+    };
+    const names = {};
+    const cpu = p.cpu || {};
+    const cpuName = cpu.family ? cpuTitle(cpu, { vendor: false }) : cleanName(cpu.name).replace(/\b(Processor|CPU)\b.*$/i, '').replace(/@.*$/, '');
+    if (cpuName) names.cpu = cut(cpuName.replace(/\bCPU\s+/i, ''));
+    const board = p.board || {};
+    if (board.chipset?.id) names.board = cut([board.maker, board.chipset.id].filter(Boolean).join(' '));
+    else if (p.kind === 'laptop' && p.system?.model) names.board = cut(p.system.model);
+    else if (board.product) names.board = cut([board.maker, board.product].filter(Boolean).join(' '));
+    else if (p.virtual) names.board = 'máquina virtual';
+    const memory = p.memory || {};
+    if (memory.totalBytes) {
+      const sizes = [...new Set((memory.modules || []).map((module) => module.capacityBytes))];
+      const count = (memory.modules || []).length;
+      const head = count > 1 && sizes.length === 1 && !memory.soldered ? `${count}×${gbText(sizes[0])}` : gbText(memory.totalBytes);
+      names.memory = cut([head, memory.type].filter(Boolean).join(' '));
+    }
+    const gpus = p.gpus || [];
+    const gpu = gpus.find((item) => item.discrete) || gpus.find((item) => item.integrated) || gpus[0];
+    if (gpu?.name) {
+      let name = gpu.name.replace(/\((R|TM)\)/gi, '').replace(/^NVIDIA\s+/i, '').replace(/^GeForce\s+(?=RTX|GTX|GT|MX)/i, '').replace(/^AMD\s+Radeon\s+(?=RX|Pro|R\d|Vega)/i, '').replace(/^Intel\s+/i, '').replace(/\s+(Laptop GPU|Graphics)$/i, '').trim();
+      if (gpu.integrated && /^(AMD\s+)?Radeon$/i.test(name)) name = 'Radeon integrada';
+      if (gpu.virtual) name = /Hyper-V/i.test(gpu.name) ? 'vídeo Hyper-V' : 'vídeo virtual';
+      if (gpu.basicDriver) name = 'sem driver';
+      names.gpu = cut(name);
+    }
+    const disks = p.disks || [];
+    const disk = disks.find((item) => item.system) || disks[0];
+    if (disk) {
+      let size = '';
+      if (disk.sizeBytes >= 1e12) size = `${(disk.sizeBytes / 1e12).toFixed(1).replace('.', ',').replace(',0', '')} TB`;
+      else if (disk.sizeBytes) size = `${Math.round(disk.sizeBytes / 1e9)} GB`;
+      const label = { nvme: 'SSD NVMe', ssd: 'SSD', hdd: 'HD', usb: 'USB', virtual: 'disco virtual' }[disk.kind] || 'disco';
+      const more = disks.length > 1 ? ` +${disks.length - 1}` : '';
+      names.disk = cut(`${label} ${size}`.trim() + more);
+    }
+    const adapters = (p.network || []).filter((item) => item.up);
+    const net = adapters.find((item) => item.kind === 'ethernet' && item.linkMbps) || adapters.find((item) => item.kind === 'wifi') || adapters[0];
+    if (net) {
+      const WIFI = { be: 'Wi-Fi 7', ax: 'Wi-Fi 6', ac: 'Wi-Fi 5', n: 'Wi-Fi 4' };
+      const speed = (mbps) => (mbps >= 1000 ? `${String(Math.round(mbps / 100) / 10).replace('.', ',')} Gb/s` : `${mbps} Mb/s`);
+      if (net.kind === 'wifi') names.network = WIFI[(net.wifi?.standard || '').replace('802.11', '')] || 'Wi-Fi';
+      else names.network = net.linkMbps ? `cabo ${speed(net.linkMbps)}` : 'cabo';
+    }
+    if (p.os?.name) names.windows = cut(p.os.name.replace(/^Microsoft\s+/i, ''));
+    return names;
+  }
+
   /* ======================================================================================================
    * O que cada peça significa (o "entender o setup"): limites, recursos e o caminho de upgrade
    * ==================================================================================================== */
@@ -726,5 +791,5 @@
     return lines;
   }
 
-  return { decodeCpu, decodeChipset, decodeMemory, decodeGpu, decodeDisplay, decodeDisk, decodeNetwork, decodeSystem, decodeOs, decodeLink, identify, factLines, traits, cpuTitle, UPGRADE, ratedFromPart, channelOf, cleanName, ageDays, maker, CHIPSETS, MEM_TYPES, LAYOUT_TEXT, gbText, cpuLine, memoryLine, boardLine, gpuLine, displayLine, diskLine };
+  return { decodeCpu, decodeChipset, decodeMemory, decodeGpu, decodeDisplay, decodeDisk, decodeNetwork, decodeSystem, decodeOs, decodeLink, identify, factLines, traits, cpuTitle, UPGRADE, ratedFromPart, channelOf, cleanName, ageDays, maker, CHIPSETS, MEM_TYPES, LAYOUT_TEXT, gbText, cpuLine, memoryLine, boardLine, gpuLine, displayLine, diskLine, shortNames };
 });

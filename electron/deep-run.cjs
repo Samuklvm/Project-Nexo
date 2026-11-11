@@ -27,7 +27,7 @@ function createDeepAnalysis(deps) {
     return {
       runId: state.id, status: state.status, stageIndex: state.stageIndex, total: Deep.STAGES.length,
       stages: Deep.STAGES.map((stage, index) => ({ id: stage.id, label: stage.label, state: index < state.stageIndex ? 'done' : index === state.stageIndex && state.status === 'running' ? 'active' : state.status === 'done' ? 'done' : 'pending' })),
-      nodes: { ...state.nodes }, action: state.action, facts: state.facts.slice(-5), elapsedMs: now() - state.startedAt, minMs: Deep.MIN_TOTAL_MS,
+      nodes: { ...state.nodes }, names: { ...(state.names || {}) }, action: state.action, facts: state.facts.slice(-5), elapsedMs: now() - state.startedAt, minMs: Deep.MIN_TOTAL_MS,
       extended: state.extended, observed: state.observed, error: state.error || null
     };
   }
@@ -289,6 +289,7 @@ function createDeepAnalysis(deps) {
         }
       }
       const profile = Hardware.identify(inventory || {}, { now: now() });
+      try { state.names = Hardware.shortNames(profile); } catch { state.names = {}; }
       const lines = Hardware.factLines(profile);
       const cpuText = lines.find((line) => line.node === 'cpu')?.text;
       const boardText = lines.find((line) => line.node === 'board')?.text;
