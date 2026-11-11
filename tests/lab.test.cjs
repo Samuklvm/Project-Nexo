@@ -379,3 +379,13 @@ test('medição com outro programa pesando fica inconclusiva', async () => {
   assert.ok(result.arms.every((arm) => arm.verdict === 'inconclusivo'));
   assert.equal(result.combination, null);
 });
+
+test('tela do laboratório: todo teste tem nome curto na tabela de resultados (nada de "undefined")', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'view-lab.js'), 'utf8');
+  const literal = /const BENCH_SHORT = (\{[^}]+\});/.exec(source);
+  assert.ok(literal, 'BENCH_SHORT em src/view-lab.js');
+  const short = Function(`return (${literal[1]});`)();
+  for (const bench of Lab.BENCHES) assert.ok(typeof short[bench] === 'string' && short[bench].length > 0, `falta o nome curto de "${bench}"`);
+});

@@ -3,7 +3,9 @@
   const bridge = desktopBridge;
   const KEY = 'nexo-lab-v1';
   const STAGES = [['preflight', 'Pré-checagem'], ['ponto', 'Ponto de restauração'], ['preparar', 'Ambiente de testes'], ['aquecer', 'Aquecimento'], ['testar', 'Testando ideias'], ['combinar', 'Combinações inéditas'], ['confirmar', 'Confirmação'], ['restaurar', 'Restauração']];
-  const BENCH_SHORT = { single: '1 núcleo', multi: 'Todos', burst: 'Rajadas', latency: 'Latência', disk: 'Disco' };
+  // Nome curto de cada teste do laboratório (cabeçalho da tabela de resultados). Precisa ter TODOS os de NexoLab.BENCHES:
+  // faltavam os 4 testes que entraram na 0.8.0 e a tabela mostrava "undefined" (o teste confere).
+  const BENCH_SHORT = { single: '1 núcleo', multi: 'Todos', burst: 'Rajadas', frames: 'Quadros', latency: 'Latência', timer: 'Timer', memory: 'Memória', disk: 'Disco', network: 'Rede' };
   const GOAL_NOTE = { jogos: 'Pesa mais um núcleo, rajadas e latência.', geral: 'Todos os testes com peso parecido.', pesado: 'Pesa mais todos os núcleos (render, compilação, compressão).', resposta: 'Pesa mais latência e rajadas: cliques e carregamentos curtos.' };
   const VERDICT = { melhorou: ['melhorou', 'risk-baixo'], piorou: ['piorou', 'risk-alto'], misto: ['troca (melhora e piora)', 'risk-moderado'], 'sem-diferenca': ['sem diferença', ''], inconclusivo: ['inconclusivo', ''], recusado: ['o PC recusou', 'risk-moderado'] };
   const NOVELTY = { 'inedito-aqui': 'inédito neste PC', 'pouco-conhecido': 'pouco conhecido', conhecido: 'conhecido', raro: 'quase ninguém mexe' };
@@ -278,7 +280,7 @@
     // Melhores primeiro: o que ganhou aparece no topo, o inconclusivo no fim.
     const order = { melhorou: 0, misto: 1, 'sem-diferenca': 2, piorou: 3, inconclusivo: 4 };
     rows = [...rows].sort((a, b) => (order[a.verdict] ?? 5) - (order[b.verdict] ?? 5) || (b.compositeDelta ?? -99) - (a.compositeDelta ?? -99));
-    const benchHead = (bench) => `<th>${BENCH_SHORT[bench]}</th>`;
+    const benchHead = (bench) => `<th>${escapeHtml(BENCH_SHORT[bench] || bench)}</th>`;
     const benchCell = (row) => (bench) => {
       const measured = row.results?.[bench];
       const value = measured ? `${signed(measured.deltaPct)}<small> ±${(measured.noisePct ?? 0).toFixed(1).replace('.', ',')}</small>` : '—';
