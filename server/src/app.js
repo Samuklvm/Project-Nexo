@@ -55,6 +55,8 @@ const adminEmails = (env) => String(env.ADMIN_EMAILS || '').toLowerCase().split(
 const EMAIL = /^[^\s@]{1,64}@[^\s@.]{1,63}(?:\.[^\s@.]{1,63}){1,8}$/;
 export const ROLES = { dono: 'Dono', colaborador: 'Colaborador', leitura: 'Leitura' };
 /** O que cada papel pode fazer no painel. */
+/** Tipos de chave de ferramenta (todas só leitura e sem e-mails). */
+const TOOL_SCOPES = new Set(['erros:ler', 'painel:ler']);
 const CAN = {
   dono: new Set(['ver', 'emails', 'status', 'equipe', 'chaves']),
   colaborador: new Set(['ver', 'emails', 'status']),
@@ -465,18 +467,23 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ keys: results });
   }
 
-  /** Cria uma chave só de leitura dos erros (até 10 ativas); o segredo aparece só nesta resposta. */
+  /**
+   * Cria uma chave só de leitura (até 10 ativas); o segredo aparece só nesta resposta. Dois tipos:
+   *  - erros:ler  → só os erros abertos (rotina que copia para o repositório privado);
+   *  - painel:ler → o painel inteiro para o Claude ler (resumo, telemetria, erros com trilha), nunca e-mails.
+   */
   async function adminKeyCreate({ request, env, admin, need }) {
     need('chaves');
     const body = await readJson(request);
-    const label = text(body.label, 60).trim() || 'Chave sem nome';
+    const scope = TOOL_SCOPES.has(body.scope) ? body.scope : 'erros:ler';
+    const label = text(body.label, 60).trim() || (scope === 'painel:ler' ? 'Claude (leitura do painel)' : 'Chave sem nome');
     const active = await env.DB.prepare('SELECT COUNT(*) AS n FROM tool_keys WHERE revoked = 0').first();
     if ((active?.n || 0) >= 10) throw new HttpError(409, 'Já existem 10 chaves ativas. Revogue uma antes.');
     const secret = `nexo_${randomId(30)}`;
     const id = randomId(9);
-    await env.DB.prepare('INSERT INTO tool_keys (id, label, key_hash, scope, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, label, await sha256Hex(secret), 'erros:ler', admin.email, now()).run();
+    await env.DB.prepare('INSERT INTO tool_keys (id, label, key_hash, scope, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, label, await sha256Hex(secret), scope, admin.email, now()).run();
     // A chave aparece só agora; depois, nem o painel consegue mostrar de novo.
-    return json({ id, label, key: secret, scope: 'erros:ler' });
+    return json({ id, label, key: secret, scope });
   }
 
   /** Revoga uma chave de acesso. */
@@ -527,15 +534,40 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     throw new HttpError(404, 'Não encontrado.');
   }
 
-  /* ---------- Ferramentas (chave de acesso, só leitura dos erros, sem e-mails) ---------- */
-  async function toolErrors(request, env, url) {
+  /* ---------- Ferramentas (chave de acesso, só leitura, sem e-mails) ---------- */
+  /** Confere a chave (Bearer nexo_…), o tipo dela, o limite de uso, e marca o último uso. */
+  async function toolKey(request, env, scope) {
     const header = request.headers.get('authorization') || '';
     const secret = header.startsWith('Bearer nexo_') ? header.slice(7).trim() : '';
     if (!/^nexo_[A-Za-z0-9_-]{30,60}$/.test(secret)) throw new HttpError(401, 'Chave de acesso inválida.');
     const row = await env.DB.prepare('SELECT id, scope, revoked FROM tool_keys WHERE key_hash = ?').bind(await sha256Hex(secret)).first();
-    if (!row || row.revoked || row.scope !== 'erros:ler') throw new HttpError(401, 'Chave de acesso inválida ou revogada.');
+    if (!row || row.revoked || row.scope !== scope) throw new HttpError(401, 'Chave de acesso inválida ou revogada.');
     await limit(env, `tool:${row.id}`, 200);
     await env.DB.prepare('UPDATE tool_keys SET last_used = ? WHERE id = ?').bind(now(), row.id).run();
+    return row;
+  }
+  /* Papel de "leitura" para as funções do painel: vê tudo, menos e-mails; não muda nada. */
+  const READER = { email: null, sid: null, role: 'leitura', can: (action) => CAN.leitura.has(action) };
+  const unwrap = async (response) => response.json();
+
+  /** Painel inteiro só para leitura (chave painel:ler): resumo, PCs novos, versões, telemetria e a lista de erros. */
+  async function toolPanel(request, env, url) {
+    await toolKey(request, env, 'painel:ler');
+    const context = { request, env, url, admin: READER, need: () => {} };
+    const [summary, errors, telemetry] = await Promise.all([adminSummary(context).then(unwrap), adminErrorList(context).then(unwrap), adminTelemetry(context).then(unwrap)]);
+    const { admin, permissions, ...rest } = summary;
+    return json({ summary: rest, errors: errors.groups, telemetry, generatedAt: now() });
+  }
+
+  /** Um erro (pilha, contexto, trilha, PCs por versão), para a chave painel:ler; e-mails nunca. */
+  async function toolPanelError(request, env, url, signature) {
+    await toolKey(request, env, 'painel:ler');
+    const detail = await adminErrorDetail({ request, env, url, admin: READER, need: () => {} }, signature).then(unwrap);
+    return json({ group: detail.group, reports: detail.reports });
+  }
+
+  async function toolErrors(request, env, url) {
+    await toolKey(request, env, 'erros:ler');
     const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
     const { results = [] } = await env.DB.prepare(`SELECT g.signature, g.source, g.level, g.message, g.stack, g.context, g.first_at, g.last_at, g.status, g.fixed_in, g.note,
         COUNT(r.install_id) AS installs, COALESCE(SUM(r.count), 0) AS occurrences, GROUP_CONCAT(DISTINCT r.version) AS versions, GROUP_CONCAT(DISTINCT r.platform) AS platforms
@@ -563,6 +595,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['POST /v1/telemetry', postTelemetry],
     ['POST /v1/admin/link', adminLink],
     ['GET /v1/tools/errors', toolErrors],
+    ['GET /v1/tools/painel', toolPanel],
     ['GET /painel/entrar', (_request, env, url) => adminEnter(env, url)],
     ['GET /painel', panelPage],
     ['GET /painel/app.js', () => page(PANEL_JS, 'text/javascript; charset=utf-8')],
