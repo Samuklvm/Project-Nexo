@@ -19,7 +19,6 @@
   const POS = { cpu: [190, 70], memory: [420, 58], board: [310, 148], gpu: [522, 152], disk: [108, 178], windows: [236, 238], network: [452, 236] };
   // Carta celeste do relatório: a mesma constelação, mais larga, com o nome de cada peça embaixo da estrela.
   const CHART = { cpu: [250, 86], memory: [640, 72], board: [480, 160], gpu: [815, 150], disk: [130, 190], windows: [345, 238], network: [680, 236] };
-  const NODE_HEX = { cpu: '#5ad7ff', board: '#c4a1ff', memory: '#ff8ce8', gpu: '#6ef2c2', disk: '#c8f56b', network: '#7f9bff', windows: '#dfe7ff' };
   const TOP = new Set(['cpu', 'memory']);
   /** No Linux a estrela do sistema se chama "Sistema", não "Windows". */
   const labelOf = (item, platform = Nexo.platform) => (item.id === 'windows' && platform === 'linux' ? 'Sistema' : item.label);
@@ -34,6 +33,14 @@
   let loadedLast = false;
 
   /* ---------------- Constelação ---------------- */
+  /** Véu de nebulosa: um degradê radial de uma cor só, bem suave. */
+  const veil = (id, color, opacity) => `<radialGradient id="${id}"><stop offset="0" stop-color="${color}" stop-opacity="${opacity}" /><stop offset="1" stop-color="${color}" stop-opacity="0" /></radialGradient>`;
+  /**
+   * Luz de uma estrela: halo que se esvai (degradê na cor da própria estrela, definido aqui dentro para herdar a cor)
+   * e dois raios finos, como numa foto do céu.
+   */
+  const starLight = (prefix, id, glow, spike) => `<radialGradient id="${prefix}-glow-${id}" class="deep-glowdef"><stop offset="0" class="g0" /><stop offset="0.28" class="g1" /><stop offset="1" class="g2" /></radialGradient>`
+    + `<circle class="deep-glow" r="${glow}" fill="url(#${prefix}-glow-${id})" /><path class="deep-spikes" d="M${-spike} 0H${spike}M0 ${-spike}V${spike}" />`;
   function drawSky() {
     buildSky(sky);
   }
@@ -46,12 +53,11 @@
     const edges = EDGES.map(([a, b]) => `<line class="deep-edge" data-a="${a}" data-b="${b}" x1="${POS[a][0]}" y1="${POS[a][1]}" x2="${POS[b][0]}" y2="${POS[b][1]}" pathLength="1" />`).join('');
     // Nebulosa de cada peça: acende junto com a estrela (âmbar quando ela tem algo para ajustar).
     const prefix = target.id || 'sky';
-    const glow = (id, color) => `<radialGradient id="${prefix}-neb-${id}"><stop offset="0" stop-color="${color}" stop-opacity="0.4" /><stop offset="1" stop-color="${color}" stop-opacity="0" /></radialGradient>`;
-    const defs = `<defs>${NODES.map((item) => glow(item.id, NODE_HEX[item.id])).join('')}${glow('warn', '#ffc46b')}</defs>`;
+    const defs = `<defs>${veil(`${prefix}-neb`, '#9fb8ff', 0.2)}${veil(`${prefix}-neb-warn`, '#ffc98a', 0.2)}</defs>`;
     const stars = NODES.map((item) => {
       const [x, y] = POS[item.id];
       return `<g class="deep-star" data-node="${item.id}" data-state="pending" transform="translate(${x} ${y})">
-        <circle class="deep-neb" r="84" fill="url(#${prefix}-neb-${item.id})" /><circle class="deep-neb deep-neb-warn" r="96" fill="url(#${prefix}-neb-warn)" /><circle class="deep-halo" r="22" /><circle class="deep-ring" r="15" /><circle class="deep-core" r="5.5" />
+        <circle class="deep-neb" r="84" fill="url(#${prefix}-neb)" /><circle class="deep-neb deep-neb-warn" r="96" fill="url(#${prefix}-neb-warn)" />${starLight(prefix, item.id, 26, 15)}<circle class="deep-ring" r="15" /><circle class="deep-core" r="5.5" />
         <text class="deep-label" y="${TOP.has(item.id) ? -26 : 34}">${escapeHtml(labelOf(item))}</text><text class="deep-name" y="${TOP.has(item.id) ? -26 : 52}"></text></g>`;
     }).join('');
     const comet = (i) => '<circle class="deep-comet" cx="' + (310 + 118 * Math.cos(i * 2.1)).toFixed(1) + '" cy="' + (148 + 62 * Math.sin(i * 2.1)).toFixed(1) + '" r="2.4" />';
@@ -76,7 +82,7 @@
       if (calm() || document.hidden || sky.dataset.stage === 'load') return true;
       const t = now / 1000;
       for (const star of sky.querySelectorAll('.deep-star[data-state="active"]')) {
-        star.querySelector('.deep-halo')?.setAttribute('transform', `scale(${(1 + 0.16 * Math.sin(t * 3.9)).toFixed(3)})`);
+        star.querySelector('.deep-glow')?.setAttribute('transform', `scale(${(1 + 0.12 * Math.sin(t * 3.2)).toFixed(3)})`);
         star.querySelector('.deep-ring')?.setAttribute('transform', `rotate(${Math.round((t * 60) % 360)})`);
       }
       if (sky.dataset.stage === 'behind') orbit()?.setAttribute('transform', `rotate(${Math.round((t * 40) % 360)} 310 148)`);
@@ -148,7 +154,7 @@
       const state = progress.nodes?.[star.dataset.node] || 'pending';
       if (star.dataset.state !== state) {
         star.dataset.state = state;
-        if (state !== 'active') { star.querySelector('.deep-halo')?.removeAttribute('transform'); star.querySelector('.deep-ring')?.removeAttribute('transform'); }
+        if (state !== 'active') { star.querySelector('.deep-glow')?.removeAttribute('transform'); star.querySelector('.deep-ring')?.removeAttribute('transform'); }
       }
       star.dataset.hot = stage === 'load' && progress.status === 'running' && (star.dataset.node === 'cpu' || star.dataset.node === 'gpu') && state === 'active' ? '1' : '';
     }
@@ -501,12 +507,11 @@
   function chartSvg(names, nodes, counts, platform) {
     let seed = 11;
     const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    const stop = (color, opacity) => `<stop offset="0" stop-color="${color}" stop-opacity="${opacity}" /><stop offset="1" stop-color="${color}" stop-opacity="0" />`;
-    const defs = NODES.map((item) => `<radialGradient id="deep-neb-${item.id}">${stop(NODE_HEX[item.id], 0.42)}</radialGradient>`).join('') + `<radialGradient id="deep-neb-warn">${stop('#ffc46b', 0.5)}</radialGradient>`;
-    const nebula = NODES.map((item) => {
+    const defs = veil('deep-chart-neb', '#9fb8ff', 0.16) + veil('deep-chart-neb-warn', '#ffc98a', 0.22) + veil('deep-chart-milky', '#c9d6ff', 0.09);
+    const nebula = '<ellipse class="deep-milky" cx="500" cy="168" rx="560" ry="92" transform="rotate(-7 500 168)" fill="url(#deep-chart-milky)" />' + NODES.map((item) => {
       const [x, y] = CHART[item.id];
       const warn = nodes[item.id] === 'warn';
-      return `<circle cx="${x}" cy="${y}" r="${warn ? 150 : 118}" fill="url(#deep-neb-${warn ? 'warn' : item.id})" />`;
+      return `<circle cx="${x}" cy="${y}" r="${warn ? 140 : 112}" fill="url(#deep-chart-neb${warn ? '-warn' : ''})" />`;
     }).join('');
     const dust = Array.from({ length: 120 }, () => `<circle class="deep-dust" cx="${Math.round(rand() * 1000)}" cy="${Math.round(rand() * 320)}" r="${(0.5 + rand() * 1.3).toFixed(2)}" />`).join('');
     const orbits = '<g class="deep-orbitlines" aria-hidden="true"><ellipse cx="480" cy="166" rx="430" ry="138" /><ellipse cx="480" cy="166" rx="280" ry="90" /><ellipse cx="480" cy="166" rx="132" ry="44" /></g>';
@@ -518,7 +523,7 @@
       const badge = count ? `<g class="deep-badge" transform="translate(25 -3)"><circle r="10.5" /><text y="4">${count}</text></g>` : '';
       const name = names[item.id] ? `<text class="deep-name" y="${top ? -30 : 60}">${escapeHtml(names[item.id])}</text>` : '';
       return `<g class="deep-star${name ? ' named' : ''}" data-node="${item.id}" data-state="${nodes[item.id] || 'done'}" data-order="${index}" transform="translate(${x} ${y})">
-        <circle class="deep-halo" r="30" /><circle class="deep-ring" r="19" /><circle class="deep-core" r="7.5" />${badge}
+        ${starLight('deep-chart', item.id, 36, 22)}<circle class="deep-ring" r="19" /><circle class="deep-core" r="6.5" />${badge}
         <text class="deep-label" y="${top ? (name ? -52 : -30) : 40}">${escapeHtml(labelOf(item, platform))}</text>${name}</g>`;
     }).join('');
     return `<defs>${defs}</defs><g class="deep-nebula" aria-hidden="true">${nebula}</g>${orbits}<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g><g class="deep-stars">${stars}</g>`;

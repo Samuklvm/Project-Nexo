@@ -1126,7 +1126,6 @@ body.lite .rise, body.lite .game-card, body.lite .modal-backdrop > * { animation
 .deep-intro-actions { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; }
 @media (max-width: 860px) { .deep-intro { grid-template-columns: minmax(0, 1fr); } .deep-intro-art { max-width: 420px; } }
 .deep-mini .deep-label { font-size: 22px; }
-.deep-mini .deep-star .deep-core { r: 8px; }
 .deep-mini .deep-star { cursor: pointer; }
 .deep-mini .deep-edge { stroke-width: 2.2; }
 
@@ -1134,30 +1133,8 @@ body.lite .rise, body.lite .game-card, body.lite .modal-backdrop > * { animation
 .deep-sky { width: 100%; height: auto; max-height: 320px; display: block; overflow: visible; }
 .deep-dust { fill: rgba(228, 234, 255, 0.32); }
 .deep-edge { stroke-width: 1.3; stroke-linecap: round; transition: stroke 0.6s; }
-.deep-edge[data-state="pending"] { stroke: rgba(150, 175, 255, 0.08); }
-.deep-edge[data-state="seen"] { stroke: rgba(var(--neon-rgb), 0.22); }
-.deep-edge[data-state="done"] { stroke: rgba(var(--neon-rgb), 0.58); stroke-dasharray: 1; animation: deep-draw 1.4s var(--ease-out) both; filter: drop-shadow(0 0 3px rgba(var(--neon-rgb), 0.6)); }
 .deep-star .deep-core { transform-box: fill-box; transform-origin: center; }
-.deep-star .deep-core { fill: rgba(228, 234, 255, 0.22); transition: fill 0.5s, transform 0.5s var(--ease-out), filter 0.5s; }
-.deep-star .deep-halo { fill: rgba(var(--neon-rgb), 0); transition: fill 0.6s; }
-.deep-star .deep-ring { fill: none; stroke: rgba(var(--neon-rgb), 0); stroke-width: 1.2; stroke-dasharray: 4 6; transition: stroke 0.4s; }
 .deep-label { fill: var(--mist); font-size: 12.5px; font-weight: 600; text-anchor: middle; opacity: 0.5; transition: opacity 0.5s, fill 0.5s; }
-.deep-star[data-state="seen"] .deep-core { fill: rgba(228, 234, 255, 0.55); }
-.deep-star[data-state="seen"] .deep-label { opacity: 0.75; }
-.deep-star[data-state="active"] .deep-core { fill: #fff; transform: scale(1.35); }
-/* Pulso, giro do anel e cometas andam no relógio único do app (30 quadros, src/view-deep.js), nunca em loop de CSS. */
-.deep-star[data-state="active"] .deep-halo { fill: rgba(var(--neon-rgb), 0.2); }
-.deep-star[data-state="active"] .deep-ring { stroke: rgba(var(--neon-rgb), 0.85); }
-.deep-star[data-state="active"] .deep-label { opacity: 1; fill: var(--moon); }
-.deep-star[data-state="done"] .deep-core { fill: var(--neon); transform: scale(1.15); filter: drop-shadow(0 0 6px rgba(var(--neon-rgb), 0.9)); }
-.deep-star[data-state="done"] .deep-halo { fill: rgba(var(--neon-rgb), 0.1); }
-.deep-star[data-state="done"] .deep-label { opacity: 1; fill: var(--moon); }
-.deep-star[data-state="warn"] .deep-core { fill: var(--warn); transform: scale(1.15); filter: drop-shadow(0 0 6px rgba(255, 196, 107, 0.9)); }
-.deep-star[data-state="warn"] .deep-halo { fill: rgba(255, 196, 107, 0.13); }
-.deep-star[data-state="warn"] .deep-label { opacity: 1; fill: var(--warn); }
-.deep-star[data-hot="1"] .deep-core { fill: #ff9a5c; filter: drop-shadow(0 0 8px rgba(255, 120, 80, 0.95)); }
-.deep-star[data-hot="1"] .deep-halo { fill: rgba(255, 120, 80, 0.26); }
-.deep-star[data-hot="1"] .deep-ring { stroke: rgba(255, 140, 90, 0.9); }
 .deep-orbit { opacity: 0; transition: opacity 0.8s; }
 .deep-sky[data-stage="behind"] .deep-orbit { opacity: 1; }
 .deep-comet { fill: var(--neon-2); filter: drop-shadow(0 0 4px rgba(var(--neon-2-rgb), 0.9)); }
@@ -1242,13 +1219,6 @@ body.lite .deep-facts li.fresh { animation: none; }
 [data-node="network"] { --node: #7f9bff; --node-rgb: 127, 155, 255; }
 [data-node="windows"] { --node: #dfe7ff; --node-rgb: 223, 231, 255; }
 [data-node="heat"] { --node: #ff9f7a; --node-rgb: 255, 159, 122; }
-.deep-star[data-state="seen"] .deep-core { fill: rgba(var(--node-rgb), 0.55); }
-.deep-star[data-state="active"] .deep-halo { fill: rgba(var(--node-rgb), 0.22); }
-.deep-star[data-state="active"] .deep-ring { stroke: var(--node); }
-.deep-star[data-state="done"] .deep-core { fill: var(--node); filter: drop-shadow(0 0 7px rgba(var(--node-rgb), 0.95)); }
-.deep-star[data-state="done"] .deep-halo { fill: rgba(var(--node-rgb), 0.13); }
-.deep-star[data-state="done"] .deep-label { fill: var(--node); }
-.deep-star[data-state="warn"] .deep-ring { stroke: rgba(255, 196, 107, 0.7); stroke-dasharray: none; }
 .deep-facts li::before { color: var(--node, rgba(var(--neon-rgb), 0.85)); }
 .deep-facts li[data-node="none"]::before { color: rgba(var(--neon-rgb), 0.85); }
 .deep-bar i { background: linear-gradient(90deg, #5ad7ff, #c4a1ff 22%, #ff8ce8 40%, #6ef2c2 58%, #c8f56b 74%, #7f9bff 88%, #dfe7ff); }
@@ -1323,9 +1293,6 @@ body.lite .deep-facts li.fresh { animation: none; }
 .deep-chart .deep-label { font-size: 13.5px; opacity: 0.95; }
 .deep-chart .deep-name { font-size: 18px; letter-spacing: -0.005em; stroke-width: 5px; }
 .deep-chart .deep-star { cursor: pointer; }
-.deep-chart .deep-star .deep-halo { transform-box: fill-box; transform-origin: center; transition: fill 0.3s, transform 0.3s var(--ease-out); }
-.deep-chart .deep-star:hover .deep-halo, .deep-chart .deep-star:focus-visible .deep-halo { fill: rgba(var(--node-rgb), 0.3); transform: scale(1.18); }
-.deep-chart .deep-star[data-state="warn"]:hover .deep-halo, .deep-chart .deep-star[data-state="warn"]:focus-visible .deep-halo { fill: rgba(255, 196, 107, 0.3); }
 .deep-chart .deep-star:focus-visible { outline: none; }
 .deep-chart .deep-star:focus-visible .deep-ring { stroke: #fff; stroke-dasharray: none; }
 .deep-badge circle { fill: var(--warn); filter: drop-shadow(0 0 6px rgba(255, 196, 107, 0.85)); }
@@ -1429,8 +1396,52 @@ body.lite .deep-facts li.fresh { animation: none; }
   .deep-report .deep-card, .deep-report .deep-hero, .pc-list > li.flash, .deep-chart * { animation: none !important; }
   .deep-score .ring, .stage-ico, .deep-name { transition: none; }
 }
-.deep-star .deep-neb { opacity: 0; transition: opacity 1.2s; pointer-events: none; }
-.deep-star:is([data-state="done"], [data-state="active"]) .deep-neb:not(.deep-neb-warn) { opacity: 1; }
-.deep-star[data-state="warn"] .deep-neb-warn { opacity: 1; }
-.deep-star[data-state="seen"] .deep-neb:not(.deep-neb-warn) { opacity: 0.35; }
 .deep-run .deep-sky { max-height: 360px; }
+
+/* ---- Estrelas com brilho natural: luz de estrela parecida entre si (branco-azulado), núcleo claro e halo que se
+   esvai; a que tem algo para ajustar fica num dourado quente, como uma estrela mais amarelada. ---- */
+.deep-sky .deep-star { --s: #e3ecff; }
+.deep-sky .deep-star[data-node="cpu"] { --s: #d3e9ff; }
+.deep-sky .deep-star[data-node="board"] { --s: #e4defe; }
+.deep-sky .deep-star[data-node="memory"] { --s: #ece3fb; }
+.deep-sky .deep-star[data-node="gpu"] { --s: #d9f1f6; }
+.deep-sky .deep-star[data-node="disk"] { --s: #e8eef4; }
+.deep-sky .deep-star[data-node="network"] { --s: #d8e1ff; }
+.deep-sky .deep-star[data-node="windows"] { --s: #f1f4ff; }
+.deep-sky .deep-star[data-state="warn"] { --s: #ffd796; }
+.deep-sky .deep-star[data-hot="1"] { --s: #ffb489; }
+/* O halo é um degradê na cor da própria estrela (definido dentro dela), então só a opacidade muda por estado. */
+.deep-glowdef .g0 { stop-color: var(--s); stop-opacity: 0.8; }
+.deep-glowdef .g1 { stop-color: var(--s); stop-opacity: 0.22; }
+.deep-glowdef .g2 { stop-color: var(--s); stop-opacity: 0; }
+.deep-star .deep-glow { opacity: 0; transform-box: fill-box; transform-origin: center; transition: opacity 0.8s, transform 0.4s var(--ease-out); pointer-events: none; }
+.deep-star .deep-spikes { fill: none; stroke: var(--s); stroke-width: 0.8; stroke-linecap: round; opacity: 0; transition: opacity 0.8s; pointer-events: none; }
+.deep-star .deep-core { fill: rgba(228, 234, 255, 0.22); transition: fill 0.6s, transform 0.5s var(--ease-out), filter 0.6s; }
+.deep-star .deep-ring { fill: none; stroke: rgba(255, 255, 255, 0); stroke-width: 1; stroke-dasharray: 3 6; transition: stroke 0.4s; }
+.deep-star[data-state="seen"] .deep-core { fill: var(--s); opacity: 0.55; }
+.deep-star[data-state="seen"] .deep-glow { opacity: 0.3; }
+.deep-star[data-state="seen"] .deep-label { opacity: 0.8; }
+.deep-star[data-state="active"] .deep-core { fill: #fff; transform: scale(1.3); filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
+.deep-star[data-state="active"] .deep-glow { opacity: 1; }
+.deep-star[data-state="active"] .deep-ring { stroke: rgba(255, 255, 255, 0.55); }
+.deep-star[data-state="active"] .deep-label { opacity: 1; fill: var(--moon); }
+.deep-star:is([data-state="done"], [data-state="warn"]) .deep-core { fill: var(--s); filter: drop-shadow(0 0 3px var(--s)); }
+.deep-star:is([data-state="done"], [data-state="warn"]) .deep-glow { opacity: 0.85; }
+.deep-star:is([data-state="done"], [data-state="warn"]) .deep-spikes { opacity: 0.32; }
+.deep-star[data-state="done"] .deep-label { opacity: 1; fill: rgba(206, 218, 245, 0.85); }
+.deep-star[data-state="warn"] .deep-label { opacity: 1; fill: #ffd796; }
+.deep-star[data-state="warn"] .deep-ring { stroke: rgba(255, 215, 150, 0.45); stroke-dasharray: none; }
+.deep-star[data-hot="1"] .deep-core { fill: var(--s); filter: drop-shadow(0 0 5px var(--s)); }
+.deep-star[data-hot="1"] .deep-ring { stroke: rgba(255, 180, 137, 0.75); }
+/* Nebulosa: um véu suave e frio atrás das peças examinadas, morno onde há algo para ajustar. */
+.deep-star .deep-neb { opacity: 0; transition: opacity 1.4s; pointer-events: none; }
+.deep-star:is([data-state="done"], [data-state="active"]) .deep-neb:not(.deep-neb-warn) { opacity: 1; }
+.deep-star[data-state="seen"] .deep-neb:not(.deep-neb-warn) { opacity: 0.4; }
+.deep-star[data-state="warn"] .deep-neb-warn { opacity: 1; }
+.deep-edge[data-state="pending"] { stroke: rgba(170, 190, 255, 0.07); }
+.deep-edge[data-state="seen"] { stroke: rgba(196, 214, 255, 0.16); }
+.deep-edge[data-state="done"] { stroke: rgba(200, 218, 255, 0.4); stroke-dasharray: 1; animation: deep-draw 1.4s var(--ease-out) both; }
+.deep-comet { fill: #eef3ff; filter: drop-shadow(0 0 3px rgba(220, 232, 255, 0.9)); }
+.deep-mini .deep-star .deep-core { r: 7px; }
+.deep-chart .deep-star:hover .deep-glow, .deep-chart .deep-star:focus-visible .deep-glow { opacity: 1; transform: scale(1.25); }
+.deep-chart .deep-milky { opacity: 0.9; pointer-events: none; }
