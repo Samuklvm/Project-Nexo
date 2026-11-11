@@ -102,6 +102,24 @@
         return false;
       }
     }
+    if (entry.actionId === 'opt-run') {
+      const check = Nexo.journal.canRevert(entry, null);
+      if (!check.ok) { showToast(check.reason); return false; }
+      if (!await Nexo.confirm({ title: 'Reverter a otimização?', body: 'Tudo o que essa otimização mudou volta ao que era. Se houver ajustes de sistema, o Windows pede permissão uma vez.', confirmLabel: 'Reverter', tone: 'danger' })) return false;
+      try {
+        const answer = await desktopBridge.revertOptimization({ runId: entry.before.runId });
+        if (!answer.remaining) Nexo.journal.markReverted(id, `${answer.reverted} ajuste(s) de volta`);
+        else Nexo.journal.update(id, { revertNote: `${answer.reverted} voltaram; ${answer.remaining} não ${answer.declined ? '(sem a permissão do Windows)' : 'voltaram'}. Tente de novo.` });
+        showToast(answer.remaining ? 'Parte da otimização não voltou; veja no Diário.' : 'Otimização revertida: tudo voltou ao que era.');
+        Nexo.emit('journal');
+        return !answer.remaining;
+      } catch (error) {
+        Nexo.journal.update(id, { revertNote: `Falha ao reverter: ${error.message || 'erro desconhecido'}` });
+        showToast(error.message || 'Não foi possível reverter.');
+        Nexo.emit('journal');
+        return false;
+      }
+    }
     if (entry.actionId === 'registry-tweak') {
       const scan = await desktopBridge.scanSystem().catch(() => null);
       const now = scan?.items?.find((item) => item.id === entry.before.id);

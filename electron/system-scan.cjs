@@ -633,7 +633,7 @@ function createSystemScan({ runPowerShell, run, elevate, platform = process.plat
    * Aplica (ou reverte) mudanças. HKCU direto pelo reg.exe; plano de energia pelo powercfg; HKLM juntas numa única
    * elevação. Um valor recusado não derruba os outros: volta em "failed" (o Diário só guarda o que foi gravado).
    */
-  async function apply(changes) {
+  async function apply(changes, { deferElevation = false } = {}) {
     if (platform !== 'win32') throw new Error('O Raio-X funciona no Windows.');
     const list = (Array.isArray(changes) ? changes : []).slice(0, MAX_CHANGES);
     if (!list.length) throw new Error('Nada para aplicar.');
@@ -656,6 +656,8 @@ function createSystemScan({ runPowerShell, run, elevate, platform = process.plat
     }
     if (powerChanged) await run('powercfg', ['/setactive', 'scheme_current']);
     const elevatedIds = tweaks.filter((tweak) => tweak.entries.some((entry) => entry.hive === 'HKLM')).map((tweak) => tweak.id);
+    /* O otimizador junta a parte de HKLM no lote dele (uma permissão do Windows para tudo): aqui só HKCU e plano. */
+    if (deferElevation) return { ok: failed.size === 0, failed: [...failed], deferred: list.filter((change) => elevatedIds.includes(change.id)) };
     let declined = false;
     for (const chunk of elevationChunks(list.filter((change) => elevatedIds.includes(change.id)))) {
       const ids = chunk.map((change) => change.id);

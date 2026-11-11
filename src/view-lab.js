@@ -16,6 +16,9 @@
 
   const memory = () => { const stored = readJSON(KEY, null); return { evidence: stored?.evidence || {}, tabu: Array.isArray(stored?.tabu) ? stored.tabu : [], runs: Array.isArray(stored?.runs) ? stored.runs : [] }; };
   const saveMemory = (value) => writeJSON(KEY, { evidence: value.evidence, tabu: value.tabu, runs: value.runs.slice(0, 15) });
+  // A otimização do PC roda o laboratório também: lê e guarda a mesma memória (o que já foi testado neste PC).
+  Nexo.labMemory = () => memory();
+  Nexo.labSaveMemory = saveMemory;
   const temp = (value) => (Number.isFinite(value) ? `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')} °C` : '—');
   const signed = (value) => (Number.isFinite(value) ? `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')}%` : '—');
   const when = (at) => new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });

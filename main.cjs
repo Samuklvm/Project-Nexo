@@ -2107,6 +2107,106 @@ registerIpcHandler('lab:adopt', async (_event, config) => {
   return labSystem.adoptCurrent(clean);
 });
 
+// ---- Otimizar este PC: o plano sai da análise profunda; uma permissão do Windows para tudo (electron/optimizer-system.cjs) ----
+const NexoOptimizer = require('./src/optimizer.js');
+const NexoDeepRules = require('./src/deep-analysis.js');
+const OptimizerActions = require('./electron/optimizer-actions.cjs');
+const { createOptimizerSystem } = require('./electron/optimizer-system.cjs');
+const optimizerSystem = createOptimizerSystem({
+  runPowerShell: runPowerShellCode, run: (file, args) => runCode(file, args, 15000), elevate, systemScan, fs, path, platform: process.platform,
+  storeFile: path.join(app.getPath('userData'), 'otimizacoes.json'), connectTime, findGateway,
+  labPreflight: () => labSystem.preflight(), powerPlans: listPowerPlans,
+  setPowerPlan: (guid) => execFileAsync(systemTool('powercfg'), ['/setactive', guid], { windowsHide: true, timeout: 10000 }),
+  library: () => library.list(), deepLast: () => deepAnalysis.last()
+});
+const optState = { running: false, signal: null, plan: null };
+/** O plano da análise (BIOS, laboratório) é refeito a partir do perfil: o relatório guardado não traz ele. */
+function deepPlanOf(report) { try { return NexoDeepRules.plan(report.profile, report.findings || []); } catch { return []; } }
+function stopBench() { if (activeBench) { activeBench.cancelled = true; for (const worker of activeBench.workers) worker.terminate(); } }
+const PLAN_TTL_MS = 30 * 60 * 1000;
+/** O que vai para a tela: sem os dados internos de cada mudança (a interface devolve só os ids marcados). */
+const publicPlan = (plan) => ({ ...plan, steps: plan.steps.map(({ change, ...step }) => ({ ...step, changes: change?.kind === 'reboot-test' ? change.changes : undefined, node: change?.kind === 'pagefile' ? 'memory' : undefined })) });
+const publicRun = (result) => ({ ...result, records: (result.records || []).map(({ id, stepId, kind, title, category, risk, reboot, undone }) => ({ id, stepId, kind, title, category, risk, reboot, undone: Boolean(undone) })) });
+async function optimizerBusy() {
+  if (labState.running) return 'O laboratório está medindo agora; espere ele terminar.';
+  if (deepAnalysis.isRunning()) return 'A análise profunda está rodando; espere ela terminar.';
+  if (activeBench) return 'Há um teste de desempenho em andamento; espere ele terminar.';
+  if (await rebootTest.active()) return 'Há um teste com reinício em andamento; termine ou cancele ele antes (as medidas se misturariam).';
+  return null;
+}
+registerIpcHandler('opt:games', async () => optimizerSystem.games());
+registerIpcHandler('opt:plan', async (_event, options) => {
+  if (process.platform !== 'win32') return { supported: false };
+  if (optState.running) throw new Error('A otimização já está rodando.');
+  const report = await deepAnalysis.last();
+  if (!report?.profile) throw new Error('Faça a análise profunda primeiro: o plano sai dela.');
+  const gameKey = typeof options?.game === 'string' ? options.game.slice(0, 120) : '';
+  const game = gameKey ? await optimizerSystem.resolveGame(gameKey) : null;
+  if (gameKey && !game) throw new Error('Não achei o executável desse jogo. Abra o jogo uma vez e tente de novo.');
+  const allowRisk = ['baixo', 'moderado', 'alto'].includes(options?.allowRisk) ? options.allowRisk : 'moderado';
+  const [scan, startup, nics, power, pre] = await Promise.all([systemScan.scan().catch(() => null), optimizerSystem.readStartup().catch(() => []), optimizerSystem.readNics().catch(() => []), optimizerSystem.readPower().catch(() => null), labSystem.preflight().catch(() => null)]);
+  const sensors = Number.isFinite(pre?.tempC);
+  const plan = NexoOptimizer.buildPlan({ report: { ...report, plan: deepPlanOf(report) }, scan, startup, nics, game, power, nicTweaks: OptimizerActions.NIC_TWEAKS, allowRisk, sensors });
+  optState.plan = { ...plan, at: Date.now(), game };
+  return { supported: true, plan: publicPlan(plan), sensors, onBattery: Boolean(pre?.onBattery), reportAt: report.at, startupCount: startup.filter((item) => item.enabled).length };
+});
+registerIpcHandler('opt:run', async (_event, options) => {
+  if (optState.running) throw new Error('A otimização já está rodando.');
+  const busy = await optimizerBusy();
+  if (busy) throw new Error(busy);
+  const stored = optState.plan;
+  if (!stored || Date.now() - stored.at > PLAN_TTL_MS) throw new Error('O plano ficou velho; monte de novo para o Nexo ler o PC como está agora.');
+  const picked = new Set((Array.isArray(options?.selected) ? options.selected : []).slice(0, 400).map(String));
+  const plan = { ...stored, steps: stored.steps.map((step) => ({ ...step, selected: picked.has(step.id) && !['manual', 'testar'].includes(step.method) && !step.blocked })) };
+  const consent = { acknowledged: options?.consent?.acknowledged === true, phrase: String(options?.consent?.phrase || '').slice(0, 40) };
+  const memory = NexoLab.sanitizeMemory(options?.labMemory?.evidence, options?.labMemory?.tabu);
+  const allowRisk = ['baixo', 'moderado', 'alto'].includes(options?.allowRisk) ? options.allowRisk : 'moderado';
+  const signal = { cancelled: false };
+  optState.running = true;
+  optState.signal = signal;
+  let restore = null;
+  const system = {
+    now: () => Date.now(),
+    preflight: async () => ({ ...(await labSystem.preflight()), busy: await optimizerBusy() }),
+    bench: async (name) => (await labBench(name)).mopsPerSec,
+    ping: () => optimizerSystem.ping(),
+    apply: async (changes, extra) => { const outcome = await optimizerSystem.execute(changes, { ...extra, game: stored.game }); restore = outcome.restore; return outcome; },
+    revert: (records) => optimizerSystem.execute(records, { revert: true }),
+    waitNetwork: () => optimizerSystem.waitNetwork(),
+    sleep: (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+    /* O laboratório dentro da otimização: o ponto de restauração já foi criado no lote (sem pedir outro UAC). */
+    lab: async (labOptions) => {
+      labState.running = true;
+      labState.signal = signal;
+      try {
+        const labRunner = { ...labSystem, createRestorePoint: async () => restore || { ok: false, created: false, note: 'criado só quando há ajustes de sistema' } };
+        return await NexoLab.run(labRunner, {
+          consent: labOptions.consent, autonomy: 'autonomo', allowRisk: labOptions.allowRisk, maxArms: labOptions.maxArms, goal: labOptions.goal, combos: 1, wild: false,
+          limits: { budgetMs: labOptions.budgetMin * 60 * 1000 }, requireRestorePoint: false, evidence: memory.evidence, tabu: memory.tabu, signal,
+          emit: (event) => sendToWindow('opt:event', { type: 'lab', event: event.type === 'done' ? { type: 'done' } : event })
+        });
+      } finally { labState.running = false; labState.signal = null; }
+    }
+  };
+  try {
+    const result = await NexoOptimizer.run(system, plan, { consent, allowRisk, goal: 'jogos', signal, emit: (event) => sendToWindow('opt:event', event) });
+    const id = `opt-${result.startedAt.toString(36)}`;
+    if (result.records.length) await optimizerSystem.saveRun({ id, at: result.startedAt, game: stored.game ? stored.game.name : null, records: result.records }).catch(() => {});
+    if (result.status === 'aborted') noteInterruption('otimizacao', result.reason, { codigo: result.code || 'erro', passos: plan.steps.filter((step) => step.selected).length });
+    crumb('otimizacao', result.status, String(result.records.length));
+    return { ...publicRun(result), id, summary: NexoOptimizer.summarize(result, plan) };
+  } finally { optState.running = false; optState.signal = null; }
+});
+registerIpcHandler('opt:cancel', async () => { if (optState.signal) optState.signal.cancelled = true; stopBench(); return { ok: true }; });
+registerIpcHandler('opt:status', async () => ({ running: optState.running }));
+registerIpcHandler('opt:revert', async (_event, options) => {
+  if (optState.running) throw new Error('A otimização está rodando; espere ela terminar.');
+  const runId = String(options?.runId || '').slice(0, 40);
+  const ids = Array.isArray(options?.ids) ? options.ids.slice(0, 400).map((value) => String(value).slice(0, 8)) : null;
+  return optimizerSystem.revertRun(runId, ids);
+});
+registerIpcHandler('opt:runs', async () => (await optimizerSystem.loadStore()).runs.map((run) => ({ id: run.id, at: run.at, game: run.game, total: run.records.filter((record) => record.ok).length, active: run.records.filter((record) => record.ok && !record.undone).length })));
+
 // ---- Conexões: IPC ----
 async function connectionsView() {
   const config = await integrationConfig();

@@ -47,9 +47,6 @@
   /** Desenha a constelação (poeira, linhas, peças) num SVG; serve para a análise ao vivo, a apresentação e o relatório. */
   function buildSky(target) {
     if (!target || target.dataset.ready) return;
-    let seed = 7;
-    const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    const dust = Array.from({ length: 46 }, () => `<circle class="deep-dust" cx="${Math.round(rand() * 640)}" cy="${Math.round(rand() * 280)}" r="${(0.5 + rand() * 1.1).toFixed(2)}" />`).join('');
     const edges = EDGES.map(([a, b]) => `<line class="deep-edge" data-a="${a}" data-b="${b}" x1="${POS[a][0]}" y1="${POS[a][1]}" x2="${POS[b][0]}" y2="${POS[b][1]}" pathLength="1" />`).join('');
     // Nebulosa de cada peça: acende junto com a estrela (âmbar quando ela tem algo para ajustar).
     const prefix = target.id || 'sky';
@@ -62,9 +59,15 @@
     }).join('');
     const comet = (i) => '<circle class="deep-comet" cx="' + (310 + 118 * Math.cos(i * 2.1)).toFixed(1) + '" cy="' + (148 + 62 * Math.sin(i * 2.1)).toFixed(1) + '" r="2.4" />';
     const comets = `<g class="deep-orbit" aria-hidden="true">${[0, 1, 2].map(comet).join('')}</g>`;
-    target.innerHTML = `${defs}<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g>${comets}<g class="deep-stars">${stars}</g>`;
+    target.innerHTML = `${defs}<g class="deep-edges">${edges}</g>${comets}<g class="deep-stars">${stars}</g>`;
     target.dataset.ready = '1';
+    space(target, target.id === 'deep-intro-sky' ? 'mini' : 'sky');
   }
+  /** O espaço profundo atrás de uma constelação (src/space.js), sem a textura no modo Leve. */
+  function space(target, kind) {
+    try { NexoSpace.mount(target, kind, { lite: Boolean(Nexo.effectsLite) }); } catch { /* sem o fundo, a constelação continua */ }
+  }
+  Nexo.mountSpace = space;
   const calm = () => reduce.matches || Nexo.effectsLite;
 
   /*
@@ -211,6 +214,8 @@
     intro.hidden = which !== 'intro';
     runBox.hidden = which !== 'run';
     reportBox.hidden = which !== 'report';
+    const optBox = document.getElementById('deep-opt');
+    if (optBox) optBox.hidden = which !== 'opt';
     panel.dataset.mode = which;
   }
 
@@ -516,15 +521,12 @@
    * as ligações e cada estrela com o tipo e o nome da peça. O número na estrela é quantos pontos ela tem para ajustar.
    */
   function chartSvg(names, nodes, counts, platform) {
-    let seed = 11;
-    const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    const defs = veil('deep-chart-neb', '#9fb8ff', 0.16) + veil('deep-chart-neb-warn', '#ffc98a', 0.22) + veil('deep-chart-milky', '#c9d6ff', 0.09);
-    const nebula = '<ellipse class="deep-milky" cx="500" cy="168" rx="560" ry="92" transform="rotate(-7 500 168)" fill="url(#deep-chart-milky)" />' + NODES.map((item) => {
+    const defs = veil('deep-chart-neb', '#9fb8ff', 0.16) + veil('deep-chart-neb-warn', '#ffc98a', 0.22);
+    const nebula = NODES.map((item) => {
       const [x, y] = CHART[item.id];
       const warn = nodes[item.id] === 'warn';
       return `<circle cx="${x}" cy="${y}" r="${warn ? 140 : 112}" fill="url(#deep-chart-neb${warn ? '-warn' : ''})" />`;
     }).join('');
-    const dust = Array.from({ length: 120 }, () => `<circle class="deep-dust" cx="${Math.round(rand() * 1000)}" cy="${Math.round(rand() * 320)}" r="${(0.5 + rand() * 1.3).toFixed(2)}" />`).join('');
     const orbits = '<g class="deep-orbitlines" aria-hidden="true"><ellipse cx="480" cy="166" rx="430" ry="138" /><ellipse cx="480" cy="166" rx="280" ry="90" /><ellipse cx="480" cy="166" rx="132" ry="44" /></g>';
     const edges = EDGES.map(([a, b]) => `<line class="deep-edge" data-a="${a}" data-b="${b}" x1="${CHART[a][0]}" y1="${CHART[a][1]}" x2="${CHART[b][0]}" y2="${CHART[b][1]}" pathLength="1" />`).join('');
     const stars = NODES.map((item, index) => {
@@ -537,7 +539,7 @@
         <circle class="deep-hit" r="30" />${starLight('deep-chart', item.id, 36, 22)}<circle class="deep-ring" r="19" /><circle class="deep-core" r="6.5" />${badge}
         <text class="deep-label" y="${top ? (name ? -52 : -30) : 40}">${escapeHtml(labelOf(item, platform))}</text>${name}</g>`;
     }).join('');
-    return `<defs>${defs}</defs><g class="deep-nebula" aria-hidden="true">${nebula}</g>${orbits}<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g><g class="deep-stars">${stars}</g>`;
+    return `<defs>${defs}</defs><g class="deep-nebula" aria-hidden="true">${nebula}</g>${orbits}<g class="deep-edges">${edges}</g><g class="deep-stars">${stars}</g>`;
   }
 
   /** Placar em fichas: quantos para resolver, para ajustar, sugestões e o que já está certo (cada ficha leva até a lista). */
@@ -591,7 +593,7 @@
         <div class="deep-hero-top">
           <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(score)}"><svg viewBox="0 0 100 100" aria-hidden="true"><g class="ring-ticks">${ticks}</g><circle class="ring-bg" cx="50" cy="50" r="42" /><circle class="ring" cx="50" cy="50" r="42" stroke-dasharray="${ring.toFixed(1)}" stroke-dashoffset="${ring.toFixed(1)}" data-target="${(ring * (1 - score / 100)).toFixed(1)}" /></svg><strong>${score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
           <div class="deep-head-text">${el('span', 'deep-kicker', fromDisk ? 'Seu PC, da última análise' : 'Seu PC, entendido')}${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${story.verdict ? el('p', 'deep-verdict', story.verdict) : ''}${story.good ? el('p', 'deep-good', story.good) : ''}${tallyHtml(count, more, ok)}</div>
-          <div class="deep-hero-actions"><button class="btn primary" type="button" data-deep-again="1">Analisar de novo</button>${el('small', 'muted', stamp(report, fromDisk))}</div>
+          <div class="deep-hero-actions">${Nexo.platform === 'win32' && bridge?.planOptimization ? `<button class="btn primary opt-cta" type="button" data-deep-optimize="1">${icon('i-bolt')}Otimizar este PC</button><button class="btn" type="button" data-deep-again="1">Analisar de novo</button>` : '<button class="btn primary" type="button" data-deep-again="1">Analisar de novo</button>'}${el('small', 'muted', stamp(report, fromDisk))}</div>
         </div>
         <svg class="deep-sky deep-chart" id="deep-report-sky" viewBox="0 0 1000 320" role="group" aria-label="Carta celeste do seu PC: cada estrela é uma peça; as amarelas têm algo para ajustar. Toque numa para ver a peça.">${chartSvg(names, nodes, counts, report.platform || report.profile?.os?.platform)}</svg>
         <p class="deep-chart-hint">Cada estrela é uma peça do seu PC. As amarelas têm algo para ajustar; toque numa para ver os detalhes dela.</p>
@@ -606,6 +608,7 @@
         <div class="deep-col">${pcHtml(report)}${planHtml(report)}${okHtml}</div>
       </div>`;
     show('report');
+    space(document.getElementById('deep-report-sky'), 'chart');
     finishReport();
   }
 
@@ -691,6 +694,15 @@
   }
 
   Nexo.runDeepAnalysis = start;
+  /** O que a otimização reaproveita daqui: a carta celeste, o fundo, a troca de telas e o último relatório. */
+  Nexo.deepView = {
+    show, report: () => lastReport, back: () => backToRest(), space, paintStates, AREA_NODE, NODES, CHART,
+    chart: (report, nodes = {}, counts = {}) => {
+      let names = {};
+      try { names = NexoHardware.shortNames(report?.profile || {}); } catch { names = {}; }
+      return chartSvg(names, { ...Object.fromEntries(NODES.map((item) => [item.id, 'done'])), ...nodes }, counts, report?.platform || report?.profile?.os?.platform);
+    }
+  };
   document.getElementById('deep-start')?.addEventListener('click', start);
   document.getElementById('deep-cancel')?.addEventListener('click', () => { bridge?.cancelDeepAnalysis?.(); setText('deep-action', 'cancelando…'); });
   reportBox.addEventListener('keydown', (event) => {
@@ -713,6 +725,7 @@
       return;
     }
     if (target.dataset.deepAgain) start();
+    else if (target.dataset.deepOptimize) Nexo.openOptimizer?.();
     else if (target.dataset.deepSettings) bridge?.openWindowsSettings?.(target.dataset.deepSettings).catch((error) => showToast(error.message));
     else if (target.dataset.deepGoto) Nexo.go(target.dataset.deepGoto);
     else if (target.dataset.deepTaskmgr) bridge?.openTaskManager?.().catch((error) => showToast(error.message));
@@ -720,5 +733,7 @@
   bridge?.onAnalysisProgress?.((progress) => { if (running || progress?.status === 'running') renderProgress(progress); });
   bridge?.onGpuWake?.((payload) => { try { gpuWake(payload?.ms); } catch { /* sem WebGL: o link fica o do repouso */ } });
   Nexo.on('view', (view) => { if (view === 'analysis') loadLast(); });
+  // Modo Leve ligado ou desligado: o fundo troca (com ou sem a textura da nebulosa).
+  Nexo.on('effects', () => { for (const [id, kind] of [['deep-intro-sky', 'mini'], ['deep-sky', 'sky'], ['deep-report-sky', 'chart']]) { const target = document.getElementById(id); if (target?.dataset.ready || id === 'deep-report-sky') space(target, kind); } });
   if (Nexo.state.view === 'analysis') loadLast();
 })();

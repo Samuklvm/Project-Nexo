@@ -12,7 +12,7 @@ const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
 const WRITE_RESULT = '$r | ConvertTo-Json -Compress | Set-Content -LiteralPath $NexoOut -Encoding UTF8';
 
 /** Ponto de restauração. Contorna o limite de 1 por 24 h do jeito documentado pela Microsoft (frequência 0) e devolve o valor anterior. */
-function restorePointBody(description) {
+function restorePointCore(description) {
   return String.raw`
 $r = @{ ok = $false; created = $false; note = '' }
 $key = 'HKLM:\Software\Microsoft\Windows NT\CurrentVersion\SystemRestore'
@@ -34,8 +34,10 @@ try {
 } finally {
   if ($null -eq $had) { Remove-ItemProperty -LiteralPath $key -Name 'SystemRestorePointCreationFrequency' -ErrorAction SilentlyContinue }
   else { Set-ItemProperty -LiteralPath $key -Name 'SystemRestorePointCreationFrequency' -Value $had -ErrorAction SilentlyContinue }
+}`;
 }
-${WRITE_RESULT}`;
+function restorePointBody(description) {
+  return `${restorePointCore(description)}\n${WRITE_RESULT}`;
 }
 
 /** Adiciona ou remove o usuário (por SID, nunca por nome localizado) do grupo "Performance Log Users". */
@@ -164,6 +166,35 @@ ${steps.map((step) => `  ${step}`).join('\n')}
 ${WRITE_RESULT}`;
 }
 
+/* ---------- Otimizar este PC: um lote só, com uma permissão do Windows ---------- */
+// ~10,5 mil caracteres viram ~28 mil em -EncodedCommand (UTF-16 + base64); a linha de comando do Windows aceita 32 767.
+const OPTIMIZER_LIMIT = 10500;
+/**
+ * Ponto de restauração (opcional), os valores do Raio-X que ficam em HKLM e as ações do otimizador que precisam de
+ * administrador, tudo validado aqui de novo. Cada passo tem o próprio try/catch: o que falhou volta em "failed"
+ * (o id da mudança ou, para o Raio-X, o id do ajuste) e o que deu certo, em "done".
+ */
+function optimizerBatchBody(args) {
+  const Actions = require('./optimizer-actions.cjs');
+  const { elevatedBody, MAX_CHANGES } = require('./system-scan.cjs');
+  const changes = (Array.isArray(args?.changes) ? args.changes : []).slice(0, 120).map(Actions.validateChange);
+  if (changes.some((change) => !Actions.needsElevation(change))) throw new Error('Mudança sem necessidade de administrador no lote elevado.');
+  const registry = elevatedBody(Array.isArray(args?.registry) ? args.registry.slice(0, MAX_CHANGES) : []);
+  if (!changes.length && !registry.steps.length && args?.restorePoint !== true) throw new Error('Nada para fazer com administrador.');
+  const restore = args?.restorePoint === true ? `$r.restore = & { ${restorePointCore(String(args?.description || 'Nexo - antes de otimizar').slice(0, 64))}\n$r }` : '';
+  const body = String.raw`
+$r = @{ ok = $false; note = ''; steps = 0; failed = @(); done = @(); restore = $null }
+${restore}
+try {
+${[...registry.prelude, ...Actions.BATCH_PRELUDE].map((line) => `  ${line}`).join('\n')}
+${[...registry.steps, ...changes.map(Actions.batchStep), ...Actions.BATCH_EPILOGUE].map((line) => `  ${line}`).join('\n')}
+  $r.ok = $true
+} catch { $r.note = $_.Exception.Message }
+${WRITE_RESULT}`;
+  if (body.length > OPTIMIZER_LIMIT + 2600) throw new Error('Lote grande demais para uma permissão só.');
+  return body;
+}
+
 /* ---------- Rede (diagnóstico de rede: só o que o diagnóstico sugeriu, com dados validados aqui) ---------- */
 const { isIP } = require('node:net');
 const ifIndexOf = (value) => { const n = Number(value); if (!Number.isInteger(n) || n < 1 || n > 1000000) { throw new Error('Placa de rede inválida.'); } return n; };
@@ -230,7 +261,8 @@ const TASKS = {
   'restore-point': (args) => restorePointBody(String(args?.description || 'Nexo').slice(0, 64)),
   'perf-log-users': (args) => perfLogUsersBody(args?.action, args?.sid),
   'sensor-service': (args) => sensorServiceBody(args),
-  'registry-tweaks': (args) => registryTweaksBody(args)
+  'registry-tweaks': (args) => registryTweaksBody(args),
+  'optimizer-batch': (args) => optimizerBatchBody(args)
 };
 
 /** Ferramentas nativas do Windows chamadas com elevação (sem PowerShell no meio do caminho elevado). */
@@ -282,4 +314,4 @@ function createElevator({ runPowerShell, fs, path, dir, now = Date.now }) {
   };
 }
 
-module.exports = { netDnsBody, netIpv6Body, netResetBody, PAWNIO, SENSOR_SERVICE, sensorServiceBody, createElevator, toolLauncher, TOOLS, linuxPrivileged, LINUX_TOOLS, restorePointBody, perfLogUsersBody, TASKS, SID_PERF_LOG_USERS, USER_SID, psQuote, encode };
+module.exports = { optimizerBatchBody, OPTIMIZER_LIMIT, restorePointCore, netDnsBody, netIpv6Body, netResetBody, PAWNIO, SENSOR_SERVICE, sensorServiceBody, createElevator, toolLauncher, TOOLS, linuxPrivileged, LINUX_TOOLS, restorePointBody, perfLogUsersBody, TASKS, SID_PERF_LOG_USERS, USER_SID, psQuote, encode };

@@ -1447,3 +1447,33 @@ body.lite .deep-facts li.fresh { animation: none; }
 .deep-chart .deep-milky { opacity: 0.9; pointer-events: none; }
 .cost-note { display: block; margin-top: 3px; font-size: 11px; }
 .deep-chart .deep-hit { fill: transparent; }
+
+/* ---- Espaço profundo atrás da constelação (src/space.js): um <svg> parado atrás do que se mexe ---- */
+/* O fundo não define o tamanho: ocupa a caixa da constelação (que manda na altura) e corta o que sobrar. */
+.space-stage { position: relative; isolation: isolate; }
+.space-stage > .deep-sky { position: relative; z-index: 1; }
+.space-art { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; overflow: hidden; pointer-events: none; border-radius: 18px; }
+.space-art .space-stars.far circle { fill: #dde6ff; }
+.space-art .space-stars.bright path { fill: none; stroke: rgba(226, 236, 255, 0.5); stroke-width: 0.6; stroke-linecap: round; }
+.space-art .space-ring { fill: none; stroke: rgba(226, 210, 255, 0.42); stroke-width: 3; }
+.space-art .space-ring.back { stroke: rgba(226, 210, 255, 0.24); }
+.space-chart .space-art { inset: -10px -8px; width: calc(100% + 16px); height: calc(100% + 20px); }
+.space-art .space-giant { opacity: 0.88; }
+.space-mini .space-art { border-radius: 22px; }
+.deep-intro-art .space-stage { border-radius: 22px; }
+/* O céu da análise fica mais escuro: o espaço é o fundo, a constelação é a luz. */
+.deep-hero { background: radial-gradient(110% 90% at 0% 0%, rgba(90, 215, 255, 0.07), transparent 55%), radial-gradient(80% 80% at 100% 0%, rgba(255, 140, 232, 0.06), transparent 60%), linear-gradient(180deg, rgba(6, 8, 26, 0.92), rgba(3, 5, 16, 0.88)); }
+
+/* ---- Tipografia da constelação: a mesma família do app, sem contorno grosso; o nome da peça em destaque leve e o
+   tipo em cima, menor e mais discreto. A sombra suave separa o texto do céu sem "borrar" a letra. ---- */
+.deep-sky .deep-label, .deep-sky .deep-name { font-family: inherit; stroke: none; paint-order: normal; font-feature-settings: "cv11", "ss01", "ss03"; filter: drop-shadow(0 0 5px rgba(2, 4, 14, 0.95)) drop-shadow(0 1px 1px rgba(2, 4, 14, 0.9)); }
+.deep-sky .deep-label { font-weight: 500; letter-spacing: 0.015em; }
+.deep-sky .deep-name { font-weight: 560; letter-spacing: -0.012em; fill: rgba(246, 248, 255, 0.97); }
+.deep-chart .deep-label { font-size: 12.5px; }
+.deep-chart .deep-name { font-size: 16px; }
+.deep-chart .deep-star[data-state="done"] .deep-label { fill: rgba(170, 188, 236, 0.86); }
+.deep-sky:not(.deep-chart):not(.deep-mini) .deep-name { font-size: 13px; }
+/* A moldura do espaço tem a mesma proporção da constelação (sem faixas vazias dos lados), centralizada. */
+.space-stage.space-sky { max-width: calc(360px * 640 / 306); margin-inline: auto; width: 100%; }
+.space-stage.space-chart { max-width: calc(390px * 1000 / 320); margin-inline: auto; width: 100%; }
+.space-stage.space-mini { max-width: calc(320px * 640 / 280); margin-inline: auto; width: 100%; }
