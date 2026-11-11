@@ -367,4 +367,71 @@ if (window.__nexoPlatform === 'linux') {
       return report;
     }
   });
+
+  /* Otimizar este PC (prévia): o plano e a execução usam o motor de verdade (src/optimizer.js) com um PC simulado. */
+  const optListeners = new Set();
+  const optEmit = (event) => optListeners.forEach((cb) => cb(event));
+  const opt = (id, label, current, currentKind, options, extra = {}) => ({ id, label, available: true, values: options.find((o) => o.label === current)?.values || [null], current, currentKind, options, evidence: 'medido', risk: 'baixo', reboot: 'nao', admin: false, ...extra });
+  const O = (label, values, kind = 'alternativa') => ({ label, values, kind });
+  const mockScan = { items: [
+    opt('gamedvr', 'Gravação em segundo plano', 'Ligada', 'padrao', [O('Ligada', [1, 1], 'padrao'), O('Desligada', [0, 0], 'recomendado')], { reboot: 'sessao' }),
+    opt('gamemode', 'Modo de Jogo', 'Desligado', 'alternativa', [O('Ligado', [1], 'recomendado'), O('Desligado', [0])]),
+    opt('deliveryopt', 'Otimização de Entrega', 'Também de outros PCs', 'padrao', [O('Também de outros PCs', [null], 'padrao'), O('Só da Microsoft', [0], 'recomendado')], { admin: true }),
+    opt('powerthrottling', 'Limitação de energia em segundo plano', 'Padrão do Windows', 'padrao', [O('Padrão do Windows', [null], 'padrao'), O('Desligada', [1])], { admin: true, reboot: 'reiniciar' }),
+    opt('lastaccess', 'Data de último acesso (NTFS)', 'Ligada', 'padrao', [O('Ligada', [2147483650], 'padrao'), O('Desligada', [2147483649], 'recomendado')], { admin: true, reboot: 'reiniciar' }),
+    opt('edgebg', 'Edge rodando escondido', 'Roda escondido', 'padrao', [O('Roda escondido', [null], 'padrao'), O('Não roda escondido', [0, 0], 'recomendado')], { admin: true }),
+    opt('suggestions', 'Sugestões e dicas do Windows', 'Ligadas', 'padrao', [O('Ligadas', [1, 1], 'padrao'), O('Desligadas', [0, 0], 'recomendado')], { reboot: 'sessao' }),
+    opt('sysresp', 'Reserva para tarefas de fundo', '20%', 'padrao', [O('20%', [20], 'padrao'), O('Mínima (10%)', [10])], { evidence: 'controverso', admin: true, reboot: 'reiniciar' }),
+    opt('netthrottle', 'Limite de rede para multimídia', '10 pacotes/ms', 'padrao', [O('10 pacotes/ms', [10], 'padrao'), O('Sem limite', [4294967295])], { evidence: 'controverso', admin: true, reboot: 'reiniciar' })
+  ] };
+  const mockStartup = [
+    { source: 'user-run', name: 'Steam', exe: 'steam.exe', description: 'Steam', enabled: true },
+    { source: 'user-run', name: 'EpicGamesLauncher', exe: 'EpicGamesLauncher.exe', description: 'Epic Games Launcher', enabled: true },
+    { source: 'user-run', name: 'Discord', exe: 'Update.exe', description: 'Discord', enabled: true },
+    { source: 'machine-run', name: 'SecurityHealth', exe: 'SecurityHealthSystray.exe', enabled: true, elevated: true },
+    { source: 'user-run', name: 'Spotify', exe: 'Spotify.exe', description: 'Spotify', enabled: true },
+    { source: 'machine-run', name: 'RtkAudUService', exe: 'RtkAudUService64.exe', description: 'Realtek HD Audio Universal Service', enabled: true, elevated: true },
+    { source: 'user-run', name: 'com.squirrel.Teams.Teams', exe: 'Update.exe', description: 'Microsoft Teams', enabled: true },
+    { source: 'user-folder', name: 'iCUE.lnk', exe: 'iCUE.exe', description: 'iCUE', company: 'Corsair', enabled: true }
+  ];
+  const mockNics = [{ guid: '{11111111-2222-3333-4444-555555555555}', name: 'Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter', media: 'wifi', props: [{ keyword: 'RoamAggressiveness', value: '2', display: 'Médio', valid: ['0', '1', '2', '3', '4'] }, { keyword: 'RoamingPreferredBandType', value: '0', display: 'Sem preferência', valid: ['0', '1', '2'] }] }];
+  const mockNicTweaks = [
+    { keyword: 'RoamAggressiveness', media: 'wifi', target: '0', from: ['2', '3', '4'], risk: 'moderado', evidence: 'varia', label: 'Busca por outro roteador (roaming)', why: 'Com o roaming alto, o Wi-Fi para de tempos em tempos para procurar outro ponto de acesso, e o ping dá picos.' },
+    { keyword: 'RoamingPreferredBandType', media: 'wifi', target: '2', from: ['0', '1'], risk: 'baixo', evidence: 'varia', label: 'Preferir 5 GHz', why: 'Em 5 GHz há menos interferência de vizinhos e de aparelhos da casa.' }
+  ];
+  let optPlan = null;
+  const publicPlan = (plan) => ({ ...plan, steps: plan.steps.map(({ change, ...step }) => ({ ...step, changes: change?.kind === 'reboot-test' ? change.changes : undefined })) });
+  const buildMockPlan = (options = {}) => {
+    const game = options.game === 'roblox' ? { name: 'Roblox', exe: 'C:\\Users\\voce\\AppData\\Local\\Roblox\\Versions\\v\\RobloxPlayerBeta.exe', exeName: 'RobloxPlayerBeta.exe' } : null;
+    optPlan = NexoOptimizer.buildPlan({ report: { ...saved, plan: NexoDeep.plan(saved.profile, saved.findings) }, scan: mockScan, startup: mockStartup, nics: mockNics, game, power: { active: '381b4222-f694-41f0-9685-ff5bb260df2e' }, nicTweaks: mockNicTweaks, allowRisk: options.allowRisk || 'moderado', sensors: true });
+    return optPlan;
+  };
+  Object.assign(window.nexoDesktop, {
+    optimizerGames: async () => [{ key: 'roblox', name: 'Roblox', exeName: 'RobloxPlayerBeta.exe', source: 'roblox' }, { key: 'lib:cs2', name: 'Counter-Strike 2', exeName: 'cs2.exe', source: 'steam' }, { key: 'lib:val', name: 'VALORANT', exeName: 'VALORANT.exe', source: 'riot' }],
+    planOptimization: async (options) => { if (!saved) throw new Error('Faça a análise profunda primeiro: o plano sai dela.'); await wait(900); const plan = buildMockPlan(options); return { supported: true, plan: publicPlan(plan), sensors: true, onBattery: false, reportAt: saved.at, startupCount: 8 }; },
+    onOptimizerEvent: (cb) => { optListeners.add(cb); return () => optListeners.delete(cb); },
+    getOptimizationStatus: async () => ({ running: false }),
+    cancelOptimization: async () => { if (window.__optSignal) window.__optSignal.cancelled = true; return { ok: true }; },
+    runOptimization: async (options) => {
+      const picked = new Set(options.selected || []);
+      const plan = { ...optPlan, steps: optPlan.steps.map((step) => ({ ...step, selected: picked.has(step.id) })) };
+      const signal = { cancelled: false }; window.__optSignal = signal;
+      let phase = 0;
+      const system = {
+        now: () => Date.now(), preflight: async () => ({ platform: 'win32', onBattery: false, cpuLoad: 8, tempC: 46 }),
+        bench: async (name) => { await wait(140); const base = { single: 612, multi: 4120, burst: 900, frames: 1500, latency: 800 }[name] || 1000; return base * (phase ? 1.045 : 1) * (1 + Math.random() * 0.01); },
+        ping: async () => { await wait(300); return { gatewayMs: phase ? 2.1 : 3.4 + Math.random() * 0.1, gatewayJitter: phase ? 0.5 : 1.6, internetMs: 18 + Math.random() * 0.3, internetJitter: 1.1 }; },
+        apply: async (changes) => { await wait(1500); phase = 1; return { records: changes.map((change, i) => ({ id: 'c' + (i + 1), stepId: change.stepId, ok: true })), restore: { ok: true, created: true, note: '' } }; },
+        revert: async (records) => ({ records: records.map((record) => ({ id: record.id, ok: true })) }),
+        lab: async () => { for (let i = 1; i <= 6; i += 1) { await wait(700); optEmit({ type: 'lab', event: { type: 'trial', pair: i, pairs: 6 } }); } return { status: 'completed', adopted: { name: 'Nexo — Ajustado', guid: 'x', before: {} }, combination: { compositeDelta: 4.2 }, evidence: {}, tabu: [] }; },
+        waitNetwork: async () => { await wait(800); return true; }
+      };
+      const result = await NexoOptimizer.run(system, plan, { consent: options.consent, allowRisk: options.allowRisk, signal, rounds: 2, emit: optEmit });
+      return { ...result, id: 'opt-mock', summary: NexoOptimizer.summarize(result, plan) };
+    },
+    fixFinding: async ({ ids }) => { await wait(900); const steps = (optPlan || buildMockPlan()).steps.filter((step) => ids.includes(step.id)); return { id: 'fix-mock', status: 'completed', steps: Object.fromEntries(steps.map((step) => [step.id, { status: 'feito', note: '' }])), records: steps.map((step, i) => ({ id: 'c' + i, stepId: step.id, kind: step.kind, title: step.title, risk: step.risk, reboot: step.reboot || 'nao' })) }; },
+    revertOptimization: async () => ({ reverted: 1, failed: 0, declined: false, remaining: 0 }),
+    restartComputer: async () => ({ ok: true, seconds: 15 }), abortRestart: async () => ({ ok: true }),
+    openVendorPage: async () => ({ ok: true }), openMemoryTest: async () => ({ ok: true })
+  });
 })();

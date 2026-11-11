@@ -1368,7 +1368,8 @@ registerIpcHandler('fps:stop', async () => fpsRunner.stop());
 
 const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings:powersleep', storage: 'ms-settings:storagesense', graphics: 'ms-settings:display-advancedgraphics',
   gamemode: 'ms-settings:gaming-gamemode', display: 'ms-settings:display-advanced', captures: 'ms-settings:gaming-gamedvr', recovery: 'ms-settings:recovery', coreisolation: 'windowsdefender://coreisolation',
-  windowsupdate: 'ms-settings:windowsupdate' };
+  windowsupdate: 'ms-settings:windowsupdate', gamebar: 'ms-settings:gaming-gamebar', wifi: 'ms-settings:network-wifi', bluetooth: 'ms-settings:bluetooth', sound: 'ms-settings:sound',
+  defaultapps: 'ms-settings:defaultapps', backgroundapps: 'ms-settings:privacy-backgroundapps', battery: 'ms-settings:batterysaver' };
 registerIpcHandler('system:open-settings', async (_event, page) => {
   if (IS_LINUX) throw new Error('Esta tela é das Configurações do Windows; no Linux, use as configurações do seu ambiente (GNOME, KDE…).');
   const uri = Object.hasOwn(SETTINGS_PAGES, String(page)) ? SETTINGS_PAGES[page] : null;
@@ -1395,6 +1396,27 @@ registerIpcHandler('app:open-doc', async (_event, url) => {
   const safe = safeExternalUrl(url, DOC_HOSTS);
   if (!safe) throw new Error('Link não permitido.');
   await shell.openExternal(safe);
+  return { ok: true };
+});
+
+/* Sites oficiais de fabricantes (drivers, BIOS, suporte): só https, só estes domínios e os subdomínios deles. */
+const VENDOR_DOMAINS = ['nvidia.com', 'amd.com', 'intel.com', 'asus.com', 'msi.com', 'gigabyte.com', 'asrock.com', 'biostar.com.tw', 'lenovo.com', 'hp.com', 'dell.com', 'acer.com', 'samsung.com',
+  'realtek.com', 'microsoft.com', 'xbox.com', 'evga.com', 'zotac.com', 'sapphiretech.com', 'westerndigital.com', 'crucial.com', 'kingston.com', 'seagate.com', 'corsair.com', 'logitech.com', 'logitechg.com', 'razer.com', 'steelseries.com'];
+const vendorHost = (host) => VENDOR_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+registerIpcHandler('app:open-vendor', async (_event, url) => {
+  if (typeof url !== 'string' || url.length > 2048) throw new Error('Link não permitido.');
+  let parsed;
+  try { parsed = new URL(url); } catch { throw new Error('Link não permitido.'); }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || !vendorHost(parsed.hostname.toLowerCase())) throw new Error('Só sites oficiais de fabricantes.');
+  await shell.openExternal(parsed.href);
+  return { ok: true };
+});
+/* Diagnóstico de Memória do Windows (a ferramenta oficial): agenda o teste para o próximo reinício. */
+registerIpcHandler('system:memtest', async () => {
+  if (process.platform !== 'win32') throw new Error('O teste de memória do Windows é só no Windows.');
+  const tool = path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'MdSched.exe');
+  const error = await shell.openPath(tool);
+  if (error) throw new Error('Não consegui abrir o Diagnóstico de Memória do Windows.');
   return { ok: true };
 });
 

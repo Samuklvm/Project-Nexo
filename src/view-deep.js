@@ -345,10 +345,10 @@
     const proof = evidence.length ? '<ul class="finding-evidence">' + list(evidence, (line) => el('li', '', line)) + '</ul>' : '';
     const how = item.action?.how ? '<p class="finding-how"><b>O que fazer:</b> ' + escapeHtml(item.action.how) + '</p>' : '';
     const trust = [CONFIDENCE[item.confidence], item.gain].filter(Boolean).join(' · ');
-    return `<article class="finding" data-severity="${escapeHtml(item.severity)}" data-node="${AREA_NODE[item.area] || 'windows'}">
+    return `<article class="finding" data-severity="${escapeHtml(item.severity)}" data-node="${AREA_NODE[item.area] || 'windows'}" data-finding="${escapeHtml(item.id)}">
       <header><span class="finding-badge">${icon(AREA_ICON[item.area] || 'i-spark')}</span>${el('span', 'finding-tag', SEVERITY[item.severity] || item.severity)}${el('strong', '', item.title)}${el('span', 'finding-area', item.area === 'windows' && Nexo.platform === 'linux' ? 'Sistema' : AREA[item.area] || '')}</header>
       ${detail}${proof}${how}
-      <footer>${el('span', '', trust)}${actionButton(item.action)}</footer>
+      <footer>${el('span', '', trust)}<span class="finding-actions">${actionButton(item.action)}</span></footer>
     </article>`;
   }
 
@@ -582,12 +582,13 @@
    * Carta celeste do relatório: nebulosa na cor de cada peça (âmbar onde há o que ajustar), órbitas de fundo, poeira,
    * as ligações e cada estrela com o tipo e o nome da peça. O número na estrela é quantos pontos ela tem para ajustar.
    */
-  function chartSvg(names, nodes, counts, platform) {
-    const defs = veil('deep-chart-neb', '#ffe7b8', 0.05) + veil('deep-chart-neb-warn', '#ffb35c', 0.1) + softDef('deep-chart');
+  /** `prefix`: ids dos degradês e filtros desta carta (cada carta na página precisa dos seus, senão uma usa os da outra). */
+  function chartSvg(names, nodes, counts, platform, prefix = 'deep-chart') {
+    const defs = veil(prefix + '-neb', '#ffe7b8', 0.05) + veil(prefix + '-neb-warn', '#ffb35c', 0.1) + softDef(prefix);
     const nebula = NODES.map((item) => {
       const [x, y] = CHART[item.id];
       const warn = nodes[item.id] === 'warn';
-      return `<circle cx="${x}" cy="${y}" r="${warn ? 140 : 112}" fill="url(#deep-chart-neb${warn ? '-warn' : ''})" />`;
+      return `<circle cx="${x}" cy="${y}" r="${warn ? 140 : 112}" fill="url(#${prefix}-neb${warn ? '-warn' : ''})" />`;
     }).join('');
     const orbits = '<g class="deep-orbitlines" aria-hidden="true"><ellipse cx="480" cy="166" rx="430" ry="138" /><ellipse cx="480" cy="166" rx="280" ry="90" /><ellipse cx="480" cy="166" rx="132" ry="44" /></g>';
     const edges = EDGES.map(([a, b]) => `<line class="deep-edge" data-a="${a}" data-b="${b}" x1="${CHART[a][0]}" y1="${CHART[a][1]}" x2="${CHART[b][0]}" y2="${CHART[b][1]}" pathLength="1" />`).join('');
@@ -598,7 +599,7 @@
       const badge = count ? `<g class="deep-badge" transform="translate(25 -3)"><circle r="10.5" /><text y="4">${count}</text></g>` : '';
       const name = names[item.id] ? `<text class="deep-name" y="${top ? -30 : 60}">${escapeHtml(names[item.id])}</text>` : '';
       return `<g class="deep-star${name ? ' named' : ''}" data-node="${item.id}" data-state="${nodes[item.id] || 'done'}" data-order="${index}" transform="translate(${x} ${y})">
-        <circle class="deep-hit" r="30" />${starGlow('deep-chart', item.id, 30)}<circle class="deep-ring" r="17" />${starSpark('deep-chart', item.id, 12.5)}${badge}
+        <circle class="deep-hit" r="30" />${starGlow(prefix, item.id, 30)}<circle class="deep-ring" r="17" />${starSpark(prefix, item.id, 12.5)}${badge}
         <text class="deep-label" y="${top ? (name ? -52 : -30) : 40}">${escapeHtml(labelOf(item, platform))}</text>${name}</g>`;
     }).join('');
     return `<defs>${defs}</defs><g class="deep-nebula" aria-hidden="true">${nebula}</g>${orbits}<g class="deep-edges">${edges}</g><g class="deep-stars">${stars}</g>`;
@@ -672,6 +673,7 @@
     show('report');
     space(document.getElementById('deep-report-sky'), 'chart');
     finishReport();
+    Nexo.decorateFindings?.(report);
   }
 
   /** Depois de montar: estrelas acendendo uma a uma, anel da nota enchendo e cartões entrando em sequência. */
@@ -759,10 +761,10 @@
   /** O que a otimização reaproveita daqui: a carta celeste, o fundo, a troca de telas e o último relatório. */
   Nexo.deepView = {
     show, report: () => lastReport, back: () => backToRest(), space, veil: veilLabels, AREA_NODE, NODES, CHART,
-    chart: (report, nodes = {}, counts = {}) => {
+    chart: (report, nodes = {}, counts = {}, prefix = 'opt-chart') => {
       let names = {};
       try { names = NexoHardware.shortNames(report?.profile || {}); } catch { names = {}; }
-      return chartSvg(names, { ...Object.fromEntries(NODES.map((item) => [item.id, 'done'])), ...nodes }, counts, report?.platform || report?.profile?.os?.platform);
+      return chartSvg(names, { ...Object.fromEntries(NODES.map((item) => [item.id, 'done'])), ...nodes }, counts, report?.platform || report?.profile?.os?.platform, prefix);
     }
   };
   document.getElementById('deep-start')?.addEventListener('click', start);

@@ -200,14 +200,12 @@
       }).join('');
       let nebula = '';
       if (item.nebula) { const [nx, ny] = to(item.nebula[0], item.nebula[1]); nebula = `<ellipse cx="${f1(nx)}" cy="${f1(ny)}" rx="12" ry="9" fill="url(#${p}-m42)" /><circle cx="${f1(nx)}" cy="${f1(ny)}" r="1" fill="#fff4f8" opacity="0.8" />`; }
-      const ys = Object.values(pos).map((point) => point[1]);
-      const label = `<text x="${f1(item.at[0])}" y="${f1(Math.max(...ys) + 26)}" text-anchor="middle" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="10.5" letter-spacing="1.6" fill="#c9d6ff" fill-opacity="0.32">${item.name}</text>`;
-      out.push(`<g class="space-constellation"><g stroke="#c4d4ff" stroke-opacity="0.22" stroke-width="0.8" stroke-linecap="round">${lines}</g>${nebula}${stars}${label}</g>`);
+      out.push(`<g class="space-constellation"><g stroke="#c4d4ff" stroke-opacity="0.22" stroke-width="0.8" stroke-linecap="round">${lines}</g>${nebula}${stars}</g>`);
     }
     // Plêiades: aglomerado azulado com a névoa de reflexão em volta.
     const to = project(PLEIADES.stars, PLEIADES.at, PLEIADES.scale);
     const pleiades = PLEIADES.stars.map(([ra, dec, mag]) => { const [x, y] = to(ra, dec); const r = magSize(mag) * 0.9; return `<g transform="translate(${f1(x)} ${f1(y)})"><circle r="${f1(r * 7)}" fill="url(#${p}-blue-halo)" /><circle r="${f2(r * 0.6)}" fill="#e4edff" filter="url(#${p}-soft)" /></g>`; }).join('');
-    out.push(`<g class="space-pleiades"><ellipse cx="${PLEIADES.at[0]}" cy="${PLEIADES.at[1]}" rx="46" ry="32" fill="url(#${p}-reflection)" />${pleiades}<text x="${PLEIADES.at[0]}" y="${PLEIADES.at[1] + 52}" text-anchor="middle" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="10" letter-spacing="1.6" fill="#c9d6ff" fill-opacity="0.28">Plêiades</text></g>`);
+    out.push(`<g class="space-pleiades"><ellipse cx="${PLEIADES.at[0]}" cy="${PLEIADES.at[1]}" rx="46" ry="32" fill="url(#${p}-reflection)" />${pleiades}</g>`);
     return out.join('');
   }
   /** Galáxia espiral de lado (como Andrômeda): núcleo quente, braços azulados com poeira e duas satélites. */

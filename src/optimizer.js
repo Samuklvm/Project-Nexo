@@ -231,7 +231,7 @@
       const select = info.verdict === 'desligar' || (AUTO_WHEN_HEAVY.has(info.kind) && heavy(cost));
       const name = item.description && item.description.length <= 60 ? item.description : item.name;
       add({ id: `inicio-${slug(item.source + '-' + item.name)}`, category: 'inicio', kind: 'startup', method: 'aplicar', admin: Boolean(item.elevated), evidence: info.verdict === 'desligar' ? 'medido' : 'varia', group: info.kind,
-        title: `Tirar do início: ${name}`, why: [info.why, costText(cost)].filter(Boolean).join(' '), tag: info.label, cost, selected: select,
+        title: `Tirar do início: ${name}`, why: [info.why, costText(cost)].filter(Boolean).join(' '), tag: info.label, cost, selected: select, match: baseName(item.exe || item.name), verdict: info.verdict,
         change: { kind: 'startup', source: item.source, name: item.name } });
     }
     const behind = (report?.observation?.background || []).filter((program) => (program.impact === 'alto' || program.impact === 'medio') && program.tip);

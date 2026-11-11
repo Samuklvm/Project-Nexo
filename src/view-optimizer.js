@@ -102,7 +102,7 @@
           </div>
           <p class="opt-facts">${facts.map(esc).join(' · ')}</p>
         </div>
-        <div class="opt-hero-sky"><svg class="deep-sky deep-chart opt-sky" id="opt-plan-sky" viewBox="0 0 1000 320" aria-hidden="true">${Nexo.deepView.chart(Nexo.deepView.report(), {}, {})}</svg></div>
+        <div class="opt-hero-sky"><svg class="deep-sky deep-chart opt-sky" id="opt-plan-sky" viewBox="0 0 1000 320" aria-hidden="true">${Nexo.deepView.chart(Nexo.deepView.report(), {}, {}, 'opt-plan')}</svg></div>
       </div>
       <div class="opt-sections">${sections}</div>
       <div class="opt-go">
@@ -197,7 +197,7 @@
     for (const step of steps) count[nodeOf(step)] = (count[nodeOf(step)] || 0) + 1;
     box.innerHTML = `<div class="opt-run">
         <div class="opt-run-head"><span class="deep-kicker">Otimizando o PC</span><h3 id="opt-headline">Medindo o PC como está</h3></div>
-        <svg class="deep-sky deep-chart opt-sky running" id="opt-run-sky" viewBox="0 0 1000 320" role="img" aria-label="Constelação do PC: cada estrela acende quando a parte dela é otimizada"><defs><linearGradient id="opt-sweep-grad" x1="0" x2="1"><stop offset="0" stop-color="#7fe3ff" stop-opacity="0" /><stop offset="0.85" stop-color="#9fe9ff" stop-opacity="0.16" /><stop offset="1" stop-color="#d9f7ff" stop-opacity="0.5" /></linearGradient></defs>${Nexo.deepView.chart(Nexo.deepView.report(), {}, {})}<rect class="opt-sweep" x="-80" y="-20" width="80" height="360" fill="url(#opt-sweep-grad)" transform="translate(-200 0)" /></svg>
+        <svg class="deep-sky deep-chart opt-sky running" id="opt-run-sky" viewBox="0 0 1000 320" role="img" aria-label="Constelação do PC: cada estrela acende quando a parte dela é otimizada"><defs><linearGradient id="opt-sweep-grad" x1="0" x2="1"><stop offset="0" stop-color="#7fe3ff" stop-opacity="0" /><stop offset="0.85" stop-color="#9fe9ff" stop-opacity="0.16" /><stop offset="1" stop-color="#d9f7ff" stop-opacity="0.5" /></linearGradient></defs>${Nexo.deepView.chart(Nexo.deepView.report(), {}, {}, 'opt-run')}<rect class="opt-sweep" x="-80" y="-20" width="80" height="360" fill="url(#opt-sweep-grad)" transform="translate(-200 0)" /></svg>
         <div class="deep-now"><i class="deep-dot" aria-hidden="true"></i><strong id="opt-action" aria-live="polite">Conferindo se dá para medir direito</strong></div>
         <ol class="opt-track" id="opt-track">${STAGES.map((stage) => `<li data-stage="${stage.id}"><i aria-hidden="true"></i><span>${esc(stage.label)}</span></li>`).join('')}</ol>
         <ul class="deep-facts opt-log" id="opt-log"></ul>
@@ -318,7 +318,7 @@
             ${result.status !== 'completed' && result.reason ? `<p class="opt-reason">${esc(result.reason)}</p>` : ''}
             <div class="opt-go-row left">${canRevert ? '<button class="btn" type="button" data-opt-revert="1">Reverter tudo</button>' : ''}${reboot ? `<button class="btn" type="button" data-reboot-test="${esc(reboot.id)}">Medir os controversos com reinício</button>` : ''}<button class="btn primary" type="button" data-opt-back="1">Voltar ao relatório</button></div>
           </div>
-          <div class="opt-hero-sky"><svg class="deep-sky deep-chart opt-sky finished" id="opt-run-sky" viewBox="0 0 1000 320" aria-hidden="true">${Nexo.deepView.chart(Nexo.deepView.report(), {}, {})}</svg></div>
+          <div class="opt-hero-sky"><svg class="deep-sky deep-chart opt-sky finished" id="opt-run-sky" viewBox="0 0 1000 320" aria-hidden="true">${Nexo.deepView.chart(Nexo.deepView.report(), {}, {}, 'opt-done')}</svg></div>
         </div>
         <div class="deep-grid">
           <section class="deep-card">${`<h4>${ico('i-spark')}Antes e depois</h4>`}<p class="muted">Mesmas medições, antes e depois. Só conta o que passou do ruído e apareceu na maioria das rodadas.</p>${metricRows(result)}</section>
@@ -346,7 +346,7 @@
     if (state.running) { renderRun(); return; }
     if (state.result) { renderResult(); return; }
     if (state.loading) {
-      box.innerHTML = `<div class="opt-loading"><svg class="deep-sky deep-chart opt-sky" id="opt-plan-sky" viewBox="0 0 1000 320" aria-hidden="true">${Nexo.deepView.chart(Nexo.deepView.report(), {}, {})}</svg><p class="deep-now"><i class="deep-dot" aria-hidden="true"></i><strong>Lendo o PC: início com o Windows, placas de rede, energia e o Raio-X…</strong></p></div>`;
+      box.innerHTML = `<div class="opt-loading"><svg class="deep-sky deep-chart opt-sky" id="opt-plan-sky" viewBox="0 0 1000 320" aria-hidden="true">${Nexo.deepView.chart(Nexo.deepView.report(), {}, {}, 'opt-load')}</svg><p class="deep-now"><i class="deep-dot" aria-hidden="true"></i><strong>Lendo o PC: início com o Windows, placas de rede, energia e o Raio-X…</strong></p></div>`;
       Nexo.deepView.space(document.getElementById('opt-plan-sky'), 'chart');
       return;
     }
@@ -423,6 +423,222 @@
     else if (button.dataset.rebootTest) rebootTest(button.dataset.rebootTest);
     else if (button.dataset.goto) Nexo.go(button.dataset.goto);
   });
+  /* ======================================================================================================
+   * "Resolver agora" em cada achado da análise: o próprio app faz a correção (com uma permissão do Windows quando
+   * precisa, tudo no Diário). O que não dá para fazer por um app (BIOS, cabo, limpeza física) vira passo a passo
+   * guiado, com "Reiniciar direto na BIOS" quando é lá.
+   * ==================================================================================================== */
+  const DRIVER_PAGES = { NVIDIA: 'https://www.nvidia.com/pt-br/drivers/', AMD: 'https://www.amd.com/pt/support/download/drivers.html', Intel: 'https://www.intel.com.br/content/www/br/pt/support/detect.html' };
+  const BOARD_PAGES = { ASUS: 'https://www.asus.com/br/support/download-center/', MSI: 'https://br.msi.com/support/download', GIGABYTE: 'https://www.gigabyte.com/br/Support', ASRock: 'https://www.asrock.com/support/index.pt.asp' };
+  const makerOf = (profile) => { const text = `${profile?.board?.maker || ''} ${profile?.board?.model || ''}`; return /asus|rog|tuf|prime/i.test(text) ? 'ASUS' : /micro-star|msi/i.test(text) ? 'MSI' : /gigabyte|aorus/i.test(text) ? 'GIGABYTE' : /asrock/i.test(text) ? 'ASRock' : null; };
+  const gpuMaker = (profile) => { const name = ((profile?.gpus || []).find((gpu) => gpu.discrete) || (profile?.gpus || [])[0])?.name || ''; return /nvidia|geforce|rtx|gtx|quadro/i.test(name) ? 'NVIDIA' : /amd|radeon/i.test(name) ? 'AMD' : /intel|arc|iris|uhd/i.test(name) ? 'Intel' : null; };
+  /** Onde fica cada opção na BIOS de cada fabricante (o nome muda de marca para marca). */
+  const BIOS_STEPS = {
+    xmp: { title: 'Ligar o perfil de memória (XMP, DOCP ou EXPO)', steps: {
+      ASUS: ['Aperte F7 para o modo avançado.', 'Ai Tweaker → Ai Overclock Tuner → escolha D.O.C.P. (ou XMP I / EXPO).', 'Aperte F10 e confirme para salvar e reiniciar.'],
+      MSI: ['Na tela inicial (EZ Mode), clique no botão A-XMP (ou XMP / EXPO) no alto.', 'Escolha o Perfil 1.', 'Aperte F10 e confirme.'],
+      GIGABYTE: ['Na tela inicial, ligue "XMP" (ou entre em Tweaker → Extreme Memory Profile).', 'Escolha Profile1.', 'Aperte F10 e confirme.'],
+      ASRock: ['OC Tweaker → DRAM Configuration → Load XMP Setting.', 'Escolha o XMP Profile 1.', 'Aperte F10 e confirme.'],
+      outro: ['Procure "XMP", "DOCP" ou "EXPO" nas opções de memória (DRAM).', 'Escolha o perfil 1.', 'Salve (geralmente F10) e reinicie.'] },
+      after: 'Se o PC não ligar ou travar depois, ele volta sozinho ao padrão depois de algumas tentativas; se não voltar, entre na BIOS e use "Load Optimized Defaults".' },
+    rebar: { title: 'Ligar o Resizable BAR', steps: {
+      ASUS: ['F7 (modo avançado) → Advanced → PCI Subsystem Settings.', 'Above 4G Decoding: Enabled → Re-Size BAR Support: Enabled.', 'F10 para salvar.'],
+      MSI: ['Settings → Advanced → PCI Subsystem Settings.', 'Above 4G memory: Enabled → Re-Size BAR Support: Enabled.', 'F10 para salvar.'],
+      GIGABYTE: ['Settings → IO Ports.', 'Above 4G Decoding: Enabled → Re-Size BAR Support: Auto (ou Enabled).', 'F10 para salvar.'],
+      ASRock: ['Advanced → Chipset Configuration.', 'Above 4G Decoding: Enabled → C.A.M. / Re-Size BAR: Enabled.', 'F10 para salvar.'],
+      outro: ['Procure "Above 4G Decoding" e ligue.', 'Depois ligue "Re-Size BAR" (ou "Smart Access Memory" / "Clever Access Memory").', 'Salve e reinicie.'] },
+      after: 'O Resizable BAR precisa do Windows instalado em modo UEFI. Se a BIOS pedir para desligar o "CSM" e o Windows foi instalado no modo antigo (MBR), não desligue: o PC pode não iniciar.' },
+    update: { title: 'Atualizar a BIOS', steps: {
+      outro: ['Baixe a BIOS mais nova da página de suporte da sua placa (o botão abaixo abre o site oficial).', 'Copie o arquivo para um pendrive em FAT32.', 'Na BIOS, use a ferramenta de atualização (ASUS EZ Flash, MSI M-Flash, GIGABYTE Q-Flash, ASRock Instant Flash).', 'Não desligue o PC durante a atualização.'] },
+      after: 'Depois de atualizar, a BIOS volta ao padrão: ligue de novo o XMP se ele estava ligado.' }
+  };
+  const GUIDES = {
+    'wifi-24': ['Conecte na rede de 5 GHz do roteador (às vezes tem o mesmo nome com "5G").', 'Se só aparece uma rede, entre nas configurações do roteador e separe os nomes de 2,4 e 5 GHz.', 'Para jogar, cabo de rede é sempre melhor que Wi-Fi.'],
+    'wifi-sinal': ['Aproxime o PC do roteador ou tire obstáculos (paredes, espelhos, aquários, micro-ondas).', 'Se o roteador tiver antenas, deixe uma em pé e outra deitada.', 'Repetidores e redes mesh ajudam em casas grandes; cabo resolve de vez.'],
+    'rede-100': ['Troque o cabo de rede por um Cat 5e ou Cat 6 (cabos velhos ou amassados caem para 100 Mb/s).', 'Teste outra porta do roteador.', 'Confira se o conector está firme dos dois lados.'],
+    'tela-placa-mae': ['Desligue o PC.', 'Tire o cabo do monitor da saída da placa-mãe (a de trás, perto das USB).', 'Ligue na saída da placa de vídeo (a horizontal, mais embaixo).'],
+    'mem-canal-unico': ['Com um pente só, a memória roda em um canal (metade da velocidade de transferência).', 'Coloque um segundo pente igual: os dois no slot A2 e B2 (o segundo e o quarto, contando do processador).'],
+    'mem-mesmo-canal': ['Desligue o PC e tire da tomada.', 'Mude os pentes para os slots A2 e B2 (o segundo e o quarto, contando a partir do processador).', 'Ligue de novo: o Nexo confirma o dual channel na próxima análise.'],
+    'cpu-quente': ['Limpe a poeira do cooler e das ventoinhas (ar comprimido, com o PC desligado).', 'Confira se todas as ventoinhas giram.', 'Pasta térmica com mais de 3 ou 4 anos vale trocar.'],
+    'cpu-freio-calor': ['Limpe a poeira do cooler e das ventoinhas (ar comprimido, com o PC desligado).', 'Confira se o cooler está bem preso e se todas as ventoinhas giram.', 'Pasta térmica com mais de 3 ou 4 anos vale trocar.'],
+    'gpu-calor': ['Limpe a poeira da placa de vídeo e do gabinete.', 'Deixe espaço para o ar entrar na frente e sair atrás.', 'Uma curva de ventoinha mais forte (no programa da placa) ajuda em jogos pesados.'],
+    'disco-hd-sistema': ['O Windows num HD é o que mais deixa um PC lento hoje.', 'Um SSD SATA ou NVMe barato já muda tudo; dá para clonar o disco sem reinstalar.'],
+    'na-bateria': ['Ligue o notebook na tomada para jogar: na bateria o Windows segura o processador e a placa de vídeo.'],
+    'win10': ['O Windows 10 não recebe mais atualizações de segurança gratuitas.', 'Se o PC aceitar, atualize para o Windows 11 pelo Windows Update.']
+  };
+  const decorated = { report: null, plan: null, loading: null };
+  const ACT = (label, attrs, primary = true) => `<button class="btn sm${primary ? ' primary' : ''} fix-btn" type="button" ${attrs}>${esc(label)}</button>`;
+
+  /** Botões de cada achado (alguns precisam do plano lido do PC; os outros entram na hora). */
+  async function decorateFindings(report) {
+    if (Nexo.platform !== 'win32' || !report) return;
+    decorated.report = report;
+    paintFixes();
+    if (!bridge?.planOptimization) return;
+    if (!decorated.plan || decorated.plan.reportAt !== report.at) {
+      decorated.loading = decorated.loading || bridge.planOptimization({}).then((answer) => { decorated.plan = answer?.supported ? answer : null; return answer; }).catch(() => null).finally(() => { decorated.loading = null; });
+      await decorated.loading;
+    }
+    paintFixes();
+  }
+  function fixFor(finding, steps) {
+    const id = finding.id;
+    const byId = (list) => list.filter((stepId) => steps.some((step) => step.id === stepId));
+    const MAP = { 'gravacao-fundo': [['raiox-gamedvr'], 'Desligar a gravação'], 'modo-jogo': [['raiox-gamemode'], 'Ligar o Modo de Jogo'], 'gpu-hags': [['raiox-hags'], 'Ligar o agendamento da GPU'],
+      'plano-economia': [['energia-plano'], 'Sair do plano de economia'], 'modo-energia': [['energia-modo'], 'Usar "Melhor desempenho"'], 'mem-sem-paginacao': [['sistema-paginacao'], 'Religar a paginação'] };
+    if (MAP[id]) { const ids = byId(MAP[id][0]); return ids.length ? { kind: 'steps', ids, label: MAP[id][1] } : (decorated.plan ? { kind: 'done' } : null); }
+    if (id === 'inicializacao') {
+      const ids = steps.filter((step) => step.kind === 'startup' && step.verdict === 'desligar').map((step) => step.id);
+      return ids.length ? { kind: 'steps', ids, label: `Tirar ${ids.length} do início` } : null;
+    }
+    if (id.startsWith('fundo-') && id !== 'fundo-limpo') {
+      const name = id.replace(/^fundo-(presenca-)?/, '').toLowerCase().replace(/\.exe$/, '');
+      if (/entrega|delivery/i.test(finding.title) || name === 'svchost-do') { const ids = byId(['raiox-deliveryopt']); if (ids.length) return { kind: 'steps', ids, label: 'Parar o envio para outros PCs' }; }
+      if (name === 'msedge') { const ids = byId(['raiox-edgebg']); if (ids.length) return { kind: 'steps', ids, label: 'Não deixar rodando escondido' }; }
+      if (name === 'chrome') { const ids = byId(['raiox-chromebg']); if (ids.length) return { kind: 'steps', ids, label: 'Fechar de verdade ao sair' }; }
+      const start = steps.find((step) => step.kind === 'startup' && step.match === name);
+      if (start) return { kind: 'steps', ids: [start.id], label: 'Tirar do início' };
+      return null;
+    }
+    if (id === 'reinicio-pendente' || id === 'tempo-ligado') return { kind: 'restart', label: 'Reiniciar agora' };
+    if (id === 'update-falhou') return { kind: 'settings', page: 'windowsupdate', label: 'Abrir o Windows Update' };
+    if (id === 'x3d-gamebar') return { kind: 'settings', page: 'gamebar', label: 'Abrir a Game Bar' };
+    if (id === 'mem-xmp') return { kind: 'bios', guide: 'xmp', label: 'Como ligar (e reiniciar na BIOS)' };
+    if (id === 'gpu-rebar' || id === 'gpu-rebar-arc') return { kind: 'bios', guide: 'rebar', label: 'Como ligar (e reiniciar na BIOS)' };
+    if (['bios-antiga', 'raptor-bios', 'am5-bios'].includes(id)) return { kind: 'bios', guide: 'update', label: 'Atualizar a BIOS', vendor: true };
+    if (id === 'disco-cheio') return { kind: 'goto', view: 'maintenance', label: 'Liberar espaço' };
+    if (['tela-azul', 'whea', 'whea-fatal', 'desligou-sozinho', 'mem-travada'].includes(id)) return { kind: 'memtest', label: 'Testar a memória' };
+    if (['crashes', 'disco-ntfs', 'disco-erros'].includes(id)) return { kind: 'repair', label: 'Reparar o Windows' };
+    if (['driver-video-travou', 'crash-driver-video', 'gpu-sem-driver', 'gpu-legado'].includes(id)) return { kind: 'driver', label: 'Baixar o driver oficial' };
+    if (id === 'gpu-hibrida') return { kind: 'optimizer', label: 'Escolher o jogo' };
+    if (['pc-ocupado', 'memoria-acabando'].includes(id)) return { kind: 'taskmgr', label: 'Ver o que está pesando' };
+    if (GUIDES[id]) return { kind: 'guide', label: 'Passo a passo' };
+    return null;
+  }
+  function paintFixes() {
+    const report = decorated.report;
+    if (!report) return;
+    const steps = decorated.plan?.plan?.steps || [];
+    for (const card of document.querySelectorAll('#deep-report .finding[data-finding]')) {
+      const finding = (report.findings || []).find((item) => item.id === card.dataset.finding);
+      if (!finding || finding.severity === 'ok') continue;
+      const box = card.querySelector('.finding-actions');
+      if (!box || card.dataset.fixed) continue;
+      box.querySelector('.fix-btn, .fix-done')?.remove();
+      const fix = fixFor(finding, steps);
+      if (!fix) continue;
+      if (fix.kind === 'done') { box.insertAdjacentHTML('afterbegin', '<span class="fix-done">Já está certo agora</span>'); continue; }
+      box.insertAdjacentHTML('afterbegin', ACT(fix.label, `data-fix-finding="${esc(finding.id)}"`, !['guide', 'taskmgr'].includes(fix.kind)));
+    }
+  }
+
+  async function runFix(findingId, button) {
+    const report = decorated.report;
+    const finding = (report?.findings || []).find((item) => item.id === findingId);
+    if (!finding) return;
+    const steps = decorated.plan?.plan?.steps || [];
+    const fix = fixFor(finding, steps);
+    if (!fix) return;
+    const card = button.closest('.finding');
+    try {
+      if (fix.kind === 'steps') {
+        const chosen = steps.filter((step) => fix.ids.includes(step.id));
+        const admin = chosen.some((step) => step.admin);
+        const items = chosen.map((step) => (step.from && step.to ? `${step.title}: ${step.from} → ${step.to}` : step.title));
+        const ok = await Nexo.confirm({ title: fix.label, body: `${chosen.length === 1 ? chosen[0].why : 'O Nexo vai fazer:'} ${admin ? 'O Windows pede permissão uma vez.' : ''} Fica no Diário, com "Reverter".`.trim(), items: chosen.length > 1 ? items : [], confirmLabel: 'Resolver agora' });
+        if (!ok) return;
+        button.disabled = true;
+        button.textContent = 'Resolvendo…';
+        const result = await bridge.fixFinding({ ids: fix.ids, consent: { acknowledged: true } });
+        const done = (result.records || []).length;
+        if (!done) { button.disabled = false; button.textContent = fix.label; showToast(result.reason || 'Não foi possível resolver agora.'); return; }
+        Nexo.journal.record({ actionId: 'opt-run', title: `Correção: ${finding.title}`, risk: 'baixo', reversible: true, authorization: `botão "${fix.label}" no relatório da análise${admin ? ' e permissão de administrador (UAC)' : ''}`, before: { runId: result.id }, after: { count: done, titles: result.records.map((record) => record.title) } });
+        Nexo.emit('journal');
+        markFixed(card, result, chosen.some((step) => step.method === 'reiniciar' || step.reboot !== 'nao'));
+        decorated.plan = null;
+        showToast(`${fix.label}: pronto.`);
+        return;
+      }
+      if (fix.kind === 'restart') {
+        const ok = await Nexo.confirm({ title: 'Reiniciar agora?', body: 'O PC reinicia em 15 segundos. Salve o que estiver aberto. Dá para cancelar dentro desse tempo.', confirmLabel: 'Reiniciar', tone: 'danger' });
+        if (!ok) return;
+        await bridge.restartComputer({});
+        showToast('Reiniciando em 15 segundos…');
+        return;
+      }
+      if (fix.kind === 'bios') { await biosGuide(fix, report); return; }
+      if (fix.kind === 'settings') { await bridge.openWindowsSettings(fix.page); return; }
+      if (fix.kind === 'goto') { Nexo.go(fix.view); return; }
+      if (fix.kind === 'taskmgr') { await bridge.openTaskManager(); return; }
+      if (fix.kind === 'optimizer') { open(); return; }
+      if (fix.kind === 'driver') { const maker = gpuMaker(report.profile); if (maker) await bridge.openVendorPage(DRIVER_PAGES[maker]); else showToast('Não identifiquei o fabricante da placa de vídeo.'); return; }
+      if (fix.kind === 'memtest') {
+        const ok = await Nexo.confirm({ title: 'Testar a memória', body: 'O Diagnóstico de Memória do Windows (a ferramenta oficial) testa os pentes no próximo reinício, antes do Windows abrir. Leva de 10 a 20 minutos; o resultado aparece depois de entrar no Windows. Se o XMP estiver ligado e der erro, o culpado costuma ser ele.', confirmLabel: 'Abrir o teste' });
+        if (ok) await bridge.openMemoryTest();
+        return;
+      }
+      if (fix.kind === 'repair') {
+        const ok = await Nexo.confirm({ title: 'Reparar os arquivos do Windows', body: 'O verificador oficial (SFC) confere e repara os arquivos do sistema. Leva de 5 a 15 minutos; o Windows pede permissão.', confirmLabel: 'Reparar agora' });
+        if (!ok) return;
+        button.disabled = true; button.textContent = 'Reparando…';
+        await bridge.repairSystemFiles();
+        button.textContent = 'Reparo concluído';
+        return;
+      }
+      if (fix.kind === 'guide') { await Nexo.confirm({ title: finding.title, body: 'Passo a passo:', items: GUIDES[finding.id], confirmLabel: 'Entendi', cancelLabel: 'Fechar' }); }
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = fix.label;
+      showToast(error.message || 'Não deu certo.');
+    }
+  }
+  function markFixed(card, result, later) {
+    if (!card) return;
+    card.dataset.fixed = '1';
+    const box = card.querySelector('.finding-actions');
+    box.querySelector('.fix-btn')?.remove();
+    box.insertAdjacentHTML('afterbegin', `<span class="fix-done ok">${later ? 'Resolvido; vale depois de reiniciar' : 'Resolvido agora'}</span><button class="btn sm ghost" type="button" data-fix-undo="${esc(result.id)}">Desfazer</button>`);
+  }
+  async function biosGuide(fix, report) {
+    const guide = BIOS_STEPS[fix.guide];
+    const maker = makerOf(report.profile) || 'outro';
+    const steps = guide.steps[maker] || guide.steps.outro;
+    const intro = fix.guide === 'update' ? 'A atualização da BIOS é feita com o arquivo do site oficial da placa.' : `Isso fica na BIOS${maker !== 'outro' ? ' da sua ' + maker : ''}; o Nexo pode reiniciar o PC direto nela.`;
+    if (fix.vendor) {
+      const page = BOARD_PAGES[maker];
+      const ok = await Nexo.confirm({ title: guide.title, body: `${intro} ${guide.after}`, items: steps, confirmLabel: page ? 'Abrir o site da placa' : 'Entendi' });
+      if (ok && page) await bridge.openVendorPage(page);
+      return;
+    }
+    const ok = await Nexo.confirm({ title: guide.title, body: `${intro} ${guide.after}`, items: [...steps, 'Ao salvar, o PC reinicia no Windows; o Nexo confirma na próxima análise.'], confirmLabel: 'Reiniciar na BIOS agora', cancelLabel: 'Fazer depois' });
+    if (!ok) return;
+    const answer = await bridge.restartComputer({ firmware: true });
+    if (answer?.declined) { showToast('Sem a permissão do Windows, não dá para reiniciar direto na BIOS. Reinicie e aperte Del (ou F2) na tela do fabricante.'); return; }
+    showToast('Reiniciando direto na BIOS em 15 segundos. Salve o que estiver aberto.');
+  }
+  document.getElementById('deep-report')?.addEventListener('click', (event) => {
+    const fixButton = event.target.closest('[data-fix-finding]');
+    if (fixButton) { runFix(fixButton.dataset.fixFinding, fixButton); return; }
+    const undo = event.target.closest('[data-fix-undo]');
+    if (undo) {
+      undo.disabled = true;
+      bridge.revertOptimization({ runId: undo.dataset.fixUndo }).then((answer) => {
+        const entry = Nexo.journal.list(100).find((item) => item.actionId === 'opt-run' && item.before?.runId === undo.dataset.fixUndo && item.status === 'applied');
+        if (entry && !answer.remaining) Nexo.journal.markReverted(entry.id, 'desfeito no relatório');
+        Nexo.emit('journal');
+        const card = undo.closest('.finding');
+        delete card.dataset.fixed;
+        card.querySelector('.fix-done')?.remove();
+        undo.remove();
+        decorated.plan = null;
+        decorateFindings(decorated.report);
+        showToast(answer.remaining ? 'Parte não voltou; veja no Diário.' : 'Desfeito: voltou ao que era.');
+        return answer;
+      }).catch((error) => { undo.disabled = false; showToast(error.message || 'Não consegui desfazer.'); });
+    }
+  });
+  Nexo.decorateFindings = decorateFindings;
+
   bridge?.onOptimizerEvent?.(onEvent);
   Nexo.openOptimizer = open;
   // Reaberto com a otimização rodando (outra tela, janela recarregada): mostra o progresso.

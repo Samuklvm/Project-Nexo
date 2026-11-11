@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   getOptimizationStatus: () => call('opt:status'),
   revertOptimization: (options) => call('opt:revert', options),
   fixFinding: (options) => call('opt:fix', options),
+  openVendorPage: (url) => call('app:open-vendor', url),
+  openMemoryTest: () => call('system:memtest'),
   restartComputer: (options) => call('system:restart', options),
   abortRestart: () => call('system:restart-abort'),
   listOptimizations: () => call('opt:runs'),
