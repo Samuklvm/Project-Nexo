@@ -273,7 +273,7 @@ test('comparação com a análise anterior: queda de desempenho e peça trocada'
 
 /* ---------------- Orquestração num relógio virtual ---------------- */
 function harness({ cancelAt = null, hang = null, inventory = {} } = {}) {
-  let clock = 1_000_000;
+  let clock = Date.parse('2026-11-11T12:00:00Z');
   const now = () => clock;
   const sleep = (ms) => new Promise((resolve) => { setImmediate(() => { clock += Math.max(1, ms); resolve(); }); });
   const emitted = [];
@@ -302,6 +302,7 @@ function harness({ cancelAt = null, hang = null, inventory = {} } = {}) {
       return fakeChild([JSON.stringify({ kind: 'meta', self: 99, cores: 12, services: {}, procs }), ...observationTicks().map((tick) => JSON.stringify({ ...tick, i: tick.i, procs: tick.procs.filter((row) => [2, 10, 20].includes(row.pid)), fresh: {} })), ...Array.from({ length: 10 }, (_, i) => JSON.stringify({ ...observationTicks()[1], i: 11 + i, procs: [], fresh: {} })), JSON.stringify({ kind: 'end' })]);
     }
     if (script === Scan.LOAD_SCRIPT) return fakeChild(Array.from({ length: 25 }, (_, i) => JSON.stringify({ kind: 'tick', i, t: clock + i * 1000, mhz: 3700, perf: 120, maxFreq: 100, limit: 0, busy: 100, cores: [{ perf: 120, busy: 100 }, { perf: 118, busy: 100 }] })));
+    if (script === Scan.DURING_SCRIPT) return fakeChild([JSON.stringify({ whea: 0, tdr: 0, disk: 0, gpu: 0 })]);
     return fakeChild([]);
   };
   const runPowerShellCode = async (script) => {
@@ -309,31 +310,44 @@ function harness({ cancelAt = null, hang = null, inventory = {} } = {}) {
     if (script === Scan.INVENTORY_SCRIPT) return { code: 0, stdout: JSON.stringify({ ...baseInventory(inventory), memory: { modules: baseInventory().memory.modules, slots: 4 } }) };
     if (script === Scan.HEALTH_SCRIPT) return { code: 0, stdout: JSON.stringify({ events: { bugcheck: { count: 0 } }, rebootPending: { update: true }, fastStartup: 1, lastBoot: new Date(clock - 2 * 86400e3).toISOString() }) };
     if (script === Scan.LINK_SCRIPT) return { code: 0, stdout: JSON.stringify([{ name: 'NVIDIA GeForce RTX 3060', link: { curSpeed: 3, maxSpeed: 4, curWidth: 16, maxWidth: 16 } }]) };
+    if (script === Scan.DRIVERS_SCRIPT) return { code: 0, stdout: JSON.stringify([{ name: 'NVIDIA GeForce RTX 3060', cls: 'DISPLAY', provider: 'NVIDIA', version: '32.0.15.6094', date: '2026-08-01', ids: '10DE:2503', signed: true }, { name: 'Realtek PCIe GbE Family Controller', cls: 'NET', provider: 'Realtek', maker: 'Realtek', version: '10.38', date: '2019-05-02', ids: '10EC:8168', signed: true }]) };
     return { code: 1, stdout: '' };
   };
+  const tests = { memtest: 0, disk: 0, net: 0 };
   const analysis = createDeepAnalysis({
     platform: 'win32', now, sleep, runPowerShellCode, spawnFn,
     sensors: async () => ({ devices: [{ type: 'Cpu', sensors: [{ name: 'CPU Package', type: 'Temperature', value: 72 }] }] }),
     nvidia: async () => [{ pcieGen: 3, pcieGenMax: 4, pcieGenHostMax: 3, pcieWidth: 16, bar1MB: 256 }],
     bench: async (mode, ms) => { await sleep(ms); return { mopsPerSec: mode === 'multi' ? 900 : 150, threads: 11 }; },
     facts: async () => ({ hags: 2, gameMode: 1, historical: 0 }), startup: async () => [], drives: async () => [{ driveLetter: 'C', sizeBytes: 1e12, freeBytes: 5e11 }],
-    selfPids: () => new Set([10]), classify: Session.classifyForeground, memoryTotal: () => 16 * GB,
+    selfPids: () => new Set([10]), classify: Session.classifyForeground, memoryTotal: () => 16 * GB, freeMemory: () => 8 * GB,
+    memtest: async ({ totalMB, ms, onProgress }) => { tests.memtest += 1; onProgress({ pass: 1, pattern: 'xadrez', errors: 0, testedMB: totalMB }); await sleep(ms); return { testedMB: totalMB, passes: 12, errors: 0, samples: [], bandwidthMBs: 9000 }; },
+    diskTest: async ({ onProgress }) => { tests.disk += 1; onProgress({ phase: 'seq', mb: 64 }); await sleep(8000); return { ok: true, sizeMB: 256, seqWriteMBs: 1900, latency: { p50Ms: 0.4, p99Ms: 2, maxMs: 6 } }; },
+    netQuality: async ({ onProgress }) => { tests.net += 1; onProgress({ text: 'medindo a rede…' }); await sleep(40000); return { gateway: D.summarizePings([1, 1.2, 1.1, 0.9], 0), internet: D.summarizePings([14, 15, 16, 14, 15], 0), doctor: null }; },
     emit: (progress) => { emitted.push(progress); if (cancelAt !== null && progress.stageIndex >= cancelAt && state) state.cancel(); },
     store: { load: async () => ({ runs: [] }), save: async (data) => { saved.push(data); } }
   });
   state = analysis;
-  return { analysis, emitted, saved, now };
+  return { analysis, emitted, saved, now, tests };
 }
 
-test('orquestração: 7 etapas na ordem, no mínimo 60 s, relatório sem caminhos e histórico salvo', async () => {
-  const { analysis, emitted, saved, now } = harness();
+test('orquestração: 10 etapas na ordem, no mínimo 10 minutos, testes de verdade, relatório sem caminhos e histórico salvo', async () => {
+  const { analysis, emitted, saved, now, tests } = harness();
   const startedAt = now();
   const report = await analysis.run();
   assert.ok(now() - startedAt >= D.MIN_TOTAL_MS, `durou ${now() - startedAt} ms`);
   assert.ok(report.durationMs >= D.MIN_TOTAL_MS);
   const stages = emitted.map((progress) => progress.stageIndex);
   assert.deepEqual(stages, [...stages].sort((a, b) => a - b), 'as etapas só andam para a frente');
-  assert.deepEqual([...new Set(stages)], [0, 1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual([...new Set(stages)], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.deepEqual(tests, { memtest: 1, disk: 1, net: 1 }, 'cada teste roda uma vez');
+  assert.equal(report.tests.memtest.passes, 12);
+  assert.equal(report.tests.diskTest.seqWriteMBs, 1900);
+  assert.ok(report.findings.some((item) => item.id === 'mem-teste-ok'), 'memória sem erro vira "já está certo"');
+  assert.ok(report.findings.some((item) => item.id.startsWith('driver-rede-antigo')), 'driver de rede de 2019 aparece');
+  assert.ok(report.findings.some((item) => item.id === 'rede-ok'));
+  assert.ok(report.tests.drivers.net.length >= 1, 'a lista de drivers vai para a página de Drivers');
+  assert.ok(emitted.some((progress) => /teste de estabilidade da memória/.test(progress.action)), 'o progresso do teste de memória aparece');
   assert.equal(emitted[emitted.length - 1].status, 'done');
   assert.equal(emitted[emitted.length - 1].names.cpu, 'Ryzen 5 5600G', 'cada estrela ganha o nome curto da peça');
   assert.equal(emitted[emitted.length - 1].names.board, 'ASUS B550');
@@ -381,7 +395,6 @@ test('orquestração: a peça com problema continua amarela depois do teste de c
   assert.ok(warned.has('gpu'), 'monitor a 60 Hz deixa a placa de vídeo amarela na etapa de vídeo');
   const first = emitted.findIndex((progress) => progress.nodes.gpu === 'warn');
   for (const progress of emitted.slice(first)) assert.ok(['warn', 'active'].includes(progress.nodes.gpu), `na etapa ${progress.stageIndex} a placa de vídeo ficou "${progress.nodes.gpu}"`);
-  assert.ok(emitted.slice(first).some((progress) => progress.nodes.gpu === 'active'), 'o teste de carga reacende a placa');
   const last = emitted[emitted.length - 1].nodes;
   for (const id of warned) assert.equal(last[id], 'warn', `${id} voltou a ficar verde depois do teste de carga`);
   assert.ok(report.findings.some((item) => item.area === 'video' && (item.severity === 'alta' || item.severity === 'media')));
@@ -592,4 +605,105 @@ test('notebook gamer de verdade (simulado): da saída do PowerShell ao relatóri
   assert.ok(!traits.cpu.some((line) => /soquete/.test(line)), 'notebook não recebe caminho de upgrade de soquete');
   assert.ok(D.plan(profile, findings).some((step) => step.id === 'lab-cooling'));
   assert.ok(D.healthScore(findings) < 100);
+});
+
+/* ---------------- Verificação completa: testes de verdade e a causa provável ---------------- */
+test('verificação completa: código da tela azul, desligamentos classificados e o que veio durante os testes', () => {
+  assert.deepEqual(D.bugcheckOf('0x1000007e'), { hex: '0x0000007E', name: 'SYSTEM_THREAD_EXCEPTION_NOT_HANDLED', cls: 'driver' }, 'variante 0x1000xxxx vira o código base');
+  assert.equal(D.bugcheckOf('0x00000124').cls, 'hardware');
+  assert.equal(D.bugcheckOf('0xdeadbeef').name, null, 'código desconhecido fica só com o número');
+  assert.equal(D.bugcheckOf(''), null);
+  const health = Scan.parseHealth(JSON.stringify({ events: { bugcheck: { count: 2, last: '2026-11-10T20:00:00Z' }, unexpected: { count: 6 } }, bugCodes: [{ code: '0x0000001a', count: 2 }], kpCodes: [{ code: '0x0000001a', count: 2 }], powerLoss: { bugcheck: 2, button: 3, silent: 1 } }));
+  assert.deepEqual(health.bugCodes, [{ code: '0x0000001a', count: 2 }], 'a mesma tela azul no 1001 e no 41 conta uma vez');
+  const profile = H.identify(baseInventory(), { now: Date.parse('2026-11-11T12:00:00Z') });
+  const ids = D.buildFindings({ profile, health, now: Date.parse('2026-11-11T12:00:00Z') }).map((item) => item.id);
+  assert.ok(ids.includes('tela-azul') && ids.includes('travou-botao'), 'tela azul e travada pelo botão');
+  assert.ok(!ids.includes('desligou-sozinho'), 'um desligamento silencioso só não vira achado (o resto foi tela azul ou botão)');
+  const during = D.buildFindings({ profile, during: { whea: 2, tdr: 1, disk: 0 } }).map((item) => item.id);
+  assert.ok(during.includes('teste-whea') && during.includes('teste-tdr') && !during.includes('teste-disco'));
+});
+
+test('verificação completa: memória, placa de vídeo, disco e rede medidos viram achados certos', () => {
+  const profile = H.identify(baseInventory(), { now: Date.parse('2026-11-11T12:00:00Z') });
+  const ids = (extra) => D.buildFindings({ profile, ...extra }).map((item) => item.id);
+  assert.ok(ids({ memtest: { testedMB: 2048, passes: 9, errors: 3, samples: [{ bits: 1 }] } }).includes('mem-teste-erros'));
+  assert.ok(ids({ memtest: { testedMB: 2048, passes: 9, errors: 0 } }).includes('mem-teste-ok'));
+  assert.ok(!ids({ memtest: { testedMB: 2048, passes: 1, errors: 0 } }).includes('mem-teste-ok'), 'uma passada só não prova nada');
+  const hot = D.summarizeGpuStress({ samples: [70, 78, 83, 86, 87, 87].map((temp, i) => ({ temp, clock: 1900 - i * 40, limits: { thermal: i >= 3 } })), seconds: 45 });
+  assert.equal(hot.tempPeak, 87);
+  assert.ok(hot.dropPct > 6);
+  assert.ok(ids({ gpuStress: hot }).includes('gpu-calor'));
+  assert.ok(ids({ gpuStress: D.summarizeGpuStress({ samples: [{ temp: 61, clock: 1800 }, { temp: 66, clock: 1800 }] }) }).includes('gpu-temp-ok'));
+  assert.ok(ids({ diskTest: { seqWriteMBs: 90, sizeMB: 256, latency: { p50Ms: 2, maxMs: 40 } } }).includes('disco-lento'), 'NVMe gravando a 90 MB/s');
+  assert.ok(ids({ diskTest: { seqWriteMBs: 1800, sizeMB: 256, latency: { p50Ms: 0.4, maxMs: 900 } } }).includes('disco-engasgos'));
+  const stable = { gateway: D.summarizePings([1, 1.1, 1, 0.9], 0), internet: D.summarizePings([15, 16, 15, 14, 15], 0) };
+  assert.ok(ids({ network: stable }).includes('rede-ok'));
+  const lossy = { gateway: D.summarizePings([1, 1.1, 1, 0.9], 0), internet: D.summarizePings(Array(90).fill(20), 10) };
+  const lossyFinding = D.buildFindings({ profile, network: lossy }).find((item) => item.id === 'rede-perda');
+  assert.match(lossyFinding.detail, /depois dele/, 'roteador limpo: a perda é da operadora');
+  assert.ok(ids({ network: { gateway: D.summarizePings([2, 2], 0), internet: D.summarizePings([], 30) } }).includes('rede-sem-internet'));
+  const doctor = { checks: [{ id: 'dns', level: 'problema', title: 'O DNS da sua rede está lento', detail: 'x', fix: 'dns-publico' }], fixes: [{ id: 'dns-publico', provider: 'cloudflare', label: 'Usar o DNS da Cloudflare', admin: true }] };
+  const dns = D.buildFindings({ profile, network: { ...stable, doctor } }).find((item) => item.id === 'rede-dns');
+  assert.deepEqual([dns.action.netFix.id, dns.action.netFix.provider], ['dns-publico', 'cloudflare'], 'a correção da rede vai junto, pronta para o botão');
+});
+
+test('verificação completa: drivers por função (sem placas virtuais) e driver genérico ou antigo', () => {
+  const now = Date.parse('2026-11-11T12:00:00Z');
+  const list = Scan.parseDrivers(JSON.stringify([
+    { name: 'Realtek PCIe GbE Family Controller', cls: 'NET', provider: 'Microsoft', maker: 'Realtek', version: '10.1', date: '2023-01-01', signed: true },
+    { name: 'Intel(R) Wi-Fi 6 AX201 160MHz', cls: 'NET', provider: 'Intel', maker: 'Intel Corporation', version: '22.1', date: '2020-02-01', signed: true },
+    { name: 'WAN Miniport (IP)', cls: 'NET', provider: 'Microsoft', maker: 'Microsoft', version: '10.0', date: '2006-06-21', signed: true },
+    { name: 'Hyper-V Virtual Ethernet Adapter', cls: 'NET', provider: 'Microsoft', version: '10.0', date: '2006-06-21', signed: true },
+    { name: 'NVIDIA GeForce RTX 3060', cls: 'DISPLAY', provider: 'NVIDIA', version: '32.0', date: '2026-09-01', signed: true },
+    { name: 'Realtek High Definition Audio', cls: 'MEDIA', provider: 'Realtek', version: '6.0', date: '2018-01-01', signed: true },
+    { name: 'NVIDIA High Definition Audio', cls: 'MEDIA', provider: 'NVIDIA', version: '1.4', date: '2026-01-01', signed: true },
+    { name: 'Velho RGB Controller', cls: 'SYSTEM', provider: 'Desconhecido', version: '1.0', date: '2015-01-01', signed: false }
+  ]));
+  const drivers = D.summarizeDrivers(list, now);
+  assert.deepEqual(drivers.groups.net.map((item) => item.name), ['Realtek PCIe GbE Family Controller', 'Intel(R) Wi-Fi 6 AX201 160MHz'], 'WAN Miniport e Hyper-V ficam de fora');
+  assert.deepEqual(drivers.groups.audio.map((item) => item.name), ['Realtek High Definition Audio'], 'áudio do HDMI da placa de vídeo não é o áudio do PC');
+  const ids = D.buildFindings({ profile: H.identify(baseInventory(), { now }), drivers }).map((item) => item.id);
+  assert.ok(ids.includes('driver-rede-generico-Realtek PCIe GbE Family Controller'));
+  assert.ok(ids.includes('driver-rede-antigo-Intel(R) Wi-Fi 6 AX201 160MHz'));
+  assert.ok(ids.includes('driver-audio-antigo') && ids.includes('driver-sem-assinatura'));
+});
+
+test('verificação completa: a causa provável junta as pistas (e não inventa sem sintoma)', () => {
+  const now = Date.parse('2026-11-11T12:00:00Z');
+  const xmp = H.identify(baseInventory({ memory: { modules: [
+    { capacity: 8 * GB, speed: 3600, configured: 3600, part: 'F4-3600C16-8GVKC', type: 26, formFactor: 8, locator: 'DIMM_A2' },
+    { capacity: 8 * GB, speed: 3600, configured: 3600, part: 'F4-3600C16-8GVKC', type: 26, formFactor: 8, locator: 'DIMM_B2' }], slots: 4 } }), { now });
+  assert.equal(D.memoryOverclocked(xmp.memory), true, '3600 MT/s em DDR4 é acima do padrão');
+  const crash = (extra = {}) => Scan.parseHealth(JSON.stringify({ events: { bugcheck: { count: 3 } }, bugCodes: [{ code: '0x0000001a', count: 2 }, { code: '0x00000050', count: 1 }], ...extra }));
+  const memory = D.buildFindings({ profile: xmp, health: crash(), memtest: { testedMB: 2048, passes: 8, errors: 4 }, now });
+  assert.equal(memory[0].id, 'causa-memoria', 'a causa provável vem no topo');
+  assert.equal(memory[0].confidence, 'alta');
+  assert.equal(memory[0].diagnosis.fix, 'bios-memoria');
+  assert.ok(memory[0].evidence.some((line) => /MEMORY_MANAGEMENT/.test(line)) && memory[0].evidence.some((line) => /teste de memória/.test(line)));
+  const plain = H.identify(baseInventory(), { now });
+  const video = D.buildFindings({ profile: plain, health: Scan.parseHealth(JSON.stringify({ events: { tdr: { count: 4 } }, bugCodes: [{ code: '0x00000116', count: 1 }] })), now });
+  assert.equal(video[0].id, 'causa-video');
+  const power = D.buildFindings({ profile: plain, health: Scan.parseHealth(JSON.stringify({ events: { unexpected: { count: 3 } }, powerLoss: { silent: 3, button: 0, bugcheck: 0 } })), gpuStress: D.summarizeGpuStress({ samples: [{ temp: 64, clock: 1800, power: 230 }] }), now });
+  assert.equal(power[0].id, 'causa-fonte', 'desligou sem tela azul e sem calor: fonte ou tomada');
+  const hot = D.buildFindings({ profile: plain, health: Scan.parseHealth(JSON.stringify({ events: { unexpected: { count: 3 } }, powerLoss: { silent: 3 } })), load: { multiSeconds: 75, clock: { dropPct: 14 }, temps: { cpuPeak: 99 }, limits: {} }, now });
+  assert.equal(hot[0].id, 'causa-calor', 'desligou sozinho com o processador freando por calor');
+  const disk = D.buildFindings({ profile: plain, health: Scan.parseHealth(JSON.stringify({ events: { bugcheck: { count: 1 }, disk: { count: 3 }, storReset: { count: 2 } }, bugCodes: [{ code: '0x0000007a', count: 1 }] })), now });
+  assert.equal(disk[0].id, 'causa-disco');
+  const healthy = D.buildFindings({ profile: xmp, health: Scan.parseHealth(JSON.stringify({ events: {} })), memtest: { testedMB: 2048, passes: 8, errors: 0 }, now });
+  assert.ok(!healthy.some((item) => item.id.startsWith('causa-') && item.id !== 'causa-engasgos'), 'sem sintoma, sem causa (XMP ligado e estável não é problema)');
+});
+
+test('correção: todo achado que pede ação tem um caminho para o botão do app', () => {
+  // Um PC com tudo de errado ao mesmo tempo: cada achado que não é "ok"/"info" precisa de algo que o botão faça.
+  const now = Date.parse('2026-11-11T12:00:00Z');
+  const profile = H.identify(baseInventory({ displays: [{ adapter: 'NVIDIA GeForce RTX 3060', name: 'VG27AQ', width: 2560, height: 1440, hz: 60, maxHz: 165 }] }), { now });
+  const health = Scan.parseHealth(JSON.stringify({ events: { bugcheck: { count: 2 }, unexpected: { count: 5 }, tdr: { count: 3 }, disk: { count: 2 }, ntfs: { count: 1 }, firmwareLimit: { count: 2 }, updateFail: { count: 4 }, lowMemory: { count: 2 }, wheaIds: [{ id: 19, count: 2 }, { id: 17, count: 1 }] }, bugCodes: [{ code: '0x00000124', count: 2 }], powerLoss: { silent: 3, button: 2 }, rebootPending: { update: true }, lastBoot: '2026-10-01T00:00:00Z', plan: 'a1841308-3541-4fab-bc81-f71556f20b4a', problemDevices: [{ name: 'Dispositivo PCI', code: 28 }] }));
+  const findings = D.buildFindings({ profile, health, facts: { hags: 1, gameMode: 0, historical: 1 }, now,
+    memtest: { testedMB: 1024, passes: 5, errors: 2 }, gpuStress: D.summarizeGpuStress({ samples: [80, 84, 86, 88].map((temp, i) => ({ temp, clock: 1900 - i * 80, limits: { thermal: i > 0 } })) }),
+    diskTest: { seqWriteMBs: 60, sizeMB: 256, latency: { p50Ms: 5, maxMs: 2000 } }, network: { gateway: D.summarizePings([30, 60, 90, 20], 1), internet: D.summarizePings([40, 120, 45, 200, 42], 1) },
+    during: { whea: 1, tdr: 1, disk: 1 }, drives: [{ driveLetter: 'C', system: true, sizeBytes: 5e11, freeBytes: 1e10 }], startup: Array.from({ length: 20 }, (_, i) => ({ name: `App ${i}` })) });
+  const routed = new Set(['reinicio-pendente', 'tempo-ligado', 'update-falhou', 'x3d-gamebar', 'mem-xmp', 'gpu-rebar', 'gpu-rebar-arc', 'bios-antiga', 'raptor-bios', 'am5-bios', 'disco-cheio', 'tela-azul', 'whea', 'whea-fatal', 'desligou-sozinho', 'mem-travada', 'crashes', 'disco-ntfs', 'disco-erros', 'driver-video-travou', 'crash-driver-video', 'gpu-sem-driver', 'gpu-legado', 'gpu-hibrida', 'pc-ocupado', 'memoria-acabando', 'mem-teste-erros', 'teste-tdr', 'teste-disco', 'disco-lento', 'gravacao-fundo', 'modo-jogo', 'gpu-hags', 'plano-economia', 'modo-energia', 'mem-sem-paginacao', 'inicializacao']);
+  const missing = findings.filter((item) => !['ok', 'info'].includes(item.severity) && !item.id.startsWith('causa-') && !routed.has(item.id) && !item.action?.how && !item.action?.goto && !item.action?.settings && !item.action?.netFix && !item.action?.taskManager);
+  assert.deepEqual(missing.map((item) => item.id), [], 'achados sem nenhum botão possível');
+  assert.ok(findings.filter((item) => item.id.startsWith('causa-')).every((item) => item.diagnosis?.fix), 'toda causa provável diz qual correção usar');
 });

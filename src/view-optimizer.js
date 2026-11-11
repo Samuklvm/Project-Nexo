@@ -448,6 +448,13 @@
       ASRock: ['Advanced → Chipset Configuration.', 'Above 4G Decoding: Enabled → C.A.M. / Re-Size BAR: Enabled.', 'F10 para salvar.'],
       outro: ['Procure "Above 4G Decoding" e ligue.', 'Depois ligue "Re-Size BAR" (ou "Smart Access Memory" / "Clever Access Memory").', 'Salve e reinicie.'] },
       after: 'O Resizable BAR precisa do Windows instalado em modo UEFI. Se a BIOS pedir para desligar o "CSM" e o Windows foi instalado no modo antigo (MBR), não desligue: o PC pode não iniciar.' },
+    xmpoff: { title: 'Desligar o perfil de memória (XMP, DOCP ou EXPO) para testar', steps: {
+      ASUS: ['Aperte F7 para o modo avançado.', 'Ai Tweaker → Ai Overclock Tuner → Auto.', 'Aperte F10 e confirme para salvar e reiniciar.'],
+      MSI: ['Na tela inicial (EZ Mode), desligue o botão A-XMP (ou XMP / EXPO).', 'Aperte F10 e confirme.'],
+      GIGABYTE: ['Tweaker → Extreme Memory Profile (X.M.P.) → Disabled.', 'Aperte F10 e confirme.'],
+      ASRock: ['OC Tweaker → DRAM Configuration → Load XMP Setting → Auto.', 'Aperte F10 e confirme.'],
+      outro: ['Procure "XMP", "DOCP" ou "EXPO" nas opções de memória (DRAM) e escolha Disabled ou Auto.', 'Salve (geralmente F10) e reinicie.'] },
+      after: 'Depois, rode a verificação completa de novo. Se os erros sumirem, era o perfil: dá para deixar assim ou religar o perfil numa velocidade um degrau abaixo (por exemplo, 3200 em vez de 3600).' },
     update: { title: 'Atualizar a BIOS', steps: {
       outro: ['Baixe a BIOS mais nova da página de suporte da sua placa (o botão abaixo abre o site oficial).', 'Copie o arquivo para um pendrive em FAT32.', 'Na BIOS, use a ferramenta de atualização (ASUS EZ Flash, MSI M-Flash, GIGABYTE Q-Flash, ASRock Instant Flash).', 'Não desligue o PC durante a atualização.'] },
       after: 'Depois de atualizar, a BIOS volta ao padrão: ligue de novo o XMP se ele estava ligado.' }
@@ -465,6 +472,19 @@
     'disco-hd-sistema': ['O Windows num HD é o que mais deixa um PC lento hoje.', 'Um SSD SATA ou NVMe barato já muda tudo; dá para clonar o disco sem reinstalar.'],
     'na-bateria': ['Ligue o notebook na tomada para jogar: na bateria o Windows segura o processador e a placa de vídeo.'],
     'win10': ['O Windows 10 não recebe mais atualizações de segurança gratuitas.', 'Se o PC aceitar, atualize para o Windows 11 pelo Windows Update.']
+  };
+  GUIDES['gpu-quente'] = GUIDES['gpu-calor'];
+  const NET_PAGES = { Intel: DRIVER_PAGES.Intel, Realtek: 'https://www.realtek.com/Download/List?cate_id=584' };
+  const netMaker = (name) => (/intel|killer/i.test(name) ? 'Intel' : /realtek/i.test(name) && !/wireless|wi-?fi|802\.11/i.test(name) ? 'Realtek' : null);
+  /** O que fazer com a causa provável: cada suspeito tem o seu caminho. */
+  const CAUSE_FIX = {
+    'bios-memoria': () => (globalThis.NexoDeep?.memoryOverclocked?.(decorated.report?.profile?.memory) ? { kind: 'bios', guide: 'xmpoff', label: 'Desligar o XMP para testar' } : { kind: 'memtest', label: 'Testar a memória (Windows)' }),
+    driver: () => ({ kind: 'driver', label: 'Baixar o driver oficial' }),
+    drivers: () => ({ kind: 'vendor-board', label: 'Abrir os drivers da placa' }),
+    disco: () => ({ kind: 'repair', label: 'Reparar o Windows' }),
+    bios: () => ({ kind: 'bios', guide: 'update', label: 'Atualizar a BIOS', vendor: true }),
+    fonte: () => ({ kind: 'how', label: 'Como resolver' }),
+    limpeza: () => ({ kind: 'guide', guide: 'cpu-freio-calor', label: 'Passo a passo' })
   };
   const decorated = { report: null, plan: null, loading: null };
   const ACT = (label, attrs, primary = true) => `<button class="btn sm${primary ? ' primary' : ''} fix-btn" type="button" ${attrs}>${esc(label)}</button>`;
@@ -500,6 +520,15 @@
       if (start) return { kind: 'steps', ids: [start.id], label: 'Tirar do início' };
       return null;
     }
+    if (id.startsWith('causa-') && finding.diagnosis?.fix && CAUSE_FIX[finding.diagnosis.fix]) return CAUSE_FIX[finding.diagnosis.fix]();
+    if (id === 'mem-teste-erros') return CAUSE_FIX['bios-memoria']();
+    if (id === 'teste-tdr') return { kind: 'driver', label: 'Reinstalar o driver de vídeo' };
+    if (id === 'teste-disco') return { kind: 'repair', label: 'Reparar o Windows' };
+    if (id === 'disco-lento') return { kind: 'goto', view: 'maintenance', label: 'Liberar espaço' };
+    if (finding.action?.netFix?.id) return { kind: 'net', fix: finding.action.netFix, label: finding.action.netFix.label || 'Corrigir' };
+    if (id.startsWith('driver-rede-')) { const maker = netMaker(finding.title); return maker ? { kind: 'vendor', url: NET_PAGES[maker], label: 'Baixar o driver oficial' } : { kind: 'vendor-board', label: 'Abrir os drivers da placa' }; }
+    if (id === 'driver-chipset-antigo') return /amd|ryzen/i.test(decorated.report?.profile?.cpu?.vendor || '') ? { kind: 'vendor', url: DRIVER_PAGES.AMD, label: 'Baixar o driver de chipset' } : { kind: 'vendor', url: DRIVER_PAGES.Intel, label: 'Baixar o driver de chipset' };
+    if (id === 'driver-audio-antigo') return { kind: 'vendor-board', label: 'Abrir os drivers da placa' };
     if (id === 'reinicio-pendente' || id === 'tempo-ligado') return { kind: 'restart', label: 'Reiniciar agora' };
     if (id === 'update-falhou') return { kind: 'settings', page: 'windowsupdate', label: 'Abrir o Windows Update' };
     if (id === 'x3d-gamebar') return { kind: 'settings', page: 'gamebar', label: 'Abrir a Game Bar' };
@@ -513,6 +542,11 @@
     if (id === 'gpu-hibrida') return { kind: 'optimizer', label: 'Escolher o jogo' };
     if (['pc-ocupado', 'memoria-acabando'].includes(id)) return { kind: 'taskmgr', label: 'Ver o que está pesando' };
     if (GUIDES[id]) return { kind: 'guide', label: 'Passo a passo' };
+    // Último recurso: todo achado que tem um "como resolver" ganha o botão com o passo a passo dele.
+    if (finding.action?.how) return { kind: 'how', label: 'Como resolver' };
+    if (finding.action?.goto) return { kind: 'goto', view: finding.action.goto, label: 'Abrir' };
+    if (finding.action?.settings) return { kind: 'settings', page: finding.action.settings, label: 'Abrir a configuração' };
+    if (finding.action?.taskManager) return { kind: 'taskmgr', label: 'Ver o que está pesando' };
     return null;
   }
   function paintFixes() {
@@ -585,7 +619,11 @@
         button.textContent = 'Reparo concluído';
         return;
       }
-      if (fix.kind === 'guide') { await Nexo.confirm({ title: finding.title, body: 'Passo a passo:', items: GUIDES[finding.id], confirmLabel: 'Entendi', cancelLabel: 'Fechar' }); }
+      if (fix.kind === 'guide') { await Nexo.confirm({ title: finding.title, body: 'Passo a passo:', items: GUIDES[fix.guide || finding.id], confirmLabel: 'Entendi', cancelLabel: 'Fechar' }); return; }
+      if (fix.kind === 'how') { await Nexo.confirm({ title: finding.title, body: finding.action?.how || finding.detail || '', items: (finding.evidence || []).slice(0, 4), confirmLabel: 'Entendi', cancelLabel: 'Fechar' }); return; }
+      if (fix.kind === 'vendor') { await bridge.openVendorPage(fix.url); return; }
+      if (fix.kind === 'vendor-board') { const page = BOARD_PAGES[makerOf(report.profile)]; if (page) await bridge.openVendorPage(page); else showToast('Não identifiquei o fabricante da placa-mãe; procure o modelo dela no site do fabricante.'); return; }
+      if (fix.kind === 'net') { if (Nexo.applyNetworkFix) await Nexo.applyNetworkFix(fix.fix, button, { fromReport: true }); return; }
     } catch (error) {
       button.disabled = false;
       button.textContent = fix.label;

@@ -51,7 +51,7 @@
       </div>
       <div class="rail-items">
         <button class="rail-item active" type="button" data-view="home" aria-current="page"><svg><use href="#i-home"/></svg><span class="rail-label">Início</span></button>
-        <button class="rail-item" type="button" data-view="analysis"><svg><use href="#i-spark"/></svg><span class="rail-label">Análise</span></button>
+        <button class="rail-item" type="button" data-view="analysis"><svg><use href="#i-spark"/></svg><span class="rail-label">Análise e otimização</span></button>
         <button class="rail-item" type="button" data-view="sessions"><svg><use href="#i-record"/></svg><span class="rail-label">Sessões</span></button>
         <button class="rail-item" type="button" data-view="library"><svg><use href="#i-game"/></svg><span class="rail-label">Jogos</span></button>
         <button class="rail-item" type="button" data-view="optimize"><svg><use href="#i-bolt"/></svg><span class="rail-label">Otimizar</span></button>
@@ -150,20 +150,20 @@
 
       <!-- ANÁLISE -->
       <section class="view" data-view-panel="analysis">
-        <header class="page-head"><div><h2>Análise inteligente</h2><p>O Nexo conhece as peças do seu PC, observa o que roda por trás e compara com a sua rotina. Cada achado vem com a evidência, a confiança e o que fazer.</p></div><div class="page-actions"><button class="btn" id="run-quick" type="button" title="Mede os programas agora (cerca de um segundo)">Rápida</button><button class="btn primary" id="run-diagnosis" type="button">Análise profunda</button></div></header>
+        <header class="page-head"><div><h2>Análise e otimização</h2><p>O Nexo conhece as peças do seu PC, observa o que roda por trás e compara com a sua rotina. Cada achado vem com a evidência, a confiança e um botão para resolver.</p></div><div class="page-actions"><button class="btn" id="run-quick" type="button" title="Mede os programas agora (cerca de um segundo)">Rápida</button><button class="btn primary" id="run-diagnosis" type="button">Análise profunda</button></div></header>
         <section class="sheet deep" id="deep-panel" aria-labelledby="deep-title">
           <div class="deep-intro" id="deep-intro">
             <div class="deep-intro-art" aria-hidden="true"><svg class="deep-sky deep-mini" id="deep-intro-sky" viewBox="0 0 640 280"></svg></div>
             <div class="deep-intro-text">
-              <span class="deep-kicker">Análise profunda</span>
+              <span class="deep-kicker">Verificação completa</span>
               <h3 id="deep-title">Conheça o seu PC de verdade</h3>
-              <p>O Nexo identifica cada peça e entende o que ela é: o chipset da placa-mãe, a geração do processador, a velocidade de cada pente de memória, o link da placa de vídeo e a porta do monitor. Depois lê 30 dias de eventos, observa o que roda por trás e faz um teste de carga curto.</p>
+              <p>Por cerca de 10 minutos, o Nexo entende cada peça (o chipset da placa-mãe, a geração do processador, cada pente de memória, o link da placa de vídeo e a porta do monitor), testa a estabilidade da memória, põe a placa de vídeo, o disco e o processador para trabalhar, confere os drivers, lê 30 dias de eventos, mede a rede e observa o que roda por trás. No fim, cruza as pistas de todas as etapas para achar a causa de cada problema.</p>
               <ul class="deep-promises">
                 <li><svg aria-hidden="true"><use href="#i-chip"/></svg>Peças entendidas, não só listadas</li>
                 <li><svg aria-hidden="true"><use href="#i-eye"/></svg>O que pesa por trás do jogo</li>
                 <li><svg aria-hidden="true"><use href="#i-flask"/></svg>Um plano feito para este PC</li>
               </ul>
-              <div class="deep-intro-actions"><button class="btn primary" id="deep-start" type="button">Começar análise profunda</button><small class="muted" id="deep-last-info">1 a 2 minutos · não muda nada no PC · pode deixar um jogo aberto</small></div>
+              <div class="deep-intro-actions"><button class="btn primary" id="deep-start" type="button">Fazer a verificação completa</button><small class="muted" id="deep-last-info">cerca de 10 minutos · só mede, não muda nada no PC · feche os jogos antes (os testes usam o PC inteiro)</small></div>
             </div>
           </div>
           <div class="deep-run" id="deep-run" hidden>
@@ -172,8 +172,8 @@
             <ul class="deep-facts" id="deep-facts" aria-live="polite"></ul>
             <ol class="deep-stages" id="deep-stages" aria-label="Etapas da análise"></ol>
             <div class="deep-progress">
-              <div class="deep-bar" id="deep-bar" role="progressbar" aria-label="Progresso da análise" aria-valuemin="0" aria-valuemax="7" aria-valuenow="0"><i id="deep-bar-fill"></i></div>
-              <span id="deep-count">1 de 7</span><span class="deep-time" id="deep-time">0:00</span>
+              <div class="deep-bar" id="deep-bar" role="progressbar" aria-label="Progresso da análise" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"><i id="deep-bar-fill"></i></div>
+              <span id="deep-count">1 de 10</span><span class="deep-time" id="deep-time">0:00</span>
               <button class="btn sm" id="deep-cancel" type="button">Cancelar</button>
             </div>
           </div>

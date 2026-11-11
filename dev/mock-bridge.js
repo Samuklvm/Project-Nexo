@@ -313,7 +313,7 @@ if (window.__nexoPlatform === 'linux') {
     cancelDeepAnalysis: async () => { if (state) state.cancel = true; return { ok: true }; },
     runDeepAnalysis: async () => {
       const startedAt = Date.now();
-      state = { status: 'running', stageIndex: 0, total: 7, nodes: Object.fromEntries(NexoDeep.NODES.map((n) => [n.id, 'pending'])), facts: [], action: 'começando…', elapsedMs: 0, minMs: 60000 };
+      state = { status: 'running', stageIndex: 0, total: NexoDeep.STAGES.length, nodes: Object.fromEntries(NexoDeep.NODES.map((n) => [n.id, 'pending'])), facts: [], action: 'começando…', elapsedMs: 0, minMs: NexoDeep.MIN_TOTAL_MS };
       const tick = setInterval(() => { state.elapsedMs = (Date.now() - startedAt) / speed; }, 250);
       const stop = () => { clearInterval(tick); state.status = 'cancelled'; push(); return { cancelled: true }; };
       const profile = NexoHardware.identify(inventory);
@@ -325,44 +325,81 @@ if (window.__nexoPlatform === 'linux') {
       await wait(1800); go(0, 'decodificando o chipset da placa-mãe…'); facts('board', pick('board')[0].text);
       await wait(1500); facts('board', 'B550: PCIe 4.0 no slot da placa de vídeo e no primeiro M.2; 3.0 nos demais'); nodes({ board: 'done', memory: 'seen', gpu: 'seen', disk: 'seen', network: 'seen', windows: 'seen' });
       if (state.cancel) return stop();
-      await wait(1200); nodes({ memory: 'active' }); go(1, 'conferindo pentes, canais e a velocidade nominal…');
+      // Memória: o teste de estabilidade.
+      nodes({ memory: 'active' }); go(1, 'conferindo pentes, canais e a velocidade nominal…');
       await wait(1500); facts('memory', pick('memory')[0].text);
       await wait(1500); facts('memory', 'F4-3600C16-8GVKC: vendido para 3600 CL16');
-      await wait(1500); facts('memory', 'Memória abaixo da velocidade da caixa: 2133 em vez de 3600', 'warn'); nodes({ memory: 'warn' });
+      const patterns = ['endereço', 'xadrez', 'xadrez inverso', 'aleatório', 'bits andando'];
+      for (let pass = 1; pass <= 10; pass += 1) { if (state.cancel) return stop(); go(1, `teste de estabilidade da memória: passada ${pass} (${patterns[(pass - 1) % 5]}) em 2 GB · nenhum erro`); await wait(1000); }
+      facts('memory', '2 GB testados em 10 passadas: nenhum erro', 'ok');
+      await wait(1200); facts('memory', 'Memória abaixo da velocidade da caixa: 2133 em vez de 3600', 'warn'); nodes({ memory: 'warn' });
       if (state.cancel) return stop();
+      // Vídeo: a placa sob carga.
       nodes({ gpu: 'active' }); go(2, 'lendo placas de vídeo, drivers e monitores…');
       await wait(1600); facts('gpu', pick('gpu')[0].text);
-      await wait(1600); go(2, 'comparando a taxa do monitor com o máximo que ele aceita…'); facts('gpu', pick('gpu')[1].text);
-      await wait(1400); facts('gpu', 'Monitor na taxa máxima (165 Hz)', 'ok'); nodes({ gpu: 'done' });
+      wakeListeners.forEach((cb) => cb({ ms: 8000 }));
+      for (let i = 0; i < 6; i += 1) { if (state.cancel) return stop(); go(2, `placa de vídeo trabalhando · ${58 + i * 3} °C · ${1815 + i * 6} MHz · ${150 + i * 4} W · faltam ${45 - i * 7} s`); await wait(1300); }
+      facts('gpu', 'sob carga: 73 °C, 1.845 MHz');
+      await wait(1200); go(2, 'comparando a taxa do monitor com o máximo que ele aceita…'); facts('gpu', 'Monitor na taxa máxima (165 Hz)', 'ok'); nodes({ gpu: 'done' });
+      // Disco: gravação de verdade.
       nodes({ disk: 'active' }); go(3, 'conferindo tipo, saúde e link dos discos…');
-      await wait(1800); facts('disk', pick('disk')[0].text);
-      await wait(1600); facts('disk', pick('disk')[1].text); nodes({ disk: 'done' });
+      await wait(1400); facts('disk', pick('disk')[0].text);
+      for (let mb = 32; mb <= 256; mb += 64) { go(3, `gravando no disco: ${mb} MB…`); await wait(700); }
+      go(3, 'gravações pequenas confirmadas: 150…'); await wait(1200);
+      facts('disk', 'gravação: 2.140 MB/s · resposta 0,4 ms', 'ok'); nodes({ disk: 'done' });
       if (state.cancel) return stop();
-      nodes({ windows: 'active', network: 'active' }); go(4, 'lendo 30 dias de eventos do sistema…');
+      // Drivers.
+      nodes({ board: 'active' }); go(4, 'lendo os drivers instalados de cada peça…');
+      await wait(1500); facts('board', 'vídeo: NVIDIA GeForce RTX 3060 32.0.15.6094 (ago de 2026)');
+      await wait(1300); facts('board', 'rede: Realtek RTL8852BE WiFi 6 6001.15.152.100 (fev de 2022)');
+      await wait(1300); facts('board', '118 drivers conferidos'); nodes({ board: 'done' });
+      // Windows: eventos.
+      nodes({ windows: 'active' }); go(5, 'lendo 30 dias de eventos do sistema…');
       await wait(1700); facts('windows', 'Windows 11 24H2');
-      await wait(1600); facts('windows', '30 dias: nenhuma tela azul');
-      await wait(1400); facts('network', pick('network')[0].text); nodes({ windows: 'done', network: 'done' });
-      go(5, 'observando o que roda por trás (o próprio Nexo, jogos e launchers ficam de fora)…');
+      await wait(1600); facts('windows', '30 dias: nenhuma tela azul', 'ok');
+      await wait(1400); go(5, 'conferindo reinício pendente, inicialização e plano de energia…'); facts('windows', 'O Windows está esperando reiniciar', 'warn'); nodes({ windows: 'warn' });
+      if (state.cancel) return stop();
+      // Rede: um minuto medindo.
+      nodes({ network: 'active' }); go(6, 'medindo a rede: roteador, internet e DNS…');
+      await wait(1200); facts('network', pick('network')[0].text);
+      for (let i = 0; i <= 90; i += 15) { go(6, `medindo a rede: ${i} de 90 pacotes até a internet…`); await wait(700); }
+      go(6, 'conferindo DNS, proxy e a abertura de um site…'); await wait(1400);
+      facts('network', 'internet: 14 ms · oscila 2,1 ms · perdeu 0%', 'ok'); nodes({ network: 'done' });
+      // O que roda por trás.
+      go(7, 'observando o que roda por trás (o próprio Nexo, jogos e launchers ficam de fora)…');
       for (let i = 1; i <= 10; i += 1) {
         if (state.cancel) return stop();
-        await wait(3000);
-        state.observed = { done: i, of: 10, seconds: i * 3 };
+        await wait(1500);
+        state.observed = { done: i * 3, of: 30, seconds: i * 9 };
         if (i === 1) facts(null, 'Roblox aberto: é o jogo, fica fora da lista de culpados');
         if (i === 3) facts(null, 'Navegador (chrome): 5,6% do processador', 'warn');
-        go(5, `observando o que roda por trás: leitura ${i} de 10`);
+        go(7, `observando o que roda por trás: leitura ${i * 3} de 30`);
       }
-      go(6, 'todos os núcleos no máximo por 10 segundos…'); nodes({ cpu: 'active' });
-      await wait(10000); if (state.cancel) return stop();
-      go(6, 'um núcleo só, para ver o turbo…'); await wait(3000); nodes({ cpu: 'done', gpu: 'active' });
-      go(6, 'acordando a placa de vídeo para medir o link PCIe…'); wakeListeners.forEach((cb) => cb({ ms: 6000 }));
-      await wait(6000); nodes({ gpu: 'done' }); facts('cpu', 'sob carga: 71 °C, 4.080 MHz em todos os núcleos');
+      // Teste de carga.
+      nodes({ cpu: 'active' });
+      for (let left = 75; left > 0; left -= 15) { if (state.cancel) return stop(); go(8, `todos os núcleos no máximo · ${62 + (75 - left) / 5} °C · faltam ${left} s`); await wait(1500); }
+      go(8, 'um núcleo só, para ver o turbo…'); await wait(2500); nodes({ cpu: 'done' });
+      facts('cpu', 'sob carga: 71 °C, 4.080 MHz em todos os núcleos');
+      // Juntando as pistas.
+      go(9, 'conferindo se algo errou durante os testes…'); await wait(1500);
+      go(9, 'relacionando 31 pistas de todas as etapas…'); facts(null, 'nenhum erro de hardware durante os testes', 'ok');
+      await wait(1800); facts(null, '3 ponto(s) para ajustar, sem sinal de defeito', 'info');
+      await wait(1200);
       clearInterval(tick);
       const observation = NexoDeep.summarizeObservation({ ticks, procs, services, selfPids: new Set([4700]), classify: NexoSession.classifyForeground, memoryTotalBytes: 16 * GB });
       const load = { multiSeconds: 10, bench: { multi: 4120, single: 612, threads: 15 }, clock: { allCoreMHz: 4080, singleMHz: 4110, startMHz: 4090, endMHz: 4070, dropPct: 0.5 }, limits: { maxFreqAvg: 100, perfLimitPeak: 0 }, temps: { cpuIdle: 42, cpuPeak: 71, gpuPeak: 58 }, gpu: { pcieGen: 4, pcieGenMax: 4, pcieGenHostMax: 4, pcieWidth: 8, pcieWidthMax: 8, clockMHz: 2655, clockMaxMHz: 2655, bar1MB: 8192, vramMB: 8188 }, links: [] };
       const health = { platform: 'win32', events: { bugcheck: { count: 0 }, unexpected: { count: 0 }, tdr: { count: 0 }, disk: { count: 0 }, storReset: { count: 0 }, ntfs: { count: 0 }, firmwareLimit: { count: 0 }, appCrash: { count: 2 }, updateFail: { count: 0 } }, wheaIds: [], crashes: [], rebootPending: { update: true }, fastStartup: true, lastBoot: new Date(Date.now() - 3 * 86400e3).toISOString(), pagefile: { automatic: true, files: [] }, software: ['AMD Chipset Software'], vcacheService: false, gameBar: true };
-      const findings = NexoDeep.buildFindings({ profile, health, facts: { hags: 2, historical: 0, gameMode: 1 }, observation, load, drives: [{ driveLetter: 'C', system: true, sizeBytes: 1e12, freeBytes: 3.1e11 }], startup: Array.from({ length: 9 }, (_, i) => ({ name: `App ${i}` })) });
-      const report = { id: 'mock', at: Date.now(), durationMs: Math.max(60000, (Date.now() - startedAt) / speed), platform: 'win32', onBattery: false, profile, lines, health, observation, load, findings, score: NexoDeep.healthScore(findings), history: [{ at: Date.now() - 20 * 86400e3, score: 52 }, { at: Date.now() - 9 * 86400e3, score: 58 }, { at: Date.now(), score: NexoDeep.healthScore(findings) }], comparison: saved ? NexoDeep.compareRuns(NexoDeep.runRecord({ at: Date.now(), profile, load, findings, observation }), NexoDeep.runRecord({ at: saved.at, profile, load: { ...load, bench: { multi: 4300, single: 620 } }, findings: saved.findings, observation })) : null };
-      state.status = 'done'; state.stageIndex = 7; push();
+      const tests = {
+        memtest: { testedMB: 2048, passes: 10, errors: 0, samples: [], bandwidthMBs: 8800 },
+        gpuStress: NexoDeep.summarizeGpuStress({ samples: [58, 61, 64, 67, 70, 73].map((temp, i) => ({ temp, clock: 1815 + i * 6, power: 150 + i * 4, powerLimit: 170, limits: { power: i > 3, thermal: false } })), seconds: 45 }),
+        diskTest: { ok: true, sizeMB: 256, seqWriteMBs: 2140, latency: { p50Ms: 0.4, p99Ms: 1.9, maxMs: 7.2 } },
+        drivers: NexoDeep.summarizeDrivers([{ name: 'NVIDIA GeForce RTX 3060', cls: 'DISPLAY', provider: 'NVIDIA', version: '32.0.15.6094', date: '2026-08-12', signed: true }, { name: 'Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter', cls: 'NET', provider: 'Realtek Semiconductor Corp.', maker: 'Realtek', version: '6001.15.152.100', date: '2022-02-10', signed: true }, { name: 'Realtek High Definition Audio', cls: 'MEDIA', provider: 'Realtek', version: '6.0.9235.1', date: '2021-09-01', signed: true }], Date.now()),
+        network: { gateway: NexoDeep.summarizePings([3.1, 2.9, 3.4, 3.0, 6.2, 3.1], 0), internet: NexoDeep.summarizePings([14, 15, 13.8, 14.6, 21, 14.2], 0), doctor: null },
+        during: { whea: 0, tdr: 0, disk: 0, gpu: 0 }
+      };
+      const findings = NexoDeep.buildFindings({ profile, health, facts: { hags: 2, historical: 0, gameMode: 1 }, observation, load, drives: [{ driveLetter: 'C', system: true, sizeBytes: 1e12, freeBytes: 3.1e11 }], startup: Array.from({ length: 9 }, (_, i) => ({ name: `App ${i}` })), ...tests });
+      const report = { id: 'mock', at: Date.now(), durationMs: Math.max(NexoDeep.MIN_TOTAL_MS, (Date.now() - startedAt) / speed), platform: 'win32', onBattery: false, profile, lines, health, observation, load, findings, tests, score: NexoDeep.healthScore(findings), history: [{ at: Date.now() - 20 * 86400e3, score: 52 }, { at: Date.now() - 9 * 86400e3, score: 58 }, { at: Date.now(), score: NexoDeep.healthScore(findings) }], comparison: saved ? NexoDeep.compareRuns(NexoDeep.runRecord({ at: Date.now(), profile, load, findings, observation }), NexoDeep.runRecord({ at: saved.at, profile, load: { ...load, bench: { multi: 4300, single: 620 } }, findings: saved.findings, observation })) : null };
+      state.status = 'done'; state.stageIndex = NexoDeep.STAGES.length; push();
       saved = report;
       return report;
     }

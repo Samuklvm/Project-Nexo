@@ -54,8 +54,8 @@
   };
 
   /** Aplica uma correção de rede depois da confirmação e registra no Diário (com volta, quando existe). */
-  async function applyFix(id, button) {
-    const fix = last?.fixes.find((item) => item.id === id);
+  async function applyFix(id, button, given = null, { fromReport = false } = {}) {
+    const fix = given || last?.fixes.find((item) => item.id === id);
     if (!fix) return;
     if (id !== 'abrir-proxy' && id !== 'limpar-dns') {
       const ok = await Nexo.confirm({ title: fix.label, body: (FIX_TEXT[id] || (() => ''))(fix), confirmLabel: fix.lastResort ? 'Reparar e reiniciar depois' : 'Corrigir', tone: fix.lastResort ? 'danger' : undefined });
@@ -72,7 +72,7 @@
       if (entry || id === 'reparo-profundo') Nexo.emit('journal');
       recordActivity('Correção de rede', fix.label);
       showToast(result.restart ? `${fix.label}: feito. Reinicie o PC para valer.` : id === 'abrir-proxy' ? 'Abrindo as configurações de proxy.' : `${fix.label}: feito.${entry ? ' Dá para desfazer pelo Diário, em Atividade.' : ''}`);
-      if (!result.restart && id !== 'abrir-proxy') setTimeout(diagnose, 600);
+      if (!result.restart && id !== 'abrir-proxy' && !fromReport) setTimeout(diagnose, 600);
     } catch (error) { showToast(error.message || 'Não deu certo.'); }
     finally { setButtonBusy(button, false); }
   }
@@ -98,5 +98,7 @@
   });
   Nexo.diagnoseNetwork = () => { Nexo.go('maintenance'); setTimeout(() => { document.getElementById('net-doctor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); diagnose(); }, 250); };
   Nexo.netLast = () => last;
+  /** O relatório da verificação completa usa as mesmas correções (com confirmação e Diário). */
+  Nexo.applyNetworkFix = (fix, button, options) => applyFix(fix?.id, button, fix, options);
   render(null);
 })();

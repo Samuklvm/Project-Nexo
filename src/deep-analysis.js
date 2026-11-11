@@ -31,16 +31,24 @@
     { id: 'cpu', label: 'Processador' }, { id: 'board', label: 'Placa-mãe' }, { id: 'memory', label: 'Memória' }, { id: 'gpu', label: 'Vídeo' },
     { id: 'disk', label: 'Disco' }, { id: 'network', label: 'Rede' }, { id: 'windows', label: 'Windows' }
   ];
+  /*
+   * Verificação completa: dez etapas, no mínimo 10 minutos. Cada etapa examina de verdade (não é só espera): a memória
+   * passa por um teste de estabilidade, a placa de vídeo e o processador ficam sob carga, o disco grava e mede, a rede
+   * é medida por um minuto e, no fim, as pistas de todas as etapas são cruzadas para achar a causa provável.
+   */
   const STAGES = [
-    { id: 'parts', label: 'Conhecendo as peças', nodes: ['board', 'cpu'], minMs: 7000 },
-    { id: 'memory', label: 'Memória', nodes: ['memory'], minMs: 5000 },
-    { id: 'video', label: 'Vídeo e tela', nodes: ['gpu'], minMs: 5000 },
-    { id: 'disk', label: 'Disco', nodes: ['disk'], minMs: 4000 },
-    { id: 'windows', label: 'Windows e rede', nodes: ['windows', 'network'], minMs: 5000 },
-    { id: 'behind', label: 'O que roda por trás', nodes: [], minMs: 30000 },
-    { id: 'load', label: 'Teste de carga', nodes: ['cpu', 'gpu'], minMs: 18000 }
+    { id: 'parts', label: 'Conhecendo as peças', nodes: ['board', 'cpu'], minMs: 15000 },
+    { id: 'memory', label: 'Memória', nodes: ['memory'], minMs: 120000 },
+    { id: 'video', label: 'Vídeo e tela', nodes: ['gpu'], minMs: 60000 },
+    { id: 'disk', label: 'Disco', nodes: ['disk'], minMs: 45000 },
+    { id: 'drivers', label: 'Drivers', nodes: ['board'], minMs: 25000 },
+    { id: 'windows', label: 'Windows', nodes: ['windows'], minMs: 35000 },
+    { id: 'network', label: 'Rede', nodes: ['network'], minMs: 60000 },
+    { id: 'behind', label: 'O que roda por trás', nodes: [], minMs: 120000 },
+    { id: 'load', label: 'Teste de carga', nodes: ['cpu'], minMs: 105000 },
+    { id: 'cross', label: 'Juntando as pistas', nodes: [], minMs: 15000 }
   ];
-  const MIN_TOTAL_MS = 60000;
+  const MIN_TOTAL_MS = 600000;
 
   /* ======================================================================================================
    * Quem é quem: próprio Nexo, jogo, launcher, anticheat, sistema ou programa de fundo
@@ -408,10 +416,10 @@
       } else if (kit && locked) {
         add(F('mem-travada', 'memoria', 'info', `A placa trava a memória em ${memory.configured}`, `O pente aceita ${memory.rated}, mas o chipset ${chipset.id} não libera velocidade de memória acima da oficial do processador. Não é defeito: ligar XMP não muda nada aqui.`, { evidence: [`chipset ${chipset.vendor} ${chipset.id}`, chipset.note] }));
       } else if (!kit && memory.modules.some((module) => module.spd && module.configured && module.configured < module.spd - 50)) {
-        add(F('mem-abaixo-padrao', 'memoria', 'baixa', `Memória abaixo até do padrão: ${memory.configured} de ${memory.rated}`, 'A memória roda abaixo da velocidade padrão dela. Costuma ser limite do processador ou da placa (comum em Intel até a 10ª geração com chipset H/B), mistura de pentes diferentes ou 4 pentes DDR5.', { evidence: [Hardware.memoryLine(memory), chipset?.note], confidence: 'media' }));
+        add(F('mem-abaixo-padrao', 'memoria', 'baixa', `Memória abaixo até do padrão: ${memory.configured} de ${memory.rated}`, 'A memória roda abaixo da velocidade padrão dela. Costuma ser limite do processador ou da placa (comum em Intel até a 10ª geração com chipset H/B), mistura de pentes diferentes ou 4 pentes DDR5.', { evidence: [Hardware.memoryLine(memory), chipset?.note], confidence: 'media', action: { how: 'Na BIOS, confira a velocidade da memória (DRAM Frequency) e deixe em Auto. Com 4 pentes DDR5 ou pentes diferentes, a placa baixa a velocidade de propósito: 2 pentes iguais rendem mais.' } }));
       }
     } else if (memory.configured && memory.rated && memory.xmpKnown && !memory.belowRated) add(F('mem-velocidade-ok', 'memoria', 'ok', `Memória na velocidade da caixa (${memory.configured})`, null));
-    if (memory.mixed && memory.modules.length >= 2) add(F('mem-misturada', 'memoria', 'baixa', 'Pentes de memória diferentes', 'Com pentes diferentes, a placa usa a velocidade e as latências do mais lento, e o perfil XMP/EXPO às vezes não fica estável.', { evidence: memory.modules.map((module) => `${module.slot || '?'}: ${Hardware.gbText(module.capacityBytes)} ${module.part || ''}`.trim()), confidence: 'media' }));
+    if (memory.mixed && memory.modules.length >= 2) add(F('mem-misturada', 'memoria', 'baixa', 'Pentes de memória diferentes', 'Com pentes diferentes, a placa usa a velocidade e as latências do mais lento, e o perfil XMP/EXPO às vezes não fica estável.', { evidence: memory.modules.map((module) => `${module.slot || '?'}: ${Hardware.gbText(module.capacityBytes)} ${module.part || ''}`.trim()), confidence: 'media', action: { how: 'Se o PC está estável, pode deixar. Se travar com o XMP/EXPO ligado, baixe um degrau a velocidade; na próxima compra, use um kit (pentes iguais vendidos juntos).' } }));
     const pagefile = health?.pagefile;
     if (pagefile && !pagefile.automatic && !(pagefile.files || []).length && gb !== null && gb <= 32) add(F('mem-sem-paginacao', 'memoria', 'media', 'Arquivo de paginação desligado', 'Sem arquivo de paginação, quando a memória enche o jogo ou o Windows fecham programas de repente (ou dão erro de "memória insuficiente"), mesmo com memória sobrando para outras coisas.', { evidence: [`${Hardware.gbText(total)} de memória, sem paginação`], action: { how: 'Painel de Controle > Sistema > Configurações avançadas > Desempenho > Avançado > Memória virtual: marque "Gerenciar automaticamente".' } }));
   }
@@ -457,7 +465,7 @@
         if (finite(platformGen) && gen >= platformGen) {
           const whyPlatform = profile.cpu?.apuPcie3 ? `O ${Hardware.cpuTitle(profile.cpu, { vendor: false })} só tem PCIe 3.0, mesmo numa placa-mãe mais nova.` : 'É o máximo deste processador/placa-mãe.';
           const widthNote = maxWidth && maxWidth <= 8 ? `Como a placa usa só x${maxWidth}, a perda é maior que o normal (até uns 10% em alguns jogos).` : 'Para placas x16 a perda costuma ser pequena.';
-          add(F('gpu-pcie-plataforma', 'video', maxWidth && maxWidth <= 8 ? 'media' : 'info', `Placa de vídeo em PCIe ${gen}.0 (ela aceita ${maxGen}.0)`, `${whyPlatform} ${widthNote}`, { evidence: [`link com a placa acordada: PCIe ${gen}.0`, `a placa aceita ${maxGen}.0`], confidence: 'alta' }));
+          add(F('gpu-pcie-plataforma', 'video', maxWidth && maxWidth <= 8 ? 'media' : 'info', `Placa de vídeo em PCIe ${gen}.0 (ela aceita ${maxGen}.0)`, `${whyPlatform} ${widthNote}`, { evidence: [`link com a placa acordada: PCIe ${gen}.0`, `a placa aceita ${maxGen}.0`], confidence: 'alta', action: { how: 'É limite da plataforma (processador ou placa-mãe), não defeito: não há ajuste que mude. Em placas de vídeo com x8 ou menos linhas, trocar para uma plataforma com PCIe mais novo é o que ajuda.' } }));
         } else {
           add(F('gpu-pcie-baixo', 'video', 'media', `Placa de vídeo em PCIe ${gen}.0 com a placa acordada (ela aceita ${maxGen}.0)`, 'Com a placa trabalhando, o link deveria subir ao máximo que a placa-mãe aceita. Pode ser opção da BIOS (velocidade do slot fixada), riser antigo ou o slot errado.', { evidence: [`medido durante o teste de vídeo: PCIe ${gen}.0`], confidence: 'media', action: { how: 'Na BIOS, procure a velocidade do slot PCIe (PCIe Speed / PEG) e deixe em "Auto". Se usa riser, teste sem ele.' } }));
         }
@@ -485,8 +493,8 @@
     const systemName = linux ? 'o sistema' : 'o Windows';
     for (const disk of profile.disks || []) {
       if (disk.system && disk.kind === 'hdd' && !profile.virtual) add(F('disco-hd-sistema', 'disco', 'alta', `${linux ? 'O sistema' : 'O Windows'} está num HD (disco mecânico)`, 'Um HD é dezenas de vezes mais lento que um SSD para abrir programas e carregar jogos; o PC parece travado ao ligar, ao atualizar e quando o antivírus verifica. É a troca de maior efeito num PC assim.', { evidence: [Hardware.diskLine(disk, systemName)], action: { how: `Um SSD (mesmo SATA) com ${systemName} instalado nele muda o PC inteiro. O HD pode continuar como disco de arquivos.` } }));
-      if (disk.health && !/healthy|saud/i.test(disk.health) && disk.kind !== 'usb') add(F(`disco-saude-${disk.model}`, 'disco', 'alta', `${disk.model || 'Um disco'} com aviso de saúde`, 'O próprio disco está avisando que pode falhar. Faça cópia do que importa agora.', { evidence: [`estado informado: ${disk.health}`] }));
-      if (finite(disk.wear) && disk.wear >= 50) add(F(`disco-desgaste-${disk.model}`, 'disco', disk.wear >= 80 ? 'alta' : 'baixa', `${disk.model || 'SSD'} com ${disk.wear}% de desgaste`, 'SSDs têm um limite de gravação. Perto do fim, ficam lentos ou param; antes disso, dá tempo de trocar com calma.', { evidence: [`desgaste informado pelo SSD: ${disk.wear}%`] }));
+      if (disk.health && !/healthy|saud/i.test(disk.health) && disk.kind !== 'usb') add(F(`disco-saude-${disk.model}`, 'disco', 'alta', `${disk.model || 'Um disco'} com aviso de saúde`, 'O próprio disco está avisando que pode falhar. Faça cópia do que importa agora.', { evidence: [`estado informado: ${disk.health}`], action: { how: 'Copie agora os seus arquivos para outro disco ou para a nuvem. Depois, troque o disco; o Windows pode ser clonado para o novo sem reinstalar.' } }));
+      if (finite(disk.wear) && disk.wear >= 50) add(F(`disco-desgaste-${disk.model}`, 'disco', disk.wear >= 80 ? 'alta' : 'baixa', `${disk.model || 'SSD'} com ${disk.wear}% de desgaste`, 'SSDs têm um limite de gravação. Perto do fim, ficam lentos ou param; antes disso, dá tempo de trocar com calma.', { evidence: [`desgaste informado pelo SSD: ${disk.wear}%`], action: { how: 'Faça cópia do que importa e planeje a troca. Para durar mais: deixe pelo menos 15% livre e evite usar este SSD para downloads constantes.' } }));
     }
     const nvmeDisks = (profile.disks || []).filter((disk) => disk.kind === 'nvme');
     for (const controller of profile.nvmeControllers || []) {
@@ -530,10 +538,15 @@
     const boot = Date.parse(health.lastBoot || '');
     const uptimeDays = Number.isFinite(boot) ? (now - boot) / DAY : null;
     if (uptimeDays !== null && uptimeDays >= 7) add(F('tempo-ligado', 'windows', 'baixa', `${Math.floor(uptimeDays)} dias sem reiniciar de verdade`, health.fastStartup ? 'Com a "Inicialização rápida" ligada, o Desligar não reinicia o Windows de verdade: ele hiberna o sistema. Memória fragmentada, drivers e vazamentos se acumulam desde o último Reiniciar.' : 'Vazamentos de memória e drivers se acumulam com o PC muito tempo ligado.', { evidence: [`último início completo: ${shortDate(health.lastBoot)}`, health.fastStartup ? 'inicialização rápida ligada' : null], action: { how: 'Use "Reiniciar" (não Desligar) de vez em quando.' } }));
-    const bugchecks = events.bugcheck?.count || 0;
-    const unexpected = Math.max(0, (events.unexpected?.count || 0) - bugchecks);
-    if (bugchecks > 0) add(F('tela-azul', 'windows', 'alta', `${plural(bugchecks, 'tela azul', 'telas azuis')} nos últimos 30 dias`, 'O Windows travou com erro de sistema. As causas mais comuns são driver, memória instável (XMP/overclock), temperatura ou disco.', { evidence: [`última: ${shortDate(events.bugcheck.last)}`, (health.wheaIds || []).length ? 'há erros de hardware (WHEA) no mesmo período' : null], action: { how: 'Se ligou XMP/EXPO ou overclock recentemente, teste sem. Atualize o driver de vídeo e o chipset.' } }));
-    if (unexpected >= 2) add(F('desligou-sozinho', 'windows', 'media', `Desligou sem aviso ${unexpected} vezes em 30 dias`, 'O PC apagou sem desligar direito (sem tela azul). Pode ser queda de energia, fonte no limite, superaquecimento, ou alguém segurando o botão de ligar.', { evidence: [`último: ${shortDate(events.unexpected.last)}`], confidence: 'media' }));
+    const codes = (health.bugCodes || []).map((item) => ({ ...bugcheckOf(item.code), count: item.count })).filter((item) => item.hex);
+    const bugchecks = Math.max(events.bugcheck?.count || 0, codes.reduce((sum, item) => sum + item.count, 0));
+    const loss = health.powerLoss || null;
+    // Com o detalhe do evento 41: só conta como "desligou sozinho" o que não foi tela azul nem o botão segurado.
+    const unexpected = loss ? loss.silent : Math.max(0, (events.unexpected?.count || 0) - bugchecks);
+    const codeText = codes.slice(0, 3).map((item) => `${item.name || item.hex}${item.count > 1 ? ` (${item.count}×)` : ''}`);
+    if (bugchecks > 0) add(F('tela-azul', 'windows', 'alta', `${plural(bugchecks, 'tela azul', 'telas azuis')} nos últimos 30 dias`, 'O Windows travou com erro de sistema. As causas mais comuns são driver, memória instável (XMP/overclock), temperatura ou disco; o código de cada uma aponta o grupo, e a causa provável (no topo do relatório) cruza o código com os testes.', { evidence: [events.bugcheck?.last ? `última: ${shortDate(events.bugcheck.last)}` : null, codeText.length ? `código: ${codeText.join(', ')}` : null, (health.wheaIds || []).length ? 'há erros de hardware (WHEA) no mesmo período' : null], action: { how: 'Se ligou XMP/EXPO ou overclock recentemente, teste sem. Atualize o driver de vídeo e o chipset.' } }));
+    if (unexpected >= 2) add(F('desligou-sozinho', 'windows', 'media', `Desligou sem aviso ${unexpected} vezes em 30 dias`, loss ? 'O PC apagou de uma vez, sem tela azul e sem ninguém segurar o botão: é falta de energia chegando nele. Queda de luz, tomada ou filtro com mau contato, fonte no limite ou com defeito, ou superaquecimento.' : 'O PC apagou sem desligar direito (sem tela azul). Pode ser queda de energia, fonte no limite, superaquecimento, ou alguém segurando o botão de ligar.', { evidence: [events.unexpected?.last ? `último: ${shortDate(events.unexpected.last)}` : null], confidence: 'media', action: { how: 'Ligue o PC direto na tomada (sem benjamim) e confira os cabos de energia. Se acontece jogando, a fonte é a principal suspeita; se acontece parado, a tomada ou a rede elétrica.' } }));
+    if (loss && loss.button >= 2) add(F('travou-botao', 'windows', 'media', `O PC travou e foi desligado no botão ${loss.button} vezes`, 'O Windows registrou que o botão de ligar foi segurado para desligar: a tela congelou e não respondia. Travada total sem tela azul costuma ser memória instável, driver de vídeo ou temperatura.', { evidence: [`${plural(loss.button, 'desligamento', 'desligamentos')} pelo botão em 30 dias`], confidence: 'media', action: { how: 'Se tem XMP/EXPO ou overclock, teste sem. Atualize o driver de vídeo. A verificação completa testa a memória e a placa sob carga.' } }));
     const whea = health.wheaIds || [];
     const corrected = whea.filter((item) => item.id === 19 || item.id === 47).reduce((sum, item) => sum + item.count, 0);
     const fatal = whea.filter((item) => item.id === 18).reduce((sum, item) => sum + item.count, 0);
@@ -543,8 +556,8 @@
       const raptor = profile.cpu?.raptorRisk;
       add(F('whea', 'processador', 'alta', `${plural(corrected, 'erro de hardware corrigido', 'erros de hardware corrigidos')} (WHEA)`, raptor ? 'O processador ou a memória erraram e o hardware corrigiu sozinho. Em Intel de 13ª/14ª geração isso também é sinal de desgaste por tensão alta (o problema que a Intel corrigiu por atualização de BIOS).' : 'O processador ou a memória erraram e o hardware corrigiu sozinho. Não trava na hora, mas é o primeiro sinal de instabilidade: XMP/EXPO ou overclock no limite, tensão baixa (undervolt) ou peça falhando.', { evidence: whea.map((item) => `evento ${item.id}: ${item.count}×`), action: { how: raptor ? 'Atualize a BIOS (versão de setembro de 2024 em diante, microcódigo 0x12B ou mais novo) e teste sem XMP para ver se os erros param.' : 'Se usa XMP/EXPO, overclock ou undervolt, volte ao padrão e veja se os erros param.' } }));
     }
-    if (pcie > 0) add(F('whea-pcie', 'video', 'media', `${plural(pcie, 'erro corrigido', 'erros corrigidos')} no barramento PCIe`, 'A comunicação com a placa de vídeo ou um SSD NVMe teve erros (corrigidos). Costuma ser riser, slot com poeira, placa mal encaixada ou economia de energia do PCIe.', { evidence: [`evento 17: ${pcie}×`], confidence: 'media' }));
-    if (events.firmwareLimit?.count) add(F('firmware-limite', 'processador', 'media', `O firmware limitou o processador ${plural(events.firmwareLimit.count, 'vez', 'vezes')}`, 'O Windows registrou que a BIOS reduziu a velocidade do processador (por calor ou energia). Em notebook, costuma ser poeira na ventoinha, pasta térmica seca ou carregador fraco.', { evidence: [`evento 37 do processador: ${events.firmwareLimit.count}×`, `último: ${shortDate(events.firmwareLimit.last)}`] }));
+    if (pcie > 0) add(F('whea-pcie', 'video', 'media', `${plural(pcie, 'erro corrigido', 'erros corrigidos')} no barramento PCIe`, 'A comunicação com a placa de vídeo ou um SSD NVMe teve erros (corrigidos). Costuma ser riser, slot com poeira, placa mal encaixada ou economia de energia do PCIe.', { evidence: [`evento 17: ${pcie}×`], confidence: 'media', action: { how: 'Com o PC desligado, tire e encaixe de novo a placa de vídeo (e o SSD M.2), limpe o slot e, se usa cabo extensor (riser), teste sem ele. Atualizar a BIOS também ajuda.' } }));
+    if (events.firmwareLimit?.count) add(F('firmware-limite', 'processador', 'media', `O firmware limitou o processador ${plural(events.firmwareLimit.count, 'vez', 'vezes')}`, 'O Windows registrou que a BIOS reduziu a velocidade do processador (por calor ou energia). Em notebook, costuma ser poeira na ventoinha, pasta térmica seca ou carregador fraco.', { evidence: [`evento 37 do processador: ${events.firmwareLimit.count}×`, `último: ${shortDate(events.firmwareLimit.last)}`], action: { how: profile.kind === 'laptop' ? 'Use na tomada com o carregador original, deixe as saídas de ar livres e limpe a poeira das ventoinhas. Pasta térmica com mais de 3 ou 4 anos vale trocar.' : 'Limpe a poeira do cooler e confira se ele está bem preso. Se a BIOS tiver limites de energia mais baixos que o padrão, volte ao padrão (Load Optimized Defaults).' } }));
     if (events.tdr?.count) {
       const drivers = (health.tdrDrivers || []).map((item) => `${TDR_VENDOR[item.driver.toLowerCase().replace(/\.sys$/, '')] || item.driver}: ${item.count}×`);
       add(F('driver-video-travou', 'video', events.tdr.count >= 3 ? 'alta' : 'media', `O driver de vídeo travou e voltou ${plural(events.tdr.count, 'vez', 'vezes')}`, 'A tela piscou ou ficou preta e voltou: o Windows reiniciou o driver de vídeo porque ele parou de responder. Causas: driver com problema, overclock da placa, temperatura ou fonte.', { evidence: [...drivers, `último: ${shortDate(events.tdr.last)}`], action: { how: 'Atualize (ou reinstale limpo) o driver de vídeo. Se a placa tem overclock, teste sem.' } }));
@@ -575,7 +588,8 @@
       }
     }
     if (profile.battery?.wear !== null && profile.battery?.wear >= 30) add(F('bateria', 'energia', 'info', `Bateria com ${profile.battery.wear}% de desgaste`, 'A bateria segura menos carga que quando era nova. Não afeta o desempenho na tomada.', { evidence: [`capacidade atual: ${comma(profile.battery.fullWh, 0)} de ${comma(profile.battery.designWh, 0)} Wh`] }));
-    if (!bugchecks && !unexpected && !corrected && !events.tdr?.count && !((events.disk?.count || 0) + (events.storReset?.count || 0))) add(F('estavel', 'windows', 'ok', 'Nenhuma tela azul, travamento de driver ou erro de disco em 30 dias', null));
+    if ((events.lowMemory?.count || 0) > 0) add(F('memoria-esgotou', 'memoria', 'media', `O Windows avisou memória esgotada ${plural(events.lowMemory.count, 'vez', 'vezes')}`, 'A memória (RAM mais paginação) chegou ao limite e o Windows avisou que ia fechar programas. Jogo fechando sozinho e travadas longas costumam vir daí.', { evidence: [`último aviso: ${shortDate(events.lowMemory.last)}`], action: { how: 'Feche o que não usa durante o jogo e deixe o arquivo de paginação no automático. Se acontece sempre, mais memória resolve.' } }));
+    if (!bugchecks && !unexpected && !(loss?.button >= 2) && !corrected && !events.tdr?.count && !((events.disk?.count || 0) + (events.storReset?.count || 0))) add(F('estavel', 'windows', 'ok', 'Nenhuma tela azul, travamento de driver ou erro de disco em 30 dias', null));
   }
 
   function backgroundFindings(observation, profile, add) {
@@ -600,10 +614,10 @@
     if (finite(system.dpcAvg) && (system.dpcAvg >= 2.5 || (system.dpcPeak || 0) >= 8)) add(F('dpc', 'fundo', system.dpcAvg >= 5 ? 'alta' : 'media', 'Drivers interrompendo o processador (latência de DPC)', 'Uma parte do tempo do processador vai para chamadas adiadas de drivers (DPC). Em excesso, causa engasgos, estalos no áudio e travadinhas mesmo com FPS alto. Os culpados mais comuns: rede/Wi-Fi, som, USB e software de RGB.', { evidence: [`DPC: ${comma(system.dpcAvg, 1)}% em média, picos de ${comma(system.dpcPeak || 0, 1)}%`, finite(system.irqAvg) ? `interrupções: ${comma(system.irqAvg, 1)}%` : null], confidence: 'media', action: { how: 'Atualize os drivers de rede, som e chipset. Para achar o driver exato, o LatencyMon (gratuito) mostra qual demora mais.' } }));
     const total = totalBytes ? totalBytes / MB : null;
     if (finite(system.hardFaultsAvg) && system.hardFaultsAvg >= 300 && finite(system.availMBMin) && (system.availMBMin < 1024 || (total && system.availMBMin < total * 0.1))) add(F('memoria-acabando', 'memoria', 'alta', 'A memória está acabando agora', 'O Windows está lendo do disco o que deveria estar na memória (falhas de página). Isso causa travadas de meio segundo ou mais.', { evidence: [`${Math.round(system.hardFaultsAvg)} leituras do disco por segundo para a memória`, `menor memória livre: ${Math.round(system.availMBMin)} MB`] }));
-    if (finite(system.commitPct) && system.commitPct >= 90) add(F('memoria-virtual', 'memoria', 'media', `Memória virtual em ${Math.round(system.commitPct)}%`, 'Quase todo o espaço de memória (RAM + paginação) está reservado; o próximo programa grande pode falhar ao abrir.', { evidence: [`${Math.round(system.commitPct)}% do limite`] }));
+    if (finite(system.commitPct) && system.commitPct >= 90) add(F('memoria-virtual', 'memoria', 'media', `Memória virtual em ${Math.round(system.commitPct)}%`, 'Quase todo o espaço de memória (RAM + paginação) está reservado; o próximo programa grande pode falhar ao abrir.', { evidence: [`${Math.round(system.commitPct)}% do limite`], action: { how: 'Feche os programas que não está usando e deixe o arquivo de paginação no automático (o Windows aumenta quando precisa).', taskManager: true } }));
     if (finite(system.diskBusyAvg) && system.diskBusyAvg >= 70) {
       const top = (observation.background || []).slice().sort((a, b) => b.ioAvg - a.ioAvg)[0];
-      add(F('disco-ocupado', 'disco', 'media', `Disco ocupado ${Math.round(system.diskBusyAvg)}% do tempo`, 'Com o disco sempre ocupado, abrir qualquer coisa e carregar o jogo fica lento.', { evidence: [top && top.ioAvg >= MB ? `mais quem usa: ${top.label} (${rateText(top.ioAvg)})` : null, finite(system.diskQueueAvg) ? `fila média: ${comma(system.diskQueueAvg, 1)}` : null] }));
+      add(F('disco-ocupado', 'disco', 'media', `Disco ocupado ${Math.round(system.diskBusyAvg)}% do tempo`, 'Com o disco sempre ocupado, abrir qualquer coisa e carregar o jogo fica lento.', { evidence: [top && top.ioAvg >= MB ? `mais quem usa: ${top.label} (${rateText(top.ioAvg)})` : null, finite(system.diskQueueAvg) ? `fila média: ${comma(system.diskQueueAvg, 1)}` : null], action: { how: 'Veja no Gerenciador de Tarefas (aba Processos, coluna Disco) quem está usando e pause downloads, sincronizações e antivírus fazendo verificação completa.', taskManager: true } }));
     }
     const others = finite(system.cpuOthersAvg) ? system.cpuOthersAvg : system.cpuAvg;
     if (finite(others) && others >= 25 && !(observation.games || []).length) add(F('pc-ocupado', 'fundo', 'media', `Processador em ${Math.round(others)}% sem nenhum jogo aberto`, 'Parado, um PC saudável fica abaixo de 10%. O que está pesando aparece na lista "por trás".', { evidence: [`média de ${Math.round(others)}% durante ${observation.seconds} s, sem contar a medição do Nexo`] }));
@@ -621,6 +635,7 @@
 
   function loadFindings(load, profile, facts, onBattery, add) {
     if (!load) return;
+    const profileLaptopHow = profile.kind === 'laptop' || profile.kind === 'handheld' ? 'Use na tomada, com o modo de energia em "Melhor desempenho" e as saídas de ar livres.' : 'Confira o plano de energia (Equilibrado ou Alto desempenho) e a temperatura; na BIOS, limites de energia abaixo do padrão também seguram o processador.';
     const cpu = profile.cpu || {};
     const laptop = profile.kind === 'laptop' || profile.kind === 'handheld';
     const tj = tjMaxOf(cpu);
@@ -634,7 +649,7 @@
     }
     const limits = load.limits || {};
     if (finite(limits.maxFreqAvg) && limits.maxFreqAvg < 97) add(F('cpu-limitado', 'processador', 'media', `Processador limitado a ${Math.round(limits.maxFreqAvg)}% da frequência máxima`, onBattery ? 'Na bateria, o Windows e o notebook seguram o processador para economizar. Para jogar, use na tomada.' : 'Durante o teste, o Windows ou a BIOS seguraram a velocidade máxima do processador (plano de energia com "estado máximo" abaixo de 100%, limite de energia ou calor).', { evidence: [`frequência máxima permitida: ${Math.round(limits.maxFreqAvg)}% em média`, finite(limits.perfLimitPeak) && limits.perfLimitPeak > 0 ? `limite de desempenho de até ${Math.round(limits.perfLimitPeak)}%` : null, onBattery ? 'na bateria durante a análise' : null], confidence: 'media', action: onBattery ? null : { how: 'Em Otimização, confira o plano de energia; o laboratório mede as opções escondidas dele.', goto: 'optimize' } }));
-    else if (finite(limits.perfLimitPeak) && limits.perfLimitPeak >= 10) add(F('cpu-limite-desempenho', 'processador', 'baixa', `Limite de desempenho de até ${Math.round(limits.perfLimitPeak)}% durante a carga`, 'O processador avisou que estava sendo segurado por energia, calor ou firmware em parte do teste.', { evidence: [`limite de desempenho: até ${Math.round(limits.perfLimitPeak)}%`], confidence: 'media' }));
+    else if (finite(limits.perfLimitPeak) && limits.perfLimitPeak >= 10) add(F('cpu-limite-desempenho', 'processador', 'baixa', `Limite de desempenho de até ${Math.round(limits.perfLimitPeak)}% durante a carga`, 'O processador avisou que estava sendo segurado por energia, calor ou firmware em parte do teste.', { evidence: [`limite de desempenho: até ${Math.round(limits.perfLimitPeak)}%`], confidence: 'media', action: { how: profileLaptopHow } }));
     const gpu = load.gpu;
     if (gpu?.limits?.thermal) add(F('gpu-calor', 'video', 'media', 'Placa de vídeo freando por calor', 'O driver informou que reduziu o clock da placa por temperatura.', { evidence: [finite(gpu.clockMHz) ? `clock: ${gpu.clockMHz} de ${gpu.clockMaxMHz} MHz` : null, finite(load.temps?.gpuPeak) ? `${Math.round(load.temps.gpuPeak)} °C` : null], action: { how: 'Limpe as ventoinhas da placa e melhore o fluxo de ar do gabinete.' } }));
     if (onBattery) add(F('na-bateria', 'energia', 'info', 'Análise feita na bateria', 'Os números de carga e clock ficam menores na bateria. Para comparar com as próximas análises, rode na tomada.', {}));
@@ -668,12 +683,329 @@
     if (!comparison) return;
     const multi = comparison.changes.find((item) => item.key === 'multi');
     const temp = comparison.changes.find((item) => item.key === 'temp');
-    if (!comparison.hardware?.length && multi && multi.pct <= -10) add(F('desempenho-caiu', 'processador', 'media', `Processador ${comma(-multi.pct, 0)}% mais lento que na análise de ${shortDate(comparison.at)}`, temp && temp.delta >= 5 ? `E ${temp.delta} °C mais quente: poeira no cooler ou pasta térmica envelhecendo são o mais comum.` : 'Pode ser algo novo rodando por trás, plano de energia diferente ou o PC esquentando mais.', { evidence: [`todos os núcleos: ${comma(multi.pct, 1)}%`, temp ? `temperatura em carga: ${temp.delta >= 0 ? '+' : ''}${temp.delta} °C` : null], confidence: 'media' }));
+    if (!comparison.hardware?.length && multi && multi.pct <= -10) add(F('desempenho-caiu', 'processador', 'media', `Processador ${comma(-multi.pct, 0)}% mais lento que na análise de ${shortDate(comparison.at)}`, temp && temp.delta >= 5 ? `E ${temp.delta} °C mais quente: poeira no cooler ou pasta térmica envelhecendo são o mais comum.` : 'Pode ser algo novo rodando por trás, plano de energia diferente ou o PC esquentando mais.', { evidence: [`todos os núcleos: ${comma(multi.pct, 1)}%`, temp ? `temperatura em carga: ${temp.delta >= 0 ? '+' : ''}${temp.delta} °C` : null], confidence: 'media', action: { how: temp && temp.delta >= 5 ? 'Limpe a poeira do cooler e das ventoinhas; se a pasta térmica tiver mais de 3 ou 4 anos, troque. Depois rode a verificação de novo para comparar.' : 'Veja o que mudou desde a última análise: programas novos rodando por trás (lista "por trás" deste relatório), plano de energia e atualizações recentes.' } }));
     if (comparison.hardware?.length) add(F('peca-nova', 'processador', 'info', 'Peça trocada desde a última análise', 'O Nexo atualizou o perfil deste PC.', { evidence: comparison.hardware.map((item) => `${item.before || '—'} → ${item.after || '—'}`) }));
   }
 
+  /* ======================================================================================================
+   * Verificação completa: testes de verdade (memória, placa de vídeo, disco, rede), drivers e as pistas cruzadas
+   * ==================================================================================================== */
+  /*
+   * Códigos de tela azul (bugcheck) mais comuns e o que costumam indicar. Classe = onde procurar primeiro; o código
+   * sozinho nunca decide: a causa provável junta código, eventos, testes e o setup.
+   */
+  const BUGCHECKS = {
+    0x0a: ['IRQL_NOT_LESS_OR_EQUAL', 'driver'], 0x19: ['BAD_POOL_HEADER', 'memoria'], 0x1a: ['MEMORY_MANAGEMENT', 'memoria'],
+    0x1e: ['KMODE_EXCEPTION_NOT_HANDLED', 'driver'], 0x24: ['NTFS_FILE_SYSTEM', 'disco'], 0x3b: ['SYSTEM_SERVICE_EXCEPTION', 'driver'],
+    0x4e: ['PFN_LIST_CORRUPT', 'memoria'], 0x50: ['PAGE_FAULT_IN_NONPAGED_AREA', 'memoria'], 0x7a: ['KERNEL_DATA_INPAGE_ERROR', 'disco'],
+    0x7e: ['SYSTEM_THREAD_EXCEPTION_NOT_HANDLED', 'driver'], 0x7f: ['UNEXPECTED_KERNEL_MODE_TRAP', 'hardware'], 0x80: ['NMI_HARDWARE_FAILURE', 'hardware'],
+    0x8e: ['KERNEL_MODE_EXCEPTION_NOT_HANDLED', 'driver'], 0x9c: ['MACHINE_CHECK_EXCEPTION', 'hardware'], 0x9f: ['DRIVER_POWER_STATE_FAILURE', 'driver'],
+    0xc2: ['BAD_POOL_CALLER', 'driver'], 0xc5: ['DRIVER_CORRUPTED_EXPOOL', 'driver'], 0xd1: ['DRIVER_IRQL_NOT_LESS_OR_EQUAL', 'driver'],
+    0xef: ['CRITICAL_PROCESS_DIED', 'sistema'], 0xf4: ['CRITICAL_OBJECT_TERMINATION', 'disco'], 0xfc: ['ATTEMPTED_EXECUTE_OF_NOEXECUTE_MEMORY', 'memoria'],
+    0x101: ['CLOCK_WATCHDOG_TIMEOUT', 'hardware'], 0x109: ['CRITICAL_STRUCTURE_CORRUPTION', 'memoria'], 0x10e: ['VIDEO_MEMORY_MANAGEMENT_INTERNAL', 'video'],
+    0x116: ['VIDEO_TDR_FAILURE', 'video'], 0x117: ['VIDEO_TDR_TIMEOUT_DETECTED', 'video'], 0x119: ['VIDEO_SCHEDULER_INTERNAL_ERROR', 'video'],
+    0x124: ['WHEA_UNCORRECTABLE_ERROR', 'hardware'], 0x12b: ['FAULTY_HARDWARE_CORRUPTED_PAGE', 'memoria'], 0x133: ['DPC_WATCHDOG_VIOLATION', 'driver'],
+    0x139: ['KERNEL_SECURITY_CHECK_FAILURE', 'driver'], 0x13a: ['KERNEL_MODE_HEAP_CORRUPTION', 'driver'], 0x154: ['UNEXPECTED_STORE_EXCEPTION', 'disco']
+  };
+  /** "0x1000007e" e "0x0000007E" viram o mesmo código; devolve { hex, name, cls } ou null. */
+  function bugcheckOf(code) {
+    const value = typeof code === 'number' ? code : Number.parseInt(String(code || '').replace(/^0x/i, ''), 16);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    const base = value >= 0x10000000 && value < 0x20000000 ? value - 0x10000000 : value;
+    const known = BUGCHECKS[base];
+    return { hex: `0x${base.toString(16).toUpperCase().padStart(8, '0')}`, name: known ? known[0] : null, cls: known ? known[1] : null };
+  }
+
+  /* ---------------- Memória: o teste de estabilidade (worker memtest) ---------------- */
+  function memtestFindings(memtest, profile, add) {
+    if (!memtest || !finite(memtest.testedMB) || memtest.testedMB <= 0) return;
+    const tested = mbText(memtest.testedMB * MB);
+    const memory = profile.memory || {};
+    const over = memoryOverclocked(memory);
+    if (memtest.errors > 0) {
+      const bits = (memtest.samples || []).map((sample) => sample.bits).filter(finite);
+      const single = bits.length && bits.every((value) => value === 1);
+      add(F('mem-teste-erros', 'memoria', 'alta', `A memória errou no teste: ${plural(memtest.errors, 'erro', 'erros')}`, `Gravei padrões em ${tested} da memória e conferi palavra por palavra: algumas voltaram diferentes. Memória que erra causa tela azul, jogo fechando sozinho e arquivo corrompido. ${over ? 'A memória está acima da velocidade padrão (XMP/EXPO): quase sempre é o perfil no limite do que o pente ou o processador aguentam.' : 'Sem perfil de memória ligado, o mais provável é um pente com defeito ou mal encaixado.'}`, {
+        evidence: [`${tested} testados em ${plural(memtest.passes || 0, 'passada', 'passadas')}`, single ? 'um bit trocado por vez (típico de instabilidade)' : bits.length ? 'vários bits trocados (típico de pente com defeito ou endereço errado)' : null, over ? `memória a ${memory.configured} MT/s` : null],
+        action: { how: over ? 'Na BIOS, desligue o XMP/EXPO (ou baixe um degrau a velocidade) e rode a verificação de novo. Se os erros sumirem, era o perfil.' : 'Desligue o PC, tire e encaixe de novo os pentes; se continuar, teste um pente por vez para achar o defeituoso.' }
+      }));
+    } else if ((memtest.passes || 0) >= 2) {
+      add(F('mem-teste-ok', 'memoria', 'ok', `Memória sem erros no teste (${tested}, ${plural(memtest.passes, 'passada', 'passadas')})`, null));
+    }
+  }
+  const JEDEC_MAX = { DDR3: 1600, DDR4: 3200, DDR5: 5600 };
+  /** Memória acima do padrão (perfil XMP/EXPO ou ajuste manual): é o primeiro suspeito em instabilidade. */
+  function memoryOverclocked(memory = {}) {
+    const top = JEDEC_MAX[memory.type];
+    if (finite(memory.configured) && top && memory.configured > top + 50) return true;
+    return Boolean(memory.xmpKnown && !memory.belowRated && finite(memory.configured) && finite(memory.rated) && memory.rated > (top || 99999) - 400 && memory.configured >= memory.rated - 50 && memory.configured > ({ DDR3: 1333, DDR4: 2666, DDR5: 4800 }[memory.type] || 99999));
+  }
+
+  /* ---------------- Placa de vídeo sob carga (45 s) ---------------- */
+  /**
+   * Leituras a cada ~3 s com a placa trabalhando: nvidia-smi (temperatura, clock, energia, motivo do clock baixo) e,
+   * nas outras marcas, o sensor do LibreHardwareMonitor. Devolve o pico, a queda de clock do começo para o fim e
+   * quantas leituras o driver apontou freio por calor ou por energia.
+   */
+  function summarizeGpuStress({ samples = [], seconds = null, vendor = null } = {}) {
+    const rows = samples.filter(Boolean);
+    if (!rows.length) return null;
+    const temps = rows.map((row) => row.temp);
+    const clocks = rows.map((row) => row.clock).filter((value) => finite(value) && value > 0);
+    const third = Math.max(1, Math.floor(clocks.length / 3));
+    const start = avg(clocks.slice(0, third));
+    const end = avg(clocks.slice(-third));
+    return {
+      seconds, vendor, samples: rows.length,
+      tempStart: finite(temps[0]) ? Math.round(temps[0]) : null, tempPeak: finite(max(temps)) ? Math.round(max(temps)) : null,
+      clockStart: finite(start) ? Math.round(start) : null, clockEnd: finite(end) ? Math.round(end) : null, clockMax: finite(max(clocks)) ? Math.round(max(clocks)) : null,
+      dropPct: finite(start) && finite(end) && start > 0 && clocks.length >= 4 ? round(Math.max(0, (1 - end / start) * 100), 1) : null,
+      powerPeak: finite(max(rows.map((row) => row.power))) ? Math.round(max(rows.map((row) => row.power))) : null,
+      powerLimit: finite(max(rows.map((row) => row.powerLimit))) ? Math.round(max(rows.map((row) => row.powerLimit))) : null,
+      thermalHits: rows.filter((row) => row.limits?.thermal).length, powerHits: rows.filter((row) => row.limits?.power).length,
+      hotspot: finite(max(rows.map((row) => row.hotspot))) ? Math.round(max(rows.map((row) => row.hotspot))) : null
+    };
+  }
+  function gpuStressFindings(stress, profile, add) {
+    if (!stress || !finite(stress.tempPeak)) return;
+    const gpu = (profile.gpus || []).find((item) => item.discrete) || (profile.gpus || [])[0] || {};
+    const laptop = profile.kind === 'laptop' || profile.kind === 'handheld';
+    const limit = gpu.vendor === 'AMD' ? 90 : laptop ? 87 : 84;
+    const evidence = [`${stress.tempPeak} °C depois de ${stress.seconds || 45} s de carga`, finite(stress.clockStart) && finite(stress.clockEnd) ? `clock: ${stress.clockStart} → ${stress.clockEnd} MHz` : null, finite(stress.powerPeak) ? `energia: ${stress.powerPeak}${finite(stress.powerLimit) ? ` de ${stress.powerLimit}` : ''} W` : null, finite(stress.hotspot) ? `ponto mais quente: ${stress.hotspot} °C` : null];
+    const how = laptop ? 'Use o notebook numa superfície dura e com as saídas de ar livres; se as ventoinhas estiverem com poeira, uma limpeza resolve. Um suporte com ventilação ajuda.' : 'Limpe a poeira das ventoinhas da placa e do gabinete e confira se o gabinete puxa ar frio (ventoinha na frente) e solta o quente (atrás/em cima).';
+    if (stress.thermalHits >= 2 && finite(stress.dropPct) && stress.dropPct >= 6) add(F('gpu-calor', 'video', 'alta', `Placa de vídeo freando por calor (${stress.tempPeak} °C)`, `Em ${stress.seconds || 45} segundos de carga, o driver reduziu o clock por temperatura e a placa perdeu ${comma(stress.dropPct, 0)}% de velocidade. Em jogo isso vira FPS caindo depois de alguns minutos.`, { evidence, action: { how } }));
+    else if (stress.tempPeak >= limit) add(F('gpu-quente', 'video', 'media', `Placa de vídeo chega a ${stress.tempPeak} °C em menos de um minuto`, 'Está perto do ponto em que ela começa a frear para se proteger. Em sessões longas de jogo, a temperatura sobe mais.', { evidence, action: { how } }));
+    else if (stress.tempPeak <= limit - 10) add(F('gpu-temp-ok', 'video', 'ok', `Placa de vídeo sob carga: ${stress.tempPeak} °C`, null));
+  }
+
+  /* ---------------- Disco: gravação de verdade (worker disktest) ---------------- */
+  const DISK_FLOOR = { nvme: 400, ssd: 150, hdd: 40, usb: 15 };
+  function diskTestFindings(test, profile, add) {
+    if (!test || !finite(test.seqWriteMBs)) return;
+    const disk = (profile.disks || []).find((item) => item.system) || (profile.disks || [])[0] || {};
+    const kind = disk.kind || 'ssd';
+    const floor = DISK_FLOOR[kind] ?? 100;
+    const name = disk.model || 'O disco do sistema';
+    const lat = test.latency || {};
+    const evidence = [`gravação contínua: ${Math.round(test.seqWriteMBs)} MB/s (${test.sizeMB} MB)`, finite(lat.p50Ms) ? `gravação pequena confirmada: ${comma(lat.p50Ms, 1)} ms (pior: ${comma(lat.maxMs ?? lat.p99Ms, 0)} ms)` : null];
+    if (test.seqWriteMBs < floor && !profile.virtual) {
+      add(F('disco-lento', 'disco', kind === 'hdd' ? 'media' : 'alta', `${name} gravando a só ${Math.round(test.seqWriteMBs)} MB/s`, `Para ${{ nvme: 'um SSD NVMe', ssd: 'um SSD SATA', hdd: 'um HD', usb: 'um disco USB' }[kind] || 'este tipo de disco'}, o esperado é bem mais (acima de ${floor} MB/s mesmo nos mais simples). Causas comuns: disco quase cheio, SSD esquentando ou no fim da vida útil, link PCIe reduzido ou algo gravando ao mesmo tempo.`, { evidence, confidence: 'media', action: { how: 'Libere espaço (Manutenção > Limpeza), feche o que estiver baixando e rode a verificação de novo. Se continuar lento, o SSD pode estar falhando: faça cópia do que importa.', goto: 'maintenance' } }));
+    } else if (kind !== 'hdd' && finite(lat.maxMs) && lat.maxMs >= 400) {
+      add(F('disco-engasgos', 'disco', 'baixa', `O disco parou por até ${Math.round(lat.maxMs)} ms em gravações pequenas`, 'Um SSD saudável confirma uma gravação pequena em poucos milissegundos. Pausas longas aparecem como travadinhas ao abrir e salvar coisas (e no carregamento de jogos).', { evidence, confidence: 'media', action: { how: 'Deixe pelo menos 15% do disco livre e atualize o firmware do SSD pelo programa do fabricante (Samsung Magician, WD Dashboard, Crucial Storage Executive…). Se continuar, o SSD pode estar no fim da vida: faça cópia do que importa.' } }));
+    } else {
+      add(F('disco-velocidade-ok', 'disco', 'ok', `Disco do sistema gravando a ${Math.round(test.seqWriteMBs)} MB/s`, null));
+    }
+  }
+
+  /* ---------------- Drivers instalados ---------------- */
+  const VIRTUAL_NET = /wan miniport|microsoft|hyper-v|virtual|vpn|tap-|tap |wintun|wireguard|bluetooth device|loopback|kernel debug|teredo|isatap|6to4|npcap|virtualbox|vmware|zerotier|tailscale|hamachi|radmin|openvpn|fortinet|cisco anyconnect|wi-fi direct/i;
+  const PHYSICAL_NET_MAKER = /realtek|intel|killer|rivet|mediatek|qualcomm|atheros|broadcom|marvell|aquantia|ralink|tp-link|asus|d-link|netgear/i;
+  const VIRTUAL_AUDIO = /virtual|nvidia high definition|nvidia virtual|amd high definition|intel.*display audio|steam streaming|voicemeeter|vb-audio|nahimic mirroring|sonic studio virtual|oculus|discord/i;
+  /** Agrupa os drivers por função e marca idade e driver genérico. Nada de caminho; só nome, fabricante, versão e data. */
+  function summarizeDrivers(list = [], now = Date.now()) {
+    const rows = (list || []).filter((item) => item && item.name);
+    const age = (date) => { const at = Date.parse(date || ''); return Number.isFinite(at) ? Math.max(0, Math.round((now - at) / DAY)) : null; };
+    const pick = (cls, test) => rows.filter((item) => item.cls === cls && test(item)).map((item) => ({ ...item, ageDays: age(item.date), generic: /^microsoft/i.test(item.provider || '') && PHYSICAL_NET_MAKER.test(`${item.name} ${item.maker || ''}`) }));
+    const groups = {
+      gpu: pick('DISPLAY', (item) => !/basic display|remote|virtual|parsec|idd|meta|spacedesk/i.test(item.name)),
+      net: pick('NET', (item) => !VIRTUAL_NET.test(item.name) || PHYSICAL_NET_MAKER.test(item.name)),
+      audio: pick('MEDIA', (item) => !VIRTUAL_AUDIO.test(item.name) && /realtek|conexant|cirrus|idt|via|creative|sound blaster|audio|áudio/i.test(item.name)),
+      chipset: pick('SYSTEM', (item) => /intel|amd|advanced micro/i.test(item.provider || '') && /management engine|serial io|smbus|gpio|psp|chipset|pci express root|i2c|dynamic tuning|gna|platform/i.test(item.name)),
+      storage: pick('SCSIADAPTER', () => true).concat(pick('HDC', () => true)),
+      bluetooth: pick('BLUETOOTH', (item) => !/enumerator|le generic|rfcomm|device \(|microsoft/i.test(item.name))
+    };
+    return { groups, unsigned: rows.filter((item) => item.signed === false).map((item) => item.name).slice(0, 6), total: rows.length };
+  }
+  function driverFindings(drivers, profile, add) {
+    if (!drivers?.groups) return;
+    const g = drivers.groups;
+    const year = (item) => String(item.date || '').slice(0, 4);
+    const nets = g.net.filter((item) => PHYSICAL_NET_MAKER.test(`${item.name} ${item.maker || ''}`) && !/microsoft/i.test(item.maker || ''));
+    for (const item of nets) {
+      if (item.generic) add(F(`driver-rede-generico-${item.name}`, 'rede', 'baixa', `${item.name}: driver genérico do Windows`, 'O Windows instalou um driver básico para esta placa de rede. Ele funciona, mas costuma não ter as correções de economia de energia e de latência do driver do fabricante (Wi-Fi caindo e ping oscilando são os sintomas típicos).', { evidence: [`driver da Microsoft ${item.version || ''}`.trim()], confidence: 'media', action: { how: 'Instale o driver do fabricante da placa (ou do notebook/placa-mãe).' } }));
+      else if (finite(item.ageDays) && item.ageDays > 3 * 365) add(F(`driver-rede-antigo-${item.name}`, 'rede', 'baixa', `Driver de rede de ${year(item)} (${item.name})`, 'Drivers de rede antigos estão entre as causas mais comuns de latência de DPC (engasgos), Wi-Fi caindo e ping instável. O fabricante costuma ter versões bem mais novas.', { evidence: [`${item.provider || 'fabricante'} ${item.version || ''} de ${item.date}`.trim()], confidence: 'media', action: { how: 'Baixe a versão nova no site do fabricante da placa de rede ou do notebook/placa-mãe.' } }));
+    }
+    const audio = g.audio.find((item) => /realtek/i.test(item.name) && finite(item.ageDays) && item.ageDays > 5 * 365);
+    if (audio) add(F('driver-audio-antigo', 'windows', 'info', `Driver de áudio de ${year(audio)}`, 'Funciona, mas drivers de áudio antigos às vezes causam estalos e latência de DPC. Atualize só se tiver esses sintomas: pegue a versão do site da placa-mãe ou do notebook.', { evidence: [`${audio.name} ${audio.version || ''}`.trim()], confidence: 'media' }));
+    const chipset = g.chipset.filter((item) => finite(item.ageDays) && item.ageDays > 5 * 365);
+    if (chipset.length >= 2 && profile.kind === 'desktop') add(F('driver-chipset-antigo', 'processador', 'info', `Drivers do chipset de ${year(chipset[0])}`, 'O driver de chipset traz o gerenciamento de energia e as correções da plataforma. Atualizar é seguro e rápido pelo site da Intel/AMD ou da placa-mãe.', { evidence: chipset.slice(0, 3).map((item) => `${item.name}: ${item.date}`), confidence: 'media' }));
+    if (drivers.unsigned.length) add(F('driver-sem-assinatura', 'windows', 'info', `${plural(drivers.unsigned.length, 'driver sem assinatura', 'drivers sem assinatura')}`, 'Drivers sem assinatura digital não passaram pela verificação da Microsoft. Às vezes são de ferramentas de overclock ou RGB antigas; se você não reconhece, vale desinstalar o programa que trouxe.', { evidence: drivers.unsigned.slice(0, 4), confidence: 'media', action: { how: 'Em Configurações > Aplicativos, procure o programa que instalou esse driver (ferramenta de RGB, overclock ou controle antigo). Se não usa mais, desinstale.' } }));
+    const old = [...nets.filter((item) => item.generic || (finite(item.ageDays) && item.ageDays > 3 * 365))];
+    if (!old.length && g.gpu.length && !drivers.unsigned.length) add(F('drivers-ok', 'windows', 'ok', 'Drivers de rede e vídeo instalados pelo fabricante', null));
+  }
+
+  /* ---------------- Rede: um minuto medindo ---------------- */
+  /** Série de "pings" (tempo para abrir conexão): mediana, p95, oscilação média, perdas e picos. */
+  function summarizePings(values = [], lost = 0) {
+    const list = values.filter(finite);
+    const total = list.length + lost;
+    if (!total) return null;
+    const sorted = [...list].sort((a, b) => a - b);
+    const at = (q) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * (sorted.length - 1)))] : null);
+    let jitter = 0;
+    for (let i = 1; i < list.length; i += 1) jitter += Math.abs(list[i] - list[i - 1]);
+    const median = at(0.5);
+    return {
+      count: total, ms: finite(median) ? round(median, 1) : null, p95: finite(at(0.95)) ? round(at(0.95), 1) : null, best: finite(sorted[0]) ? round(sorted[0], 1) : null,
+      jitter: list.length > 1 ? round(jitter / (list.length - 1), 1) : null, loss: round((lost / total) * 100, 1),
+      spikes: finite(median) ? list.filter((value) => value > median + Math.max(40, median)).length : 0
+    };
+  }
+  function networkFindings(net, profile, add) {
+    if (!net) return;
+    const wifi = (profile.network || []).some((adapter) => adapter.kind === 'wifi' && adapter.up) && !(profile.network || []).some((adapter) => adapter.kind === 'ethernet' && adapter.up);
+    const local = net.gateway;
+    const remote = net.internet;
+    const via = wifi ? 'Wi-Fi' : 'cabo';
+    const localFix = wifi ? 'Teste com o PC mais perto do roteador ou ligado por cabo; em Wi-Fi, prefira a rede de 5 GHz.' : 'Troque o cabo de rede ou a porta do roteador e reinicie o roteador.';
+    const ev = [local ? `roteador: ${comma(local.ms ?? 0, 0)} ms (oscila ${comma(local.jitter ?? 0, 0)} ms, perdeu ${comma(local.loss, 0)}%)` : null, remote ? `internet: ${comma(remote.ms ?? 0, 0)} ms (95% abaixo de ${comma(remote.p95 ?? 0, 0)} ms, perdeu ${comma(remote.loss, 0)}%)` : null, `ligado por ${via}`];
+    let problem = false;
+    if (remote && !finite(remote.ms)) {
+      add(F('rede-sem-internet', 'rede', 'alta', 'Sem resposta da internet durante o teste', local && finite(local.ms) ? 'O roteador respondeu, mas nada passou dele para a internet: o problema está no roteador, no modem ou na operadora.' : 'Nem o roteador respondeu: confira o cabo ou o Wi-Fi deste PC.', { evidence: ev, action: { how: local && finite(local.ms) ? 'Reinicie o modem e o roteador (tire da tomada por 30 segundos). Se continuar, ligue para a operadora.' : 'Confira se o Wi-Fi está conectado ou se o cabo está firme nas duas pontas.' } }));
+      return;
+    }
+    if (remote && remote.loss >= 2) {
+      problem = true;
+      const atHome = local && local.loss >= 1;
+      add(F('rede-perda', 'rede', remote.loss >= 5 ? 'alta' : 'media', `Perdendo ${comma(remote.loss, 0)}% dos pacotes`, atHome ? `As perdas já acontecem entre o PC e o roteador: o problema é dentro de casa (${via}), não a operadora.` : 'Até o roteador está tudo certo; as perdas acontecem depois dele (roteador sobrecarregado ou a operadora). No jogo, isso vira teletransporte e "lag".', { evidence: ev, action: { how: atHome ? localFix : 'Reinicie o roteador. Se continuar, registre a perda com a operadora (o Nexo mostra os números).' } }));
+    }
+    const swing = remote && finite(remote.p95) && finite(remote.ms) ? remote.p95 - remote.ms : null;
+    if (remote && ((finite(remote.jitter) && remote.jitter >= 15) || (finite(swing) && swing >= 40))) {
+      problem = true;
+      const atHome = local && ((finite(local.jitter) && local.jitter >= 8) || (finite(local.p95) && local.p95 >= (wifi ? 40 : 10)));
+      add(F('rede-oscila', 'rede', (remote.jitter || 0) >= 30 || (swing || 0) >= 80 ? 'media' : 'baixa', `Ping oscilando: de ${comma(remote.best ?? remote.ms, 0)} a ${comma(remote.p95, 0)} ms`, atHome ? `A variação começa já no caminho até o roteador (${via}). Oscilação é o que o jogo sente como travadinhas de rede, mesmo com ping médio bom.` : 'O caminho até o roteador está estável; a variação vem da internet (alguém baixando ou assistindo em casa, ou a operadora).', { evidence: ev, confidence: 'media', action: { how: atHome ? localFix : 'Veja se alguém está baixando ou transmitindo na mesma rede; roteadores com "QoS" ou "SQM" seguram isso.' } }));
+    }
+    if (local && finite(local.ms) && local.ms >= (wifi ? 25 : 8) && !problem) {
+      problem = true;
+      add(F('rede-roteador-lento', 'rede', 'baixa', `O roteador demora ${comma(local.ms, 0)} ms para responder`, wifi ? 'No Wi-Fi o normal é abaixo de 10 ms. Sinal fraco, interferência ou muitos aparelhos na mesma rede deixam tudo mais lento.' : 'Por cabo, o roteador deveria responder em 1 a 2 ms.', { evidence: ev, confidence: 'media', action: { how: localFix } }));
+    }
+    for (const check of (net.doctor?.checks || []).filter((item) => item.level === 'problema' || item.level === 'aviso')) {
+      problem = true;
+      const fix = check.fix ? (net.doctor.fixes || []).find((item) => item.id === check.fix) || { id: check.fix } : null;
+      add(F(`rede-${check.id}`, 'rede', check.level === 'problema' ? 'media' : 'baixa', check.title, check.detail, { confidence: 'media', action: fix ? { netFix: { id: fix.id, label: fix.label || null, provider: fix.provider || null, admin: Boolean(fix.admin), lastResort: Boolean(fix.lastResort), restart: Boolean(fix.restart) } } : null }));
+    }
+    if (!problem && remote && finite(remote.ms)) add(F('rede-ok', 'rede', 'ok', `Rede estável: ${comma(remote.ms, 0)} ms até a internet, sem perdas`, null));
+  }
+
+  /* ---------------- Erros que apareceram DURANTE os testes ---------------- */
+  function duringFindings(during, add) {
+    if (!during) return;
+    if (during.whea > 0) add(F('teste-whea', 'processador', 'alta', 'O hardware registrou erro durante os testes', 'Enquanto o Nexo colocava carga no PC, o processador ou a memória erraram (evento WHEA). Isso mostra instabilidade sob carga: overclock, undervolt, perfil XMP/EXPO no limite, temperatura ou fonte.', { evidence: [`${plural(during.whea, 'erro WHEA', 'erros WHEA')} durante a verificação`], action: { how: 'Volte overclock e undervolt ao padrão, desligue o XMP/EXPO para testar e confira a temperatura. Se o erro continuar, atualize a BIOS da placa-mãe.' } }));
+    if (during.tdr > 0) add(F('teste-tdr', 'video', 'alta', 'O driver de vídeo travou durante o teste', 'A placa de vídeo parou de responder enquanto trabalhava e o Windows reiniciou o driver. Sob carga isso aponta para overclock da placa, temperatura, fonte ou driver com problema.', { evidence: [`${plural(during.tdr, 'travada', 'travadas')} do driver durante a verificação`] }));
+    if (during.disk > 0) add(F('teste-disco', 'disco', 'alta', 'O disco deu erro durante o teste', 'O Windows registrou falha de leitura ou gravação enquanto o Nexo media o disco. Faça cópia do que importa.', { evidence: [`${plural(during.disk, 'erro', 'erros')} de disco durante a verificação`] }));
+  }
+
+  /* ---------------- Causa provável: cruza todas as pistas ---------------- */
+  /*
+   * Como um técnico pensaria: primeiro o sintoma (tela azul, desligamento, travada do vídeo, engasgo, lentidão, lag),
+   * depois cada suspeito ganha pontos pelas pistas que apontam para ele, e o relatório diz a causa mais provável, por que
+   * (as pistas) e o próximo passo. Um suspeito só aparece com pista de verdade; empate vira "também pode ser".
+   */
+  const SUSPECTS = {
+    memoria: { area: 'memoria', what: 'memória instável', fix: 'bios-memoria' },
+    video: { area: 'video', what: 'placa de vídeo ou o driver dela', fix: 'driver' },
+    driver: { area: 'windows', what: 'um driver com problema', fix: 'drivers' },
+    disco: { area: 'disco', what: 'o disco', fix: 'disco' },
+    processador: { area: 'processador', what: 'o processador (tensão, temperatura ou desgaste)', fix: 'bios' },
+    fonte: { area: 'energia', what: 'a fonte de energia ou a tomada', fix: 'fonte' },
+    calor: { area: 'processador', what: 'superaquecimento', fix: 'limpeza' }
+  };
+  function diagnose({ profile = {}, health = null, findings = [], memtest = null, stress = null, load = null, during = null, drivers = null, observation = null } = {}) {
+    const has = (id) => findings.some((item) => item.id === id || item.id.startsWith(`${id}-`));
+    const events = health?.events || {};
+    const codes = (health?.bugCodes || []).map((item) => ({ ...bugcheckOf(item.code), count: item.count })).filter((item) => item.hex);
+    const power = health?.powerLoss || {};
+    const bugchecks = Math.max(events.bugcheck?.count || 0, codes.reduce((sum, item) => sum + item.count, 0));
+    const silent = power.silent ?? Math.max(0, (events.unexpected?.count || 0) - bugchecks);
+    const freezes = power.button || 0;
+    const tdr = (events.tdr?.count || 0) + (during?.tdr || 0);
+    const whea = (health?.wheaIds || []).reduce((sum, item) => sum + item.count, 0) + (during?.whea || 0);
+    const symptoms = [];
+    if (bugchecks) symptoms.push(plural(bugchecks, 'tela azul', 'telas azuis'));
+    if (silent) symptoms.push(`${plural(silent, 'desligamento', 'desligamentos')} sem aviso`);
+    if (freezes) symptoms.push(`${plural(freezes, 'travada total', 'travadas totais')} (desligado no botão)`);
+    if (tdr) symptoms.push(`${plural(tdr, 'travada', 'travadas')} do driver de vídeo`);
+    if (memtest?.errors) symptoms.push('erros no teste de memória');
+    if (during?.whea) symptoms.push('erro de hardware sob carga');
+    const out = [];
+    if (symptoms.length) {
+      const score = Object.fromEntries(Object.keys(SUSPECTS).map((key) => [key, 0]));
+      const why = Object.fromEntries(Object.keys(SUSPECTS).map((key) => [key, []]));
+      const hint = (key, points, reason) => { if (points > 0 && reason) { score[key] += points; why[key].push(reason); } };
+      for (const code of codes) {
+        const target = code.cls === 'hardware' ? 'processador' : code.cls === 'sistema' ? 'disco' : code.cls;
+        if (score[target] !== undefined) hint(target, Math.min(6, 3 * code.count), `tela azul ${code.name || code.hex}${code.count > 1 ? ` (${code.count}×)` : ''}`);
+        if (code.cls === 'driver') hint('memoria', 1, null);
+      }
+      const memory = profile.memory || {};
+      const over = memoryOverclocked(memory);
+      if (memtest?.errors) hint('memoria', 8, `o teste de memória achou ${plural(memtest.errors, 'erro', 'erros')}`);
+      if (over && (bugchecks || freezes || memtest?.errors)) hint('memoria', 2, `memória acima do padrão (${memory.configured} MT/s com XMP/EXPO)`);
+      if (memory.mixed && (bugchecks || freezes)) hint('memoria', 1, 'pentes diferentes misturados');
+      const wheaMem = (health?.wheaIds || []).filter((item) => item.id === 47).reduce((sum, item) => sum + item.count, 0);
+      if (wheaMem) hint('memoria', 3, `${plural(wheaMem, 'erro corrigido', 'erros corrigidos')} de memória (WHEA 47)`);
+      if (tdr) hint('video', Math.min(6, 2 * tdr), `${plural(tdr, 'travada', 'travadas')} do driver de vídeo`);
+      if (has('crash-driver-video')) hint('video', 2, 'programas fechando dentro do driver de vídeo');
+      if ((events.gpuErrors?.count || 0) > 0) hint('video', 2, `${plural(events.gpuErrors.count, 'erro', 'erros')} do driver NVIDIA no registro`);
+      if (stress?.thermalHits >= 2 || has('gpu-quente')) hint('video', 1, 'placa de vídeo esquentando sob carga');
+      if (during?.tdr) hint('video', 4, 'o driver travou durante o teste da placa');
+      const diskErrors = (events.disk?.count || 0) + (events.storReset?.count || 0);
+      if (diskErrors) hint('disco', Math.min(6, 2 * diskErrors), `${plural(diskErrors, 'erro', 'erros')} de disco nos eventos`);
+      if (events.ntfs?.count) hint('disco', 2, 'sistema de arquivos com erros (NTFS)');
+      if (has('disco-saude') || has('disco-desgaste')) hint('disco', 4, 'o próprio disco avisa problema de saúde ou desgaste');
+      if (during?.disk) hint('disco', 4, 'erro de disco durante o teste');
+      const wheaCpu = (health?.wheaIds || []).filter((item) => [1, 18, 19].includes(item.id)).reduce((sum, item) => sum + item.count, 0);
+      if (wheaCpu) hint('processador', Math.min(6, 2 + wheaCpu), `${plural(wheaCpu, 'erro', 'erros')} de hardware do processador (WHEA)`);
+      if (during?.whea) hint('processador', 3, 'erro de hardware sob carga');
+      if (profile.cpu?.raptorRisk && (bugchecks || whea || freezes)) hint('processador', 3, `${profile.cpu.model || 'Intel de 13ª/14ª geração'}: geração com o problema de tensão que a Intel corrigiu por BIOS`);
+      if (has('raptor-bios')) hint('processador', 2, 'BIOS anterior à correção da Intel');
+      if (has('cpu-freio-calor') || has('cpu-quente') || has('gpu-calor') || has('firmware-limite')) hint('calor', silent ? 4 : 1, 'temperatura alta medida no teste de carga');
+      if (silent) {
+        const hot = has('cpu-freio-calor') || has('gpu-calor') || has('gpu-quente') || has('cpu-quente');
+        if (!hot) hint('fonte', Math.min(8, 3 * silent), `${plural(silent, 'desligamento', 'desligamentos')} sem tela azul, com temperatura normal no teste`);
+        const dedicated = (profile.gpus || []).some((item) => item.discrete);
+        if (dedicated && finite(stress?.powerPeak) && stress.powerPeak >= 200) hint('fonte', 1, `placa de vídeo puxando ${stress.powerPeak} W`);
+      }
+      const oldNet = drivers?.groups?.net?.some((item) => item.generic || (finite(item.ageDays) && item.ageDays > 3 * 365));
+      if (codes.some((code) => code.cls === 'driver')) {
+        if (oldNet) hint('driver', 2, 'driver de rede antigo ou genérico');
+        if ((health?.problemDevices || []).length) hint('driver', 1, 'dispositivo com erro no Gerenciador de Dispositivos');
+        if (finite(observation?.system?.dpcAvg) && observation.system.dpcAvg >= 2.5) hint('driver', 1, 'drivers segurando o processador (DPC alto)');
+      }
+      if (freezes && !bugchecks) { hint('memoria', over ? 2 : 0, over ? 'travadas totais sem tela azul combinam com memória instável' : null); hint('video', tdr ? 1 : 0, 'travou com a tela congelada'); }
+      const ranked = Object.entries(score).filter(([, value]) => value >= 3).sort((a, b) => b[1] - a[1]);
+      if (ranked.length) {
+        const [top, points] = ranked[0];
+        const also = ranked.slice(1).filter(([, value]) => value >= Math.max(3, points * 0.6)).map(([key]) => SUSPECTS[key].what);
+        const suspect = SUSPECTS[top];
+        const finding = F(`causa-${top}`, suspect.area, 'alta', `Causa provável: ${suspect.what}`, `Sintoma: ${joinPt(symptoms)}. Juntando as pistas de todas as etapas, o que mais aponta para a causa é ${suspect.what}.${also.length ? ` Também pode ser ${joinPt(also)}.` : ''}`, { evidence: why[top].slice(0, 5), confidence: points >= 8 ? 'alta' : points >= 5 ? 'media' : 'baixa', action: { how: CAUSE_HOW[top] } });
+        finding.diagnosis = { suspect: top, points, symptoms, also: ranked.slice(1, 3).map(([key, value]) => ({ suspect: key, points: value })), fix: suspect.fix };
+        out.push(finding);
+      }
+    }
+    // Engasgos e lentidão: não é defeito, é o que mais pesa (por ordem de impacto).
+    const stutter = [];
+    if (finite(observation?.system?.dpcAvg) && observation.system.dpcAvg >= 2.5) stutter.push('drivers interrompendo o processador (DPC)');
+    if (has('memoria-acabando')) stutter.push('memória acabando');
+    if (has('disco-ocupado')) stutter.push('disco ocupado');
+    if ((observation?.background || []).some((item) => item.impact === 'alto')) stutter.push('programa pesando por trás');
+    if (has('cpu-freio-calor') || has('gpu-calor')) stutter.push('freio por calor');
+    if (has('mem-canal-unico') || has('mem-mesmo-canal')) stutter.push('memória em um canal só');
+    if (stutter.length >= 2) out.push(F('causa-engasgos', 'fundo', 'media', 'O que causa os engasgos neste PC', `Mais de uma coisa disputa o PC ao mesmo tempo: ${joinPt(stutter)}. Resolva na ordem da lista (a primeira pesa mais).`, { evidence: stutter, confidence: 'media' }));
+    return out;
+  }
+  const CAUSE_HOW = {
+    memoria: 'Na BIOS, desligue o XMP/EXPO (ou baixe a velocidade um degrau) e rode a verificação de novo. Se os erros sumirem, era a memória. Sem XMP, teste um pente por vez.',
+    video: 'Reinstale o driver de vídeo do site do fabricante (opção de instalação limpa). Se tiver overclock na placa, volte ao padrão; limpe as ventoinhas.',
+    driver: 'Atualize os drivers da placa-mãe (chipset), da rede e do vídeo pelo site do fabricante. O código da tela azul costuma apontar o grupo.',
+    disco: 'Faça cópia do que importa agora. Depois, em Manutenção, rode o reparo do sistema; se os erros continuarem, troque o cabo SATA ou o disco.',
+    processador: 'Atualize a BIOS da placa-mãe (traz as correções de tensão e microcódigo) e volte overclock/undervolt ao padrão.',
+    fonte: 'Ligue o PC direto na tomada (sem benjamim ou filtro velho) e confira os cabos de energia da placa de vídeo. Desligar sozinho sem tela azul e sem calor costuma ser fonte no limite ou com defeito.',
+    calor: 'Limpe a poeira das ventoinhas e do dissipador; se o processador ou a placa tiverem mais de 3 ou 4 anos, a pasta térmica pode estar seca.'
+  };
+
   /** Todos os achados, do mais grave para o mais leve; "ok" ficam no fim (são o que já está certo). */
-  function buildFindings({ profile = {}, health = null, facts = null, observation = null, load = null, drives = [], startup = null, comparison = null, onBattery = false, now = Date.now() } = {}) {
+  function buildFindings({ profile = {}, health = null, facts = null, observation = null, load = null, drives = [], startup = null, comparison = null, onBattery = false, now = Date.now(), memtest = null, gpuStress = null, diskTest = null, drivers = null, network = null, during = null } = {}) {
     const list = [];
     const seen = new Set();
     const add = (finding) => {
@@ -682,14 +1014,23 @@
       list.push(finding);
     };
     virtualFindings(profile, add);
+    duringFindings(during, add);
+    memtestFindings(memtest, profile, add);
     memoryFindings(profile, health, add);
+    if (!profile.virtual) gpuStressFindings(gpuStress, profile, add);
     if (!profile.virtual) videoFindings(profile, facts, load, add);
+    diskTestFindings(diskTest, profile, add);
     diskFindings(profile, health, drives, add);
+    driverFindings(drivers, profile, add);
     windowsFindings(profile, health, facts, startup, now, add);
+    networkFindings(network, profile, add);
     backgroundFindings(observation, profile, add);
     loadFindings(load, profile, facts, onBattery, add);
     comparisonFindings(comparison, add);
-    return list.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
+    // A causa provável vem por último porque lê todos os outros achados (e entra no topo do relatório).
+    for (const cause of diagnose({ profile, health, findings: list, memtest, stress: gpuStress, load, during, drivers, observation })) add(cause);
+    const rank = (item) => (item.id.startsWith('causa-') ? -1 : SEVERITY_ORDER[item.severity]);
+    return list.sort((a, b) => rank(a) - rank(b));
   }
 
   /* ======================================================================================================
@@ -798,5 +1139,5 @@
     return Math.max(5, Math.min(100, Math.round(100 - lost)));
   }
 
-  return { NODES, STAGES, MIN_TOTAL_MS, plan, narrative, LAB_KNOBS, classifyProcess, summarizeObservation, needsMoreTime, summarizeLoad, cpuSensors, buildFindings, compareRuns, runRecord, fingerprintOf, healthScore, BACKGROUND, SEVERITY_ORDER, impactOf, tjMaxOf };
+  return { NODES, STAGES, MIN_TOTAL_MS, BUGCHECKS, bugcheckOf, summarizeGpuStress, summarizeDrivers, summarizePings, diagnose, memoryOverclocked, plan, narrative, LAB_KNOBS, classifyProcess, summarizeObservation, needsMoreTime, summarizeLoad, cpuSensors, buildFindings, compareRuns, runRecord, fingerprintOf, healthScore, BACKGROUND, SEVERITY_ORDER, impactOf, tjMaxOf };
 });

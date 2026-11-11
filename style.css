@@ -1502,6 +1502,12 @@ body.lite .space-veil { -webkit-backdrop-filter: none; backdrop-filter: none; ba
    se o espaço não acabasse) e surge aos poucos ao abrir a página. A constelação não tem fundo próprio: flutua nele. ---- */
 .space-page { position: absolute; inset: 0; z-index: 2; opacity: 0; pointer-events: none; transition: opacity 0.9s var(--ease-out); contain: strict; }
 .space-page .space-art { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; }
+/* Céu animado (vídeo em loop) por cima da imagem parada: aparece devagar quando começa a tocar; a imagem some depois. */
+.space-page .space-video { position: absolute; object-fit: fill; opacity: 0; transition: opacity 1.4s var(--ease-out); pointer-events: none; background: #000; }
+.space-page[data-video="on"] .space-video { opacity: 1; }
+.space-page[data-video="on"] .space-art { opacity: 0; transition: opacity 0s linear 1.4s; }
+body.lite .space-page .space-video { display: none; }
+@media (prefers-reduced-motion: reduce) { .space-page .space-video { display: none; } .space-page[data-video="on"] .space-art { opacity: 1; } }
 /* Só depois de começar a verificação completa (rodando, relatório ou otimização): antes, a página é a de sempre. */
 body[data-view="analysis"].deep-space .space-page { opacity: 1; }
 body[data-view="analysis"].deep-space .sheet.deep { background: transparent; border-color: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }

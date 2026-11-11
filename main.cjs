@@ -102,7 +102,7 @@ const SLOW_IPC_MS = {
   'window:minimize': 3000, 'window:toggle-maximize': 3000, 'window:close': 3000, 'window:get-state': 3000, 'games:scan': 120000, 'games:fetch-art': 90000, 'scan:run': 120000,
   'cleanup:scan': 120000, 'cleanup:preview': 90000, 'net:diagnose': 90000, 'lab:preflight': 60000, 'updates:check': 60000, 'session:probe-test': 60000, 'steam:connect': 60000, 'opt:plan': 120000, 'opt:games': 60000
 };
-for (const channel of ['bench:cpu', 'lab:run', 'lab:adopt', 'lab:recover', 'reboot:start', 'reboot:continue', 'reboot:restart', 'account:sign-in', 'steam:sign-in', 'xbox:sign-in', 'cloud:connect', 'net:fix', 'scan:apply',
+for (const channel of ['analysis:deep-run', 'bench:cpu', 'lab:run', 'lab:adopt', 'lab:recover', 'reboot:start', 'reboot:continue', 'reboot:restart', 'account:sign-in', 'steam:sign-in', 'xbox:sign-in', 'cloud:connect', 'net:fix', 'scan:apply',
   'cleanup:run', 'drives:optimize', 'system:repair', 'opt:run', 'opt:fix', 'opt:revert', 'system:restart', 'updates:download', 'updates:install', 'sensors:service-install', 'fps:access', 'fps:choose', 'app:uninstall', 'account:import-config', 'integrations:import', 'games:add', 'games:set-cover']) SLOW_IPC_MS[channel] = Infinity;
 const slowSeen = new Map();
 function noteSlowIpc(channel, ms) {
@@ -1946,6 +1946,58 @@ async function deepNvidia() {
     };
   });
 }
+/*
+ * Testes da verificação completa. Cada um roda num worker (o app continua respondendo), para na hora com o Cancelar e
+ * devolve só medidas. O de disco grava numa pasta temporária do próprio app e apaga no fim.
+ */
+const MEMTEST_WORKER = workerFile('memtest.cjs');
+const DISKTEST_WORKER = workerFile('disktest.cjs');
+function deepWorker(file, workerData, { signal, onProgress } = {}) {
+  return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(null); return; }
+    let worker;
+    try { worker = new Worker(file, { workerData }); } catch { resolve(null); return; }
+    let settled = false;
+    const finish = (value) => { if (settled) return; settled = true; signal?.removeEventListener?.('abort', stop); worker.terminate().catch(() => {}); resolve(value); };
+    const stop = () => finish(null);
+    signal?.addEventListener?.('abort', stop, { once: true });
+    worker.on('message', (message) => {
+      if (message?.kind === 'progress') { try { onProgress?.(message); } catch { /* tela fechada */ } }
+      else if (message?.kind === 'done') finish(message);
+    });
+    worker.once('error', () => finish(null));
+    worker.once('exit', () => finish(null));
+  });
+}
+/** Rede por ~45 s: série de conexões ao roteador e à internet ao mesmo tempo, mais o diagnóstico de DNS e proxy. */
+async function deepNetQuality({ signal, onProgress } = {}) {
+  const Deep = require('./src/deep-analysis.js');
+  const gateway = await findGateway().catch(() => null);
+  const say = (text) => { try { onProgress?.({ text }); } catch { /* tela fechada */ } };
+  const series = async (host, port, count, gapMs, label) => {
+    const values = [];
+    let lost = 0;
+    for (let i = 0; i < count && !signal?.aborted; i += 1) {
+      // eslint-disable-next-line no-await-in-loop -- um pacote de cada vez (em paralelo mediria a fila)
+      const us = await connectTime(host, port);
+      if (Number.isFinite(us)) values.push(us / 1000); else lost += 1;
+      if (label && i % 10 === 0) say(`medindo a rede: ${i} de ${count} pacotes até ${label}…`);
+      // eslint-disable-next-line no-await-in-loop -- pausa entre as tentativas, como num jogo
+      await new Promise((resolve) => { setTimeout(resolve, gapMs); });
+    }
+    return Deep.summarizePings(values, lost);
+  };
+  const internetHost = await (async () => { for (const [host, port] of [['1.1.1.1', 443], ['8.8.8.8', 443]]) { if (Number.isFinite(await connectTime(host, port))) return [host, port]; } return null; })();
+  const [local, remote] = await Promise.all([
+    gateway ? series(gateway.host, gateway.port, 90, 350, null) : null,
+    internetHost ? series(internetHost[0], internetHost[1], 90, 350, 'a internet') : null
+  ]);
+  if (signal?.aborted) return null;
+  say('conferindo DNS, proxy e a abertura de um site…');
+  let doctor = null;
+  try { doctor = NetDoctor.analyze(await netDoctor.measure()); } catch { doctor = null; }
+  return { gateway: local, internet: remote, doctor: doctor ? { checks: doctor.checks, fixes: doctor.fixes } : null };
+}
 const deepAnalysis = createDeepAnalysis({
   platform: process.platform, runPowerShellCode, spawnFn: spawn,
   linuxCollector: IS_LINUX ? DeepScan.createLinuxCollector({ fs, path, os, run: (file, args) => runCode(file, args) }) : null,
@@ -1962,6 +2014,10 @@ const deepAnalysis = createDeepAnalysis({
   gpuWake: (ms) => sendToWindow('analysis:gpu-wake', { ms }),
   emit: (progress) => sendToWindow('analysis:progress', progress),
   memoryTotal: () => os.totalmem(),
+  freeMemory: () => os.freemem(),
+  memtest: ({ totalMB, ms, signal, onProgress }) => deepWorker(MEMTEST_WORKER, { totalMB, ms }, { signal, onProgress }),
+  diskTest: ({ signal, onProgress }) => deepWorker(DISKTEST_WORKER, { dir: path.join(app.getPath('userData'), 'teste-disco'), sizeMB: 256, smallCount: 300, ms: 40000 }, { signal, onProgress }),
+  netQuality: (options) => deepNetQuality(options),
   store: {
     load: async () => JSON.parse(await fs.readFile(DEEP_FILE(), 'utf8')),
     save: async (data) => { const file = DEEP_FILE(); await fs.writeFile(`${file}.tmp`, JSON.stringify(data)); await fs.rename(`${file}.tmp`, file); }

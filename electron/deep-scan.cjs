@@ -176,6 +176,26 @@ $fw = Ev 'System' @('Microsoft-Windows-Kernel-Processor-Power') @(37)
 $app = Ev 'Application' @('Application Error') @(1000)
 $hang = Ev 'Application' @('Application Hang') @(1002)
 $wu = Ev 'System' @('Microsoft-Windows-WindowsUpdateClient') @(20)
+$res = Ev 'System' @('Microsoft-Windows-Resource-Exhaustion-Detector') @(2004)
+$nvx = Ev 'System' @('nvlddmkm') @(13, 14, 153)
+# Código de cada tela azul (o 1001 traz "0x0000001a (...)" na mensagem, em qualquer idioma) e, no desligamento
+# inesperado (Kernel-Power 41), se houve tela azul, botão de ligar segurado (o PC travou) ou nada (queda de energia).
+$bugCodes = @($bug | ForEach-Object { if ([string]$_.Message -match '\b0x[0-9a-fA-F]{8}\b') { $Matches[0].ToLower() } } | Group-Object | ForEach-Object { @{ code = [string]$_.Name; count = [int]$_.Count } })
+$kpCodes = @()
+$kpInfo = @{ bugcheck = 0; button = 0; sleep = 0; silent = 0 }
+foreach ($e in $kp) {
+  try {
+    $x = [xml]$e.ToXml(); $d = @{}
+    foreach ($n in @($x.Event.EventData.Data)) { $d[[string]$n.Name] = [string]$n.'#text' }
+    $code = 0; [void][int64]::TryParse([string]$d['BugcheckCode'], [ref]$code)
+    $button = 0; [void][int64]::TryParse([string]$d['PowerButtonTimestamp'], [ref]$button)
+    if ($code -ne 0) { $kpInfo.bugcheck++; $kpCodes += ('0x{0:x8}' -f $code) }
+    elseif ($button -ne 0 -or $d['LongPowerButtonPressDetected'] -eq 'true') { $kpInfo.button++ }
+    elseif ([string]$d['SleepInProgress'] -notin @('', '0', 'false')) { $kpInfo.sleep++ }
+    else { $kpInfo.silent++ }
+  } catch {}
+}
+$kpCodes = @($kpCodes | Group-Object | ForEach-Object { @{ code = [string]$_.Name; count = [int]$_.Count } })
 $crashes = @($app | ForEach-Object { [pscustomobject]@{ app = [string]$_.Properties[0].Value; module = [string]$_.Properties[3].Value } } | Group-Object app | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { @{ app = [string]$_.Name; count = [int]$_.Count; modules = @($_.Group | Group-Object module | Sort-Object Count -Descending | Select-Object -First 2 | ForEach-Object { [string]$_.Name }) } })
 $hangs = @($hang | ForEach-Object { [pscustomobject]@{ app = [string]$_.Properties[0].Value } } | Group-Object app | Sort-Object Count -Descending | Select-Object -First 6 | ForEach-Object { @{ app = [string]$_.Name; count = [int]$_.Count } })
 $wheaIds = @($whea | Group-Object Id | ForEach-Object { @{ id = [int]$_.Name; count = [int]$_.Count } })
@@ -189,7 +209,8 @@ $ov = Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Powe
 $bad = @(Get-CimInstance Win32_PnPEntity | Where-Object { $_.ConfigManagerErrorCode -and @(0, 22, 45) -notcontains [int]$_.ConfigManagerErrorCode } | Select-Object -First 12 | ForEach-Object { @{ name = [string]$_.Name; code = [int]$_.ConfigManagerErrorCode } })
 $soft = @(Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' | ForEach-Object { [string]$_.DisplayName } | Where-Object { $_ -match '^(AMD Chipset Software|Intel\(R\) Chipset Device Software|AMD Software|NVIDIA Graphics Driver|NVIDIA App|NVIDIA GeForce Experience|Wallpaper Engine|MSI Afterburner|RivaTuner|Armoury Crate|iCUE|NZXT CAM|Razer Synapse|Logitech G HUB|SteelSeries GG|MSI Center|Nahimic)' } | Select-Object -Unique -First 20)
 $out = @{
-  events = @{ bugcheck = (Sum $bug); unexpected = (Sum $kp); whea = (Sum $whea); wheaIds = $wheaIds; tdr = (Sum $tdr); tdrDrivers = $tdrDrivers; disk = (Sum $disk); storReset = (Sum $stor); ntfs = (Sum $ntfs); firmwareLimit = (Sum $fw); appCrash = (Sum $app); appHang = (Sum $hang); updateFail = (Sum $wu) }
+  events = @{ bugcheck = (Sum $bug); unexpected = (Sum $kp); whea = (Sum $whea); wheaIds = $wheaIds; tdr = (Sum $tdr); tdrDrivers = $tdrDrivers; disk = (Sum $disk); storReset = (Sum $stor); ntfs = (Sum $ntfs); firmwareLimit = (Sum $fw); appCrash = (Sum $app); appHang = (Sum $hang); updateFail = (Sum $wu); lowMemory = (Sum $res); gpuErrors = (Sum $nvx) }
+  bugCodes = $bugCodes; kpCodes = $kpCodes; powerLoss = $kpInfo
   crashes = $crashes; hangs = $hangs
   rebootPending = @{ servicing = (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'); update = (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') }
   fastStartup = (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled).HiberbootEnabled
@@ -268,7 +289,7 @@ for ($i = 0; $i -le $ticks; $i++) {
 
 /* Durante o teste de carga: desempenho de cada núcleo (% do nominal) e limites do firmware, uma vez por segundo. */
 const LOAD_SCRIPT = PS_HEAD + String.raw`
-$ticks = [int]$env:NEXO_TICKS; if ($ticks -lt 1 -or $ticks -gt 60) { $ticks = 15 }
+$ticks = [int]$env:NEXO_TICKS; if ($ticks -lt 1 -or $ticks -gt 120) { $ticks = 15 }
 for ($i = 0; $i -le $ticks; $i++) {
   try {
     $all = @(Get-CimInstance Win32_PerfFormattedData_Counters_ProcessorInformation)
@@ -286,6 +307,37 @@ for ($i = 0; $i -le $ticks; $i++) {
 const LINK_SCRIPT = PS_HEAD + String.raw`
 $out = @(Get-CimInstance Win32_VideoController | ForEach-Object { @{ name = [string]$_.Name; link = (Link ([string]$_.PNPDeviceID)) } })
 [Console]::Out.Write((ConvertTo-Json -InputObject $out -Depth 4 -Compress))`;
+
+/*
+ * Drivers das peças que importam (vídeo, rede, áudio, chipset, armazenamento, Bluetooth): nome, quem fez o driver,
+ * versão, data, assinatura e o par fabricante:dispositivo do hardware (VEN/DEV), sem caminho de arquivo.
+ */
+const DRIVERS_SCRIPT = PS_HEAD + String.raw`
+$cls = @('DISPLAY', 'NET', 'MEDIA', 'SYSTEM', 'HDC', 'SCSIADAPTER', 'BLUETOOTH')
+$rows = @(Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $cls -contains ([string]$_.DeviceClass).ToUpper() } | ForEach-Object {
+  $hw = [string](@($_.HardWareID)[0])
+  $ids = ''
+  if ($hw -match '(VEN|VID)_([0-9A-Fa-f]{4}).*?(DEV|PID)_([0-9A-Fa-f]{4})') { $ids = ($Matches[2] + ':' + $Matches[4]).ToUpper() }
+  @{ name = [string]$_.DeviceName; cls = ([string]$_.DeviceClass).ToUpper(); provider = [string]$_.DriverProviderName; maker = [string]$_.Manufacturer; version = [string]$_.DriverVersion; date = (D $_.DriverDate); ids = $ids; signed = [bool]$_.IsSigned }
+} | Select-Object -First 160)
+[Console]::Out.Write((ConvertTo-Json -InputObject $rows -Depth 3 -Compress))`;
+
+/* Erros que apareceram DURANTE a verificação (desde NEXO_SINCE, em ms Unix): hardware (WHEA), vídeo e disco. */
+const DURING_SCRIPT = PS_HEAD + String.raw`
+$ms = [double]$env:NEXO_SINCE
+if (-not $ms -or $ms -lt 1e12) { $ms = [DateTimeOffset]::UtcNow.AddMinutes(-15).ToUnixTimeMilliseconds() }
+$since = [DateTimeOffset]::FromUnixTimeMilliseconds([int64]$ms).LocalDateTime
+function C($providers, $ids) {
+  $n = 0
+  foreach ($prov in $providers) {
+    $f = @{ LogName = 'System'; ProviderName = $prov; StartTime = $since }
+    if ($ids) { $f.Id = $ids }
+    try { $n += @(Get-WinEvent -FilterHashtable $f -MaxEvents 50 -ErrorAction Stop).Count } catch {}
+  }
+  return $n
+}
+$out = @{ whea = (C @('Microsoft-Windows-WHEA-Logger') $null); tdr = (C @('Display') @(4101)); disk = (C @('disk', 'stornvme', 'storahci', 'iaStorAC', 'iaStorA', 'iaStorAVC', 'nvme') @(7, 51, 129, 153)); gpu = (C @('nvlddmkm') @(13, 14, 153)) }
+[Console]::Out.WriteLine(($out | ConvertTo-Json -Compress))`;
 
 /* ======================================================================================================
  * Saneamento
@@ -368,12 +420,26 @@ function parseHealth(stdout) {
   const raw = parseJson(stdout);
   if (!raw || typeof raw !== 'object') return null;
   const events = {};
-  for (const key of ['bugcheck', 'unexpected', 'whea', 'tdr', 'disk', 'storReset', 'ntfs', 'firmwareLimit', 'appCrash', 'appHang', 'updateFail']) events[key] = eventSum(raw.events?.[key]);
+  for (const key of ['bugcheck', 'unexpected', 'whea', 'tdr', 'disk', 'storReset', 'ntfs', 'firmwareLimit', 'appCrash', 'appHang', 'updateFail', 'lowMemory', 'gpuErrors']) events[key] = eventSum(raw.events?.[key]);
+  // A mesma tela azul aparece no 1001 e no 41: por código, vale a maior das duas contagens (nunca a soma).
+  const codes = new Map();
+  for (const list of [raw.bugCodes, raw.kpCodes]) {
+    const local = new Map();
+    for (const item of asList(list)) {
+      const code = /^0x[0-9a-f]{8}$/i.test(String(item?.code || '')) ? String(item.code).toLowerCase() : null;
+      const count = num(item?.count, 0, 100000) || 0;
+      if (code && count) local.set(code, (local.get(code) || 0) + count);
+    }
+    for (const [code, count] of local) codes.set(code, Math.max(codes.get(code) || 0, count));
+  }
+  const loss = raw.powerLoss && typeof raw.powerLoss === 'object' ? raw.powerLoss : null;
   const exe = (value) => text(String(value || '').split(/[\\/]/).pop(), 60);
   const guid = (value) => (/^[0-9a-f-]{36}$/i.test(String(value || '').trim()) ? String(value).trim().toLowerCase() : null);
   const plan = String(raw.plan || '').match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   return {
     platform: 'win32', events,
+    bugCodes: [...codes].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([code, count]) => ({ code, count })),
+    powerLoss: loss ? { bugcheck: num(loss.bugcheck, 0, 100000) || 0, button: num(loss.button, 0, 100000) || 0, sleep: num(loss.sleep, 0, 100000) || 0, silent: num(loss.silent, 0, 100000) || 0 } : null,
     wheaIds: asList(raw.events?.wheaIds).slice(0, 12).map((item) => ({ id: num(item.id, 0, 100000), count: num(item.count, 0, 100000) || 0 })).filter((item) => item.id !== null),
     tdrDrivers: asList(raw.events?.tdrDrivers).slice(0, 4).map((item) => ({ driver: exe(item.driver), count: num(item.count, 0, 100000) || 0 })),
     crashes: asList(raw.crashes).slice(0, 8).map((item) => ({ app: exe(item.app), count: num(item.count, 0, 100000) || 0, modules: asList(item.modules).slice(0, 2).map(exe).filter(Boolean) })).filter((item) => item.app),
@@ -389,6 +455,23 @@ function parseHealth(stdout) {
     vcacheService: raw.vcacheService === true, gameBar: raw.gameBar === true,
     software: asList(raw.software).slice(0, 20).map((item) => text(item, 60)).filter(Boolean)
   };
+}
+
+/** Drivers: só texto curto e campos conhecidos; data no formato AAAA-MM-DD. */
+function parseDrivers(stdout) {
+  const body = String(stdout || '').trim();
+  const start = body.search(/[[{]/);
+  let raw = null;
+  try { raw = start >= 0 ? JSON.parse(body.slice(start)) : null; } catch { raw = null; }
+  return asList(raw).slice(0, 160).map((item) => ({
+    name: text(item?.name, 90), cls: text(item?.cls, 16).toUpperCase(), provider: text(item?.provider, 60), maker: text(item?.maker, 60),
+    version: text(item?.version, 40), date: isoDate(item?.date), ids: /^[0-9A-F]{4}:[0-9A-F]{4}$/.test(String(item?.ids || '')) ? item.ids : null, signed: item?.signed === false ? false : item?.signed === true ? true : null
+  })).filter((item) => item.name && item.cls);
+}
+function parseDuring(stdout) {
+  const raw = parseJson(stdout);
+  if (!raw || typeof raw !== 'object') return null;
+  return { whea: num(raw.whea, 0, 1000) || 0, tdr: num(raw.tdr, 0, 1000) || 0, disk: num(raw.disk, 0, 1000) || 0, gpu: num(raw.gpu, 0, 1000) || 0 };
 }
 
 /** Uma linha da observação (meta, leitura ou fim). Caminhos ficam, porque quem lê é o processo principal. */
@@ -637,7 +720,7 @@ function streamScript({ spawnFn = spawn, script, env = {}, onLine, timeoutMs = 1
 }
 
 module.exports = {
-  INVENTORY_SCRIPT, HEALTH_SCRIPT, OBSERVE_SCRIPT, LOAD_SCRIPT, LINK_SCRIPT, PS_HEAD,
-  parseInventory, parseHealth, parseObserveLine, parseLoadLine, parseLinks, parseBar1, parseWlan, parseEdid, outputOf,
+  INVENTORY_SCRIPT, HEALTH_SCRIPT, OBSERVE_SCRIPT, LOAD_SCRIPT, LINK_SCRIPT, DRIVERS_SCRIPT, DURING_SCRIPT, PS_HEAD,
+  parseInventory, parseHealth, parseObserveLine, parseLoadLine, parseLinks, parseBar1, parseWlan, parseEdid, parseDrivers, parseDuring, outputOf,
   createLinuxCollector, streamScript, linuxGen
 };

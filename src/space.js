@@ -104,7 +104,9 @@
       const [x, y] = place(false);
       galaxies.push(`<ellipse cx="${f1(x)}" cy="${f1(y)}" rx="${f1(1.4 + rand() * 2.4)}" ry="${f1(0.5 + rand() * 0.7)}" transform="rotate(${Math.round(rand() * 180)} ${f1(x)} ${f1(y)})" fill="url(#${p}-galaxy)" />`);
     }
-    return `<g class="space-stars dust" fill="#e9efff">${dust.join('')}</g><g class="space-galaxies">${galaxies.join('')}</g><g class="space-stars small">${small.join('')}</g><g class="space-stars halo">${halo.join('')}</g><g class="space-stars bright">${bright.join('')}</g>`;
+    const parts = { galaxies: `<g class="space-galaxies">${galaxies.join('')}</g>`, stars: `<g class="space-stars dust" fill="#e9efff">${dust.join('')}</g><g class="space-stars small">${small.join('')}</g><g class="space-stars halo">${halo.join('')}</g><g class="space-stars bright">${bright.join('')}</g>` };
+    parts.toString = () => `<g class="space-stars dust" fill="#e9efff">${dust.join('')}</g>${parts.galaxies}<g class="space-stars small">${small.join('')}</g><g class="space-stars halo">${halo.join('')}</g><g class="space-stars bright">${bright.join('')}</g>`;
+    return parts;
   }
 
   /* ---------------- Nebulosa (textura) ---------------- */
@@ -200,13 +202,14 @@
       }).join('');
       let nebula = '';
       if (item.nebula) { const [nx, ny] = to(item.nebula[0], item.nebula[1]); nebula = `<ellipse cx="${f1(nx)}" cy="${f1(ny)}" rx="12" ry="9" fill="url(#${p}-m42)" /><circle cx="${f1(nx)}" cy="${f1(ny)}" r="1" fill="#fff4f8" opacity="0.8" />`; }
-      out.push(`<g class="space-constellation"><g stroke="#c4d4ff" stroke-opacity="0.22" stroke-width="0.8" stroke-linecap="round">${lines}</g>${nebula}${stars}</g>`);
+      out.push({ decor: `<g class="space-constellation"><g stroke="#c4d4ff" stroke-opacity="0.22" stroke-width="0.8" stroke-linecap="round">${lines}</g>${nebula}</g>`, stars: `<g class="space-constellation-stars">${stars}</g>` });
     }
     // Plêiades: aglomerado azulado com a névoa de reflexão em volta.
     const to = project(PLEIADES.stars, PLEIADES.at, PLEIADES.scale);
     const pleiades = PLEIADES.stars.map(([ra, dec, mag]) => { const [x, y] = to(ra, dec); const r = magSize(mag) * 0.9; return `<g transform="translate(${f1(x)} ${f1(y)})"><circle r="${f1(r * 7)}" fill="url(#${p}-blue-halo)" /><circle r="${f2(r * 0.6)}" fill="#e4edff" filter="url(#${p}-soft)" /></g>`; }).join('');
-    out.push(`<g class="space-pleiades"><ellipse cx="${PLEIADES.at[0]}" cy="${PLEIADES.at[1]}" rx="46" ry="32" fill="url(#${p}-reflection)" />${pleiades}</g>`);
-    return out.join('');
+    out.push({ decor: `<g class="space-pleiades"><ellipse cx="${PLEIADES.at[0]}" cy="${PLEIADES.at[1]}" rx="46" ry="32" fill="url(#${p}-reflection)" /></g>`, stars: `<g class="space-pleiades-stars">${pleiades}</g>` });
+    // Linhas e nebulosas ficam no céu; as estrelas, na camada de estrelas (no vídeo, cada uma cintila no seu ritmo).
+    return { decor: out.map((item) => item.decor).join(''), stars: out.map((item) => item.stars).join('') };
   }
   /** Galáxia espiral de lado (como Andrômeda): núcleo quente, braços azulados com poeira e duas satélites. */
   function spiral(p, [x, y, s], lite) {
@@ -312,7 +315,12 @@
   /**
    * O <svg> do fundo, inteiro. `kind`: chart | sky | mini. `lite`: sem as texturas (filtros).
    */
-  function svg(kind, { prefix = 'space', lite = false } = {}) {
+  /**
+   * `layer` (só na página): 'all' (padrão), 'sky' (fundo, nebulosa, galáxias e linhas, sem estrelas e sem aurora),
+   * 'stars' (só as estrelas, fundo transparente) ou 'aurora' (só a aurora). As camadas separadas servem para gerar o
+   * vídeo do fundo (dev/space-video): o sorteio é sempre o mesmo, então as estrelas ficam no mesmo lugar da imagem.
+   */
+  function svg(kind, { prefix = 'space', lite = false, layer = 'all' } = {}) {
     const L = LAYOUTS[kind] || LAYOUTS.chart;
     const rand = rng(L.seed);
     const p = `${prefix}-${kind}`;
@@ -330,9 +338,20 @@
     </defs>`;
     /* Página: fundo preto e céu inteiro, sem borda. Constelação: sem fundo próprio (fica direto no céu da página); a
        nebulosa e as estrelas de perto se esvaem nas bordas, sem moldura, e os astros ficam por cima, inteiros. */
-    const body = L.page
-      ? `<rect x="${L.x}" y="${L.y}" width="${L.w}" height="${L.h}" fill="url(#${p}-bg)" />${aurora(L, p, lite, rand)}${neb.body}${starField(L, rand, p)}${spiral(p, L.spiral, lite)}${ringNebula(p, L.ringNeb)}${realSky(L, p)}`
-      : `<g mask="url(#${p}-mask)">${neb.body}${starField(L, rand, p)}</g>${comet(p, L.comet, 1)}${L.comet2 ? comet(p, L.comet2, 2) : ''}${ice(p, L.ice)}${hole(p, L.hole)}${giant(p, L.giant, lite)}`;
+    let body;
+    if (L.page) {
+      const bg = `<rect x="${L.x}" y="${L.y}" width="${L.w}" height="${L.h}" fill="url(#${p}-bg)" />`;
+      const glow = aurora(L, p, lite, rand);
+      const field = starField(L, rand, p);
+      const real = realSky(L, p);
+      const extras = `${spiral(p, L.spiral, lite)}${ringNebula(p, L.ringNeb)}`;
+      if (layer === 'sky') body = `${bg}${neb.body}${field.galaxies}${extras}${real.decor}`;
+      else if (layer === 'stars') body = `${field.stars}${real.stars}`;
+      else if (layer === 'aurora') body = glow;
+      else body = `${bg}${glow}${neb.body}${field}${extras}${real.decor}${real.stars}`;
+    } else {
+      body = `<g mask="url(#${p}-mask)">${neb.body}${starField(L, rand, p)}</g>${comet(p, L.comet, 1)}${L.comet2 ? comet(p, L.comet2, 2) : ''}${ice(p, L.ice)}${hole(p, L.hole)}${giant(p, L.giant, lite)}`;
+    }
     return `<svg class="space-art${L.page ? ' page' : ''}" viewBox="${L.x} ${L.y} ${L.w} ${L.h}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">${defs}${body}</svg>`;
   }
 
@@ -407,13 +426,69 @@
     art.redo = watch(art, kind, settings);
   }
 
-  /** O céu da página inteira (atrás de tudo, parado enquanto o conteúdo rola). */
+  /*
+   * O céu da página animado (dev/space-video): um vídeo em loop de 30 s, 1920×1080 a 30 quadros, feito com as mesmas
+   * camadas deste desenho. Quem toca é o decodificador de vídeo da placa (quase nada de processamento). O quadro mostra
+   * a região central da página (1561 × 878 das 1600 × 1000 unidades), então o vídeo é posicionado para as estrelas
+   * caírem no mesmo lugar da imagem parada que fica embaixo (a troca entre os dois não "pula").
+   * Sem vídeo no modo Leve, com "reduzir movimento" do sistema ou se não der para tocar: fica a imagem parada.
+   */
+  const VIDEO = { src: `${(typeof window !== 'undefined' && window.__assetBase) || ''}assets/space/espaco.mp4`, units: [1920 / (1968 / 1600), 1080 / (1968 / 1600)] };
+  const motionReduced = () => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+  function fitVideo(video, holder) {
+    const W = holder.clientWidth;
+    const H = holder.clientHeight;
+    if (!W || !H) return;
+    const [uw, uh] = VIDEO.units;
+    const scale = Math.max(W / 1600, H / 1000, W / uw, H / uh);
+    video.style.width = `${Math.ceil(uw * scale)}px`;
+    video.style.height = `${Math.ceil(uh * scale)}px`;
+    video.style.left = `${Math.floor((W - uw * scale) / 2)}px`;
+    video.style.top = `${Math.floor((H - uh * scale) / 2)}px`;
+  }
+  function pageVideo(holder, lite) {
+    let video = holder.querySelector('video.space-video');
+    if (lite || motionReduced() || holder.dataset.video === 'off') {
+      if (video) { video.pause(); video.remove(); }
+      if (holder.dataset.video !== 'off') delete holder.dataset.video;
+      return null;
+    }
+    if (video) return video;
+    video = document.createElement('video');
+    video.className = 'space-video';
+    video.muted = true;
+    video.defaultMuted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.disablePictureInPicture = true;
+    video.disableRemotePlayback = true;
+    video.setAttribute('aria-hidden', 'true');
+    video.tabIndex = -1;
+    video.addEventListener('playing', () => { holder.dataset.video = 'on'; });
+    // Sem o arquivo ou sem decodificador: fica a imagem parada, e não tenta de novo nesta sessão.
+    video.addEventListener('error', () => { holder.dataset.video = 'off'; video.remove(); }, { once: true });
+    video.src = VIDEO.src;
+    holder.appendChild(video);
+    fitVideo(video, holder);
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => fitVideo(video, holder)).observe(holder);
+    return video;
+  }
+  /** Toca ou pausa o céu animado (pausa fora da página, com a janela escondida ou minimizada). */
+  function playPage(holder, on) {
+    const video = holder?.querySelector('video.space-video');
+    if (!video) return;
+    if (on && !document.hidden) { const attempt = video.play(); if (attempt?.catch) attempt.catch(() => {}); } else video.pause();
+  }
+
+  /** O céu da página inteira (atrás de tudo, parado enquanto o conteúdo rola), com o vídeo por cima quando dá. */
   function mountPage(holder, options = {}) {
     if (!holder || typeof document === 'undefined') return;
     const lite = Boolean(options.lite);
+    pageVideo(holder, lite);
     let art = holder.querySelector('canvas');
     if (art && art.dataset.lite === String(lite)) return;
-    if (!art) { art = document.createElement('canvas'); art.className = 'space-art page'; holder.appendChild(art); }
+    if (!art) { art = document.createElement('canvas'); art.className = 'space-art page'; holder.insertBefore(art, holder.firstChild); }
     art.dataset.lite = String(lite);
     art.dataset.key = '';
     const settings = { prefix: 'page', lite };
@@ -422,5 +497,5 @@
     art.redo = watch(art, 'page', settings);
   }
 
-  return { svg, mount, mountPage, LAYOUTS, rng };
+  return { svg, mount, mountPage, playPage, LAYOUTS, VIDEO, rng };
 });

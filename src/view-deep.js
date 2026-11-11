@@ -79,7 +79,12 @@
     requestAnimationFrame(() => veilLabels(target));
   }
   /** O céu da página inteira (src/space.js): desenhado na primeira vez que a verificação completa aparece. */
-  function pageSpace() { try { NexoSpace.mountPage(document.getElementById('space-page'), { lite: Boolean(Nexo.effectsLite) }); } catch { /* sem o céu, a página continua */ } }
+  function pageSpace() { try { NexoSpace.mountPage(document.getElementById('space-page'), { lite: Boolean(Nexo.effectsLite) }); spaceMotion(); } catch { /* sem o céu, a página continua */ } }
+  /** O céu animado só toca com o espaço na tela: na Análise, fora da introdução e com a janela visível. */
+  function spaceMotion() {
+    const on = document.body.classList.contains('deep-space') && Nexo.state.view === 'analysis' && !document.hidden;
+    try { NexoSpace.playPage(document.getElementById('space-page'), on); } catch { /* sem vídeo: a imagem parada fica */ }
+  }
   /**
    * Atrás do tipo e do nome de cada peça, o espaço vira um borrão (vidro fosco entre o fundo e a constelação): as
    * estrelas e a nebulosa se dissolvem em volta das letras, que parecem feitas da mesma luz. Medido no próprio SVG e
@@ -184,9 +189,9 @@
   }
 
   // Cada etapa tem a cor e o ícone da peça que ela examina; a de "por trás" é lilás e a de carga, cor de brasa.
-  const STAGE_LOOK = { parts: ['cpu', 'i-chip'], memory: ['memory', 'i-ram'], video: ['gpu', 'i-gpu'], disk: ['disk', 'i-disk'], windows: ['network', 'i-win'], behind: ['board', 'i-eye'], load: ['heat', 'i-bolt'] };
+  const STAGE_LOOK = { parts: ['cpu', 'i-chip'], memory: ['memory', 'i-ram'], video: ['gpu', 'i-gpu'], disk: ['disk', 'i-disk'], drivers: ['board', 'i-chip'], windows: ['windows', 'i-win'], network: ['network', 'i-net'], behind: ['board', 'i-eye'], load: ['heat', 'i-bolt'], cross: ['memory', 'i-spark'] };
   /** Nome da etapa na plataforma: no Linux a do sistema não se chama "Windows". */
-  const stageName = (stage) => (stage?.id === 'windows' && Nexo.platform === 'linux' ? 'Sistema e rede' : stage?.label || '');
+  const stageName = (stage) => (stage?.id === 'windows' && Nexo.platform === 'linux' ? 'Sistema' : stage?.label || '');
   function paintStages(index, status) {
     const box = document.getElementById('deep-stages');
     if (!box) return;
@@ -194,7 +199,7 @@
       box.innerHTML = STAGES.map((stage) => {
         let [node, ico] = STAGE_LOOK[stage.id] || ['windows', 'i-spark'];
         // No Linux a etapa do sistema não é "Windows": ícone da rede no lugar do logotipo.
-        if (stage.id === 'windows' && Nexo.platform === 'linux') { ico = 'i-net'; node = 'network'; }
+        if (stage.id === 'windows' && Nexo.platform === 'linux') { ico = 'i-disk'; node = 'windows'; }
         return `<li data-node="${node}" data-state="pending"><span class="stage-ico">${icon(ico)}</span>${el('span', 'stage-name', stageName(stage))}</li>`;
       }).join('');
       box.dataset.ready = Nexo.platform || 'win32';
@@ -277,21 +282,31 @@
     panel.dataset.mode = which;
     // O espaço preto toma a página só a partir da verificação completa (rodando, relatório, otimização).
     document.body.classList.toggle('deep-space', which !== 'intro');
-    if (which !== 'intro') pageSpace();
+    if (which !== 'intro') pageSpace(); else spaceMotion();
     requestAnimationFrame(() => { for (const svg of panel.querySelectorAll('.space-stage > .deep-sky')) veilLabels(svg); });
   }
 
   /* ---------------- Despertar da placa de vídeo (link PCIe sob carga) ---------------- */
   // Um shader pesado num canvas fora da tela por alguns segundos: a placa sai do repouso e o link PCIe sobe ao máximo.
+  /*
+   * Carga na placa de vídeo, a pedido da análise: um sombreador pesado desenhado fora da tela (nada aparece). Serve para
+   * acordar a placa (o link PCIe real só aparece com ela trabalhando) e, na verificação completa, para o teste de
+   * ~45 s em que o Nexo lê temperatura, clock e energia. ms = 0 para na hora (Cancelar).
+   */
+  let gpuLoad = null;
   function gpuWake(ms) {
+    if (gpuLoad) { gpuLoad.stop(); gpuLoad = null; }
+    const span = Math.min(60000, Math.max(0, Number(ms) || 0));
+    if (!span) return;
+    const size = span > 10000 ? 2048 : 1024;
     const canvas = document.createElement('canvas');
-    canvas.width = 1024; canvas.height = 1024;
+    canvas.width = size; canvas.height = size;
     const gl = canvas.getContext('webgl2', { powerPreference: 'high-performance', antialias: false }) || canvas.getContext('webgl', { powerPreference: 'high-performance' });
     if (!gl) return;
     const compile = (type, source) => { const shader = gl.createShader(type); gl.shaderSource(shader, source); gl.compileShader(shader); return shader; };
     const program = gl.createProgram();
     gl.attachShader(program, compile(gl.VERTEX_SHADER, 'attribute vec2 p;void main(){gl_Position=vec4(p,0.0,1.0);}'));
-    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, 'precision highp float;uniform float t;void main(){vec2 u=gl_FragCoord.xy/1024.0;float a=0.0;for(int i=0;i<160;i++){float f=float(i);a+=sin(u.x*f+t)*cos(u.y*f-t*0.7)/(1.0+f);}gl_FragColor=vec4(a,a*0.5,1.0-a,1.0);}'));
+    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, `precision highp float;uniform float t;void main(){vec2 u=gl_FragCoord.xy/${size}.0;float a=0.0;for(int i=0;i<160;i++){float f=float(i);a+=sin(u.x*f+t)*cos(u.y*f-t*0.7)/(1.0+f);}gl_FragColor=vec4(a,a*0.5,1.0-a,1.0);}`));
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return;
     gl.useProgram(program);
@@ -301,14 +316,19 @@
     const loc = gl.getAttribLocation(program, 'p');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    gl.viewport(0, 0, size, size);
     const time = gl.getUniformLocation(program, 't');
-    const until = performance.now() + Math.min(10000, Math.max(1000, Number(ms) || 6000));
+    const until = performance.now() + span;
+    const passes = span > 10000 ? 6 : 4;
+    let alive = true;
+    const stop = () => { if (!alive) return; alive = false; gl.getExtension('WEBGL_lose_context')?.loseContext(); };
     const frame = (now) => {
-      for (let i = 0; i < 4; i += 1) { gl.uniform1f(time, now / 1000 + i); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+      if (!alive) return;
+      for (let i = 0; i < passes; i += 1) { gl.uniform1f(time, now / 1000 + i); gl.drawArrays(gl.TRIANGLES, 0, 3); }
       gl.finish();
-      if (now < until) requestAnimationFrame(frame);
-      else gl.getExtension('WEBGL_lose_context')?.loseContext();
+      if (now < until) requestAnimationFrame(frame); else stop();
     };
+    gpuLoad = { stop };
     requestAnimationFrame(frame);
   }
 
@@ -703,7 +723,7 @@
 
   async function start() {
     if (running) return;
-    if (!bridge?.runDeepAnalysis) { showToast('A análise profunda está disponível no aplicativo desktop.'); return; }
+    if (!bridge?.runDeepAnalysis) { showToast('A verificação completa está disponível no aplicativo desktop.'); return; }
     running = true;
     panel.scrollIntoView({ behavior: calm() ? 'auto' : 'smooth', block: 'start' });
     factsList.innerHTML = '';
@@ -722,11 +742,11 @@
       }
       renderReport(report);
       const bad = report.findings.filter((item) => item.severity === 'alta' || item.severity === 'media').length;
-      recordActivity('Análise profunda', bad ? `${bad} ${bad > 1 ? 'pontos' : 'ponto'} para ajustar · nota ${scoreOf(report)}` : `nada importante · nota ${scoreOf(report)}`);
-      showToast(bad ? `Análise profunda concluída: ${bad} ${bad > 1 ? 'pontos' : 'ponto'} para ajustar.` : 'Análise profunda concluída: nada importante para resolver.');
+      recordActivity('Verificação completa', bad ? `${bad} ${bad > 1 ? 'pontos' : 'ponto'} para ajustar · nota ${scoreOf(report)}` : `nada importante · nota ${scoreOf(report)}`);
+      showToast(bad ? `Verificação completa concluída: ${bad} ${bad > 1 ? 'pontos' : 'ponto'} para ajustar.` : 'Verificação completa concluída: nada importante para resolver.');
       Nexo.emit?.('deep-analysis', report);
     } catch (error) {
-      showToast(error.message || 'Não consegui terminar a análise profunda.');
+      showToast(error.message || 'Não consegui terminar a verificação completa.');
       backToRest();
     } finally {
       running = false;
@@ -796,7 +816,9 @@
   });
   bridge?.onAnalysisProgress?.((progress) => { if (running || progress?.status === 'running') renderProgress(progress); });
   bridge?.onGpuWake?.((payload) => { try { gpuWake(payload?.ms); } catch { /* sem WebGL: o link fica o do repouso */ } });
-  Nexo.on('view', (view) => { if (view === 'analysis') loadLast(); });
+  Nexo.on('view', (view) => { if (view === 'analysis') loadLast(); spaceMotion(); });
+  document.addEventListener('visibilitychange', spaceMotion);
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => { if (document.getElementById('space-page')?.querySelector('canvas')) pageSpace(); });
   // Modo Leve ligado ou desligado: o fundo troca (com ou sem a textura da nebulosa).
   Nexo.on('effects', () => { if (document.getElementById('space-page')?.dataset.lite) pageSpace(); for (const [id, kind] of [['deep-intro-sky', 'mini'], ['deep-sky', 'sky'], ['deep-report-sky', 'chart']]) { const target = document.getElementById(id); if (target?.dataset.ready || id === 'deep-report-sky') space(target, kind); } });
   if (Nexo.state.view === 'analysis') loadLast();

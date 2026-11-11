@@ -21,7 +21,7 @@
 
   // Só nomes fixos entram na contagem: as telas do app e os recursos desta lista (nunca o detalhe de uma atividade).
   const VIEWS = new Set(['home', 'analysis', 'hardware', 'maintenance', 'optimize', 'sessions', 'library', 'atlas', 'lab', 'activity', 'settings', 'updates']);
-  const FEATURES = new Set(['analise-inteligente', 'analise-profunda', 'verificacao-sfc', 'limpeza-automatica', 'raio-x-do-pc', 'experimento-de-energia', 'teste-com-reinicio', 'sincronizacao', 'plano-de-energia', 'leitura-completa-de-sensores',
+  const FEATURES = new Set(['analise-inteligente', 'analise-profunda', 'verificacao-completa', 'otimizar-este-pc', 'verificacao-sfc', 'limpeza-automatica', 'raio-x-do-pc', 'experimento-de-energia', 'teste-com-reinicio', 'sincronizacao', 'plano-de-energia', 'leitura-completa-de-sensores',
     'sessao-de-risco-laboratorio', 'sessao-de-observacao', 'jogo-aberto', 'instalacao-pedida', 'papel-de-parede', 'conta-google-conectada', 'dados-locais', 'limpeza-segura', 'otimizacao-de-unidade', 'acesso-ao-fps-liberado', 'diagnostico-de-rede', 'correcao-de-rede']);
   const UI = new Set(['busca', 'filtro', 'fixar', 'acao', 'expandir', 'paleta', 'novidades', 'novidades-sozinha', 'meteoros', 'tour']);
 
