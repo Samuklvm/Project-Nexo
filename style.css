@@ -1338,3 +1338,5 @@ body.lite .deep-facts li.fresh { animation: none; }
 .deep-ok { --card-dot: #6ef2c2; }
 .deep-ledger li[data-impact="baixo"] .bar i, .deep-ledger li[data-impact="presenca"] .bar i, .deep-ledger li[data-impact="memoria"] .bar i { background: linear-gradient(90deg, #7f9bff, #c4a1ff); }
 .deep-kicker { background: linear-gradient(90deg, #5ad7ff, #ff8ce8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.deep-mini .deep-star:focus-visible { outline: none; }
+.deep-mini .deep-star:focus-visible .deep-halo, .deep-mini .deep-star:hover .deep-halo { fill: rgba(var(--node-rgb), 0.3); }

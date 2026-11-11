@@ -414,9 +414,10 @@
     let story = { identity: '', verdict: '', good: null };
     try { story = NexoDeep.narrative(report.profile || {}, findings); } catch { /* relatório antigo sem perfil */ }
     const ring = 2 * Math.PI * 42;
+    const footnote = headline(main, more, ok, count) + ' · ' + stamp(report, fromDisk);
     reportBox.innerHTML = `<div class="deep-head">
         <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(report.score)}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-bg" cx="50" cy="50" r="42" /><circle class="ring" cx="50" cy="50" r="42" stroke-dasharray="${ring.toFixed(1)}" stroke-dashoffset="${ring.toFixed(1)}" data-target="${(ring * (1 - report.score / 100)).toFixed(1)}" /></svg><strong>${report.score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
-        <div class="deep-head-text"><span class="deep-kicker">Seu PC, entendido</span>${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${el('p', 'deep-verdict', story.verdict)}${story.good ? el('p', 'deep-good', story.good) : ''}${el('small', 'muted', `${headline(main, more, ok, count)} · ${stamp(report, fromDisk)}`)}</div>
+        <div class="deep-head-text"><span class="deep-kicker">Seu PC, entendido</span>${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${el('p', 'deep-verdict', story.verdict)}${story.good ? el('p', 'deep-good', story.good) : ''}${el('small', 'muted', footnote)}</div>
         <div class="deep-head-side"><svg class="deep-sky deep-mini" id="deep-report-sky" viewBox="0 0 640 280" role="img" aria-label="Constelação do seu PC: peças em amarelo têm algo para ajustar; toque numa para ver"></svg><button class="btn sm primary" type="button" data-deep-again="1">Analisar de novo</button></div>
       </div>
       <div class="deep-grid">
@@ -436,6 +437,12 @@
   function finishReport(findings) {
     const mini = document.getElementById('deep-report-sky');
     buildSky(mini);
+    // Cada estrela do relatório leva à peça em "Seu PC" (mouse, toque ou teclado).
+    for (const star of mini.querySelectorAll('.deep-star')) {
+      star.setAttribute('tabindex', '0');
+      star.setAttribute('role', 'button');
+      star.setAttribute('aria-label', `Ver ${star.querySelector('.deep-label')?.textContent || 'peça'} em Seu PC`);
+    }
     const nodes = Object.fromEntries(NODES.map((item) => [item.id, 'done']));
     for (const item of findings) if ((item.severity === 'alta' || item.severity === 'media') && AREA_NODE[item.area]) nodes[AREA_NODE[item.area]] = 'warn';
     paintStates(mini, nodes);
@@ -511,6 +518,9 @@
   Nexo.runDeepAnalysis = start;
   document.getElementById('deep-start')?.addEventListener('click', start);
   document.getElementById('deep-cancel')?.addEventListener('click', () => { bridge?.cancelDeepAnalysis?.(); setText('deep-action', 'cancelando…'); });
+  reportBox.addEventListener('keydown', (event) => {
+    if ((event.key === 'Enter' || event.key === ' ') && event.target.closest?.('.deep-star')) { event.preventDefault(); event.target.closest('.deep-star').dispatchEvent(new MouseEvent('click', { bubbles: true })); }
+  });
   reportBox.addEventListener('click', (event) => {
     const star = event.target.closest('.deep-star');
     if (star) {

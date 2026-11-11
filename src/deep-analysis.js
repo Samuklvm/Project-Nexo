@@ -708,9 +708,10 @@
     const gpuName = gpu ? (gpu.integrated ? `o vídeo integrado (${gpu.name})` : `uma ${gpu.name}`) : null;
     const kind = profile.kindLabel ? profile.kindLabel.charAt(0).toUpperCase() + profile.kindLabel.slice(1) : 'Um PC';
     const parts = [mem, gpuName].filter(Boolean);
-    const identity = `${kind} com ${cpuName}${arch ? ` (${arch})` : ''}${boardName ? ' ' + boardName : ''}${parts.length ? ', ' + joinPt(parts) : ''}.`;
+    const identity = `${kind} com ${cpuName}${arch ? ' (' + arch + ')' : ''}${boardName ? ' ' + boardName : ''}${parts.length ? ', ' + joinPt(parts) : ''}.`;
     const serious = findings.filter((item) => item.severity === 'alta' || item.severity === 'media');
-    const verdict = serious.length ? `O que mais segura ele hoje: ${joinPt(serious.slice(0, 2).map((item) => lowerFirst(item.title)))}${serious.length > 2 ? ` (e mais ${serious.length - 2})` : ''}.` : 'Nada importante segurando ele agora.';
+    const more = serious.length > 2 ? ' (e mais ' + (serious.length - 2) + ')' : '';
+    const verdict = serious.length ? `O que mais segura ele hoje: ${joinPt(serious.slice(0, 2).map((item) => lowerFirst(item.title)))}${more}.` : 'Nada importante segurando ele agora.';
     const ok = findings.filter((item) => item.severity === 'ok').slice(0, 3).map((item) => lowerFirst(item.title));
     return { identity, verdict, good: ok.length ? `Já está certo: ${joinPt(ok)}.` : null };
   }
