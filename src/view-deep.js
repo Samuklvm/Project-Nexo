@@ -53,7 +53,7 @@
     const edges = EDGES.map(([a, b]) => `<line class="deep-edge" data-a="${a}" data-b="${b}" x1="${POS[a][0]}" y1="${POS[a][1]}" x2="${POS[b][0]}" y2="${POS[b][1]}" pathLength="1" />`).join('');
     // Nebulosa de cada peça: acende junto com a estrela (âmbar quando ela tem algo para ajustar).
     const prefix = target.id || 'sky';
-    const defs = `<defs>${veil(`${prefix}-neb`, '#9fb8ff', 0.2)}${veil(`${prefix}-neb-warn`, '#ffc98a', 0.2)}</defs>`;
+    const defs = '<defs>' + veil(prefix + '-neb', '#9fb8ff', 0.2) + veil(prefix + '-neb-warn', '#ffc98a', 0.2) + '</defs>';
     const stars = NODES.map((item) => {
       const [x, y] = POS[item.id];
       return `<g class="deep-star" data-node="${item.id}" data-state="pending" transform="translate(${x} ${y})">

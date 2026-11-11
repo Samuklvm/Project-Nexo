@@ -72,6 +72,94 @@
     };
   }
 
+  /** Core i7/i9 da plataforma entusiasta (X79, X99, X299): soquete grande e memória em 4 canais. */
+  function intelHedt(model) {
+    const list = [
+      [/^(3820|3930K|3960X|3970X)$/, 'Sandy Bridge-E', 'LGA2011', ['DDR3'], 2011],
+      [/^(4820K|4930K|4960X)$/, 'Ivy Bridge-E', 'LGA2011', ['DDR3'], 2013],
+      [/^(5820K|5930K|5960X)$/, 'Haswell-E', 'LGA2011-3', ['DDR4'], 2014],
+      [/^(6800K|6850K|6900K|6950X)$/, 'Broadwell-E', 'LGA2011-3', ['DDR4'], 2016],
+      [/^(7640X|7740X)$/, 'Kaby Lake-X', 'LGA2066', ['DDR4'], 2017],
+      [/^7\d{3}XE?$/, 'Skylake-X', 'LGA2066', ['DDR4'], 2017],
+      [/^9\d{3}XE?$/, 'Skylake-X', 'LGA2066', ['DDR4'], 2018],
+      [/^10\d{3}XE?$/, 'Cascade Lake-X', 'LGA2066', ['DDR4'], 2019]
+    ];
+    const hit = list.find(([pattern]) => pattern.test(model));
+    return hit ? { arch: hit[1], socket: hit[2], ddr: hit[3], year: hit[4] } : null;
+  }
+
+  /** Xeon: os de estação de trabalho e os E5 v1–v4 das placas X79/X99 (muito comuns montados com placa chinesa). */
+  function decodeXeon(name) {
+    const base = { family: 'Xeon', segment: 'workstation', igpu: false };
+    let m = name.match(/\bE5-(\d{4})[A-Z]?(?:\s*(?:L|W))?\s*(?:v(\d))?/i);
+    if (m) {
+      const v = Number(m[2] || 1);
+      const gen = { 1: ['Sandy Bridge-EP', 'LGA2011', ['DDR3'], 2012], 2: ['Ivy Bridge-EP', 'LGA2011', ['DDR3'], 2013], 3: ['Haswell-EP', 'LGA2011-3', ['DDR4'], 2014], 4: ['Broadwell-EP', 'LGA2011-3', ['DDR4'], 2016] }[v];
+      if (gen) return { ...base, model: `E5-${m[1]}${m[2] ? ' v' + m[2] : ''}`, generationLabel: `E5 v${v}`, architecture: gen[0], socket: gen[1], memoryTypes: gen[2], memoryChannels: 4, pcie: 3, year: gen[3], known: true, xeonE5: true, notes: ['memória em 4 canais: use um pente em cada canal'] };
+    }
+    m = name.match(/\bE3-(\d{4})[A-Z]?\s*(?:v(\d))?/i);
+    if (m) {
+      const v = Number(m[2] || 1);
+      const gen = { 1: ['Sandy Bridge', 'LGA1155', ['DDR3'], 2011], 2: ['Ivy Bridge', 'LGA1155', ['DDR3'], 2012], 3: ['Haswell', 'LGA1150', ['DDR3'], 2013], 4: ['Broadwell', 'LGA1150', ['DDR3'], 2015], 5: ['Skylake', 'LGA1151', ['DDR4'], 2015], 6: ['Kaby Lake', 'LGA1151', ['DDR4'], 2017] }[v];
+      if (gen) return { ...base, model: `E3-${m[1]}${m[2] ? ' v' + m[2] : ''}`, generationLabel: `E3 v${v}`, architecture: gen[0], socket: gen[1], memoryTypes: gen[2], year: gen[3], known: true, igpu: /5$/.test(m[1]) ? true : null };
+    }
+    m = name.match(/\b(E|W)-(\d)(\d)(\d{2})([A-Z]{0,2})\b/i);
+    if (m) {
+      const line = `${m[1].toUpperCase()}-${m[2]}${m[3]}`;
+      const table = {
+        'E-21': ['Coffee Lake', 'LGA1151 v2', 2018], 'E-22': ['Coffee Lake', 'LGA1151 v2', 2019], 'E-23': ['Rocket Lake', 'LGA1200', 2021], 'E-24': ['Raptor Lake', 'LGA1700', 2023],
+        'W-12': ['Comet Lake', 'LGA1200', 2020], 'W-13': ['Rocket Lake', 'LGA1200', 2021], 'W-21': ['Skylake-W', 'LGA2066', 2017], 'W-22': ['Cascade Lake-W', 'LGA2066', 2019],
+        'W-24': ['Sapphire Rapids', 'LGA4677', 2023], 'W-25': ['Sapphire Rapids', 'LGA4677', 2024], 'W-32': ['Cascade Lake-W', 'LGA3647', 2019], 'W-34': ['Sapphire Rapids', 'LGA4677', 2023], 'W-35': ['Sapphire Rapids', 'LGA4677', 2024]
+      };
+      const gen = table[line];
+      if (gen) return { ...base, model: `${m[1].toUpperCase()}-${m[2]}${m[3]}${m[4]}${m[5].toUpperCase()}`, generationLabel: line.startsWith('E') ? 'Xeon E' : 'Xeon W', architecture: gen[0], socket: gen[1], memoryTypes: ['DDR4'], year: gen[2], known: true };
+    }
+    m = name.match(/\b(Platinum|Gold|Silver|Bronze)\s+(\d)(\d)(\d{2})([A-Z]{0,2})\b/i);
+    if (m) {
+      const gen = { 1: ['Skylake-SP', 2017], 2: ['Cascade Lake-SP', 2019], 3: ['Ice Lake-SP', 2021], 4: ['Sapphire Rapids', 2023], 5: ['Emerald Rapids', 2023] }[m[3]];
+      return { ...base, segment: 'servidor', model: `${m[1]} ${m[2]}${m[3]}${m[4]}${m[5].toUpperCase()}`, generationLabel: 'Xeon Scalable', architecture: gen ? gen[0] : null, year: gen ? gen[1] : null, known: Boolean(gen) };
+    }
+    return { ...base, model: (name.match(/Xeon(?:\(R\))?\s+(?:CPU\s+)?(.+?)(?:\s+(?:CPU|@).*)?$/i) || [])[1] || null, known: false };
+  }
+
+  /** Pentium e Celeron: os de desktop (série G) pela numeração e os de baixo consumo (J, N) pela família. */
+  function decodeIntelEntry(name) {
+    const line = (name.match(/Pentium|Celeron/i) || ['Pentium'])[0];
+    const tier = (name.match(/(?:Pentium|Celeron)(?:\(R\))?\s+(Gold|Silver)/i) || [])[1] || '';
+    const family = [line[0].toUpperCase() + line.slice(1).toLowerCase(), tier].filter(Boolean).join(' ');
+    const m = name.match(/\b([GJN])\s?(\d{4})([A-Z]{0,2})\b/i) || name.match(/\b()(\d{4})([UY])\b/i) || name.match(/(?:Pentium|Celeron|Gold|Silver)(?:\(R\))?\s+()(\d{4})\b()/i);
+    const base = { family, model: null, segment: 'entrada', igpu: true, known: false };
+    if (!m) return base;
+    const letter = m[1].toUpperCase();
+    const n = Number(m[2]);
+    const model = `${letter}${m[2]}${(m[3] || '').toUpperCase()}`;
+    const make = (architecture, extra) => ({ ...base, model, architecture, known: true, ...extra });
+    if (letter === 'G') {
+      if (n >= 6900) return make('Alder Lake', { segment: 'desktop', socket: 'LGA1700', memoryTypes: ['DDR4', 'DDR5'], year: 2022 });
+      if (n >= 5900) return make('Comet Lake', { segment: 'desktop', socket: 'LGA1200', memoryTypes: ['DDR4'], year: 2020 });
+      if (n >= 4900) return make('Coffee Lake', { segment: 'desktop', socket: 'LGA1151 v2', memoryTypes: ['DDR4'], year: 2018 });
+      if (n >= 4400) return make('Skylake / Kaby Lake', { segment: 'desktop', socket: 'LGA1151', memoryTypes: ['DDR4', 'DDR3L'], year: 2016 });
+      if (n >= 3200) return make('Haswell', { segment: 'desktop', socket: 'LGA1150', memoryTypes: ['DDR3'], year: 2014 });
+      if (n >= 2000) return make('Sandy / Ivy Bridge', { segment: 'desktop', socket: 'LGA1155', memoryTypes: ['DDR3'], year: 2012 });
+      return { ...base, model };
+    }
+    const lowPower = (architecture, year, memoryTypes) => make(architecture, { segment: letter === 'J' ? 'minipc' : 'laptop', year, memoryTypes, notes: ['processador de baixo consumo soldado na placa'] });
+    if (letter === 'J' || letter === 'N') {
+      if (n >= 6000 && letter === 'J') return lowPower('Elkhart Lake', 2021, ['DDR4']);
+      if ((n >= 4500 && n < 5000) || (n >= 5100 && n < 5200) || (n >= 6000 && n < 7000)) return lowPower('Jasper Lake', 2021, ['DDR4', 'LPDDR4X']);
+      if ((n >= 4000 && n < 4200) || (n >= 5000 && n < 5100)) return lowPower('Gemini Lake', 2017, ['DDR4', 'LPDDR4']);
+      if (n >= 3300 && n < 3500) return lowPower('Apollo Lake', 2016, ['DDR3L', 'LPDDR4']);
+      if (n >= 3000 && n < 3300) return lowPower('Braswell', 2015, ['DDR3L']);
+      if (n >= 1800 && n < 3000) return lowPower('Bay Trail', 2013, ['DDR3L']);
+      return { ...base, model };
+    }
+    // Pentium Gold 7505/8505, Celeron 7305 (notebook) e Pentium 4415U.
+    if (n >= 8500 && n < 8600) return make('Alder Lake', { segment: 'laptop', year: 2022 });
+    if (n >= 7300 && n < 7600) return make('Tiger Lake', { segment: 'laptop', year: 2020 });
+    if (n >= 4400 && n < 4500) return make('Kaby Lake', { segment: 'laptop', year: 2017 });
+    return { ...base, model };
+  }
+
   function decodeIntel(name, cores, threads) {
     const out = { vendor: 'Intel' };
     let m = name.match(/Core\s+Ultra\s+X?([3579])\s+(\d)(\d{2})([A-Z]{0,2})\b/i);
@@ -106,6 +194,12 @@
       return out;
     }
     m = name.match(/\bi([3579])-(\d{3,5})([A-Z]{0,2}\d?)\b/i);
+    const hedt = m ? intelHedt(`${m[2]}${m[3].toUpperCase()}`) : null;
+    if (m && hedt) {
+      Object.assign(out, { family: `Core i${m[1]}`, model: `${m[2]}${m[3].toUpperCase()}`, generationLabel: 'série X (plataforma entusiasta)', architecture: hedt.arch, segment: 'desktop', hedt: true, socket: hedt.socket,
+        memoryTypes: hedt.ddr, memoryChannels: 4, pcie: 3, hybrid: false, unlocked: true, igpu: false, year: hedt.year, known: true, notes: ['memória em 4 canais: use um pente em cada canal (4 ou 8 pentes)'] });
+      return out;
+    }
     if (m) {
       const digits = m[2];
       const generation = digits.length === 3 ? 1 : digits.startsWith('1') && /^1[0-4]/.test(digits) ? Number(digits.slice(0, 2)) : Number(digits[0]);
@@ -129,9 +223,26 @@
       if ((generation === 13 || generation === 14) && !mobile && suffix !== 'T' && (m[1] === '7' || m[1] === '9' || /K/.test(suffix))) out.raptorRisk = true;
       return out;
     }
-    if (/Xeon/i.test(name)) Object.assign(out, { family: 'Xeon', model: (name.match(/Xeon\s+(.+)$/i) || [])[1] || null, segment: 'workstation', known: false });
-    else if (/Pentium|Celeron|Atom/i.test(name)) Object.assign(out, { family: (name.match(/Pentium|Celeron|Atom/i) || [''])[0], model: (name.match(/(?:Pentium|Celeron|Atom)(?:\s+(?:Gold|Silver))?\s+([A-Z]?\d{3,5}[A-Z]?)/i) || [])[1] || null, segment: 'entrada', known: false });
-    else if (/Core.?2/i.test(name)) Object.assign(out, { family: 'Core 2', generationLabel: 'anterior à 1ª geração', year: 2006, memoryTypes: ['DDR2', 'DDR3'], known: true });
+    if (/Xeon/i.test(name)) return Object.assign(out, decodeXeon(name));
+    if (/Pentium|Celeron/i.test(name)) return Object.assign(out, decodeIntelEntry(name));
+    m = name.match(/\bCore\s*(?:\(TM\))?\s*m([357])?-?\s*(\d)(Y\d{2}|\d{3}Y)\b/i);
+    if (m) {
+      const generation = Number(m[2]);
+      const info = INTEL_GENS[generation];
+      return Object.assign(out, { family: m[1] ? `Core m${m[1]}` : 'Core M', model: `${m[2]}${m[3].toUpperCase()}`, generation, generationLabel: `${generation}ª geração`, architecture: info ? info.mobileArch || info.arch : null, segment: 'laptop', igpu: true, year: info?.year || null, known: Boolean(info), notes: ['processador de baixíssimo consumo (sem ventoinha em muitos modelos)'] });
+    }
+    m = name.match(/Atom.*?\b(x[357]-)?([CZEN]\d{4})\b/i);
+    if (/Atom/i.test(name)) {
+      const model = m ? `${m[1] || ''}${m[2]}`.toUpperCase().replace(/^X/, 'x') : null;
+      let architecture = null;
+      if (m && /^Z8/i.test(m[2])) architecture = 'Cherry Trail';
+      else if (m && /^Z3/i.test(m[2])) architecture = 'Bay Trail';
+      return Object.assign(out, { family: 'Atom', model, architecture, segment: 'entrada', igpu: true, year: architecture === 'Cherry Trail' ? 2015 : architecture ? 2013 : null, known: Boolean(architecture) });
+    }
+    if (/Core.?2/i.test(name)) {
+      const kind = (name.match(/Core.?2\s*(Quad|Duo|Extreme|Solo)/i) || [])[1];
+      Object.assign(out, { family: kind ? `Core 2 ${kind[0].toUpperCase()}${kind.slice(1).toLowerCase()}` : 'Core 2', model: (name.match(/\b([QEXTPLSU]X?\d{4})\b/) || [])[1] || null, generationLabel: 'anterior à 1ª geração', year: 2006, memoryTypes: ['DDR2', 'DDR3'], known: true });
+    }
     return out;
   }
 
@@ -188,7 +299,7 @@
 
   function decodeAmd(name) {
     let m = name.match(/Ryzen\s+AI\s+(?:(Max\+?)\s+(?:PRO\s+)?|([579])\s+(?:PRO\s+)?(HX\s+)?)(\d{3})/i);
-    if (m) return { vendor: 'AMD', family: m[1] ? 'Ryzen AI Max' : `Ryzen AI ${m[2]}`, model: `${m[3] ? 'HX ' : ''}${m[4]}`, generationLabel: 'Ryzen AI 300', architecture: 'Zen 5', zen: 'zen5', segment: 'laptop', igpu: true, hybrid: false, year: 2024, known: true, memoryTypes: ['DDR5', 'LPDDR5X'], pcie: 4 };
+    if (m) return { vendor: 'AMD', family: m[1] ? `Ryzen AI ${m[1].replace(/max/i, 'Max')}` : `Ryzen AI ${m[2]}`, model: `${m[3] ? 'HX ' : ''}${m[4]}`, generationLabel: 'Ryzen AI 300', architecture: 'Zen 5', zen: 'zen5', segment: 'laptop', igpu: true, hybrid: false, year: 2024, known: true, memoryTypes: ['DDR5', 'LPDDR5X'], pcie: 4 };
     m = name.match(/Ryzen\s+Z(\d)\s*(Extreme|Go)?/i);
     if (m) return { vendor: 'AMD', family: `Ryzen Z${m[1]}`, model: m[2] || null, generationLabel: 'portátil de jogos', architecture: m[1] === '1' ? 'Zen 4' : null, segment: 'handheld', igpu: true, hybrid: false, known: m[1] === '1', year: m[1] === '1' ? 2023 : 2025 };
     m = name.match(/Threadripper\s+(?:PRO\s+)?(\d{4})(WX|X)?/i);
@@ -199,7 +310,30 @@
     m = name.match(/Ryzen\s+([3579])\s+(?:PRO\s+)?(\d{4})([A-Z0-9]{0,4})\b/i);
     if (m) return decodeRyzen(m[1], m[2], m[3]);
     if (/\bFX\b|FX-\d{4}/i.test(name)) return { vendor: 'AMD', family: 'FX', model: (name.match(/FX-?(\d{4})/i) || [])[1] || null, architecture: 'Bulldozer / Piledriver', socket: 'AM3+', memoryTypes: ['DDR3'], pcie: 2, segment: 'desktop', igpu: false, year: 2012, known: true };
-    if (/Athlon|\bA\d{1,2}-\d{4}|Sempron|Phenom/i.test(name)) return { vendor: 'AMD', family: (name.match(/Athlon|Sempron|Phenom|A\d{1,2}/i) || [''])[0], model: null, segment: 'entrada', known: false, igpu: /with Radeon|Vega/i.test(name) || null };
+    m = name.match(/Custom APU\s+(0405|0932)/i);
+    if (m) return { vendor: 'AMD', family: 'Custom APU', model: m[1], generationLabel: m[1] === '0932' ? 'Steam Deck OLED' : 'Steam Deck', architecture: 'Zen 2', zen: 'zen2', segment: 'handheld', igpu: true, hybrid: false, memoryTypes: ['LPDDR5'], year: m[1] === '0932' ? 2023 : 2022, known: true, notes: ['memória soldada na placa'] };
+    m = name.match(/Athlon\s+(?:(Silver|Gold|PRO)\s+)?(\d{3,4})(GE|G|U|C|E)?\b/i);
+    if (m) {
+      const n = Number(m[2]);
+      const suffix = (m[3] || '').toUpperCase();
+      const model = `${m[1] ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() + ' ' : ''}${m[2]}${suffix}`;
+      if (/^G/.test(suffix)) return { vendor: 'AMD', family: 'Athlon', model, generationLabel: 'Athlon com vídeo Vega', architecture: n >= 3000 ? 'Zen+' : 'Zen', zen: n >= 3000 ? 'zen+' : 'zen', segment: 'desktop', socket: 'AM4', memoryTypes: ['DDR4'], pcie: 3, igpu: true, hybrid: false, year: n >= 3000 ? 2019 : 2018, known: true };
+      if (n >= 7000) return { vendor: 'AMD', family: 'Athlon', model, architecture: 'Zen 2', zen: 'zen2', segment: 'laptop', igpu: true, hybrid: false, memoryTypes: ['LPDDR5'], year: 2022, known: true };
+      if (n >= 3000) return { vendor: 'AMD', family: 'Athlon', model, architecture: 'Zen', zen: 'zen', segment: 'laptop', igpu: true, hybrid: false, memoryTypes: ['DDR4'], year: 2020, known: true };
+      return { vendor: 'AMD', family: 'Athlon', model, segment: 'entrada', known: false };
+    }
+    m = name.match(/\bA(4|6|8|9|10|12)-(\d)(\d{3})([A-Z]?)/i);
+    if (m) {
+      const series = Number(m[2]);
+      const suffix = m[4].toUpperCase();
+      const number = Number(`${m[2]}${m[3]}`);
+      const gen = { 3: ['Llano', 'FM1', ['DDR3'], 2011], 5: ['Trinity', 'FM2', ['DDR3'], 2012], 6: ['Richland', 'FM2', ['DDR3'], 2013], 7: ['Kaveri / Godavari', 'FM2+', ['DDR3'], 2014], 9: ['Bristol Ridge', 'AM4', ['DDR4'], 2016] }[series];
+      const desktop = suffix === 'K' || (series === 9 && number >= 9500 && number < 9900) || (series === 7 && [7600, 7650, 7670, 7700, 7800, 7850, 7860, 7870, 7890].includes(number));
+      return { vendor: 'AMD', family: `A${m[1]}`, model: `${m[2]}${m[3]}${suffix}`, generationLabel: 'APU série A', architecture: gen ? gen[0] : null, segment: desktop ? 'desktop' : 'entrada', socket: desktop && gen ? gen[1] : null, memoryTypes: gen ? gen[2] : null, igpu: true, hybrid: false, year: gen ? gen[3] : null, known: Boolean(gen) };
+    }
+    m = name.match(/(Phenom|Athlon)\(?(?:tm)?\)?\s+II\s+(X\d\s+\d{3,4}T?)/i);
+    if (m) return { vendor: 'AMD', family: `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} II`, model: m[2], architecture: 'K10', segment: 'desktop', socket: 'AM3', memoryTypes: ['DDR2', 'DDR3'], igpu: false, year: 2009, known: true };
+    if (/Athlon|Sempron|Phenom/i.test(name)) return { vendor: 'AMD', family: (name.match(/Athlon|Sempron|Phenom/i) || [''])[0], model: null, segment: 'entrada', known: false, igpu: /with Radeon|Vega/i.test(name) || null };
     m = name.match(/EPYC\s+(?:Embedded\s+)?([0-9A-Z]{4,5}[A-Z]?)/i);
     if (m) {
       // O último dígito do número diz a geração (7xx1 Naples … 9xx5 Turin); vale também para os modelos de nuvem (9V45).
@@ -224,7 +358,11 @@
     // AMD primeiro: "64-Cores" e "Compute Cores" no nome de um AMD não podem cair na regra da Intel.
     if (/AMD|Ryzen|Athlon|Threadripper|EPYC|Radeon/i.test(name) || /amd/i.test(raw.manufacturer || '')) decoded = decodeAmd(name);
     else if (/Intel|\bCore\b(?!s)|Xeon|Pentium|Celeron|Atom/i.test(name) || /intel/i.test(raw.manufacturer || '')) decoded = decodeIntel(name, cores, threads);
-    else if (/Apple|Snapdragon|Qualcomm|ARM|Cortex/i.test(name)) decoded = { vendor: /Apple/i.test(name) ? 'Apple' : 'Qualcomm', segment: 'laptop', known: false, arm: true };
+    else if (/Apple|Snapdragon|Qualcomm|ARM|Cortex/i.test(name)) {
+      const snap = name.replace(/\((R|TM)\)/gi, '').match(/Snapdragon\s*(X\d?\s+(?:Elite|Plus)|X\b|8cx\s+Gen\s*\d|7c\+?\s+Gen\s*\d|8c|7c)/i);
+      const model = (name.match(/\b(X\d[EP]\d{2}\d*)\b/) || [])[1] || null;
+      decoded = { vendor: /Apple/i.test(name) ? 'Apple' : 'Qualcomm', family: snap ? `Snapdragon ${snap[1].replace(/\s+/g, ' ')}` : null, model, architecture: /Oryon|X\d?\s+(Elite|Plus)/i.test(name) ? 'Oryon' : null, segment: 'laptop', known: Boolean(snap), arm: true, igpu: true };
+    }
     else decoded = { vendor: str(raw.manufacturer, 40) || null, known: false };
     // Soquete informado pelo sistema só vale se parecer soquete ("None", "CPU 1", "U3E1" ficam de fora).
     const reported = /^(FC)?LGA\s?\d{3,4}|^AM[2-5]\+?$|^sTRX?\d|^sWRX\d|^TR4$|^SP[3-6]$|^FM[12]\+?$/i.test(str(raw.socket, 30)) ? str(raw.socket, 30) : null;
@@ -268,13 +406,16 @@
     C('WRX90', 'AMD', 'sTR5', 'DDR5 (8 canais)', 'PCIe 5.0', true, true, 'Threadripper PRO 7000WX e 9000WX'),
     C('990FX', 'AMD', 'AM3+', 'DDR3', 'PCIe 2.0', true, true, 'FX e Phenom II'),
     C('970', 'AMD', 'AM3+', 'DDR3', 'PCIe 2.0', true, true, 'FX e Phenom II'),
+    C('990X', 'AMD', 'AM3+', 'DDR3', 'PCIe 2.0', true, true, 'FX e Phenom II'),
+    C('760G', 'AMD', 'AM3+', 'DDR3', 'PCIe 2.0', false, true, 'FX, Phenom II e Athlon II', 'placa de entrada: FX de 8 núcleos podem esquentar os reguladores e perder clock'),
+    C('880G', 'AMD', 'AM3+', 'DDR3', 'PCIe 2.0', true, true, 'FX, Phenom II e Athlon II'),
     // Intel
     ...['H61', 'B65', 'H67', 'P67', 'Z68', 'Q67'].map((id) => C(id, 'Intel', 'LGA1155', 'DDR3', 'PCIe 2.0', id === 'P67' || id === 'Z68', id === 'P67' || id === 'Z68', '2ª e 3ª geração')),
     ...['B75', 'H77', 'Z75', 'Z77', 'Q77'].map((id) => C(id, 'Intel', 'LGA1155', 'DDR3', 'PCIe 3.0 com 3ª geração', id.startsWith('Z'), id.startsWith('Z'), '2ª e 3ª geração')),
     ...['H81', 'B85', 'H87', 'Z87', 'Q87'].map((id) => C(id, 'Intel', 'LGA1150', 'DDR3', 'PCIe 3.0', id === 'Z87', id === 'Z87', '4ª geração')),
     ...['H97', 'Z97'].map((id) => C(id, 'Intel', 'LGA1150', 'DDR3', 'PCIe 3.0', id === 'Z97', id === 'Z97', '4ª e 5ª geração')),
-    C('X79', 'Intel', 'LGA2011', 'DDR3 (4 canais)', 'PCIe 3.0', true, true, 'Core i7 série X (Sandy/Ivy Bridge-E)'),
-    C('X99', 'Intel', 'LGA2011-3', 'DDR4 (4 canais)', 'PCIe 3.0', true, true, 'Core i7 série X (Haswell/Broadwell-E)'),
+    C('X79', 'Intel', 'LGA2011', 'DDR3 (4 canais)', 'PCIe 3.0', true, true, 'Core i7 série X (Sandy/Ivy Bridge-E) e Xeon E5 v1/v2'),
+    C('X99', 'Intel', 'LGA2011-3', 'DDR4 (4 canais)', 'PCIe 3.0', true, true, 'Core i7 série X (Haswell/Broadwell-E) e Xeon E5 v3/v4'),
     C('X299', 'Intel', 'LGA2066', 'DDR4 (4 canais)', 'PCIe 3.0', true, true, 'Core série X (Skylake-X em diante)'),
     ...['H110', 'B150', 'H170', 'Z170', 'Q170', 'B250', 'H270', 'Z270', 'Q270'].map((id) => C(id, 'Intel', 'LGA1151', 'DDR4', 'PCIe 3.0', id.startsWith('Z'), id.startsWith('Z'), '6ª e 7ª geração',
       id.startsWith('Z') ? null : 'a memória fica presa na velocidade oficial do processador (2133 ou 2400); XMP acima disso não pega')),
@@ -294,9 +435,15 @@
   const CHIPSET_TOKEN = /(?:^|[^A-Z0-9])(TRX40|TRX50|WRX80|WRX90|X399|990FX|[ABHQXZ]\d{3}E?|[HBZQPX]\d{2})(?=[^0-9]|$)/gi;
 
   /** Acha o chipset no nome da placa ("ROG STRIX B550-F GAMING", "B550M AORUS ELITE", "PRIME Z790-P WIFI"). */
+  // Nomes em que o chipset vem colado a um prefixo do fabricante: ASUS P8H61/P8Z77/P9X79, Pcware IPMH310G,
+  // Afox IH81, ASRock/Gigabyte AB350/AX370 e as AM3+ M5A97/M5A78L/78LMT.
+  const CHIPSET_ALIASES = [[/^M5A97|^GA-970|\b970A?-/, '970'], [/^M5A78L|78LMT|^GA-78L/, '760G'], [/^M5A88|^GA-880G/, '880G'], [/^M5A99X|990X[AT]?-/, '990X']];
   function decodeChipset(product, cpu = null) {
-    const text = str(product, 80).toUpperCase();
-    if (!text) return null;
+    const raw = str(product, 80).toUpperCase();
+    if (!raw) return null;
+    const alias = CHIPSET_ALIASES.find(([pattern]) => pattern.test(raw));
+    if (alias && (!cpu?.vendor || cpu.vendor === 'AMD')) return { ...CHIPSET_BY_ID.get(alias[1]), matched: alias[1] };
+    const text = raw.replace(/^(?:P\d{1,2}|IPM|IPX|IP|I)(?=[HBZQX]\d{2})/, '').replace(/(^|[^A-Z0-9])A(?=(B350|X370|B450|X470)\b)/, '$1');
     for (const match of text.matchAll(CHIPSET_TOKEN)) {
       const id = match[1];
       const chipset = CHIPSET_BY_ID.get(id) || CHIPSET_BY_ID.get(id.replace(/E$/, ''));
@@ -324,18 +471,22 @@
   function ratedFromPart(partRaw) {
     const part = str(partRaw, 40).toUpperCase().replace(/\s+/g, '');
     if (!part || /^(0+|UNDEFINED|NOTAVAILABLE|PARTNUM\d*|MODULEPARTNUMBER\d*)$/.test(part)) return null;
-    let m = part.match(/^F[345]-(\d{4})([CJU])(\d{2})/); // G.Skill
+    let m = part.match(/^F[345]-(\d{4})([CJU])(\d{2}|\d(?=\D))/); // G.Skill: F4-3200C16, F5-6000J3038 (CL30), F3-1600C9D (CL9)
     if (m) return { speed: Number(m[1]), cl: Number(m[3]), brand: 'G.Skill', jedec: false };
     m = part.match(/^CM[A-Z]{1,5}\d+GX[345]M\d[A-Z](\d{4})C(\d{2})/); // Corsair
     if (m) return { speed: Number(m[1]), cl: Number(m[2]), brand: 'Corsair', jedec: false };
     m = part.match(/^KF([345])(\d{2})C(\d{2})/); // Kingston Fury
     if (m && SPEED_FROM_TWO[m[2]]) return { speed: m[1] === '5' && m[2] === '56' ? 5600 : SPEED_FROM_TWO[m[2]], cl: Number(m[3]), brand: 'Kingston Fury', jedec: false };
+    m = part.match(/^KHX(\d{4})C(\d{1,2})(?!\d)/); // HyperX antigo: KHX2666C16, KHX1600C10D3
+    if (m) return { speed: Number(m[1]), cl: Number(m[2]), brand: 'Kingston HyperX', jedec: false };
     m = part.match(/^HX[34](\d{2})C(\d{2})/); // HyperX
     if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: Number(m[2]), brand: 'HyperX', jedec: false };
     m = part.match(/^KVR(\d{2})[A-Z](\d{2})/); // Kingston ValueRAM (sem XMP)
     if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: Number(m[2]), brand: 'Kingston', jedec: true };
     m = part.match(/^BL(?:\d)?K?\d+G(\d{2})C(\d{2})/); // Crucial Ballistix
     if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: Number(m[2]), brand: 'Crucial Ballistix', jedec: false };
+    m = part.match(/^BLS?(?:\d?K)?\d+G4D(\d{2,3})/); // Ballistix Sport: BLS8G4D30AESBK = 3000, BLS8G4D240FSB = 2400
+    if (m) { const speed = m[1].length === 3 ? { 213: 2133, 240: 2400, 266: 2666, 300: 3000, 320: 3200 }[m[1]] : SPEED_FROM_TWO[m[1]]; if (speed) return { speed, cl: null, brand: 'Crucial Ballistix', jedec: false }; }
     m = part.match(/^CP(?:\d?K)?\d+G(?:5)?(\d{2})C(\d{2})/); // Crucial Pro DDR5 (com XMP/EXPO)
     if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: Number(m[2]), brand: 'Crucial Pro', jedec: false };
     m = part.match(/^C[TP](?:\dK)?\d+G4[A-Z]{2,5}(\d{3})/); // Crucial DDR4 de fábrica: 266 = 2666, 320 = 3200
@@ -344,19 +495,33 @@
     if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: null, brand: 'Crucial', jedec: true };
     m = part.match(/^CT(?:\dK)?\d+G(\d{2})C(\d{2})/); // Crucial DDR5 de fábrica: CT16G48C40U5 = 4800 CL40
     if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: Number(m[2]), brand: 'Crucial', jedec: true };
-    m = part.match(/^AX[45]U(\d{4})/); // ADATA/XPG: AX4U32008G16A = 3200
-    if (m && STANDARD_SPEEDS.includes(Number(m[1]))) return { speed: Number(m[1]), cl: null, brand: 'ADATA', jedec: false };
+    m = part.match(/^A([XD])([45])[US](\d{4})(?:C(\d{2})|\d{1,2}G(\d{2}))?/); // ADATA/XPG: AX4U32008G16A = 3200 CL16; AD4U32008G22 = 3200 CL22 (sem XMP)
+    if (m && STANDARD_SPEEDS.includes(Number(m[3]))) return { speed: Number(m[3]), cl: Number(m[4] || m[5]) || null, brand: m[1] === 'X' ? 'ADATA XPG' : 'ADATA', jedec: m[1] === 'D' };
+    m = part.match(/^GR(\d{4})D[345]\d{2}L(\d{2})/) || part.match(/^IR-?X?(\d{4})D[345]\d{2}L(\d{2})/); // Goodram e IRDM: GR3200D464L22S = 3200 CL22
+    if (m && STANDARD_SPEEDS.includes(Number(m[1]))) return { speed: Number(m[1]), cl: Number(m[2]), brand: /^GR/.test(part) ? 'Goodram' : 'Goodram IRDM', jedec: /^GR/.test(part) };
+    m = part.match(/^PSD[345]\d{1,2}G(\d{4})/); // Patriot Signature (sem XMP): PSD48G266681 = 2666
+    if (m && STANDARD_SPEEDS.includes(Number(m[1]))) return { speed: Number(m[1]), cl: null, brand: 'Patriot', jedec: true };
+    m = part.match(/^ACR(\d{2})D[345]/); // Apacer: ACR26D4S9S8ME = 2666
+    if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: null, brand: 'Apacer', jedec: true };
+    m = part.match(/^NT[A-Z]*D[345]P(\d{2})/); // Netac: NTBSD4P32SP = 3200
+    if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: null, brand: 'Netac', jedec: true };
+    m = part.match(/^MTC[A-Z0-9]{4,14}?S1[A-Z]{2}(\d{2})/); // Micron DDR5: MTC8C1084S1SC48BA1 = 4800
+    if (m && SPEED_FROM_TWO[m[1]]) return { speed: SPEED_FROM_TWO[m[1]], cl: null, brand: 'Micron', jedec: true };
+    m = part.match(/^M[34]\d{2}R[A-Z0-9]{5,9}-C(QK|WM|SB)/); // Samsung DDR5: -CQK = 4800, -CWM = 5600
+    if (m) return { speed: { QK: 4800, WM: 5600, SB: 6400 }[m[1]], cl: null, brand: 'Samsung', jedec: true };
     m = part.match(/^M[34]\d{2}[A-Z0-9]{6,9}-(C[A-Z]{2})/); // Samsung
     if (m && SAMSUNG_CODES[m[1]]) return { speed: SAMSUNG_CODES[m[1]], cl: null, brand: 'Samsung', jedec: true };
     m = part.match(/^HMA[A-Z0-9]{6,12}-([A-Z]{2})/); // SK Hynix DDR4
     if (m && HYNIX_CODES[m[1]]) return { speed: HYNIX_CODES[m[1]], cl: null, brand: 'SK Hynix', jedec: true };
-    m = part.match(/^MTA[A-Z0-9]{6,14}-(\d)G(\d)/); // Micron
+    m = part.match(/^(?:MTA)?\d?ATF[A-Z0-9]{4,12}-(\d)G(\d)/) || part.match(/^MTA[A-Z0-9]{6,14}-(\d)G(\d)/); // Micron (com ou sem o prefixo MTA)
     if (m) { const speed = { '21': 2133, '24': 2400, '26': 2666, '29': 2933, '32': 3200 }[`${m[1]}${m[2]}`]; if (speed) return { speed, cl: null, brand: 'Micron', jedec: true }; }
     m = part.match(/^PV[A-Z]?[45]\d{2}G(\d{3})C(\d)/); // Patriot: PVS416G320C6K = 3200 CL16
     if (m) { const speed = { 266: 2666, 300: 3000, 320: 3200, 360: 3600, 400: 4000, 560: 5600, 600: 6000, 640: 6400 }[m[1]]; if (speed) return { speed, cl: Number(`1${m[2]}`), brand: 'Patriot', jedec: false }; }
-    // Genérico: TeamGroup, ADATA/XPG, Lexar, Netac, Rise e outros põem a velocidade inteira no código.
+    // Genérico: TeamGroup, Lexar, Ramaxel, Rise e outros põem a velocidade inteira no código. A latência só conta com a
+    // letra na frente (3200HC16, 3200C22, 3200CL16): "3200D464" não é CL46.
+    const brand = [[/^(TLZ|TF\d|FF\d|TED|TDP|TTZ|TCD|CTCED|FLB|FLR|TPD|TLRD|TXBD)/, 'TeamGroup'], [/^LD[345]/, 'Lexar'], [/^RM[SA]/, 'Ramaxel'], [/^(99U5|9905|9965)/, 'Kingston']].find(([pattern]) => pattern.test(part))?.[1] || null;
     for (const speed of [...STANDARD_SPEEDS].reverse()) {
-      if (new RegExp(`(?<!\\d)${speed}(?!\\d)`).test(part)) { const cl = part.match(new RegExp(`${speed}[A-Z]{0,2}C?L?(\\d{2})`)); return { speed, cl: cl ? Number(cl[1]) : null, brand: null, jedec: false, generic: true }; }
+      if (new RegExp(`(?<!\\d)${speed}(?!\\d)`).test(part)) { const cl = part.match(new RegExp(`${speed}(?:HC|CL|C)(\\d{2})`)); return { speed, cl: cl ? Number(cl[1]) : null, brand, jedec: cl ? false : null, generic: true }; }
     }
     return null;
   }
@@ -436,31 +601,59 @@
     [/RX\s*5\d{3}/i, { family: 'Radeon RX 5000', architecture: 'RDNA', year: 2019, rebar: false, features: ['FSR'] }],
     [/Vega\s*(?:56|64)|Radeon\s+VII/i, { family: 'Radeon Vega', architecture: 'GCN 5', year: 2017, rebar: false, features: ['FSR'] }],
     [/RX\s*[45]\d{2}\b/i, { family: 'Radeon RX 400/500', architecture: 'Polaris', year: 2016, rebar: false, features: ['FSR'] }],
-    [/R[579]\s*\d{3}/i, { family: 'Radeon R5/R7/R9', architecture: 'GCN', year: 2013, rebar: false, features: [], legacyDriver: true }]
+    [/R[579]\s*\d{3}/i, { family: 'Radeon R5/R7/R9', architecture: 'GCN', year: 2013, rebar: false, features: [], legacyDriver: true }],
+    [/HD\s*[78]\d{3}/i, { family: 'Radeon HD 7000/8000', architecture: 'GCN 1', year: 2012, rebar: false, features: [], legacyDriver: true }],
+    [/HD\s*[56]\d{3}/i, { family: 'Radeon HD 5000/6000', architecture: 'TeraScale', year: 2010, rebar: false, features: [], legacyDriver: true }],
+    [/Pro\s+W7\d{3}/i, { family: 'Radeon Pro W7000 (estação de trabalho)', architecture: 'RDNA 3', year: 2023, rebar: true, features: ['AV1'], workstation: true }],
+    [/Pro\s+W6\d{3}/i, { family: 'Radeon Pro W6000 (estação de trabalho)', architecture: 'RDNA 2', year: 2021, rebar: true, features: [], workstation: true }],
+    [/Pro\s+W5\d{3}/i, { family: 'Radeon Pro W5000 (estação de trabalho)', architecture: 'RDNA', year: 2019, rebar: false, features: [], workstation: true }],
+    [/Pro\s+WX\s*\d{4}/i, { family: 'Radeon Pro WX (estação de trabalho)', architecture: 'Polaris', year: 2016, rebar: false, features: [], workstation: true }]
   ];
-  const INTEGRATED = /UHD Graphics|HD Graphics|Iris|Intel\(?R?\)?\s*Graphics|Radeon(?:\(TM\))?\s+RX\s+Vega\s+\d+\s+Graphics|Radeon(?:\(TM\))?\s+R[2-7]\s+Graphics|Arc(?:\(TM\))?\s+(?:\d{3}V\s+)?(?:GPU|Graphics)$|Radeon(?:\(TM\))?\s+Graphics|Radeon\s+Vega\s+\d+\s+Graphics|Radeon(?:\(TM\))?\s+\d{3}M|Radeon\s+\d{4}S|Vega\s+\d\b/i;
+  // Placas de estação de trabalho da NVIDIA (vêm antes das GeForce: "RTX 4000 Ada" não é uma RTX 40 de jogo).
+  const NV_PRO = [
+    [/RTX\s+\d{4}\s+Ada/i, { family: 'NVIDIA RTX Ada (estação de trabalho)', architecture: 'Ada Lovelace', year: 2023, rebar: true, features: ['DLSS 3', 'AV1'], workstation: true }],
+    [/RTX\s+A\d{3,4}/i, { family: 'NVIDIA RTX série A (estação de trabalho)', architecture: 'Ampere', year: 2021, rebar: null, features: ['DLSS 2'], workstation: true }],
+    [/Quadro\s+RTX|Quadro\s+T\d|\bT(400|600|1000|1200|2000)\b|TITAN\s+RTX/i, { family: 'Quadro / NVIDIA T (Turing)', architecture: 'Turing', year: 2018, rebar: false, features: [], workstation: true }],
+    [/Quadro\s+P\d|TITAN\s+Xp?\b/i, { family: 'Quadro / TITAN (Pascal)', architecture: 'Pascal', year: 2016, rebar: false, features: [], workstation: true, legacyDriver: true }],
+    [/Quadro\s+(K|M)\d/i, { family: 'Quadro (Kepler/Maxwell)', architecture: 'Kepler / Maxwell', year: 2013, rebar: false, features: [], workstation: true, legacyDriver: true }],
+    [/TITAN\s+V\b/i, { family: 'TITAN V', architecture: 'Volta', year: 2017, rebar: false, features: [], workstation: true }]
+  ];
+  // Vídeo integrado da AMD pela família (o nome diz a geração).
+  const AMD_IGPU = [
+    [/Radeon\s+(8060S|8050S|8040S|890M|880M|860M|840M|820M)/i, { family: 'Radeon integrada (RDNA 3.5)', architecture: 'RDNA 3.5', year: 2024, features: ['FSR 3', 'AV1'] }],
+    [/Radeon\s+(780M|760M|740M)/i, { family: 'Radeon integrada (RDNA 3)', architecture: 'RDNA 3', year: 2023, features: ['FSR 3', 'AV1'] }],
+    [/Radeon\s+(680M|660M|610M)|Custom GPU 0(405|932)/i, { family: 'Radeon integrada (RDNA 2)', architecture: 'RDNA 2', year: 2022, features: ['FSR'] }],
+    [/Vega\s*\d+/i, { family: 'Radeon Vega integrada', architecture: 'GCN 5 (Vega)', year: 2018, features: ['FSR'] }]
+  ];
+  const INTEGRATED = /Custom GPU 0(405|932)|Adreno|UHD Graphics|HD Graphics|Iris|Intel\(?R?\)?\s*Graphics|Radeon(?:\(TM\))?\s+RX\s+Vega\s+\d+\s+Graphics|Radeon(?:\(TM\))?\s+R[2-7]\s+Graphics|Arc(?:\(TM\))?\s+(?:\d{3}V\s+)?(?:GPU|Graphics)$|Radeon(?:\(TM\))?\s+Graphics|Radeon\s+Vega\s+\d+\s+Graphics|Radeon(?:\(TM\))?\s+\d{3}M|Radeon\s+\d{4}S|Vega\s+\d\b/i;
 
   function decodeGpu(gpu, now = Date.now()) {
     const raw = gpu && typeof gpu === 'object' ? gpu : {};
     const name = cleanName(raw.name);
     const vendorId = str(raw.vendorId, 4).toUpperCase();
-    const vendor = vendorId === '10DE' || /NVIDIA|GeForce|Quadro/i.test(name) ? 'NVIDIA' : vendorId === '1002' || /AMD|Radeon/i.test(name) ? 'AMD' : vendorId === '8086' || /Intel/i.test(name) ? 'Intel' : vendorId === '1414' || /Basic Display|Microsoft/i.test(name) ? 'Microsoft' : null;
+    const vendor = vendorId === '10DE' || /NVIDIA|GeForce|Quadro/i.test(name) ? 'NVIDIA' : vendorId === '1002' || /AMD|Radeon/i.test(name) ? 'AMD' : vendorId === '8086' || /Intel/i.test(name) ? 'Intel' : vendorId === '1414' || /Basic Display|Microsoft/i.test(name) ? 'Microsoft' : vendorId === '5143' || vendorId === 'QCOM' || /Qualcomm|Adreno/i.test(name) ? 'Qualcomm' : null;
     let info = null;
-    if (vendor === 'NVIDIA') info = NV_FAMILIES.find(([pattern]) => pattern.test(name))?.[1] || null;
+    if (vendor === 'NVIDIA') info = (NV_PRO.find(([pattern]) => pattern.test(name)) || NV_FAMILIES.find(([pattern]) => pattern.test(name)))?.[1] || null;
     if (vendor === 'AMD' && !INTEGRATED.test(name)) info = AMD_FAMILIES.find(([pattern]) => pattern.test(name))?.[1] || null;
+    if (vendor === 'AMD' && INTEGRATED.test(name)) info = AMD_IGPU.find(([pattern]) => pattern.test(name))?.[1] || null;
+    if (vendor === 'Intel' && !/Arc.*\b[AB]\d{3}/i.test(name)) {
+      if (/\b1[234]0V\b/i.test(name)) info = { family: 'Arc integrada (Xe2)', architecture: 'Xe2', year: 2024, features: ['XeSS', 'AV1'] };
+      else if (/Arc/i.test(name) || /^Intel(\(R\))?\s*Graphics$/i.test(name)) info = { family: 'Arc integrada', architecture: 'Xe-LPG', year: 2023, features: ['XeSS', 'AV1'] };
+      else if (/Iris.*Xe|UHD Graphics\s*7\d{2}|UHD Graphics$/i.test(name)) info = { family: /Iris/i.test(name) ? 'Iris Xe' : 'UHD (Xe)', architecture: 'Xe-LP', year: 2020, features: ['AV1 (só reprodução)'] };
+    }
     if (vendor === 'Intel' && /Arc.*\bB\d{3}/i.test(name)) info = { family: 'Arc série B', architecture: 'Battlemage', year: 2024, rebar: true, needsRebar: true, features: ['XeSS', 'AV1'] };
     else if (vendor === 'Intel' && /Arc.*\bA\d{3}/i.test(name)) info = { family: 'Arc série A', architecture: 'Alchemist', year: 2022, rebar: true, needsRebar: true, features: ['XeSS', 'AV1'] };
     // Adaptador de máquina virtual (Hyper-V, VMware, VirtualBox…) não é "sem driver": é o vídeo da VM.
-    const virtual = /Hyper-V|VMware|VirtualBox|QXL|Virtio|Parallels|Red Hat|Citrix|Remote Display|Indirect Display|Virtual Display|Virtual Monitor|Virtual Adapter|Parsec|spacedesk|Mirage|Sunshine|IddSample|Duet Display|Splashtop|DisplayLink/i.test(name);
+    const virtual = /Hyper-V|VMware|VirtualBox|QXL|Virtio|Parallels|Red Hat|Citrix|Remote Display|Indirect Display|Virtual ?Display|Virtual ?Monitor|Virtual Adapter|Parsec|spacedesk|Mirage|Sunshine|Idd(Sample|Driver)|Oray|ToDesk|AnyDesk|TeamViewer|RustDesk|NoMachine|Duet Display|Splashtop|DisplayLink|usbmmidd|Amyuni|Mirror Driver/i.test(name);
     const basicDriver = !virtual && (/Basic Display|Básico|Basic Render/i.test(name) || (vendor === 'Microsoft' && !/Remote|Indirect/i.test(name)));
-    const integrated = !basicDriver && !virtual && vendor !== 'NVIDIA' && (INTEGRATED.test(name) || (vendor === 'Intel' && !info));
+    const integrated = !basicDriver && !virtual && vendor !== 'NVIDIA' && (INTEGRATED.test(name) || (vendor === 'Intel' && (!info || /integrada|Iris|UHD/.test(info.family))));
     const tier = name.match(/(?:RTX|GTX|RX)\s*\d{3,4}\s*(Ti\s*SUPER|Ti|SUPER|XTX|XT|GRE)?/i);
     const driverAge = ageDays(raw.driverDate, now);
     return {
       name, vendor, vendorId: vendorId || null, deviceId: str(raw.deviceId, 4).toUpperCase() || null, integrated, virtual, discrete: !integrated && !basicDriver && !virtual,
       mobile: /Laptop|Mobile|Max-Q|\bMX\s*\d/i.test(name) || /\d{3,4}M\b/.test(name) && !integrated, basicDriver,
-      family: info?.family || null, architecture: info?.architecture || null, year: info?.year || null, features: info?.features || [],
-      rebarCapable: info ? info.rebar : null, needsRebar: Boolean(info?.needsRebar), legacyDriver: Boolean(info?.legacyDriver), entry: Boolean(info?.entry),
+      family: info?.family || null, architecture: info?.architecture || null, year: info?.year || null, features: info?.features || [], workstation: Boolean(info?.workstation),
+      rebarCapable: info && !integrated ? info.rebar ?? null : null, needsRebar: Boolean(info?.needsRebar), legacyDriver: Boolean(info?.legacyDriver), entry: Boolean(info?.entry),
       variant: tier?.[1] ? tier[1].replace(/\s+/g, ' ') : null,
       vramBytes: finite(raw.vramBytes) && raw.vramBytes > 64 * 1024 ** 2 ? raw.vramBytes : null,
       driver: { version: str(raw.driverVersion, 40) || null, date: str(raw.driverDate, 10) || null, ageDays: driverAge },
@@ -491,6 +684,8 @@
     };
   }
 
+  const SSD_MODEL = /\b(SA400|A400|SUV500|KC600|SKC\d|SHFS|SV300|SEDC|MZ-?[0-9A-Z]{4}|MX500|BX500|CT\d+(MX|BX)\d|WDS\d|SDSSD|SU\d{3}|SX\d{3,4}|PNY CS\d|CS900|CS1311|TS\d+G(SSD|MTS)|GOODRAM|IRDM|WD (Green|Blue) SA|Crucial_CT|Patriot (Burst|P2\d0)|KINGSTON SV|Netac|Rise Mode|Lexar NS\d|HIKVISION|XrayDisk|Colorful SL)/i;
+  const HDD_MODEL = /^(ST\d{3,5}(DM|LM|VX|NM|NE|AS|LX|DX)|WDC WD\d|WD\d{2,}[A-Z]{2}|TOSHIBA (DT|MQ|HDW|MG|MD)|HGST|Hitachi H|SAMSUNG (HD|HM|SP)\d|ST\d{3,4}[A-Z]{2}\d)/i;
   function decodeDisk(disk) {
     const raw = disk && typeof disk === 'object' ? disk : {};
     const bus = str(raw.bus, 20).toUpperCase();
@@ -501,6 +696,9 @@
     else if (bus === 'NVME' || /NVME/i.test(model)) kind = 'nvme';
     else if (media === 'SSD' || /\bSSD\b/i.test(model)) kind = 'ssd';
     else if (media === 'HDD' || (finite(raw.rpm) && raw.rpm > 0)) kind = 'hdd';
+    // Sem tipo informado (MediaType "Unspecified", comum em controladoras RAID/AHCI antigas): o modelo entrega.
+    else if (SSD_MODEL.test(model)) kind = 'ssd';
+    else if (HDD_MODEL.test(model)) kind = 'hdd';
     const label = { nvme: 'SSD NVMe', ssd: 'SSD SATA', hdd: 'HD (disco mecânico)', usb: 'unidade USB', desconhecido: 'unidade' }[kind];
     const n = (value, max) => (finite(value) && value >= 0 && value <= max ? value : null);
     return {
@@ -516,7 +714,7 @@
     const linkMbps = finite(raw.linkMbps) && raw.linkMbps > 0 && raw.linkMbps <= 400000 ? raw.linkMbps : null;
     return {
       name: str(raw.name, 40) || null, description: description || null, kind: wifi ? 'wifi' : 'ethernet', up: raw.up !== false, linkMbps,
-      gigabitCapable: !wifi && /gigabit|\bGbE\b|2\.5G|2500|5G\b|10G|1000|Ethernet Controller \(3\)|I2[12]\dV|I219|E3100|AQC|Killer/i.test(description),
+      gigabitCapable: !wifi && !/Fast Ethernet|\bFE\b/i.test(description) && /gigabit|\bGbE\b|2\.5G|2500|5G\b|10G|1000|Ethernet Controller \(3\)|\bI2[0-9]{2}-?(V|LM|AT|IT)\b|E3100|AQC|AQtion|Killer|NetXtreme|AR81[3-7]1\b|AX88179/i.test(description),
       wifi: wifi && raw.wifi && typeof raw.wifi === 'object' ? {
         signal: finite(raw.wifi.signal) && raw.wifi.signal >= 0 && raw.wifi.signal <= 100 ? raw.wifi.signal : null,
         band: raw.wifi.band === 2.4 || raw.wifi.band === 5 || raw.wifi.band === 6 ? raw.wifi.band : null,
@@ -597,7 +795,7 @@
   /** Nome como vem na caixa: "Intel Core i7-13650HX", "AMD Ryzen 7 5800X3D". */
   function cpuTitle(cpu, { vendor = true } = {}) {
     if (!cpu) return null;
-    const model = /^Core i\d$/.test(cpu.family || '') && cpu.model ? `${cpu.family}-${cpu.model}` : [cpu.family, cpu.model].filter(Boolean).join(' ');
+    const model = /^(Core [im]\d|A\d{1,2})$/.test(cpu.family || '') && cpu.model ? `${cpu.family}-${cpu.model}` : [cpu.family, cpu.model].filter(Boolean).join(' ');
     return [vendor ? cpu.vendor : null, model].filter(Boolean).join(' ') || cpu.name || null;
   }
 
@@ -662,10 +860,13 @@
     };
     const names = {};
     const cpu = p.cpu || {};
-    const cpuName = cpu.family ? cpuTitle(cpu, { vendor: false }) : cleanName(cpu.name).replace(/\b(Processor|CPU)\b.*$/i, '').replace(/@.*$/, '');
+    let cpuName = cpu.family ? cpuTitle(cpu, { vendor: false }) : cleanName(cpu.name).replace(/\b(Processor|CPU)\b.*$/i, '').replace(/@.*$/, '');
+    if (/^Steam Deck/.test(cpu.generationLabel || '')) cpuName = 'APU do Steam Deck';
+    else if (cpu.arm && cpu.family) cpuName = cpu.family;
     if (cpuName) names.cpu = cut(cpuName.replace(/\bCPU\s+/i, ''));
     const board = p.board || {};
-    if (board.chipset?.id) names.board = cut([board.maker, board.chipset.id].filter(Boolean).join(' '));
+    if (/valve/i.test(`${board.maker || ''} ${p.system?.maker || ''}`)) names.board = 'Steam Deck';
+    else if (board.chipset?.id) names.board = cut([board.maker, board.chipset.id].filter(Boolean).join(' '));
     else if (p.kind === 'laptop' && p.system?.model) names.board = cut(p.system.model);
     else if (board.product) names.board = cut([board.maker, board.product].filter(Boolean).join(' '));
     else if (p.virtual) names.board = 'máquina virtual';
@@ -679,8 +880,13 @@
     const gpus = p.gpus || [];
     const gpu = gpus.find((item) => item.discrete) || gpus.find((item) => item.integrated) || gpus[0];
     if (gpu?.name) {
-      let name = gpu.name.replace(/\((R|TM)\)/gi, '').replace(/^NVIDIA\s+/i, '').replace(/^GeForce\s+(?=RTX|GTX|GT|MX)/i, '').replace(/^AMD\s+Radeon\s+(?=RX|Pro|R\d|Vega)/i, '').replace(/^Intel\s+/i, '').replace(/\s+(Laptop GPU|Graphics)$/i, '').trim();
+      let name = gpu.name.replace(/\((R|TM)\)/gi, '').replace(/\s*\(\d+\s*GB\)/i, '').replace(/^NVIDIA\s+/i, '').replace(/^GeForce\s+(?=RTX|GTX|GT|MX)/i, '')
+        .replace(/^(AMD\s+)?Radeon\s+(?=RX|Pro|R\d|Vega|HD)/i, '').replace(/^AMD\s+(?=Radeon\s+VII)/i, '').replace(/^AMD\s+(?=Radeon\s+\d)/i, '').replace(/^(Intel|Qualcomm)\s+/i, '')
+        .replace(/\s+(Laptop GPU|GPU|Graphics|Series|Ada Generation)$/i, '').replace(/\s+Graphics\b/i, '').replace(/\s+/g, ' ').trim();
       if (gpu.integrated && /^(AMD\s+)?Radeon$/i.test(name)) name = 'Radeon integrada';
+      else if (gpu.integrated && /^(Arc|Graphics|)$/i.test(name)) name = gpu.vendor === 'Intel' ? 'vídeo Intel integrado' : 'vídeo integrado';
+      if (/Custom GPU 0(405|932)/i.test(gpu.name)) name = 'vídeo do Steam Deck';
+      if (/RTX\s+\d{4}\s+Ada/i.test(gpu.name)) name = `${name} Ada`;
       if (gpu.virtual) name = /Hyper-V/i.test(gpu.name) ? 'vídeo Hyper-V' : 'vídeo virtual';
       if (gpu.basicDriver) name = 'sem driver';
       names.gpu = cut(name);

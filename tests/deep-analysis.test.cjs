@@ -71,7 +71,11 @@ test('placa-mãe: chipset pelo nome do produto, com o que ele permite', () => {
 test('memória: velocidade da caixa pelo código do pente, canais pelos slots', () => {
   const cases = [['F4-3200C16D-16GVKB', 3200, 16, false], ['F5-6000J3038F16G', 6000, 30, false], ['CMK16GX4M2B3200C16', 3200, 16, false], ['KF432C16BB/8', 3200, 16, false],
     ['KF560C30-16', 6000, 30, false], ['KVR32N22S8/8', 3200, 22, true], ['BL8G32C16U4B.M8FE1', 3200, 16, false], ['CT8G4SFRA266.C8FJ', 2666, null, true], ['CT16G48C40U5.M8A1', 4800, 40, true],
-    ['M378A1K43CB2-CTD', 2666, null, true], ['HMA81GU6CJR8N-VK', 2666, null, true], ['MTA8ATF1G64AZ-3G2E1', 3200, null, true], ['AX4U32008G16A-SR10', 3200, null, false], ['PVS416G320C6K', 3200, 16, false]];
+    ['M378A1K43CB2-CTD', 2666, null, true], ['HMA81GU6CJR8N-VK', 2666, null, true], ['MTA8ATF1G64AZ-3G2E1', 3200, null, true], ['AX4U32008G16A-SR10', 3200, 16, false], ['PVS416G320C6K', 3200, 16, false],
+    // varredura de pentes reais (nov/2026)
+    ['F3-1600C9D-8GXM', 1600, 9, false], ['KHX2666C16/8G', 2666, 16, false], ['BLS8G4D30AESBK.8FD', 3000, null, false], ['M425R1GB4BB0-CQK', 4800, null, true], ['4ATF51264HZ-3G2J1', 3200, null, true],
+    ['TLZGD416G3200HC16CDC01', 3200, 16, false], ['AD4U32008G22-SGN', 3200, 22, true], ['GR3200D464L22S/8G', 3200, 22, true], ['PSD48G266681', 2666, null, true], ['NTBSD4P32SP-08', 3200, null, true],
+    ['ACR26D4S9S8ME-8', 2666, null, true], ['LD4AU008G-B3200GSST', 3200, null, null]];
   for (const [part, speed, cl, jedec] of cases) {
     const rated = H.ratedFromPart(part);
     assert.equal(rated?.speed, speed, part);
@@ -434,6 +438,43 @@ test('revisão: casos que já enganaram os decodificadores e as regras', () => {
   // Nenhum conselho manda pausar atualização ou desligar proteção.
   const all = JSON.stringify(D.BACKGROUND);
   assert.doesNotMatch(all, /pause as atualiza|pausar (as )?atualiza|desativ\w* o (antiv|defender)|desligu\w* o (antiv|defender)/i);
+});
+
+test('reconhecimento universal: processadores, placas de vídeo, chipsets e redes reais (varredura de nov/2026)', () => {
+  const cpus = [
+    ['Intel(R) Core(TM) i7-5820K CPU @ 3.30GHz', /Haswell-E.*LGA2011-3/], ['Intel(R) Core(TM) i9-10980XE CPU @ 3.00GHz', /Cascade Lake-X.*LGA2066/],
+    ['Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz', /Xeon E5-2690 v4 · Broadwell-EP.*LGA2011-3/], ['Intel(R) Xeon(R) W-2245 CPU @ 3.90GHz', /Cascade Lake-W/],
+    ['Intel(R) Celeron(R) N4020 CPU @ 1.10GHz', /Celeron N4020 · Gemini Lake/], ['Intel(R) Pentium(R) Gold G6400 CPU @ 4.00GHz', /Pentium Gold G6400 · Comet Lake.*LGA1200/],
+    ['Intel(R) Core(TM) m3-7Y30 CPU @ 1.00GHz', /Core m3-7Y30 · Kaby Lake/], ['Intel(R) Atom(TM) x5-Z8350  CPU @ 1.44GHz', /Cherry Trail/],
+    ['Intel(R) Core(TM)2 Quad CPU    Q6600  @ 2.40GHz', /Core 2 Quad Q6600/], ['AMD Athlon 3000G with Radeon Vega Graphics', /Athlon 3000G · Zen\+.*AM4/],
+    ['AMD A10-7860K Radeon R7, 12 Compute Cores 4C+8G', /A10-7860K · Kaveri.*FM2\+/], ['AMD Phenom(tm) II X4 965 Processor', /Phenom II X4 965 · K10.*AM3/],
+    ['AMD Custom APU 0405', /Zen 2, Steam Deck/], ['AMD RYZEN AI MAX+ 395 w/ Radeon 8060S', /Ryzen AI Max\+ 395/], ['Snapdragon(R) X Elite - X1E78100 - Qualcomm(R) Oryon(TM) CPU', /Snapdragon X Elite/]
+  ];
+  for (const [name, expected] of cpus) assert.match(H.cpuLine(H.decodeCpu({ name, cores: 4, threads: 8 })), expected, name);
+  const gpu = (name, vendorId) => H.decodeGpu({ name, vendorId });
+  assert.equal(gpu('NVIDIA RTX 4000 Ada Generation', '10DE').workstation, true, 'RTX 4000 Ada não é uma GeForce RTX 40');
+  assert.match(gpu('NVIDIA RTX 4000 Ada Generation', '10DE').family, /estação de trabalho/);
+  assert.equal(gpu('NVIDIA Quadro P2000', '10DE').architecture, 'Pascal');
+  assert.equal(gpu('AMD Radeon 780M Graphics', '1002').architecture, 'RDNA 3');
+  assert.equal(gpu('AMD Custom GPU 0405', '1002').integrated, true);
+  assert.equal(gpu('Intel(R) Arc(TM) 140V GPU (16GB)', '8086').integrated, true, 'Arc 140V é o vídeo do Lunar Lake');
+  assert.equal(gpu('Intel(R) Arc(TM) B580 Graphics', '8086').discrete, true);
+  assert.equal(gpu('Qualcomm(R) Adreno(TM) X1-85 GPU', '').integrated, true);
+  for (const name of ['OrayIddDriver Device', 'Oculus VirtualMonitor', 'GameViewer Virtual Display Adapter']) assert.equal(gpu(name, '').virtual, true, name);
+  assert.equal(gpu('AMD Radeon HD 7700 Series', '1002').legacyDriver, true);
+  const chip = (product) => H.decodeChipset(product)?.id || null;
+  assert.deepEqual(['P8H61-M LX3 R2.0', 'P8Z77-V LX', 'IPMH310G', 'IH81-MA2-V3', 'AB350 Pro4', 'AB350-Gaming 3', 'GA-78LMT-USB3 6.0', 'M5A78L-M LX3', 'X99-F8', 'X79 Turbo', 'PRO B760M-A WIFI DDR4 (MS-7D99)'].map(chip),
+    ['H61', 'Z77', 'H310', 'H81', 'B350', 'B350', '760G', '760G', 'X99', 'X79', 'B760']);
+  const giga = (description) => H.decodeNetwork({ description }).gigabitCapable;
+  assert.equal(giga('Intel(R) Ethernet Controller I225-V'), true);
+  assert.equal(giga('Intel(R) Ethernet Connection I217-V'), true);
+  assert.equal(giga('Qualcomm Atheros AR8152/8158 PCI-E Fast Ethernet Controller (NDIS 6.20)'), false);
+  assert.equal(giga('Realtek PCIe FE Family Controller'), false);
+  // Disco sem tipo informado: o modelo entrega se é SSD ou HD.
+  assert.deepEqual(['KINGSTON SA400S37480G', 'CT480BX500SSD1', 'ST1000DM010-2EP102', 'WDC WD10EZEX-08WN4A0', 'Generic Flash Disk'].map((model) => H.decodeDisk({ model }).kind), ['ssd', 'ssd', 'hdd', 'hdd', 'desconhecido']);
+  // Plataforma de 4 canais com 2 pentes: avisa que metade fica parada.
+  const xeon = H.identify(baseInventory({ cpu: { name: 'Intel(R) Xeon(R) CPU E5-2670 v3 @ 2.30GHz', cores: 12, threads: 24 }, board: { manufacturer: 'HUANANZHI', product: 'X99-F8' } }));
+  assert.ok(D.buildFindings({ profile: xeon }).some((item) => item.id === 'mem-quad-incompleto'));
 });
 
 test('entender o setup: o que cada peça significa e o plano para este PC', () => {

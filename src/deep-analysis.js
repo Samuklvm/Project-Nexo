@@ -383,6 +383,11 @@
         action: { how: 'Com o PC desligado e fora da tomada, mova um dos pentes para o outro canal. O manual da placa indica os slots certos para dois pentes (quase sempre A2 e B2).' }
       }));
     } else if (memory.layout === 'dual' || memory.layout === 'quad') add(F('mem-canais-ok', 'memoria', 'ok', memory.layout === 'quad' ? 'Memória em quatro canais' : 'Memória em dual channel', null));
+    // Plataforma de 4 canais (X79/X99/X299 e Xeon E5) com menos de 4 pentes: metade da largura de memória parada.
+    if (cpu.memoryChannels === 4 && memory.modules?.length > 0 && memory.modules.length < 4) add(F('mem-quad-incompleto', 'memoria', 'baixa', `Plataforma de 4 canais usando ${memory.modules.length === 1 ? 'só 1' : 'só ' + memory.modules.length}`, `Este processador (${Hardware.cpuTitle(cpu)}) tem 4 canais de memória. Com ${plural(memory.modules.length, 'pente', 'pentes')}, ${memory.modules.length === 1 ? 'só um canal trabalha' : 'só ' + memory.modules.length + ' canais trabalham'}; em jogos que dependem do processador, completar os 4 canais ajuda.`, {
+      evidence: [Hardware.memoryLine(memory), memory.slots ? `${memory.slots} slots, ${plural(memory.freeSlots ?? 0, 'livre', 'livres')}` : null], confidence: 'media',
+      action: { how: 'Complete com pentes iguais (mesmo modelo e capacidade), um em cada canal: o manual da placa indica os slots certos.' }
+    }));
     if (memory.layout === 'single-by-design') add(F('mem-canal-projeto', 'memoria', 'info', 'Memória em canal único por projeto', 'Este processador tem só um canal de memória; não é defeito nem configuração.', { evidence: [Hardware.cpuLine(cpu)] }));
 
     if (memory.configured && memory.rated && memory.belowRated) {
