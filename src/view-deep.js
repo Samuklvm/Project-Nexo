@@ -29,7 +29,11 @@
 
   /* ---------------- Constelação ---------------- */
   function drawSky() {
-    if (sky.dataset.ready) return;
+    buildSky(sky);
+  }
+  /** Desenha a constelação (poeira, linhas, peças) num SVG; serve para a análise ao vivo, a apresentação e o relatório. */
+  function buildSky(target) {
+    if (!target || target.dataset.ready) return;
     let seed = 7;
     const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
     const dust = Array.from({ length: 46 }, () => `<circle class="deep-dust" cx="${Math.round(rand() * 640)}" cy="${Math.round(rand() * 280)}" r="${(0.5 + rand() * 1.1).toFixed(2)}" />`).join('');
@@ -42,8 +46,8 @@
     }).join('');
     const comet = (i) => '<circle class="deep-comet" cx="' + (310 + 118 * Math.cos(i * 2.1)).toFixed(1) + '" cy="' + (148 + 62 * Math.sin(i * 2.1)).toFixed(1) + '" r="2.4" />';
     const comets = `<g class="deep-orbit" aria-hidden="true">${[0, 1, 2].map(comet).join('')}</g>`;
-    sky.innerHTML = `<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g>${comets}<g class="deep-stars">${stars}</g>`;
-    sky.dataset.ready = '1';
+    target.innerHTML = `<g class="deep-dusts">${dust}</g><g class="deep-edges">${edges}</g>${comets}<g class="deep-stars">${stars}</g>`;
+    target.dataset.ready = '1';
   }
   const calm = () => reduce.matches || Nexo.effectsLite;
 
@@ -70,6 +74,22 @@
       return true;
     };
     Nexo.clock.add(motion);
+  }
+
+  /** Pinta estados numa constelação qualquer (estrelas e linhas). */
+  function paintStates(target, nodes) {
+    for (const star of target.querySelectorAll('.deep-star')) {
+      const state = nodes[star.dataset.node] || 'pending';
+      if (star.dataset.state !== state) star.dataset.state = state;
+    }
+    const lit = (id) => ['done', 'warn', 'seen', 'active'].includes(nodes[id]);
+    const done = (id) => ['done', 'warn'].includes(nodes[id]);
+    for (const edge of target.querySelectorAll('.deep-edge')) {
+      let edgeState = 'pending';
+      if (done(edge.dataset.a) && done(edge.dataset.b)) edgeState = 'done';
+      else if (lit(edge.dataset.a) && lit(edge.dataset.b)) edgeState = 'seen';
+      edge.dataset.state = edgeState;
+    }
   }
 
   function paintSky(progress) {
@@ -125,7 +145,7 @@
     const key = facts.map((item) => item.text).join('|');
     if (factsList.dataset.key !== key) {
       factsList.dataset.key = key;
-      factsList.innerHTML = facts.map((item, i) => `<li data-level="${escapeHtml(item.level || 'info')}"${i === facts.length - 1 ? ' class="fresh"' : ''}>${escapeHtml(item.text)}</li>`).join('');
+      factsList.innerHTML = facts.map((item, i) => `<li data-level="${escapeHtml(item.level || 'info')}" data-node="${escapeHtml(item.node || 'none')}"${i === facts.length - 1 ? ' class="fresh"' : ''}>${escapeHtml(item.text)}</li>`).join('');
     }
   }
 
@@ -176,6 +196,11 @@
     return score >= 55 ? 'warn' : 'bad';
   };
   const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+  const AREA_ICON = { processador: 'i-chip', memoria: 'i-ram', video: 'i-gpu', disco: 'i-disk', windows: 'i-win', rede: 'i-net', energia: 'i-bolt', fundo: 'i-eye' };
+  const AREA_NODE = { processador: 'cpu', memoria: 'memory', video: 'gpu', disco: 'disk', windows: 'windows', rede: 'network', energia: 'windows', fundo: 'windows' };
+  const NODE_ICON = { cpu: 'i-chip', board: 'i-board', memory: 'i-ram', gpu: 'i-gpu', disk: 'i-disk', network: 'i-net', windows: 'i-win' };
+  const icon = (id) => `<svg class="deep-ico" aria-hidden="true"><use href="#${id}"/></svg>`;
+  const KIND_LABEL = { antivirus: 'proteção', atualizacao: 'atualização', indexacao: 'indexação', manutencao: 'manutenção', nuvem: 'nuvem', navegador: 'navegador', comunicacao: 'chat', gravacao: 'gravação', overlay: 'overlay', rgb: 'RGB', audio: 'áudio', 'papel-de-parede': 'papel de parede', virtualizacao: 'máquina virtual', fabricante: 'fabricante', rede: 'rede', atualizador: 'atualizador', download: 'download', mineracao: 'mineração', midia: 'mídia', desenvolvimento: 'programação', desconhecido: 'desconhecido' };
   /** Pedaço de HTML com texto escapado: el('p', 'muted', 'texto'). */
   const el = (name, cls, text) => `<${name}${cls ? ' class="' + cls + '"' : ''}>${escapeHtml(text)}</${name}>`;
   const list = (items, render) => items.map(render).join('');
@@ -194,8 +219,8 @@
     const proof = evidence.length ? '<ul class="finding-evidence">' + list(evidence, (line) => el('li', '', line)) + '</ul>' : '';
     const how = item.action?.how ? '<p class="finding-how"><b>O que fazer:</b> ' + escapeHtml(item.action.how) + '</p>' : '';
     const trust = [CONFIDENCE[item.confidence], item.gain].filter(Boolean).join(' · ');
-    return `<article class="finding" data-severity="${escapeHtml(item.severity)}">
-      <header>${el('span', 'finding-tag', SEVERITY[item.severity] || item.severity)}${el('strong', '', item.title)}${el('span', 'finding-area', AREA[item.area] || '')}</header>
+    return `<article class="finding" data-severity="${escapeHtml(item.severity)}" data-node="${AREA_NODE[item.area] || 'windows'}">
+      <header>${icon(AREA_ICON[item.area] || 'i-spark')}${el('span', 'finding-tag', SEVERITY[item.severity] || item.severity)}${el('strong', '', item.title)}${el('span', 'finding-area', AREA[item.area] || '')}</header>
       ${detail}${proof}${how}
       <footer>${el('span', '', trust)}${actionButton(item.action)}</footer>
     </article>`;
@@ -213,7 +238,7 @@
       const means = traits[item.id] || [];
       if (!mine.length && !means.length) return '';
       const meaning = means.length ? '<ul class="pc-means">' + list(means, (line) => el('li', '', line)) + '</ul>' : '';
-      return `<li data-node="${item.id}">${el('span', 'pc-node', item.label)}<div>${list(mine, (line) => el('p', '', line.text))}${meaning}</div></li>`;
+      return `<li data-node="${item.id}"><span class="pc-node">${icon(NODE_ICON[item.id])}${escapeHtml(item.label)}</span><div>${list(mine, (line) => el('p', '', line.text))}${meaning}</div></li>`;
     }).join('');
     const cpu = profile.cpu || {};
     const unknown = cpu.known === false && cpu.name ? el('p', 'muted pc-know', `Não reconheci "${cpu.name}" pela nomenclatura; usei o que o sistema informa dele.`) : '';
@@ -246,7 +271,7 @@
     };
     const groups = GROUPS.map(([kind, label]) => {
       const mine = steps.filter((step) => step.kind === kind);
-      return mine.length ? `<div class="plan-group">${el('h5', '', label)}<ul class="plan-list">${list(mine, item)}</ul></div>` : '';
+      return mine.length ? `<div class="plan-group" data-kind="${kind}">${el('h5', '', label)}<ul class="plan-list">${list(mine, item)}</ul></div>` : '';
     }).join('');
     const labButton = steps.some((step) => step.kind === 'laboratorio') ? '<button class="btn sm" type="button" data-deep-goto="lab">Abrir o laboratório</button>' : '';
     return `<section class="deep-card deep-plan"><h4>Plano para este PC</h4>${el('p', 'muted', 'Montado a partir das peças: o que vale fazer, o que testar e o que acompanhar. Cada teste do laboratório fica guardado e o plano vai se ajustando.')}${groups}${labButton}</section>`;
@@ -263,7 +288,10 @@
     const extra = [item.ioAvg >= 1048576 ? `disco ${mb(item.ioAvg)}` : null, second, item.impact === 'memoria' ? `${n(item.memBytes / 1073741824, 1)} GB de memória` : null].filter(Boolean).join(' · ');
     const known = item.kind !== 'desconhecido';
     const sub = [known && item.label.toLowerCase() !== item.name.toLowerCase() ? item.name : null, extra].filter(Boolean).join(' · ');
-    return `<li data-impact="${escapeHtml(item.impact)}"><div class="row">${el('strong', '', known ? item.label : item.name)}${el('span', '', main)}</div><div class="bar"><i data-css="width:${width.toFixed(1)}%"></i></div>${sub ? el('small', '', sub) : ''}</li>`;
+    const kindText = KIND_LABEL[item.kind];
+    const repeats = kindText && String(known ? item.label : item.name).toLowerCase().includes(kindText.toLowerCase());
+    const kind = kindText && !repeats ? `<span class="kind-chip" data-kind="${escapeHtml(item.kind)}">${escapeHtml(kindText)}</span>` : '';
+    return `<li data-impact="${escapeHtml(item.impact)}"><div class="row"><span class="row-name">${el('strong', '', known ? item.label : item.name)}${kind}</span>${el('span', '', main)}</div><div class="bar"><i data-css="width:${width.toFixed(1)}%"></i></div>${sub ? el('small', '', sub) : ''}</li>`;
   }
 
   function behindHtml(report) {
@@ -289,16 +317,16 @@
     const linkText = (gen, width) => (gen ? `PCIe ${gen}.0${width ? ' x' + width : ''}` : null);
     const link = linkText(load.gpu?.pcieGen, load.gpu?.pcieWidth) || (load.links || []).map((item) => linkText(item.link?.gen, item.link?.width)).find(Boolean) || null;
     const tiles = [
-      ['Todos os núcleos', load.clock?.allCoreMHz ? `${n(load.clock.allCoreMHz)} MHz` : null],
-      ['Um núcleo (turbo)', load.clock?.singleMHz ? `${n(load.clock.singleMHz)} MHz` : null],
-      ['Processador em carga', Number.isFinite(load.temps?.cpuPeak) ? `${n(load.temps.cpuPeak)} °C` : null],
-      ['Placa de vídeo', Number.isFinite(load.temps?.gpuPeak) ? `${n(load.temps.gpuPeak)} °C` : null],
-      ['Link da placa de vídeo', link],
-      ['Pontuação', load.bench?.multi ? `${n(load.bench.multi, 0)} · ${n(load.bench.single, 0)} (1 núcleo)` : null]
+      ['Todos os núcleos', load.clock?.allCoreMHz ? `${n(load.clock.allCoreMHz)} MHz` : null, 'cpu'],
+      ['Um núcleo (turbo)', load.clock?.singleMHz ? `${n(load.clock.singleMHz)} MHz` : null, 'cpu'],
+      ['Processador em carga', Number.isFinite(load.temps?.cpuPeak) ? `${n(load.temps.cpuPeak)} °C` : null, 'heat'],
+      ['Placa de vídeo', Number.isFinite(load.temps?.gpuPeak) ? `${n(load.temps.gpuPeak)} °C` : null, 'gpu'],
+      ['Link da placa de vídeo', link, 'network'],
+      ['Pontuação', load.bench?.multi ? `${n(load.bench.multi, 0)} · ${n(load.bench.single, 0)} (1 núcleo)` : null, 'board']
     ].filter(([, value]) => value);
     const signed = (value, digits) => (value >= 0 ? '+' : '') + n(value, digits);
     const changes = (report.comparison?.changes || []).map((item) => (item.pct === undefined ? `${item.label}: ${signed(item.delta, 0)} °C` : `${item.label}: ${signed(item.pct, 1)}%`));
-    const grid = tiles.length ? '<div class="deep-tiles">' + list(tiles, ([label, value]) => '<div>' + el('span', '', label) + el('strong', '', value) + '</div>') + '</div>' : '<p class="muted">Sem leituras de sensores neste PC.</p>';
+    const grid = tiles.length ? '<div class="deep-tiles">' + list(tiles, ([label, value, node]) => `<div data-node="${node}">` + el('span', '', label) + el('strong', '', value) + '</div>') + '</div>' : '<p class="muted">Sem leituras de sensores neste PC.</p>';
     const since = changes.length ? el('p', 'muted', `Desde a análise de ${new Date(report.comparison.at).toLocaleDateString('pt-BR')}: ${changes.join(' · ')}`) : '';
     return `<section class="deep-card deep-load"><h4>Teste de carga</h4>${grid}${since}</section>`;
   }
@@ -383,10 +411,13 @@
     const moreHtml = more.length ? `<details class="deep-more"${main.length ? '' : ' open'}><summary>${plural(more.length, 'sugestão', 'sugestões e observações')}</summary>${list(more, findingHtml)}</details>` : '';
     const resolved = comparison?.resolved?.length ? el('p', 'deep-resolved', 'Resolvido desde a última vez: ' + comparison.resolved.join(' · ')) : '';
     const okHtml = ok.length ? '<section class="deep-card deep-ok"><h4>Já está certo</h4><ul>' + list(ok, (item) => el('li', '', item.title)) + '</ul></section>' : '';
+    let story = { identity: '', verdict: '', good: null };
+    try { story = NexoDeep.narrative(report.profile || {}, findings); } catch { /* relatório antigo sem perfil */ }
+    const ring = 2 * Math.PI * 42;
     reportBox.innerHTML = `<div class="deep-head">
-        <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(report.score)}"><strong>${report.score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
-        <div class="deep-head-text">${el('h3', '', main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem')}${el('p', '', headline(main, more, ok, count))}${el('small', 'muted', stamp(report, fromDisk))}</div>
-        <div class="deep-head-actions"><button class="btn sm primary" type="button" data-deep-again="1">Analisar de novo</button></div>
+        <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(report.score)}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-bg" cx="50" cy="50" r="42" /><circle class="ring" cx="50" cy="50" r="42" stroke-dasharray="${ring.toFixed(1)}" stroke-dashoffset="${ring.toFixed(1)}" data-target="${(ring * (1 - report.score / 100)).toFixed(1)}" /></svg><strong>${report.score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
+        <div class="deep-head-text"><span class="deep-kicker">Seu PC, entendido</span>${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${el('p', 'deep-verdict', story.verdict)}${story.good ? el('p', 'deep-good', story.good) : ''}${el('small', 'muted', `${headline(main, more, ok, count)} · ${stamp(report, fromDisk)}`)}</div>
+        <div class="deep-head-side"><svg class="deep-sky deep-mini" id="deep-report-sky" viewBox="0 0 640 280" role="img" aria-label="Constelação do seu PC: peças em amarelo têm algo para ajustar; toque numa para ver"></svg><button class="btn sm primary" type="button" data-deep-again="1">Analisar de novo</button></div>
       </div>
       <div class="deep-grid">
         <div class="deep-col">
@@ -398,6 +429,20 @@
         <div class="deep-col">${pcHtml(report)}${planHtml(report)}${okHtml}</div>
       </div>`;
     show('report');
+    finishReport(findings);
+  }
+
+  /** Depois de montar: constelação final (clicável), anel da nota enchendo e cartões entrando em sequência. */
+  function finishReport(findings) {
+    const mini = document.getElementById('deep-report-sky');
+    buildSky(mini);
+    const nodes = Object.fromEntries(NODES.map((item) => [item.id, 'done']));
+    for (const item of findings) if ((item.severity === 'alta' || item.severity === 'media') && AREA_NODE[item.area]) nodes[AREA_NODE[item.area]] = 'warn';
+    paintStates(mini, nodes);
+    reportBox.querySelectorAll('.deep-card').forEach((card, index) => card.style.setProperty('--i', String(index)));
+    const ring = reportBox.querySelector('.deep-score .ring');
+    const go = () => { if (ring) ring.style.strokeDashoffset = ring.dataset.target; };
+    if (calm()) { go(); reportBox.classList.add('calm'); } else requestAnimationFrame(() => requestAnimationFrame(go));
   }
 
   /* ---------------- Fluxo ---------------- */
@@ -442,10 +487,18 @@
     }
   }
 
+  /** Constelação parada na apresentação: as peças "esperando" para serem conhecidas. */
+  function paintIntro() {
+    const intro = document.getElementById('deep-intro-sky');
+    buildSky(intro);
+    paintStates(intro, { cpu: 'seen', board: 'done', memory: 'seen', gpu: 'seen', disk: 'seen', network: 'seen', windows: 'seen' });
+  }
+
   async function loadLast() {
     if (loadedLast || running) return;
     loadedLast = true;
     drawSky();
+    paintIntro();
     try {
       const status = await bridge?.getDeepAnalysisStatus?.();
       if (status && status.status === 'running') { renderProgress(status); return; }
@@ -459,6 +512,12 @@
   document.getElementById('deep-start')?.addEventListener('click', start);
   document.getElementById('deep-cancel')?.addEventListener('click', () => { bridge?.cancelDeepAnalysis?.(); setText('deep-action', 'cancelando…'); });
   reportBox.addEventListener('click', (event) => {
+    const star = event.target.closest('.deep-star');
+    if (star) {
+      const row = reportBox.querySelector(`.pc-list > li[data-node="${star.dataset.node}"]`);
+      if (row) { row.scrollIntoView({ behavior: calm() ? 'auto' : 'smooth', block: 'center' }); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
+      return;
+    }
     const target = event.target.closest('button');
     if (!target) return;
     if (target.dataset.deepAgain) start();

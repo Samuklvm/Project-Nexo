@@ -691,6 +691,31 @@
   }
 
   /* ======================================================================================================
+   * Retrato em palavras: quem é este PC, o que mais segura ele hoje e o que já está certo
+   * ==================================================================================================== */
+  const lowerFirst = (value) => (value ? value.charAt(0).toLowerCase() + value.slice(1) : value);
+  const joinPt = (items) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`);
+  function narrative(profile = {}, findings = []) {
+    const cpu = profile.cpu || {};
+    const memory = profile.memory || {};
+    const board = profile.board || {};
+    const cpuName = [cpu.vendor, cpu.family, cpu.model].filter(Boolean).join(' ') || cpu.name || 'um processador';
+    const arch = [cpu.architecture, cpu.x3d ? 'com 3D V-Cache' : null, cpu.hybrid ? 'com núcleos P e E' : null].filter(Boolean).join(' ');
+    const boardName = board.chipset ? `numa placa ${board.chipset.id}${board.maker ? ' da ' + board.maker : ''}` : null;
+    const layout = { single: 'em canal único', dual: 'em dual channel', quad: 'em quatro canais', 'same-channel': 'com os pentes no mesmo canal' }[memory.layout] || '';
+    const mem = memory.totalBytes ? [Hardware.gbText(memory.totalBytes), 'de memória', memory.type, layout].filter(Boolean).join(' ') : null;
+    const gpu = (profile.gpus || []).find((item) => item.discrete) || (profile.gpus || []).find((item) => item.integrated);
+    const gpuName = gpu ? (gpu.integrated ? `o vídeo integrado (${gpu.name})` : `uma ${gpu.name}`) : null;
+    const kind = profile.kindLabel ? profile.kindLabel.charAt(0).toUpperCase() + profile.kindLabel.slice(1) : 'Um PC';
+    const parts = [mem, gpuName].filter(Boolean);
+    const identity = `${kind} com ${cpuName}${arch ? ` (${arch})` : ''}${boardName ? ' ' + boardName : ''}${parts.length ? ', ' + joinPt(parts) : ''}.`;
+    const serious = findings.filter((item) => item.severity === 'alta' || item.severity === 'media');
+    const verdict = serious.length ? `O que mais segura ele hoje: ${joinPt(serious.slice(0, 2).map((item) => lowerFirst(item.title)))}${serious.length > 2 ? ` (e mais ${serious.length - 2})` : ''}.` : 'Nada importante segurando ele agora.';
+    const ok = findings.filter((item) => item.severity === 'ok').slice(0, 3).map((item) => lowerFirst(item.title));
+    return { identity, verdict, good: ok.length ? `Já está certo: ${joinPt(ok)}.` : null };
+  }
+
+  /* ======================================================================================================
    * Perfil guardado (o que o Nexo aprendeu deste PC) e nota geral
    * ==================================================================================================== */
   function fingerprintOf(profile) {
@@ -725,5 +750,5 @@
     return Math.max(5, Math.min(100, Math.round(100 - lost)));
   }
 
-  return { NODES, STAGES, MIN_TOTAL_MS, plan, LAB_KNOBS, classifyProcess, summarizeObservation, needsMoreTime, summarizeLoad, cpuSensors, buildFindings, compareRuns, runRecord, fingerprintOf, healthScore, BACKGROUND, SEVERITY_ORDER, impactOf };
+  return { NODES, STAGES, MIN_TOTAL_MS, plan, narrative, LAB_KNOBS, classifyProcess, summarizeObservation, needsMoreTime, summarizeLoad, cpuSensors, buildFindings, compareRuns, runRecord, fingerprintOf, healthScore, BACKGROUND, SEVERITY_ORDER, impactOf };
 });
