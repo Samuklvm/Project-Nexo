@@ -85,6 +85,21 @@ test('experimento: poucas repetições é inconclusivo e ruído alto gera aviso'
   assert.match(noisy.notes.join(' '), /variaram muito/);
 });
 
+test('experimento pareado: o aquecimento durante o teste não faz o plano novo parecer pior', () => {
+  // O processador esquenta e perde um pouco a cada medição. Medindo tudo de A e depois tudo de B, um plano IGUAL
+  // parece pior (era o bug); intercalando A-B, B-A…, cada par vê o mesmo aquecimento.
+  const drift = [100, 97, 94, 91, 88, 85, 82, 79];
+  const same = { a: [drift[0], drift[3], drift[4], drift[7]], b: [drift[1], drift[2], drift[5], drift[6]] };
+  assert.equal(Experiment.compare(drift.slice(0, 3), drift.slice(3, 6)).verdict, 'piorou', 'o jeito antigo erra');
+  assert.equal(Experiment.comparePaired(same.a, same.b).verdict, 'sem-diferenca');
+  const better = { a: same.a, b: same.b.map((value) => value * 1.08) };
+  assert.equal(Experiment.comparePaired(better.a, better.b).verdict, 'melhorou');
+  const worse = { a: same.a, b: same.b.map((value) => value * 0.9) };
+  assert.equal(Experiment.comparePaired(worse.a, worse.b).verdict, 'piorou');
+  assert.equal(Experiment.comparePaired([100, 100], [110, 110]).verdict, 'inconclusivo');
+  assert.equal(Experiment.comparePaired([100, 100, 100, 100], [130, 80, 125, 85]).verdict, 'inconclusivo', 'pares que discordam muito');
+});
+
 test('experimento: avisos de contexto', () => {
   const warnings = Experiment.contextWarnings({ onBattery: true, cpuBefore: 70, tempBefore: 60, tempAfter: 72 });
   assert.equal(warnings.length, 3);

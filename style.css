@@ -1445,3 +1445,4 @@ body.lite .deep-facts li.fresh { animation: none; }
 .deep-mini .deep-star .deep-core { r: 7px; }
 .deep-chart .deep-star:hover .deep-glow, .deep-chart .deep-star:focus-visible .deep-glow { opacity: 1; transform: scale(1.25); }
 .deep-chart .deep-milky { opacity: 0.9; pointer-events: none; }
+.cost-note { display: block; margin-top: 3px; font-size: 11px; }

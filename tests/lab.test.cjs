@@ -141,6 +141,28 @@ test('combine: melhora num teste e piora noutro é "misto", não ganho', () => {
   assert.equal(Lab.combine({ single: { verdict: 'sem-diferenca', deltaPct: 0.2 }, burst: { verdict: 'melhorou', deltaPct: 7 } }).verdict, 'melhorou');
 });
 
+test('combine: o veredito acompanha o ganho composto (nunca "+3%" com "piorou")', () => {
+  const W = Lab.GOALS.jogos.weights;
+  // Ganho claro em quadros e rajadas; a memória (peso baixo em jogos) piorou um pouco: é ganho, com o custo anotado.
+  const clear = Lab.combine({ frames: { verdict: 'melhorou', deltaPct: 6 }, burst: { verdict: 'melhorou', deltaPct: 4 }, latency: { verdict: 'sem-diferenca', deltaPct: 0.5 }, memory: { verdict: 'piorou', deltaPct: -3 } }, W);
+  assert.equal(clear.verdict, 'melhorou');
+  assert.ok(clear.compositeDelta > 0);
+  assert.deepEqual(clear.losses, ['memory']);
+  // A mesma piora num teste que pesa em jogos (temporizador) já é troca.
+  assert.equal(Lab.combine({ frames: { verdict: 'melhorou', deltaPct: 6 }, burst: { verdict: 'melhorou', deltaPct: 4 }, timer: { verdict: 'piorou', deltaPct: -3 } }, W).verdict, 'misto');
+  // Só uma piora real e o resto no ruído com total positivo: é troca, não "piorou".
+  const cost = Lab.combine({ frames: { verdict: 'sem-diferenca', deltaPct: 2.5 }, timer: { verdict: 'piorou', deltaPct: -4 } }, W);
+  assert.equal(cost.verdict, 'misto');
+  // Piorou de verdade: total negativo.
+  assert.equal(Lab.combine({ frames: { verdict: 'piorou', deltaPct: -6 }, single: { verdict: 'sem-diferenca', deltaPct: -1 } }, W).verdict, 'piorou');
+  // Melhorou num teste, mas o total ficou negativo: sem ganho.
+  assert.equal(Lab.combine({ timer: { verdict: 'melhorou', deltaPct: 5 }, frames: { verdict: 'sem-diferenca', deltaPct: -2.5 }, single: { verdict: 'sem-diferenca', deltaPct: -2 } }, W).verdict, 'sem-diferenca');
+  for (const combo of [clear, cost]) {
+    if (combo.verdict === 'melhorou') assert.ok(combo.compositeDelta > 0);
+    if (combo.verdict === 'piorou') assert.ok(combo.compositeDelta < 0);
+  }
+});
+
 test('assertRunnable: consentimento reforçado, tomada, temperatura e carga', () => {
   const pre = { platform: 'win32', onBattery: false, tempC: 50, cpuLoad: 5, knobs: { perfepp: { available: true } } };
   assert.deepEqual(Lab.assertRunnable(pre, CONSENT), ['perfepp']);

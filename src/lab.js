@@ -201,27 +201,37 @@
   }
 
   /**
-   * Veredito combinado entre os testes: qualquer piora com melhora noutro = "misto" (troca, não ganho).
-   * O ganho composto é a média ponderada pelo objetivo (jogos, uso geral...) só dos testes que mediram esse ajuste.
+   * Veredito combinado entre os testes, coerente com o ganho composto (média ponderada pelo objetivo):
+   *  - "melhorou" só com ganho composto positivo; "piorou" só com ganho composto negativo;
+   *  - melhora num teste e piora real noutro de peso relevante = "misto" (troca, não ganho);
+   *  - uma piora pequena num teste de peso baixo (< 15% do objetivo) não derruba um ganho claro: vira "melhorou" com o
+   *    custo anotado. Antes, qualquer piora virava "piorou" mesmo com o total positivo ("+3%" e "piorou" na mesma linha).
    */
-  function combine(results, weights = null) {
+  function combine(results, weights = null, minEffectPct = DEFAULT_LIMITS.minEffectPct) {
     const entries = Object.entries(results);
     const verdicts = entries.map(([, result]) => result.verdict);
+    const weightOf = (bench) => (weights ? (finite(weights[bench]) ? weights[bench] : 0.1) : 1);
     let sum = 0;
     let weight = 0;
     for (const [bench, result] of entries) {
       if (!finite(result.deltaPct)) continue;
-      const w = weights ? (finite(weights[bench]) ? weights[bench] : 0.1) : 1;
-      sum += result.deltaPct * w;
-      weight += w;
+      sum += result.deltaPct * weightOf(bench);
+      weight += weightOf(bench);
     }
     const compositeDelta = weight > 0 ? round1(sum / weight) : null;
+    const gains = entries.filter(([, result]) => result.verdict === 'melhorou').map(([bench]) => bench);
+    const losses = entries.filter(([, result]) => result.verdict === 'piorou').map(([bench]) => bench);
+    const share = (list) => (weight > 0 ? list.reduce((total, bench) => total + weightOf(bench), 0) / weight : 0);
+    const composite = finite(compositeDelta) ? compositeDelta : 0;
     let verdict = 'sem-diferenca';
     if (verdicts.every((v) => v === 'inconclusivo')) verdict = 'inconclusivo';
-    else if (verdicts.includes('piorou') && verdicts.includes('melhorou')) verdict = 'misto';
-    else if (verdicts.includes('piorou')) verdict = 'piorou';
-    else if (verdicts.includes('melhorou')) verdict = 'melhorou';
-    return { verdict, compositeDelta };
+    else if (gains.length && losses.length) {
+      if (share(losses) < 0.15 && composite >= minEffectPct) verdict = 'melhorou';
+      else if (share(gains) < 0.15 && composite <= -minEffectPct) verdict = 'piorou';
+      else verdict = 'misto';
+    } else if (losses.length) verdict = composite < 0 ? 'piorou' : 'misto';
+    else if (gains.length) verdict = composite > 0 ? 'melhorou' : 'sem-diferenca';
+    return { verdict, compositeDelta, gains, losses };
   }
 
   /** Gerador determinístico (a mesma sessão sorteia as mesmas combinações; nos testes, resultado reproduzível). */
@@ -364,7 +374,7 @@
       if (noisy * 2 > sides) for (const bench of benches) results[bench] = { ...results[bench], verdict: 'inconclusivo', confidence: 'baixa', reason: 'outro programa usou o processador durante a medição' };
       // Diferença de temperatura do MESMO teste com e sem o ajuste (os dois lados já estão aquecidos).
       const tempDelta = finite(median(temps.cand)) && finite(median(temps.base)) ? round1(median(temps.cand) - median(temps.base)) : null;
-      return { results, tempDelta, noisy, ...combine(results, weights), raw: { base, cand, temps }, pairsDone: (previous?.pairsDone || 0) + pairs, sides, noisyRaw: noisy };
+      return { results, tempDelta, noisy, ...combine(results, weights, limits.minEffectPct), raw: { base, cand, temps }, pairsDone: (previous?.pairsDone || 0) + pairs, sides, noisyRaw: noisy };
     };
     const strip = ({ raw, noisyRaw, sides, ...rest }) => rest;
     const describe = (keys) => keys.map((key) => { const [id, value] = key.split('='); const knob = KNOB.get(id); return `${knob?.label || id} → ${knob ? valueLabel(knob, Number(value)) : value}`; }).join(' + ');

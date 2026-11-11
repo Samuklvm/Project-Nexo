@@ -23,6 +23,7 @@
             { emoji: '⚡', title: 'A análise de antes continua', text: 'O botão "Rápida" mede os programas na hora, como antes.' }
           ] },
           { emoji: '🛠️', title: 'Correções', tone: 'fix', items: [
+            { emoji: '📏', title: 'Medição de desempenho mais justa', text: 'O teste do plano de energia agora alterna os dois planos (o aquecimento do processador pesa igual dos dois lados), e o laboratório não chama de "piorou" um ajuste com ganho total positivo.' },
             { emoji: '🧪', title: 'Tabela do laboratório', text: 'Quatro colunas dos resultados mostravam "undefined" no lugar do nome do teste.' }
           ] }
         ]

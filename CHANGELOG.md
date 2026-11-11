@@ -11,6 +11,7 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 - Novo: constelação do PC durante a análise (cada peça acende e ganha o nome) e relatório com a carta celeste do PC, nota, placar, termômetros até o limite da peça e as pistas do PCIe.
 - Melhoria: reconhecimento de peças do Core 2 ao Core Ultra, Ryzen, Xeon de placas X79/X99, Steam Deck e Snapdragon; placas de vídeo de jogo, de estação de trabalho e integradas; chipsets com prefixo do fabricante; códigos de pente de dezenas de marcas; SSD/HD pelo modelo; placas de rede.
 - Melhoria: o botão do painel do criador aparece e some quando a conta entra ou sai da equipe, sem religar a sincronização; as novidades do app ficam só com o que muda para quem usa.
+- Correção: o experimento do plano de energia media o plano atual inteiro e só depois o novo (o processador mais quente fazia o novo parecer pior); agora mede em pares intercalados. O laboratório chamava de "piorou" um ajuste com ganho composto positivo quando um teste de peso baixo caía; o veredito agora acompanha o ganho composto e o custo fica anotado.
 - Correção: a tabela de resultados do laboratório mostrava "undefined" em quatro colunas.
 
 ### 0.11.1: revisão completa
@@ -117,6 +118,7 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 - New: the PC constellation during the analysis (each part lights up and gets its name) and a report with the PC's star chart, score, tally, thermometers up to each part's limit and the PCIe lanes.
 - Improvement: recognition of parts from Core 2 to Core Ultra, Ryzen, Xeon on X79/X99 boards, Steam Deck and Snapdragon; gaming, workstation and integrated graphics; chipsets with a maker prefix; memory part numbers from dozens of brands; SSD/HDD by model; network adapters.
 - Improvement: the creator panel button appears and disappears when the account joins or leaves the team, without turning sync off and on; the app's what's new window only lists what changes for users.
+- Fix: the power plan experiment measured the whole current plan first and the new one after (the hotter processor made the new plan look worse); it now measures in interleaved pairs. The lab called a tweak with a positive composite gain "worse" when a low-weight test dropped; the verdict now follows the composite gain and the cost is noted.
 - Fix: the lab results table showed "undefined" in four columns.
 
 ### 0.11.1: a complete review

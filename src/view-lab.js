@@ -284,9 +284,13 @@
     const benchCell = (row) => (bench) => {
       const measured = row.results?.[bench];
       const value = measured ? `${signed(measured.deltaPct)}<small> ±${(measured.noisePct ?? 0).toFixed(1).replace('.', ',')}</small>` : '—';
-      return `<td>${value}</td>`;
+      // Só ganha cor o que passou do ruído: o resto é diferença que a medição não consegue afirmar.
+      const tone = measured && ['melhorou', 'piorou'].includes(measured.verdict) ? ` class="delta ${measured.verdict}"` : '';
+      return `<td${tone}>${value}</td>`;
     };
-    const tableRow = (row) => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.change)}</td>${benches.map(benchCell(row)).join('')}<td>${signed(row.compositeDelta)}</td><td class="nowrap">${temp(row.tempDelta)}</td><td>${verdictChip(row.verdict)}</td></tr>`;
+    // Ganho com um custo pequeno num teste de peso baixo: o custo fica escrito embaixo do veredito.
+    const costNote = (row) => (row.verdict === 'melhorou' && row.losses?.length ? `<small class="muted cost-note">custo: ${escapeHtml(row.losses.map((bench) => BENCH_SHORT[bench] || bench).join(', '))}</small>` : '');
+    const tableRow = (row) => `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.change)}</td>${benches.map(benchCell(row)).join('')}<td>${signed(row.compositeDelta)}</td><td class="nowrap">${temp(row.tempDelta)}</td><td>${verdictChip(row.verdict)}${costNote(row)}</td></tr>`;
     return `<div class="table-scroll"><table class="exp"><thead><tr><th>${firstColumn}</th><th>De → para</th>${benches.map(benchHead).join('')}<th>Ganho (${escapeHtml(NexoLab.GOALS?.[options.goal]?.label || 'composto')})</th><th>Temp.</th><th>Veredito</th></tr></thead><tbody>${rows.map(tableRow).join('')}</tbody></table></div>`;
   }
 

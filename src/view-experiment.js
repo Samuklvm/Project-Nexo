@@ -1,7 +1,12 @@
-/* Experimento A/B do plano de energia: medir, trocar, medir de novo, comparar com o ruído e decidir. */
+/*
+ * Experimento A/B do plano de energia, PAREADO e intercalado: A-B, B-A, A-B, B-A. Medir o plano atual inteiro e só depois o
+ * novo deixava o novo sempre mais quente (o processador esquenta durante o teste) e ele parecia pior mesmo sendo igual ou
+ * melhor. Intercalando, o aquecimento cai igual nos dois lados e o ganho é a mediana das razões de cada par.
+ */
 (function () {
-  const REPS = 3;
+  const PAIRS = 4;
   const BENCH_MS = 1200;
+  const SETTLE_MS = 900;
   const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
   const num = (value) => (Number.isFinite(value) ? value.toFixed(1).replace('.', ',') : '--');
   const signed = (value) => (Number.isFinite(value) ? `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')}%` : '--');
@@ -34,22 +39,42 @@
     return { blockers, warnings: NexoExperiment.contextWarnings({ onBattery: source.onBattery, cpuBefore: cpu }), temp };
   }
 
-  async function runPhase(label, ctx) {
-    ctx.detail = `${label}: aquecendo os núcleos`; ctx.render();
+  /** Uma medição de um lado: um núcleo e vários núcleos, logo depois de o plano estabilizar. */
+  async function measureSide(label, pair, ctx) {
+    ctx.check(); ctx.detail = `Par ${pair + 1} de ${PAIRS}: ${label}, um núcleo`; ctx.render();
+    const single = (await desktopBridge.runCpuBench({ mode: 'single', ms: BENCH_MS })).mopsPerSec;
+    ctx.check(); ctx.detail = `Par ${pair + 1} de ${PAIRS}: ${label}, vários núcleos`; ctx.render();
+    const multi = (await desktopBridge.runCpuBench({ mode: 'multi', ms: BENCH_MS })).mopsPerSec;
+    return { single, multi };
+  }
+
+  /** Pares intercalados. Troca o plano direto (sem Diário a cada troca); o Diário registra só a troca final. */
+  async function runPairs(current, target, ctx) {
+    const a = { single: [], multi: [] };
+    const b = { single: [], multi: [] };
+    let active = current.guid;
+    const use = async (plan) => {
+      if (active === plan.guid) return;
+      await desktopBridge.setPowerPlan(plan.guid);
+      active = plan.guid;
+      ctx.active = plan.guid;
+      await sleep(SETTLE_MS);
+    };
+    ctx.detail = 'Aquecendo os núcleos'; ctx.render();
     await desktopBridge.runCpuBench({ mode: 'single', ms: 400 });
-    const single = [];
-    const multi = [];
-    for (let i = 0; i < REPS; i += 1) {
-      ctx.check(); ctx.detail = `${label}: um núcleo, repetição ${i + 1} de ${REPS}`; ctx.render();
-      // eslint-disable-next-line no-await-in-loop -- uma medição por vez: duas ao mesmo tempo disputariam o processador
-      single.push((await desktopBridge.runCpuBench({ mode: 'single', ms: BENCH_MS })).mopsPerSec);
+    await desktopBridge.runCpuBench({ mode: 'multi', ms: 600 });
+    for (let pair = 0; pair < PAIRS; pair += 1) {
+      const order = pair % 2 ? [[target, b, 'plano novo'], [current, a, 'plano atual']] : [[current, a, 'plano atual'], [target, b, 'plano novo']];
+      for (const [plan, side, label] of order) {
+        // eslint-disable-next-line no-await-in-loop -- uma medição por vez: duas ao mesmo tempo disputariam o processador
+        await use(plan);
+        // eslint-disable-next-line no-await-in-loop -- idem
+        const reading = await measureSide(label, pair, ctx);
+        side.single.push(reading.single);
+        side.multi.push(reading.multi);
+      }
     }
-    for (let i = 0; i < REPS; i += 1) {
-      ctx.check(); ctx.detail = `${label}: vários núcleos, repetição ${i + 1} de ${REPS}`; ctx.render();
-      // eslint-disable-next-line no-await-in-loop -- uma medição por vez: duas ao mesmo tempo disputariam o processador
-      multi.push((await desktopBridge.runCpuBench({ mode: 'multi', ms: BENCH_MS })).mopsPerSec);
-    }
-    return { single, multi, temp: Nexo.store.hottest(Nexo.store.live().slice(-1)[0] || {}) };
+    return { a, b, temp: Nexo.store.hottest(Nexo.store.live().slice(-1)[0] || {}) };
   }
 
   const noteItem = (text) => `<li>${escapeHtml(text)}</li>`;
@@ -62,7 +87,7 @@
       <tbody>${row('Um núcleo', a.single, b.single, single)}${row('Vários núcleos', a.multi, b.multi, multi)}</tbody></table>
       <p class="verdict v-${verdict}">${VERDICT_TEXT[verdict]}</p>
       ${notesList([...new Set([...warnings, ...single.notes, ...multi.notes])])}
-      <p class="muted">Valores em milhões de operações por segundo (Mops/s) de uma carga sintética de inteiros, mediana de ${REPS} repetições. Mede velocidade bruta de CPU: não mede FPS, jogos nem tempo de abertura de programas.</p>`;
+      <p class="muted">Valores em milhões de operações por segundo (Mops/s) de uma carga sintética de inteiros. Os dois planos foram medidos em ${PAIRS} pares intercalados (o aquecimento pesa igual dos dois lados); a mudança é a mediana dos pares e o ruído, o quanto os pares discordaram. Mede velocidade bruta de CPU: não mede FPS, jogos nem tempo de abertura de programas.</p>`;
   }
 
   /** Fluxo completo: pré-checagem, confirmação, A, troca, B, comparação, decisão. */
@@ -78,8 +103,8 @@
     }
     const answer = await Nexo.dialog({
       title: `Medir “${target.name}” contra “${current.name}”?`, wide: true,
-      html: `<p>O Nexo vai medir a velocidade do processador com o plano atual, trocar para o novo plano, medir de novo e comparar com o ruído da medição.</p>
-        <ul><li>Dura cerca de <strong>20 segundos</strong>, com o processador em carga máxima. O computador pode ficar lento nesse intervalo.</li>
+      html: `<p>O Nexo vai medir a velocidade do processador alternando os dois planos (atual, novo, novo, atual…), para o aquecimento do processador pesar igual dos dois lados, e comparar com o ruído da medição.</p>
+        <ul><li>Dura cerca de <strong>30 segundos</strong>, com o processador em carga máxima. O computador pode ficar lento nesse intervalo.</li>
         <li>Você pode cancelar a qualquer momento. Se cancelar depois da troca, o plano anterior volta sozinho.</li>
         <li>No fim, você escolhe manter o novo plano ou voltar. A troca fica registrada no Diário de alterações.</li></ul>
         ${notesList(check.warnings)}`,
@@ -89,8 +114,8 @@
 
     let cancelled = false;
     let entry = null;
-    const steps = [`Medir o plano atual (${current.name})`, `Trocar para ${target.name}`, `Medir o novo plano`, 'Comparar com o ruído'].map((label) => ({ label, state: 'pending' }));
-    const ctx = { detail: '', render: null, check() { if (cancelled) throw CANCELLED; } };
+    const steps = [`Medir ${current.name} e ${target.name}, intercalados (${PAIRS} pares)`, `Deixar ${target.name} ativo`, 'Comparar com o ruído'].map((label) => ({ label, state: 'pending' }));
+    const ctx = { detail: '', render: null, active: current.guid, check() { if (cancelled) throw CANCELLED; } };
     const dialog = Nexo.dialog({
       title: 'Experimento em andamento', wide: true, dismissible: false, html: '',
       actions: [{ id: 'cancel', label: 'Cancelar teste', keepOpen: true, onClick: () => { cancelled = true; desktopBridge.cancelCpuBench(); } }]
@@ -101,28 +126,23 @@
 
     try {
       mark(0, 'running');
-      const a = await runPhase('Plano atual', ctx);
+      const { a, b, temp } = await runPairs(current, target, ctx);
       mark(0, 'done'); ctx.check();
 
-      mark(1, 'running'); ctx.detail = 'Trocando o plano de energia…'; ctx.render();
+      mark(1, 'running'); ctx.detail = 'Registrando a troca no Diário…'; ctx.render();
       entry = await Nexo.switchPowerPlan(target, { notify: false });
+      ctx.active = target.guid;
       mark(1, 'done');
-      ctx.detail = 'Deixando o processador estabilizar…'; ctx.render();
-      await sleep(2500); ctx.check();
 
       mark(2, 'running');
-      const b = await runPhase('Plano novo', ctx);
-      mark(2, 'done');
-
-      mark(3, 'running');
-      const single = NexoExperiment.compare(a.single, b.single);
-      const multi = NexoExperiment.compare(a.multi, b.multi);
+      const single = NexoExperiment.comparePaired(a.single, b.single);
+      const multi = NexoExperiment.comparePaired(a.multi, b.multi);
       const verdict = overall(single, multi);
-      const warnings = NexoExperiment.contextWarnings({ tempBefore: a.temp, tempAfter: b.temp, cpuBefore: Nexo.state.snapshot?.cpuUsage });
+      const warnings = NexoExperiment.contextWarnings({ tempBefore: check.temp, tempAfter: temp, cpuBefore: Nexo.state.snapshot?.cpuUsage }).filter((text) => !/temperatura subiu/.test(text));
       const pick = (c) => ({ deltaPct: c.deltaPct, noisePct: c.noisePct, verdict: c.verdict, confidence: c.confidence });
-      Nexo.journal.attachMeasurement(entry.id, { at: Date.now(), reps: REPS, benchMs: BENCH_MS, verdict, single: pick(single), multi: pick(multi) });
+      Nexo.journal.attachMeasurement(entry.id, { at: Date.now(), reps: PAIRS, paired: true, benchMs: BENCH_MS, verdict, single: pick(single), multi: pick(multi) });
       Nexo.emit('journal');
-      mark(3, 'done');
+      mark(2, 'done');
 
       dialog.close('measured');
       const keepFirst = verdict === 'melhorou';
@@ -136,7 +156,11 @@
       recordActivity('Experimento de energia', `${target.name}: ${verdict.replace('-', ' ')}`);
     } catch (error) {
       dialog.close('error');
-      if (entry) {
+      if (!entry && ctx.active !== current.guid) {
+        // Cancelou no meio dos pares: volta o plano original direto (a troca ainda não foi para o Diário).
+        const restored = await desktopBridge.setPowerPlan(current.guid).then(() => true, () => false);
+        showToast(error === CANCELLED ? (restored ? `Teste cancelado. O plano ${current.name} foi restaurado.` : 'Teste cancelado. Confira o plano de energia em Otimizar.') : (error.message || 'O experimento não pôde ser concluído.'));
+      } else if (entry) {
         const reverted = await Nexo.revertJournal(entry.id);
         showToast(error === CANCELLED ? (reverted ? `Teste cancelado. O plano ${current.name} foi restaurado.` : 'Teste cancelado. Confira o plano de energia em Otimizar.') : (error.message || 'O experimento não pôde ser concluído.'));
       } else showToast(error === CANCELLED ? 'Teste cancelado. Nada foi alterado.' : (error.message || 'O experimento não pôde ser concluído.'));

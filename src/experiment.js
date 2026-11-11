@@ -50,6 +50,45 @@
     return { verdict, deltaPct, noisePct, confidence, a, b, notes };
   }
 
+  /** Mediana de valores com sinal (as razões por par podem ser negativas). */
+  function signedMedian(values) {
+    const sorted = (values || []).filter(finite).sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  /**
+   * Comparação PAREADA e intercalada: cada medição de B foi feita logo ao lado de uma de A (ordem A-B, B-A, A-B…),
+   * então o aquecimento do processador ao longo do teste afeta os dois lados igual. Ganho = mediana das razões por par;
+   * ruído = quanto os pares discordam entre si. Só afirma diferença acima do ruído e com a maioria dos pares concordando.
+   */
+  function comparePaired(before, after, { minEffectPct = 2, minPairs = 3, maxNoisePct = 10 } = {}) {
+    const a = summarize(before);
+    const b = summarize(after);
+    const pairs = [];
+    for (let i = 0; i < Math.min((before || []).length, (after || []).length); i += 1) {
+      if (finite(before[i]) && finite(after[i]) && before[i] > 0 && after[i] > 0) pairs.push((after[i] / before[i] - 1) * 100);
+    }
+    if (pairs.length < minPairs) return { verdict: 'inconclusivo', deltaPct: null, noisePct: null, confidence: 'nenhuma', a, b, pairs: pairs.length, notes: [`São necessários ao menos ${minPairs} pares de medições.`] };
+    const deltaPct = signedMedian(pairs);
+    const noisePct = (Math.max(...pairs) - Math.min(...pairs)) / 2;
+    const sign = Math.sign(deltaPct);
+    const consistency = sign === 0 ? 0 : pairs.filter((value) => Math.sign(value) === sign).length / pairs.length;
+    const threshold = Math.max(minEffectPct, noisePct);
+    const notes = [];
+    let verdict = 'sem-diferenca';
+    if (noisePct > maxNoisePct) {
+      verdict = 'inconclusivo';
+      notes.push('As medições variaram muito de um par para outro (outro programa pode ter usado o processador). Feche o que estiver aberto e repita.');
+    } else if (Math.abs(deltaPct) > threshold && consistency >= 0.75) verdict = deltaPct > 0 ? 'melhorou' : 'piorou';
+    else notes.push('A diferença ficou dentro do ruído da medição: neste teste, não há efeito mensurável.');
+    const ratio = noisePct > 0 ? Math.abs(deltaPct) / noisePct : Infinity;
+    let confidence = 'n/a';
+    if (verdict === 'melhorou' || verdict === 'piorou') confidence = consistency === 1 && ratio >= 2 ? 'alta' : 'média';
+    return { verdict, deltaPct, noisePct, confidence, consistency, a, b, pairs: pairs.length, notes };
+  }
+
   /** Avisos de contexto que podem distorcer a comparação (temperatura, carga alheia, bateria). */
   function contextWarnings({ onBattery = false, cpuBefore = null, tempBefore = null, tempAfter = null } = {}) {
     const warnings = [];
@@ -59,5 +98,5 @@
     return warnings;
   }
 
-  return { median, summarize, compare, contextWarnings };
+  return { median, summarize, compare, comparePaired, contextWarnings };
 });
