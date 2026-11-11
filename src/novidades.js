@@ -8,6 +8,26 @@
   root.NexoNovidades = {
     versions: [
       {
+        version: '0.11.2', date: '2026-11-11', emoji: '🔭', title: 'Análise profunda',
+        tagline: 'O Nexo entende o seu PC peça por peça, vê o que pesa por trás do jogo e monta um plano feito para a sua máquina.',
+        sections: [
+          { emoji: '✨', title: 'Novidades', tone: 'new', items: [
+            { emoji: '🔭', title: 'Análise profunda', text: 'Em Análise: no mínimo 60 segundos (mais, quando precisa) olhando o PC a fundo. Lê as peças, 30 dias de eventos do sistema, o que roda por trás e faz um teste de carga curto. Não muda nada no PC e dá para deixar um jogo aberto.' },
+            { emoji: '🧩', title: 'Cada peça entendida, não só listada', text: 'O chipset da placa-mãe e o que ele permite, a geração do processador e o caminho de upgrade do soquete, a velocidade de cada pente pelo código dele, o link da placa de vídeo e do SSD, a porta e a taxa do monitor.' },
+            { emoji: '🎮', title: 'O que pesa por trás do jogo', text: 'O jogo, os launchers (Steam, Epic, Riot…) e o próprio Nexo ficam de fora da conta: a lista mostra o que atrapalha por trás deles, com o tipo de cada programa e o que fazer.' },
+            { emoji: '🗺️', title: 'Um plano para este PC', text: 'O que fazer na BIOS, o que o laboratório testa e mede neste PC e o que acompanhar, montado a partir das peças. Cada nova análise compara com a anterior.' },
+            { emoji: '🌌', title: 'A constelação do seu PC', text: 'Cada peça é uma estrela que acende e ganha o nome quando é examinada. No fim, a carta celeste do PC mostra a nota, o que já está certo e onde há algo para ajustar.' }
+          ] },
+          { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
+            { emoji: '🔎', title: 'Reconhece muito mais peças', text: 'Do Core 2 ao Core Ultra, Ryzen, Xeon de placas X79/X99, Steam Deck e Snapdragon; placas de vídeo de jogo, de estação de trabalho e integradas; chipsets, pentes de memória, SSDs, HDs e placas de rede de dezenas de marcas.' },
+            { emoji: '⚡', title: 'A análise de antes continua', text: 'O botão "Rápida" mede os programas na hora, como antes.' }
+          ] },
+          { emoji: '🛠️', title: 'Correções', tone: 'fix', items: [
+            { emoji: '🧪', title: 'Tabela do laboratório', text: 'Quatro colunas dos resultados mostravam "undefined" no lugar do nome do teste.' }
+          ] }
+        ]
+      },
+      {
         version: '0.11.1', date: '2026-11-10', emoji: '🛡️', title: 'Revisão completa',
         tagline: 'Medições mais honestas, o modo extremo sem alarme falso, relatórios de erro sempre ligados e o app mais seguro de ponta a ponta.',
         sections: [

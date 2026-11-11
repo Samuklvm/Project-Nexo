@@ -80,6 +80,7 @@
 - **Slow internet? Network diagnosis:** for when the connection is fine but sites take long to open. It compares your network's DNS with Cloudflare's and Google's, tests IPv6, the proxy, the cable and a real site, and suggests the fix (like switching DNS), with undo from the Journal.
 - **Safe cleanup:** old temporary files, crash reports and the Recycle Bin, with a preview of what goes and how much space comes back.
 - **Power plan, startup and maintenance:** switch power plans with a benchmark before and after, see programs that start with the system, optimize drives and check system files.
+- **Deep analysis:** in at least 60 seconds, it understands the PC part by part (the chipset and what it allows, the processor generation, each memory stick's rated speed from its part number, the PCIe link of the graphics card and the SSD, the monitor's port and refresh rate), reads 30 days of events, shows what weighs behind the game (never blaming the game, the launchers or Nexo itself), runs a short load test and builds a plan for that PC.
 - **Smart analysis:** compares the current moment with your routine and points to the likely cause **with the evidence**: slowdowns, the programs that get in the way most, a forecast of when your disk fills up and heat-related clock drops.
 
 > **About the “learning”:** it is not AI. Nexo keeps averages for every hour of the week, detects sustained episodes (high CPU, memory at its limit, heat), records who was consuming resources and adjusts its confidence in each suggestion based on your feedback. Simple and verifiable.

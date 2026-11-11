@@ -78,6 +78,7 @@
 - **Internet lenta? Diagnóstico de rede:** para quando a internet está boa, mas os sites demoram. Compara o DNS da sua rede com o da Cloudflare e do Google, testa IPv6, proxy, o cabo e um site de verdade, e sugere a correção (como trocar o DNS), com volta pelo Diário.
 - **Limpeza segura:** temporários antigos, relatórios de falha e Lixeira, com prévia do que sai e quanto espaço volta.
 - **Plano de energia, inicialização e manutenção:** troca do plano com benchmark antes e depois, programas que iniciam com o sistema, otimização de unidades e verificação de arquivos do sistema.
+- **Análise profunda:** em no mínimo 60 segundos, entende o PC peça por peça (chipset e o que ele permite, geração do processador, velocidade de cada pente pelo código, link PCIe da placa de vídeo e do SSD, porta e taxa do monitor), lê 30 dias de eventos, mostra o que pesa por trás do jogo (sem culpar o jogo, os launchers nem o próprio Nexo), faz um teste de carga curto e monta um plano para aquele PC.
 - **Análise inteligente:** compara o momento atual com a sua rotina e aponta a causa provável **com a evidência**: lentidões, programas que mais atrapalham, previsão de disco cheio e queda de clock por calor.
 
 > **Sobre o “aprendizado”:** não é IA. O Nexo guarda médias de cada hora da semana, detecta episódios sustentados (CPU alta, memória no limite, calor), registra quem estava consumindo e ajusta a confiança de cada sugestão pelo seu feedback. Simples e verificável.

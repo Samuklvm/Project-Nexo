@@ -6,6 +6,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.2: análise profunda
+- Novo: análise profunda em Análise (no mínimo 60 s, mais quando precisa): peças entendidas pelo nome (chipset e o que ele permite, geração do processador e caminho de upgrade, velocidade de cada pente pelo código, link PCIe da placa de vídeo e do SSD, porta e taxa do monitor), 30 dias de eventos, o que roda por trás do jogo (jogo, launchers e o próprio Nexo fora da conta), teste de carga com a placa de vídeo acordada, plano para o PC (BIOS, laboratório, acompanhar) e comparação com a análise anterior. Também no Linux.
+- Novo: constelação do PC durante a análise (cada peça acende e ganha o nome) e relatório com a carta celeste do PC, nota, placar, termômetros até o limite da peça e as pistas do PCIe.
+- Melhoria: reconhecimento de peças do Core 2 ao Core Ultra, Ryzen, Xeon de placas X79/X99, Steam Deck e Snapdragon; placas de vídeo de jogo, de estação de trabalho e integradas; chipsets com prefixo do fabricante; códigos de pente de dezenas de marcas; SSD/HD pelo modelo; placas de rede.
+- Melhoria: o botão do painel do criador aparece e some quando a conta entra ou sai da equipe, sem religar a sincronização; as novidades do app ficam só com o que muda para quem usa.
+- Correção: a tabela de resultados do laboratório mostrava "undefined" em quatro colunas.
+
 ### 0.11.1: revisão completa
 - Novo: relatórios de erro sempre ligados (só os erros de depois da atualização, sem nome de usuário, pastas ou texto digitado); o e-mail da conta Google vai junto e desmarcar em Ajustes tira o e-mail também dos relatórios já enviados. Telemetria e sincronização continuam opcionais.
 - Novo: as sessões dizem o que limitou o PC (processador, um núcleo, placa de vídeo por energia, calor, memória de vídeo ou clock baixo, memória, limite de quadros); telemetria com o resumo parcial do dia em curso e o que limitou o PC; registro de erros com ações lentas, travadas, interrupções e a trilha antes de cada erro.
@@ -104,6 +111,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.2: deep analysis
+- New: deep analysis in Analysis (at least 60 s, longer when it needs to): parts understood by name (the chipset and what it allows, the processor generation and the socket's upgrade path, each memory stick's rated speed from its part number, the PCIe link of the graphics card and the SSD, the monitor's port and refresh rate), 30 days of events, what runs behind the game (the game, launchers and Nexo itself are left out), a load test with the graphics card awake, a plan for the PC (BIOS, lab, keep an eye on) and a comparison with the previous analysis. On Linux too.
+- New: the PC constellation during the analysis (each part lights up and gets its name) and a report with the PC's star chart, score, tally, thermometers up to each part's limit and the PCIe lanes.
+- Improvement: recognition of parts from Core 2 to Core Ultra, Ryzen, Xeon on X79/X99 boards, Steam Deck and Snapdragon; gaming, workstation and integrated graphics; chipsets with a maker prefix; memory part numbers from dozens of brands; SSD/HDD by model; network adapters.
+- Improvement: the creator panel button appears and disappears when the account joins or leaves the team, without turning sync off and on; the app's what's new window only lists what changes for users.
+- Fix: the lab results table showed "undefined" in four columns.
 
 ### 0.11.1: a complete review
 - New: error reports always on (only errors from after the update, without user name, folders or typed text); the Google account email goes along and unchecking it in Settings also removes it from reports already sent. Telemetry and sync are still optional.
