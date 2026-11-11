@@ -319,6 +319,8 @@ function parseWlan(output) {
 
 const OUTPUT_TECH = { 0: 'VGA', 4: 'DVI', 5: 'HDMI', 6: 'interno', 10: 'DisplayPort', 11: 'interno', 13: 'interno', 15: 'Miracast', 16: 'USB' };
 function outputOf(value) {
+  // Sem linha no WmiMonitorConnectionParams o PowerShell manda null: é "desconhecido", não VGA (0).
+  if (value === null || value === undefined || value === '') return { output: null, internal: false };
   const n = Number(value);
   if (!Number.isFinite(n)) return { output: null, internal: false };
   if (n === 0x80000000 || n === -0x80000000 || n === 6 || n === 11 || n === 13) return { output: 'interno', internal: true };
@@ -518,7 +520,8 @@ function createLinuxCollector({ fs, path, os, run = async () => ({ code: 1, stdo
         const modes = String((await read(path.join(dir, 'modes'))) || '').split('\n').filter(Boolean);
         const [w, h] = (modes[0] || '').split('x').map((value) => parseInt(value, 10));
         const internal = /eDP|LVDS|DSI/i.test(entry);
-        displays.push({ name: edid?.name || null, output: internal ? 'interno' : (entry.match(/-(HDMI|DP|DVI|VGA)/i) || [])[1] || null, internal, maxWidth: num(w, 1, 16000), maxHeight: num(h, 1, 16000), maxHz: edid?.maxHz || null });
+        // A faixa do EDID (0xFD) vale para qualquer resolução: não é a taxa máxima na resolução nativa, por isso não vira maxHz.
+        displays.push({ name: edid?.name || null, output: internal ? 'interno' : (entry.match(/-(HDMI|DP|DVI|VGA)/i) || [])[1] || null, internal, maxWidth: num(w, 1, 16000), maxHeight: num(h, 1, 16000), rangeHz: edid?.maxHz || null });
       }
     }
     const mounts = String((await read('/proc/mounts')) || '').split('\n').map((line) => line.split(' '));
@@ -547,9 +550,15 @@ function createLinuxCollector({ fs, path, os, run = async () => ({ code: 1, stdo
     for (const name of await list('/sys/class/power_supply')) {
       if (!/^BAT/i.test(name)) continue;
       const dir = path.join('/sys/class/power_supply', name);
-      const full = Number((await read(path.join(dir, 'energy_full'))) || (await read(path.join(dir, 'charge_full'))));
-      const design = Number((await read(path.join(dir, 'energy_full_design'))) || (await read(path.join(dir, 'charge_full_design'))));
-      if (Number.isFinite(full) && Number.isFinite(design) && design > 0) battery = { designWh: design / 1e6, fullWh: full / 1e6 };
+      // energy_* vem em µWh; charge_* em µAh (vira Wh com a tensão de projeto, em µV; sem ela, só a proporção).
+      const energyFull = Number(await read(path.join(dir, 'energy_full')));
+      const energyDesign = Number(await read(path.join(dir, 'energy_full_design')));
+      const chargeFull = Number(await read(path.join(dir, 'charge_full')));
+      const chargeDesign = Number(await read(path.join(dir, 'charge_full_design')));
+      const volts = Number(await read(path.join(dir, 'voltage_min_design'))) / 1e6;
+      if (Number.isFinite(energyFull) && Number.isFinite(energyDesign) && energyDesign > 0) battery = { designWh: energyDesign / 1e6, fullWh: energyFull / 1e6 };
+      else if (Number.isFinite(chargeFull) && Number.isFinite(chargeDesign) && chargeDesign > 0 && volts > 0) battery = { designWh: (chargeDesign / 1e6) * volts, fullWh: (chargeFull / 1e6) * volts };
+      else if (Number.isFinite(chargeFull) && Number.isFinite(chargeDesign) && chargeDesign > 0) battery = { wear: (1 - chargeFull / chargeDesign) * 100 };
       else battery = { present: true };
       break;
     }

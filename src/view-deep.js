@@ -304,7 +304,7 @@
     const rows = (obs.background || []).filter((item) => item.impact !== 'nenhum').slice(0, 8).map((item) => behindRow(item, top, weight)).join('');
     const sys = obs.system || {};
     const stats = [Number.isFinite(sys.cpuAvg) ? `processador ${n(sys.cpuAvg)}% no total` : null, Number.isFinite(sys.dpcAvg) ? `DPC ${n(sys.dpcAvg, 1)}%` : null, Number.isFinite(sys.diskBusyAvg) ? `disco ocupado ${n(sys.diskBusyAvg)}%` : null,
-      Number.isFinite(sys.availMBMin) ? `memória livre mín. ${n(sys.availMBMin / 1024, 1)} GB` : null, obs.self?.cpuAvg ? `o próprio Nexo usou ${n(obs.self.cpuAvg, 1)}% medindo (já descontado)` : null].filter(Boolean).join(' · ');
+      Number.isFinite(sys.availMBMin) ? `memória livre mín. ${n(sys.availMBMin / 1024, 1)} GB` : null, obs.self?.cpuAvg ? `o próprio Nexo usou ${n(obs.self.cpuAvg, 1)}% medindo (fora da lista)` : null].filter(Boolean).join(' · ');
     const intro = `Observei por ${n(obs.seconds)} s (${plural(obs.samples, 'leitura', 'leituras')}). ${games.length ? 'O jogo, os launchers e o próprio Nexo ficam fora da conta.' : 'Nenhum jogo aberto: o que pesa agora pesa também quando você joga, se não fechar antes.'}`;
     const pills = games.length || launchers.length ? '<div class="pill-row">' + [...games, ...launchers].join('') + '</div>' : '';
     const body = rows ? '<ul class="ledger deep-ledger">' + rows + '</ul>' : '<p class="deep-clean">Nada pesando por trás. 👌</p>';
@@ -396,6 +396,12 @@
     return [`${fromDisk ? 'Última análise: ' : ''}${when.toLocaleDateString('pt-BR')} às ${time}`, `${duration(report.durationMs)} de análise`, report.onBattery ? 'na bateria' : null, since || null].filter(Boolean).join(' · ');
   }
 
+  /** Nota de 0 a 100 sempre numérica: relatório antigo ou corrompido recalcula pelos achados. */
+  function scoreOf(report) {
+    const raw = typeof report?.score === 'number' && Number.isFinite(report.score) ? report.score : NexoDeep.healthScore(report?.findings || []);
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }
+
   function renderReport(report, { fromDisk = false } = {}) {
     if (!report || !Array.isArray(report.findings)) return;
     lastReport = report;
@@ -411,12 +417,13 @@
     const moreHtml = more.length ? `<details class="deep-more"${main.length ? '' : ' open'}><summary>${plural(more.length, 'sugestão', 'sugestões e observações')}</summary>${list(more, findingHtml)}</details>` : '';
     const resolved = comparison?.resolved?.length ? el('p', 'deep-resolved', 'Resolvido desde a última vez: ' + comparison.resolved.join(' · ')) : '';
     const okHtml = ok.length ? '<section class="deep-card deep-ok"><h4>Já está certo</h4><ul>' + list(ok, (item) => el('li', '', item.title)) + '</ul></section>' : '';
+    const score = scoreOf(report);
     let story = { identity: '', verdict: '', good: null };
     try { story = NexoDeep.narrative(report.profile || {}, findings); } catch { /* relatório antigo sem perfil */ }
     const ring = 2 * Math.PI * 42;
     const footnote = headline(main, more, ok, count) + ' · ' + stamp(report, fromDisk);
     reportBox.innerHTML = `<div class="deep-head">
-        <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(report.score)}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-bg" cx="50" cy="50" r="42" /><circle class="ring" cx="50" cy="50" r="42" stroke-dasharray="${ring.toFixed(1)}" stroke-dashoffset="${ring.toFixed(1)}" data-target="${(ring * (1 - report.score / 100)).toFixed(1)}" /></svg><strong>${report.score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
+        <div class="deep-score-box"><div class="deep-score" data-tone="${toneOf(score)}"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-bg" cx="50" cy="50" r="42" /><circle class="ring" cx="50" cy="50" r="42" stroke-dasharray="${ring.toFixed(1)}" stroke-dashoffset="${ring.toFixed(1)}" data-target="${(ring * (1 - score / 100)).toFixed(1)}" /></svg><strong>${score}</strong><span>de 100</span></div>${scoreTrend(report.history)}</div>
         <div class="deep-head-text"><span class="deep-kicker">Seu PC, entendido</span>${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${el('p', 'deep-verdict', story.verdict)}${story.good ? el('p', 'deep-good', story.good) : ''}${el('small', 'muted', footnote)}</div>
         <div class="deep-head-side"><svg class="deep-sky deep-mini" id="deep-report-sky" viewBox="0 0 640 280" role="img" aria-label="Constelação do seu PC: peças em amarelo têm algo para ajustar; toque numa para ver"></svg><button class="btn sm primary" type="button" data-deep-again="1">Analisar de novo</button></div>
       </div>
@@ -480,7 +487,7 @@
       }
       renderReport(report);
       const bad = report.findings.filter((item) => item.severity === 'alta' || item.severity === 'media').length;
-      recordActivity('Análise profunda', bad ? `${bad} ${bad > 1 ? 'pontos' : 'ponto'} para ajustar · nota ${report.score}` : `nada importante · nota ${report.score}`);
+      recordActivity('Análise profunda', bad ? `${bad} ${bad > 1 ? 'pontos' : 'ponto'} para ajustar · nota ${scoreOf(report)}` : `nada importante · nota ${scoreOf(report)}`);
       showToast(bad ? `Análise profunda concluída: ${bad} ${bad > 1 ? 'pontos' : 'ponto'} para ajustar.` : 'Análise profunda concluída: nada importante para resolver.');
       Nexo.emit?.('deep-analysis', report);
     } catch (error) {

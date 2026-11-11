@@ -17,6 +17,8 @@ for (const tweak of Scan.TWEAKS) {
   tweak.entries.forEach((entry, index) => { if (entry.kind === 'power') raw[`${tweak.id}#${index}`] = tweak.options.find((option) => option.kind === 'padrao').values[index]; });
 }
 const sample = Scan.interpret(raw);
+// Só para a prévia de desenvolvimento: o exemplo é um arquivo local do repositório e o '<' já sai escapado (\u003c).
+// nosemgrep: javascript.lang.security.audit.unknown-value-with-script-tag.unknown-value-with-script-tag
 html = html.replace('<script src="mock-bridge.js"></script>', `<script>window.__scanPreview = ${JSON.stringify(sample).replace(/</g, '\\u003c')};</script>\n  <script src="mock-bridge.js"></script>`);
 fs.writeFileSync(path.join(__dirname, 'preview.html'), html);
 console.log('dev/preview.html atualizado');

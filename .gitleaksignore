@@ -1,0 +1,5 @@
+# Falsos positivos conferidos (valores de exemplo, não segredos):
+# chave Steam de teste, JWT de exemplo no teste do ocultador de segredos e IDs de exemplo na documentação.
+4bbc956d32b29c3faa2150fd1d733fa70e30687b:tests/steam-login.test.cjs:generic-api-key:9
+a7e6e767c891167d0c32e0c88c67ebc3b4196d23:tests/error-log.test.cjs:jwt:21
+48a4f8f522d2322ca24f58ec887e8ac1a4c80ad2:docs/CONEXOES.md:discord-client-id:31

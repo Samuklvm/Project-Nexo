@@ -220,7 +220,7 @@ const ids = (findings) => findings.map((item) => item.id);
 
 test('achados dependem do setup: o mesmo sintoma vira conselho, explicação ou nada', () => {
   const now = Date.parse('2026-11-11T12:00:00Z');
-  const b550 = D.buildFindings({ profile: H.identify(baseInventory()), load: { gpu: { pcieGen: 3, pcieGenMax: 4 }, links: [] }, now });
+  const b550 = D.buildFindings({ profile: H.identify(baseInventory()), load: { gpu: { pcieGen: 3, pcieGenMax: 4, clockMHz: 1800, clockMaxMHz: 1900 }, links: [] }, now });
   assert.ok(ids(b550).includes('mem-xmp'), 'B550 aceita XMP: ligar é o conselho');
   assert.equal(b550.find((item) => item.id === 'gpu-pcie-plataforma')?.severity, 'info', 'Ryzen 5600G só tem PCIe 3.0: explicação, não defeito');
   assert.ok(ids(b550).includes('mem-canais-ok'));
@@ -268,7 +268,7 @@ test('comparação com a análise anterior: queda de desempenho e peça trocada'
 });
 
 /* ---------------- Orquestração num relógio virtual ---------------- */
-function harness({ cancelAt = null } = {}) {
+function harness({ cancelAt = null, hang = null, inventory = {} } = {}) {
   let clock = 1_000_000;
   const now = () => clock;
   const sleep = (ms) => new Promise((resolve) => { setImmediate(() => { clock += Math.max(1, ms); resolve(); }); });
@@ -301,7 +301,8 @@ function harness({ cancelAt = null } = {}) {
     return fakeChild([]);
   };
   const runPowerShellCode = async (script) => {
-    if (script === Scan.INVENTORY_SCRIPT) return { code: 0, stdout: JSON.stringify({ ...baseInventory(), memory: { modules: baseInventory().memory.modules, slots: 4 } }) };
+    if (hang && script === Scan[hang]) return new Promise(() => { /* nunca responde: simula um script travado */ });
+    if (script === Scan.INVENTORY_SCRIPT) return { code: 0, stdout: JSON.stringify({ ...baseInventory(inventory), memory: { modules: baseInventory().memory.modules, slots: 4 } }) };
     if (script === Scan.HEALTH_SCRIPT) return { code: 0, stdout: JSON.stringify({ events: { bugcheck: { count: 0 } }, rebootPending: { update: true }, fastStartup: 1, lastBoot: new Date(clock - 2 * 86400e3).toISOString() }) };
     if (script === Scan.LINK_SCRIPT) return { code: 0, stdout: JSON.stringify([{ name: 'NVIDIA GeForce RTX 3060', link: { curSpeed: 3, maxSpeed: 4, curWidth: 16, maxWidth: 16 } }]) };
     return { code: 1, stdout: '' };
@@ -353,6 +354,79 @@ test('orquestração: cancelar no meio para tudo e não salva nada', async () =>
   assert.equal(analysis.isRunning(), false);
 });
 
+test('orquestração: cancelar responde na hora mesmo com um script travado no meio', async () => {
+  for (const hang of ['INVENTORY_SCRIPT', 'HEALTH_SCRIPT']) {
+    const { analysis } = harness({ hang });
+    const running = analysis.run();
+    for (let i = 0; i < 50; i += 1) await new Promise((resolve) => { setImmediate(resolve); });
+    assert.equal(analysis.isRunning(), true);
+    assert.deepEqual(analysis.cancel(), { ok: true });
+    const result = await Promise.race([running, new Promise((resolve) => { setTimeout(() => resolve('travou'), 2000); })]);
+    assert.deepEqual(result, { cancelled: true }, `cancelar com ${hang} pendurado`);
+    assert.equal(analysis.isRunning(), false, 'libera para rodar de novo');
+  }
+});
+
+test('orquestração: a peça com problema continua amarela depois do teste de carga', async () => {
+  const { analysis, emitted } = harness({ inventory: { displays: [{ adapter: 'NVIDIA GeForce RTX 3060', name: 'VG27AQ', width: 2560, height: 1440, hz: 60, maxHz: 165 }] } });
+  const report = await analysis.run();
+  const warned = new Set();
+  for (const progress of emitted) if (progress.stageIndex < 6) for (const [id, value] of Object.entries(progress.nodes)) if (value === 'warn') warned.add(id);
+  assert.ok(warned.has('gpu'), 'monitor a 60 Hz deixa a placa de vídeo amarela na etapa de vídeo');
+  const first = emitted.findIndex((progress) => progress.nodes.gpu === 'warn');
+  for (const progress of emitted.slice(first)) assert.ok(['warn', 'active'].includes(progress.nodes.gpu), `na etapa ${progress.stageIndex} a placa de vídeo ficou "${progress.nodes.gpu}"`);
+  assert.ok(emitted.slice(first).some((progress) => progress.nodes.gpu === 'active'), 'o teste de carga reacende a placa');
+  const last = emitted[emitted.length - 1].nodes;
+  for (const id of warned) assert.equal(last[id], 'warn', `${id} voltou a ficar verde depois do teste de carga`);
+  assert.ok(report.findings.some((item) => item.area === 'video' && (item.severity === 'alta' || item.severity === 'media')));
+});
+
+test('revisão: casos que já enganaram os decodificadores e as regras', () => {
+  // "64-Core" de um Threadripper não pode cair na regra da Intel ("Core").
+  const tr = H.decodeCpu({ name: 'AMD Ryzen Threadripper 3990X 64-Core Processor', cores: 64, threads: 128 });
+  assert.equal(tr.vendor, 'AMD');
+  assert.equal(H.decodeCpu({ name: 'AMD Ryzen AI 9 HX 370 w/ Radeon 890M', cores: 12, threads: 24 }).vendor, 'AMD');
+  assert.equal(H.decodeCpu({ name: 'Intel(R) Core(TM) 5 120F', cores: 6, threads: 12 }).vendor, 'Intel');
+  // DDR5 na Intel: Controller0-ChannelA e Controller1-ChannelA são dois canais (dual channel), não o mesmo.
+  const ddr5 = H.decodeMemory({ modules: [{ capacity: 16 * GB, speed: 4800, type: 34, formFactor: 8, locator: 'Controller0-ChannelA-DIMM0', bank: 'BANK 0' }, { capacity: 16 * GB, speed: 4800, type: 34, formFactor: 8, locator: 'Controller1-ChannelA-DIMM0', bank: 'BANK 0' }] });
+  assert.equal(ddr5.layout, 'dual');
+  const same = H.decodeMemory({ modules: [{ capacity: 8 * GB, speed: 3200, type: 26, formFactor: 8, locator: 'DIMM_A1' }, { capacity: 8 * GB, speed: 3200, type: 26, formFactor: 8, locator: 'DIMM_A2' }] });
+  assert.equal(same.layout, 'same-channel');
+  // Wallpaper Engine mora na pasta da Steam, mas é um app: nunca vira "o jogo".
+  const wallpaper = D.classifyProcess({ name: 'wallpaper32.exe', pid: 50, path: 'D:\\SteamLibrary\\steamapps\\common\\wallpaper_engine\\wallpaper32.exe', window: true }, { match: () => ({ name: 'Wallpaper Engine', kind: 'app' }), classify: () => ({ isGame: true }), gpu3d: 40 });
+  assert.notEqual(wallpaper.role, 'game');
+  assert.equal(wallpaper.role, 'background');
+  // Vídeo de streaming/VM (Parsec, Hyper-V) não é "placa sem driver".
+  for (const name of ['Parsec Virtual Display Adapter', 'Microsoft Hyper-V Video']) {
+    const gpu = H.decodeGpu({ name });
+    assert.equal(gpu.virtual, true, name);
+    assert.equal(gpu.basicDriver, false, name);
+    assert.equal(gpu.discrete, false, name);
+  }
+  assert.equal(H.decodeGpu({ name: 'Microsoft Basic Display Adapter', vendorId: '1414' }).basicDriver, true);
+  assert.equal(H.decodeGpu({ name: 'AMD Radeon RX Vega 8 Graphics', vendorId: '1002' }).integrated, true);
+  // Saída do monitor sem informação é "desconhecida", nunca VGA.
+  assert.equal(Scan.outputOf(null).output, null);
+  assert.equal(Scan.outputOf(undefined).output, null);
+  assert.equal(Scan.outputOf(0).output, 'VGA');
+  // WHEA 18 é erro fatal (tela azul); 19/47 são corrigidos.
+  const profile = H.identify(baseInventory());
+  const fatal = D.buildFindings({ profile, health: { events: {}, wheaIds: [{ id: 18, count: 2 }] } });
+  assert.ok(fatal.some((item) => item.id === 'whea-fatal' && item.severity === 'alta'));
+  const corrected = D.buildFindings({ profile, health: { events: {}, wheaIds: [{ id: 19, count: 3 }] } });
+  assert.ok(!corrected.some((item) => item.id === 'whea-fatal'));
+  // Linux: "estável" só quando o diário pôde ser lido e não tem erro.
+  const unread = D.buildFindings({ profile, health: { platform: 'linux', events: {}, journalReadable: false } });
+  assert.ok(!unread.some((item) => item.id === 'estavel') && unread.some((item) => item.id === 'diario-linux'));
+  const clean = D.buildFindings({ profile, health: { platform: 'linux', events: {}, journalReadable: true } });
+  assert.ok(clean.some((item) => item.id === 'estavel'));
+  const broken = D.buildFindings({ profile, health: { platform: 'linux', events: { diskIo: 3 }, journalReadable: true } });
+  assert.ok(!broken.some((item) => item.id === 'estavel') && broken.some((item) => item.id === 'linux-disco'));
+  // Nenhum conselho manda pausar atualização ou desligar proteção.
+  const all = JSON.stringify(D.BACKGROUND);
+  assert.doesNotMatch(all, /pause as atualiza|pausar (as )?atualiza|desativ\w* o (antiv|defender)|desligu\w* o (antiv|defender)/i);
+});
+
 test('entender o setup: o que cada peça significa e o plano para este PC', () => {
   const profile = H.identify(baseInventory({ cpu: { name: 'AMD Ryzen 7 5700X3D 8-Core Processor', cores: 8, threads: 16 }, memory: { modules: baseInventory().memory.modules, slots: 4, maxBytes: 128 * GB }, nvme: [{ name: 'NVMe', link: { curSpeed: 3, maxSpeed: 4, curWidth: 4, maxWidth: 4 } }], network: [{ description: 'Intel Wi-Fi 6 AX201', up: true, kind: 'wifi', wifi: { signal: 70, standard: '802.11ax', band: 5 } }] }));
   const traits = H.traits(profile);
@@ -371,4 +445,43 @@ test('entender o setup: o que cada peça significa e o plano para este PC', () =
   const linux = D.plan(H.identify({ ...baseInventory(), os: { platform: 'linux', name: 'Ubuntu' } }), []).map((step) => step.id);
   assert.ok(!linux.some((id) => id.startsWith('lab-')), 'o laboratório de energia é do Windows');
   for (const step of steps.filter((item) => item.kind === 'laboratorio')) for (const knob of step.knobs) assert.ok(require('../src/lab-space.js').SPACE.some((entry) => entry.id === knob), `ajuste do laboratório existe: ${knob}`);
+});
+
+test('notebook gamer de verdade (simulado): da saída do PowerShell ao relatório, sem quebrar em nenhuma etapa', () => {
+  const inventory = Scan.parseInventory(JSON.stringify({
+    cpu: { name: '13th Gen Intel(R) Core(TM) i7-13650HX', manufacturer: 'GenuineIntel', cores: 14, threads: 20, baseMHz: 2600, socket: 'U3E1' },
+    board: { manufacturer: 'LENOVO', product: 'LNVNB161216' }, bios: { vendor: 'LENOVO', version: 'LPCN49WW', date: '2024-05-10' },
+    system: { manufacturer: 'LENOVO', model: '82XV', family: 'Legion 5 15IRX9', mobile: true, chassis: 10 },
+    memory: { modules: [{ capacity: 8 * GB, speed: 4800, configured: 4800, manufacturer: 'Samsung', part: 'M425R1GB4BB0-CQKOL', type: 34, formFactor: 12, locator: 'DIMM 0', bank: 'P0 CHANNEL A' }, { capacity: 8 * GB, speed: 4800, configured: 4800, manufacturer: 'Samsung', part: 'M425R1GB4BB0-CQKOL', type: 34, formFactor: 12, locator: 'DIMM 0', bank: 'P0 CHANNEL B' }], slots: 2 },
+    gpus: [{ name: 'NVIDIA GeForce RTX 4060 Laptop GPU', vendorId: '10DE', deviceId: '28A0', driverVersion: '32.0.15.6094', driverDate: '2024-08-14', vramBytes: 8 * GB, link: { curSpeed: 1, maxSpeed: 4, curWidth: 8, maxWidth: 8 } }, { name: 'Intel(R) UHD Graphics', vendorId: '8086', driverDate: '2024-03-01' }],
+    nvme: { name: 'Controlador NVM Express padrão', link: { curSpeed: 4, maxSpeed: 4, curWidth: 4, maxWidth: 4 } },
+    displays: [{ adapter: 'Intel(R) UHD Graphics', name: '', output: 2147483648, width: 2560, height: 1440, hz: 60, maxHz: 165, primary: true }, { adapter: 'NVIDIA GeForce RTX 4060 Laptop GPU', name: 'VG249Q1A', output: 5, width: 1920, height: 1080, hz: 60, maxHz: 165 }],
+    disks: { model: 'WD PC SN740 SDDPNQD-1T00-1014', media: 'SSD', bus: 'NVMe', size: 1024209543168, health: 'Healthy', rpm: 0, system: true },
+    network: [{ name: 'Wi-Fi', description: 'Intel(R) Wi-Fi 6E AX211 160MHz', up: true, linkMbps: 1201, ndis: 9 }, { name: 'Ethernet', description: 'Realtek Gaming 2.5GbE Family Controller', up: false, linkMbps: 0, ndis: 14 }],
+    wlan: 'There is 1 interface on the system:\n    Name                   : Wi-Fi\n    State                  : connected\n    Radio type             : 802.11ax\n    Band                   : 2.4 GHz\n    Channel                : 6\n    Signal                 : 38%\n',
+    battery: { designWh: 80, fullWh: 54.4 }, os: { caption: 'Microsoft Windows 11 Home', build: 22631 }
+  }));
+  const profile = H.identify(inventory, { now: Date.parse('2026-11-11T12:00:00Z') });
+  assert.equal(profile.kind, 'laptop');
+  assert.equal(profile.cpu.raptorRisk, undefined, 'HX de notebook não entra no aviso de desktop');
+  assert.equal(profile.cpu.socket, null, 'soquete "U3E1" não é soquete');
+  assert.equal(profile.memory.layout, 'dual', 'canal pelo BankLabel (P0 CHANNEL A/B)');
+  assert.equal(profile.memory.type, 'DDR5');
+  assert.equal(profile.displays[0].internal, true);
+  assert.equal(profile.network[0].wifi.band, 2.4);
+  assert.equal(profile.battery.wear, 32);
+  const health = Scan.parseHealth(JSON.stringify({ events: { whea: { count: 3 }, wheaIds: { id: 17, count: 3 }, firmwareLimit: { count: 5, last: '2026-11-09T22:00:00Z' } }, fastStartup: 1, lastBoot: '2026-10-30T08:00:00Z', overlayAc: '961cc777-2547-4f9d-8174-7d86181b8a7a', planGuid: null }));
+  assert.equal(health.wheaIds.length, 1, 'um item só do PowerShell vira lista');
+  const findings = D.buildFindings({ profile, health, facts: { hags: 1, gameMode: 1, historical: 1 }, now: Date.parse('2026-11-11T12:00:00Z') });
+  const ids = findings.map((item) => item.id);
+  for (const expected of ['gpu-hibrida', 'whea-pcie', 'firmware-limite', 'modo-energia', 'tempo-ligado', 'wifi-sinal', 'wifi-24', 'bateria', 'gpu-hags', 'gravacao-fundo']) assert.ok(ids.includes(expected), `achado esperado: ${expected}`);
+  assert.ok(ids.filter((id) => id.startsWith('tela-hz-')).length === 2, 'as duas telas a 60 Hz de 165 Hz');
+  assert.ok(!ids.includes('tela-placa-mae'), 'tela interna do notebook no vídeo integrado é normal');
+  assert.ok(!ids.includes('gpu-linhas'), 'placa x8 nativa em x8 não é problema');
+  const story = D.narrative(profile, findings);
+  assert.match(story.identity, /^Notebook com Intel Core i7-13650HX \(Raptor Lake com núcleos P e E\)/);
+  const traits = H.traits(profile);
+  assert.ok(!traits.cpu.some((line) => /soquete/.test(line)), 'notebook não recebe caminho de upgrade de soquete');
+  assert.ok(D.plan(profile, findings).some((step) => step.id === 'lab-cooling'));
+  assert.ok(D.healthScore(findings) < 100);
 });

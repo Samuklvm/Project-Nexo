@@ -74,24 +74,29 @@
 
   function decodeIntel(name, cores, threads) {
     const out = { vendor: 'Intel' };
-    let m = name.match(/Core\s+Ultra\s+([3579])\s+(\d)(\d{2})([A-Z]{0,2})\b/i);
+    let m = name.match(/Core\s+Ultra\s+X?([3579])\s+(\d)(\d{2})([A-Z]{0,2})\b/i);
     if (m) {
       const series = Number(m[2]);
       const suffix = m[4].toUpperCase();
-      const desktop = /^(K|KF|F|T|)$/.test(suffix) && series >= 2;
+      // Série 3 (Panther Lake) é de notebook; desktop só na série 2 (Arrow Lake-S, LGA1851).
+      const desktop = /^(K|KF|F|T|)$/.test(suffix) && series === 2;
       const lunar = suffix === 'V';
       Object.assign(out, {
         family: `Core Ultra ${m[1]}`, model: `${m[2]}${m[3]}${suffix}`, generation: null, generationLabel: `Core Ultra série ${series}`,
-        architecture: series === 1 ? 'Meteor Lake' : lunar ? 'Lunar Lake' : 'Arrow Lake', segment: desktop ? 'desktop' : 'laptop',
+        architecture: ({ 1: 'Meteor Lake', 2: lunar ? 'Lunar Lake' : 'Arrow Lake', 3: 'Panther Lake' })[series] || null, segment: desktop ? 'desktop' : 'laptop',
         socket: desktop ? 'LGA1851' : null, memoryTypes: ['DDR5'], pcie: desktop ? 5 : 4, hybrid: true, unlocked: /K/.test(suffix) || suffix === 'HX',
-        igpu: !suffix.includes('F'), year: series === 1 ? 2023 : 2024, known: true
+        igpu: !suffix.includes('F'), year: ({ 1: 2023, 2: 2024, 3: 2026 })[series] || null, known: series <= 3
       });
       if (lunar) out.notes = ['memória dentro do próprio processador (não dá para trocar nem aumentar)'];
       return out;
     }
     m = name.match(/\bCore\s+([357])\s+(\d)(\d{2})([A-Z]{0,2})\b/i);
     if (m) {
-      Object.assign(out, { family: `Core ${m[1]}`, model: `${m[2]}${m[3]}${m[4].toUpperCase()}`, generationLabel: `Core série ${m[2]}`, architecture: 'Raptor Lake', segment: 'laptop', memoryTypes: ['DDR4', 'DDR5'], pcie: 4, hybrid: true, igpu: true, year: m[2] === '1' ? 2024 : 2025, known: true });
+      const suffix = m[4].toUpperCase();
+      // Sem sufixo ou com F (Core 5 120F): desktop LGA1700 só com núcleos P; U/H: notebook híbrido.
+      const desktop = suffix === '' || suffix === 'F';
+      const hybrid = finite(cores) && finite(threads) ? threads !== cores * 2 : !desktop;
+      Object.assign(out, { family: `Core ${m[1]}`, model: `${m[2]}${m[3]}${suffix}`, generationLabel: `Core série ${m[2]}`, architecture: 'Raptor Lake', segment: desktop ? 'desktop' : 'laptop', socket: desktop ? 'LGA1700' : null, memoryTypes: ['DDR4', 'DDR5'], pcie: desktop ? 5 : 4, hybrid, igpu: suffix !== 'F', year: m[2] === '1' ? 2024 : 2025, known: true });
       return out;
     }
     m = name.match(/\b(?:Core\s+i3-)?N(\d{2,3})\b/);
@@ -137,6 +142,12 @@
   const CEZANNE_PLAIN = new Set(['5500', '5700', '5100', '4500', '4100']);
   const AMD_MOBILE = /^(U|H|HS|HX|HX3D|H3D|HZ|E)$/;
 
+  /** Ryzen de desktop são destravados; os X3D até o Zen 4 não (os 9000X3D sim); de notebook, só os HX. */
+  function unlockedOf(mobile, x3d, zen, suffix) {
+    if (mobile) return suffix === 'HX';
+    return !x3d || zen === 'zen5';
+  }
+
   function decodeRyzen(tier, number, suffixRaw) {
     const suffix = String(suffixRaw || '').toUpperCase();
     const series = Number(number[0]);
@@ -170,7 +181,7 @@
       vendor: 'AMD', family: `Ryzen ${tier}`, model, generation: series, generationLabel: `Ryzen ${series}000`,
       architecture: zen ? AMD_ZEN[zen] : null, codename, zen, segment: mobile ? 'laptop' : 'desktop',
       socket: mobile ? null : am5 ? 'AM5' : 'AM4', memoryTypes: mobile ? null : am5 ? ['DDR5'] : ['DDR4'], pcie,
-      unlocked: !mobile && !x3d ? true : !mobile && x3d ? 'parcial' : suffix === 'HX', igpu, x3d, dualCcdX3d: DUAL_CCD_X3D.has(model),
+      unlocked: unlockedOf(mobile, x3d, zen, suffix), igpu, x3d, dualCcdX3d: DUAL_CCD_X3D.has(model),
       apuPcie3: desktopApuPcie3, year: zen ? AMD_YEAR[zen] : null, hybrid: false, known: Boolean(zen)
     };
   }
@@ -202,8 +213,9 @@
     const cores = finite(raw.cores) && raw.cores > 0 ? raw.cores : null;
     const threads = finite(raw.threads) && raw.threads > 0 ? raw.threads : null;
     let decoded;
-    if (/Intel|Core|Xeon|Pentium|Celeron|Atom/i.test(name) || /intel/i.test(raw.manufacturer || '')) decoded = decodeIntel(name, cores, threads);
-    else if (/AMD|Ryzen|Athlon|Threadripper|EPYC/i.test(name) || /amd/i.test(raw.manufacturer || '')) decoded = decodeAmd(name);
+    // AMD primeiro: "64-Cores" e "Compute Cores" no nome de um AMD não podem cair na regra da Intel.
+    if (/AMD|Ryzen|Athlon|Threadripper|EPYC|Radeon/i.test(name) || /amd/i.test(raw.manufacturer || '')) decoded = decodeAmd(name);
+    else if (/Intel|\bCore\b(?!s)|Xeon|Pentium|Celeron|Atom/i.test(name) || /intel/i.test(raw.manufacturer || '')) decoded = decodeIntel(name, cores, threads);
     else if (/Apple|Snapdragon|Qualcomm|ARM|Cortex/i.test(name)) decoded = { vendor: /Apple/i.test(name) ? 'Apple' : 'Qualcomm', segment: 'laptop', known: false, arm: true };
     else decoded = { vendor: str(raw.manufacturer, 40) || null, known: false };
     // Soquete informado pelo sistema só vale se parecer soquete ("None", "CPU 1", "U3E1" ficam de fora).
@@ -344,8 +356,11 @@
   /** Canal do pente pelo nome do slot ("DIMM_A2", "ChannelB-DIMM0", "P0 CHANNEL A", "DDR4_B1"). */
   function channelOf(locator, bank) {
     const text = `${str(locator, 60)} ${str(bank, 60)}`.toUpperCase();
+    // DDR5 na Intel 12ª+: "Controller0-ChannelA" e "Controller1-ChannelA" são canais diferentes.
+    const controller = text.match(/CONTROLLER\s*(\d)/);
+    const prefix = controller ? `C${controller[1]}` : '';
     let m = text.match(/CHANNEL\s*[-_]?\s*([A-H])\b/);
-    if (m) return m[1];
+    if (m) return prefix + m[1];
     m = text.match(/CHANNEL\s*(\d)/);
     if (m) return String.fromCharCode(65 + Number(m[1]));
     m = text.match(/(?:DIMM|DDR\d)[\s_-]*([A-H])\s*[-_]?\d/);
@@ -415,7 +430,7 @@
     [/RX\s*[45]\d{2}\b/i, { family: 'Radeon RX 400/500', architecture: 'Polaris', year: 2016, rebar: false, features: ['FSR'] }],
     [/R[579]\s*\d{3}/i, { family: 'Radeon R5/R7/R9', architecture: 'GCN', year: 2013, rebar: false, features: [], legacyDriver: true }]
   ];
-  const INTEGRATED = /UHD Graphics|HD Graphics|Iris|Intel\(?R?\)?\s*Graphics|Arc(?:\(TM\))?\s+(?:\d{3}V\s+)?(?:GPU|Graphics)$|Radeon(?:\(TM\))?\s+Graphics|Radeon\s+Vega\s+\d+\s+Graphics|Radeon(?:\(TM\))?\s+\d{3}M|Radeon\s+\d{4}S|Vega\s+\d\b/i;
+  const INTEGRATED = /UHD Graphics|HD Graphics|Iris|Intel\(?R?\)?\s*Graphics|Radeon(?:\(TM\))?\s+RX\s+Vega\s+\d+\s+Graphics|Radeon(?:\(TM\))?\s+R[2-7]\s+Graphics|Arc(?:\(TM\))?\s+(?:\d{3}V\s+)?(?:GPU|Graphics)$|Radeon(?:\(TM\))?\s+Graphics|Radeon\s+Vega\s+\d+\s+Graphics|Radeon(?:\(TM\))?\s+\d{3}M|Radeon\s+\d{4}S|Vega\s+\d\b/i;
 
   function decodeGpu(gpu, now = Date.now()) {
     const raw = gpu && typeof gpu === 'object' ? gpu : {};
@@ -424,11 +439,11 @@
     const vendor = vendorId === '10DE' || /NVIDIA|GeForce|Quadro/i.test(name) ? 'NVIDIA' : vendorId === '1002' || /AMD|Radeon/i.test(name) ? 'AMD' : vendorId === '8086' || /Intel/i.test(name) ? 'Intel' : vendorId === '1414' || /Basic Display|Microsoft/i.test(name) ? 'Microsoft' : null;
     let info = null;
     if (vendor === 'NVIDIA') info = NV_FAMILIES.find(([pattern]) => pattern.test(name))?.[1] || null;
-    if (vendor === 'AMD') info = AMD_FAMILIES.find(([pattern]) => pattern.test(name))?.[1] || null;
+    if (vendor === 'AMD' && !INTEGRATED.test(name)) info = AMD_FAMILIES.find(([pattern]) => pattern.test(name))?.[1] || null;
     if (vendor === 'Intel' && /Arc.*\bB\d{3}/i.test(name)) info = { family: 'Arc série B', architecture: 'Battlemage', year: 2024, rebar: true, needsRebar: true, features: ['XeSS', 'AV1'] };
     else if (vendor === 'Intel' && /Arc.*\bA\d{3}/i.test(name)) info = { family: 'Arc série A', architecture: 'Alchemist', year: 2022, rebar: true, needsRebar: true, features: ['XeSS', 'AV1'] };
     // Adaptador de máquina virtual (Hyper-V, VMware, VirtualBox…) não é "sem driver": é o vídeo da VM.
-    const virtual = /Hyper-V|VMware|VirtualBox|QXL|Virtio|Parallels|Red Hat|Citrix|Remote Display|Indirect Display/i.test(name);
+    const virtual = /Hyper-V|VMware|VirtualBox|QXL|Virtio|Parallels|Red Hat|Citrix|Remote Display|Indirect Display|Virtual Display|Virtual Monitor|Virtual Adapter|Parsec|spacedesk|Mirage|Sunshine|IddSample|Duet Display|Splashtop|DisplayLink/i.test(name);
     const basicDriver = !virtual && (/Basic Display|Básico|Basic Render/i.test(name) || (vendor === 'Microsoft' && !/Remote|Indirect/i.test(name)));
     const integrated = !basicDriver && !virtual && vendor !== 'NVIDIA' && (INTEGRATED.test(name) || (vendor === 'Intel' && !info));
     const tier = name.match(/(?:RTX|GTX|RX)\s*\d{3,4}\s*(Ti\s*SUPER|Ti|SUPER|XTX|XT|GRE)?/i);
@@ -537,10 +552,11 @@
   function identify(inventory, { now = Date.now() } = {}) {
     const inv = inventory && typeof inventory === 'object' ? inventory : {};
     const cpu = decodeCpu(inv.cpu);
-    const battery = inv.battery && finite(inv.battery.designWh) && inv.battery.designWh > 0 ? {
+    let battery = inv.battery && finite(inv.battery.designWh) && inv.battery.designWh > 0 ? {
       designWh: inv.battery.designWh, fullWh: finite(inv.battery.fullWh) ? inv.battery.fullWh : null,
       wear: finite(inv.battery.fullWh) && inv.battery.fullWh > 0 ? Math.max(0, Math.min(100, Math.round((1 - inv.battery.fullWh / inv.battery.designWh) * 100))) : null
     } : null;
+    if (!battery && inv.battery && finite(inv.battery.wear)) battery = { designWh: null, fullWh: null, wear: Math.max(0, Math.min(100, Math.round(inv.battery.wear))) };
     const system = decodeSystem(inv.system, cpu, battery);
     const boardRaw = inv.board && typeof inv.board === 'object' ? inv.board : {};
     const biosRaw = inv.bios && typeof inv.bios === 'object' ? inv.bios : {};
@@ -570,8 +586,15 @@
   };
   const LAYOUT_TEXT = { single: 'canal único', 'single-by-design': 'canal único (projeto do processador)', dual: 'dual channel', quad: 'quatro canais', 'same-channel': 'pentes no mesmo canal', desconhecido: null };
 
+  /** Nome como vem na caixa: "Intel Core i7-13650HX", "AMD Ryzen 7 5800X3D". */
+  function cpuTitle(cpu, { vendor = true } = {}) {
+    if (!cpu) return null;
+    const model = /^Core i\d$/.test(cpu.family || '') && cpu.model ? `${cpu.family}-${cpu.model}` : [cpu.family, cpu.model].filter(Boolean).join(' ');
+    return [vendor ? cpu.vendor : null, model].filter(Boolean).join(' ') || cpu.name || null;
+  }
+
   function cpuLine(cpu) {
-    const head = [cpu.vendor, cpu.family, cpu.model].filter(Boolean).join(' ') || cpu.name || 'Processador';
+    const head = cpuTitle(cpu) || 'Processador';
     const bits = [cpu.architecture, cpu.generationLabel && !String(cpu.architecture || '').includes(cpu.generationLabel) ? cpu.generationLabel : null].filter(Boolean);
     const threads = cpu.threads && cpu.threads !== cpu.cores ? ` / ${cpu.threads} threads` : '';
     const cores = cpu.cores ? `${cpu.cores} núcleos${threads}` : null;
@@ -636,7 +659,8 @@
     const cpu = p.cpu || {};
     if (cpu.hybrid) out.cpu.push('núcleos P (desempenho) e E (eficiência): o agendador do Windows 11 decide em qual núcleo cada tarefa roda');
     if (cpu.efficiencyOnly) out.cpu.push('só núcleos de eficiência: bom para tarefas leves, limitado em jogos pesados');
-    if (cpu.x3d) out.cpu.push(cpu.dualCcdX3d ? 'cache 3D em só metade dos núcleos: o jogo precisa ir para os núcleos com cache (driver de chipset + Barra de Jogo)' : 'cache 3D: ganha muito em jogos que dependem do processador; o overclock de multiplicador é travado');
+    if (cpu.x3d && cpu.dualCcdX3d) out.cpu.push('cache 3D em só metade dos núcleos: o jogo precisa ir para os núcleos com cache (driver de chipset + Barra de Jogo)');
+    else if (cpu.x3d) out.cpu.push(cpu.zen === 'zen5' ? 'cache 3D: ganha muito em jogos que dependem do processador (nesta geração o overclock é liberado)' : 'cache 3D: ganha muito em jogos que dependem do processador; o overclock de multiplicador é travado');
     if (cpu.unlocked === true && !cpu.x3d) out.cpu.push('multiplicador destravado (aceita overclock com a placa-mãe certa)');
     if (cpu.igpu === false) out.cpu.push('sem vídeo integrado: o PC depende da placa de vídeo para ter imagem');
     if (cpu.apuPcie3) out.cpu.push('PCIe 3.0 no slot da placa de vídeo (limite deste processador, mesmo em placa-mãe mais nova)');
@@ -678,6 +702,7 @@
     for (const controller of p.nvmeControllers || []) if (controller.link?.maxGen) out.disk.push(`${controller.name}: PCIe ${controller.link.gen || '?'}.0 x${controller.link.width || '?'} (aceita ${controller.link.maxGen}.0 x${controller.link.maxWidth || '?'})`);
     for (const adapter of (p.network || []).filter((item) => item.up && item.wifi)) out.network.push(`Wi-Fi ${adapter.wifi.standard || ''} em ${adapter.wifi.band === 2.4 ? '2,4' : adapter.wifi.band || '?'} GHz, sinal ${adapter.wifi.signal ?? '?'}%`.replace('  ', ' '));
     if (p.battery?.designWh) out.windows.push(`bateria: ${Math.round(p.battery.fullWh || 0)} de ${Math.round(p.battery.designWh)} Wh (${p.battery.wear ?? '?'}% de desgaste)`);
+    else if (Number.isFinite(p.battery?.wear)) out.windows.push(`bateria com ${p.battery.wear}% de desgaste`);
     return out;
   }
 
@@ -701,5 +726,5 @@
     return lines;
   }
 
-  return { decodeCpu, decodeChipset, decodeMemory, decodeGpu, decodeDisplay, decodeDisk, decodeNetwork, decodeSystem, decodeOs, decodeLink, identify, factLines, traits, UPGRADE, ratedFromPart, channelOf, cleanName, ageDays, maker, CHIPSETS, MEM_TYPES, LAYOUT_TEXT, gbText, cpuLine, memoryLine, boardLine, gpuLine, displayLine, diskLine };
+  return { decodeCpu, decodeChipset, decodeMemory, decodeGpu, decodeDisplay, decodeDisk, decodeNetwork, decodeSystem, decodeOs, decodeLink, identify, factLines, traits, cpuTitle, UPGRADE, ratedFromPart, channelOf, cleanName, ageDays, maker, CHIPSETS, MEM_TYPES, LAYOUT_TEXT, gbText, cpuLine, memoryLine, boardLine, gpuLine, displayLine, diskLine };
 });

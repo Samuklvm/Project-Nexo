@@ -35,10 +35,15 @@ function createDeepAnalysis(deps) {
   const setAction = (state, text) => { state.action = text; push(state); };
   const node = (state, id, value) => {
     const order = { pending: 0, seen: 1, active: 2, done: 3, warn: 3 };
-    if (value === 'active' || (order[value] || 0) >= (order[state.nodes[id]] || 0) || state.nodes[id] === 'active') state.nodes[id] = value;
+    // O veredito de uma etapa (algo para ajustar) fica: o teste de carga reacende a peça, mas ela volta amarela.
+    if (value === 'warn') state.verdicts[id] = 'warn';
+    const next = value === 'done' && state.verdicts[id] === 'warn' ? 'warn' : value;
+    if (next === 'active' || (order[next] || 0) >= (order[state.nodes[id]] || 0) || state.nodes[id] === 'active') state.nodes[id] = next;
   };
   const fact = (state, nodeId, text, level = 'info') => { if (text) { state.facts.push({ node: nodeId, text: String(text).slice(0, 160), level }); push(state); } };
   const cancelled = (state) => state.cancel === true;
+  /** Espera um passo, mas volta na hora se a análise for cancelada (o passo termina sozinho em segundo plano). */
+  const until = (state, promise) => Promise.race([Promise.resolve(promise).catch(() => null), state.aborted]);
 
   /** Espera o resto do tempo mínimo da etapa, mostrando as descobertas aos poucos (cancelável). */
   async function pace(state, stageStart, minMs, reveal = []) {
@@ -46,7 +51,7 @@ function createDeepAnalysis(deps) {
     const step = items.length ? Math.max(500, (minMs - (now() - stageStart)) / (items.length + 1)) : 0;
     for (const item of items) {
       if (cancelled(state)) return;
-      await sleep(Math.min(step, Math.max(0, minMs - (now() - stageStart))));
+      await until(state, sleep(Math.min(step, Math.max(0, minMs - (now() - stageStart)))));
       if (typeof item === 'function') item(); else fact(state, item.node, item.text, item.level);
     }
     while (!cancelled(state) && now() - stageStart < minMs) await sleep(Math.min(400, minMs - (now() - stageStart)));
@@ -120,7 +125,8 @@ function createDeepAnalysis(deps) {
       let limit = baseTicks;
       for (let i = 0; i <= maxTicks && !cancelled(state); i += 1) {
         const at = now();
-        const [sample, system] = await Promise.all([quiet(linuxProcesses()), quiet(linuxSystem ? linuxSystem() : null)]);
+        const [sample, system] = await until(state, Promise.all([quiet(linuxProcesses()), quiet(linuxSystem ? linuxSystem() : null)])) || [];
+        if (cancelled(state)) break;
         const rows = [];
         if (previous && sample) {
           const seconds = Math.max(0.5, (at - previous.at) / 1000);
@@ -150,7 +156,7 @@ function createDeepAnalysis(deps) {
           if (!reason) break;
           limit += 5; state.extended = reason; fact(state, null, reason, 'info');
         }
-        await sleep(3000);
+        await until(state, sleep(3000));
       }
     }
     return { ticks, procs, services, probePid, cores };
@@ -181,14 +187,14 @@ function createDeepAnalysis(deps) {
     const benchOut = {};
     let nvidiaRows = [];
     let links = [];
-    const readSensors = async (phase) => { const snapshotValue = await quiet(sensors()); if (snapshotValue) sensorReads.push({ phase, snapshot: snapshotValue }); };
-    const idleSensors = await quiet(sensors());
+    const readSensors = async (phase) => { const snapshotValue = await until(state, quiet(sensors())); if (snapshotValue) sensorReads.push({ phase, snapshot: snapshotValue }); };
+    const idleSensors = await until(state, quiet(sensors()));
     let stream = null;
     if (platform === 'win32') stream = Scan.streamScript({ spawnFn, script: Scan.LOAD_SCRIPT, env: { NEXO_TICKS: '30' }, timeoutMs: 60000, onLine: (line) => { const parsed = Scan.parseLoadLine(line); if (parsed?.kind === 'tick') ticks.push(parsed); } });
     const freq = { on: true };
     const freqLoop = platform === 'linux' && linuxCollector ? (async () => {
       while (freq.on && !cancelled(state)) {
-        const values = await quiet(linuxCollector.frequencies());
+        const values = await until(state, quiet(linuxCollector.frequencies()));
         const at = now();
         const phase = Object.entries(phases).find(([, range]) => at >= range.start && (!range.end || at <= range.end))?.[0] || 'idle';
         if (values) linuxFreq.push({ phase, values });
@@ -203,8 +209,8 @@ function createDeepAnalysis(deps) {
       phases.multi = { start: now() };
       const multi = bench('multi', 10000);
       const multiSensors = (async () => { for (let i = 0; i < 3 && !cancelled(state); i += 1) { await sleep(3000); await readSensors('multi'); } })();
-      const multiResult = await quiet(multi);
-      await multiSensors;
+      const multiResult = await until(state, quiet(multi));
+      await until(state, multiSensors);
       phases.multi.end = now();
       benchOut.multi = multiResult?.mopsPerSec ?? null;
       benchOut.threads = multiResult?.threads ?? null;
@@ -214,7 +220,7 @@ function createDeepAnalysis(deps) {
       const single = bench('single', 3000);
       await sleep(1500);
       await readSensors('single');
-      const singleResult = await quiet(single);
+      const singleResult = await until(state, quiet(single));
       phases.single.end = now();
       benchOut.single = singleResult?.mopsPerSec ?? null;
       node(state, 'cpu', 'done');
@@ -224,23 +230,25 @@ function createDeepAnalysis(deps) {
       phases.gpu = { start: now() };
       try { gpuWake(6000); } catch { /* sem janela */ }
       await sleep(2500);
-      const [nv, linkOut] = await Promise.all([quiet(nvidia()), platform === 'win32' ? quiet(runPowerShellCode(Scan.LINK_SCRIPT, 20000)) : null]);
+      const [nv, linkOut] = await until(state, Promise.all([quiet(nvidia()), platform === 'win32' ? quiet(runPowerShellCode(Scan.LINK_SCRIPT, 20000)) : null])) || [];
       nvidiaRows = Array.isArray(nv) ? nv : [];
       if (platform === 'win32' && linkOut) links = Scan.parseLinks(linkOut.stdout).map((item) => ({ name: Hardware.cleanName(item.name), link: Hardware.decodeLink(item.link) }));
       await readSensors('gpu');
+      if (cancelled(state)) return null;
       await sleep(Math.max(0, 6000 - (now() - phases.gpu.start)));
       phases.gpu.end = now();
       node(state, 'gpu', 'done');
     } finally {
       freq.on = false;
       stream?.stop();
-      if (freqLoop) await freqLoop;
+      if (freqLoop) await until(state, freqLoop);
       if (cancelled(state)) cancelBench();
     }
     return Deep.summarizeLoad({ ticks, phases, sensors: sensorReads, bench: benchOut, nvidia: nvidiaRows, links, idleSensors, platform, linuxFreq });
   }
 
   /* ---------------- etapas ---------------- */
+  const AREA_NODE = { processador: 'cpu', memoria: 'memory', video: 'gpu', disco: 'disk', windows: 'windows', energia: 'windows', fundo: 'windows', rede: 'network' };
   const levelOf = (findings, areas) => {
     const relevant = findings.filter((item) => areas.includes(item.area));
     if (relevant.some((item) => item.severity === 'alta' || item.severity === 'media')) return 'warn';
@@ -251,7 +259,8 @@ function createDeepAnalysis(deps) {
 
   async function run() {
     if (current) throw new Error('A análise profunda já está rodando.');
-    const state = { id: `${now().toString(36)}`, status: 'running', startedAt: now(), stageIndex: 0, nodes: Object.fromEntries(Deep.NODES.map((item) => [item.id, 'pending'])), action: 'começando…', facts: [], extended: null, observed: null, cancel: false, announced: new Set(), selfPids: new Set() };
+    const state = { id: `${now().toString(36)}`, status: 'running', startedAt: now(), stageIndex: 0, nodes: Object.fromEntries(Deep.NODES.map((item) => [item.id, 'pending'])), action: 'começando…', facts: [], extended: null, observed: null, cancel: false, announced: new Set(), selfPids: new Set(), verdicts: {} };
+    state.aborted = new Promise((resolve) => { state.onAbort = () => resolve(null); });
     current = state;
     try {
       state.selfPids = selfPids() || new Set();
@@ -267,16 +276,17 @@ function createDeepAnalysis(deps) {
       let stageStart = now();
       node(state, 'board', 'active'); node(state, 'cpu', 'active');
       setAction(state, 'lendo processador, placa-mãe, memória, vídeo, discos e rede…');
-      const inventory = await quiet(collectInventory());
+      const inventory = await until(state, quiet(collectInventory()));
       if (cancelled(state)) return finishCancelled(state);
       if (inventory && Array.isArray(inventory.displays)) {
+        // No Linux o modo atual vem do Electron (o /sys só tem a lista de modos). A ordem das telas difere entre os
+        // dois, então o casamento é pela resolução nativa, e só quando uma única tela do Electron bate.
         const electron = screenDisplays() || [];
-        // No Linux o modo atual vem do Electron (o /sys só tem a lista de modos).
-        inventory.displays.forEach((display, index) => {
-          const fromElectron = electron[index];
-          if (!display.hz && fromElectron?.hz) { display.hz = fromElectron.hz; }
-          if (!display.width && fromElectron?.width) { display.width = fromElectron.width; display.height = fromElectron.height; }
-        });
+        for (const display of inventory.displays) {
+          if (display.hz || !display.maxWidth) continue;
+          const same = electron.filter((item) => item.width === display.maxWidth && item.height === display.maxHeight);
+          if (same.length === 1) Object.assign(display, { hz: same[0].hz, width: same[0].width, height: same[0].height });
+        }
       }
       const profile = Hardware.identify(inventory || {}, { now: now() });
       const lines = Hardware.factLines(profile);
@@ -295,9 +305,8 @@ function createDeepAnalysis(deps) {
         }
       ]);
       if (cancelled(state)) return finishCancelled(state);
-      const health = await healthP;
-      const factsValue = await factsP;
-      const drivesValue = await drivesP;
+      const [health, factsValue, drivesValue] = await until(state, Promise.all([healthP, factsP, drivesP])) || [];
+      if (cancelled(state)) return finishCancelled(state);
       const systemLetter = String(process.env.SystemDrive || 'C:').slice(0, 1).toUpperCase();
       const drivesMarked = (drivesValue || []).map((drive) => ({ ...drive, system: platform === 'win32' ? drive.driveLetter === systemLetter : drive.driveLetter === '/' || drive.id === '/' }));
       const provisional = () => Deep.buildFindings({ profile, health, facts: factsValue, drives: drivesMarked, startup: null, onBattery: battery, now: now() });
@@ -344,7 +353,8 @@ function createDeepAnalysis(deps) {
       // 5. Windows e rede
       state.stageIndex = 4; stageStart = now(); node(state, 'windows', 'active'); node(state, 'network', 'active');
       setAction(state, 'lendo 30 dias de eventos do sistema…');
-      const startupValue = await startupP;
+      const startupValue = await until(state, startupP);
+      if (cancelled(state)) return finishCancelled(state);
       findings = Deep.buildFindings({ profile, health, facts: factsValue, drives: drivesMarked, startup: startupValue, onBattery: battery, now: now() });
       const events = health?.events || {};
       const eventsText = health ? (platform === 'win32' ? [events.bugcheck?.count ? `${events.bugcheck.count} tela(s) azul(is)` : 'nenhuma tela azul', events.tdr?.count ? `${events.tdr.count} travada(s) do driver de vídeo` : null, (health.wheaIds || []).length ? 'erros de hardware (WHEA)' : null].filter(Boolean).join(', ') : health.journalReadable ? 'diário do kernel lido' : 'o diário do kernel exige permissão neste Linux') : null;
@@ -384,7 +394,7 @@ function createDeepAnalysis(deps) {
       const history = (await quiet(store?.load())) || { runs: [] };
       const at = now();
       const draft = Deep.buildFindings({ profile, health, facts: factsValue, observation, load, drives: drivesMarked, startup: startupValue, onBattery: battery, now: at });
-      const record = Deep.runRecord({ at, durationMs: at - state.startedAt, profile, load, findings: draft, observation });
+      const record = Deep.runRecord({ at, durationMs: at - state.startedAt, profile, load, findings: draft, observation, onBattery: battery });
       const previous = (history.runs || []).filter((run) => run && run.at < at).sort((a, b) => b.at - a.at)[0] || null;
       const comparison = Deep.compareRuns(record, previous);
       const finalFindings = comparison ? Deep.buildFindings({ profile, health, facts: factsValue, observation, load, drives: drivesMarked, startup: startupValue, comparison, onBattery: battery, now: at }) : draft;
@@ -398,7 +408,9 @@ function createDeepAnalysis(deps) {
       const runs = [...(history.runs || []), record].slice(-HISTORY_LIMIT);
       await quiet(store?.save({ version: 1, runs, last: report }));
       state.status = 'done'; state.stageIndex = Deep.STAGES.length;
-      for (const id of Object.keys(state.nodes)) if (state.nodes[id] !== 'warn') state.nodes[id] = 'done';
+      // A constelação final mostra o veredito completo, inclusive o que só o teste de carga revelou.
+      for (const item of finalFindings) if ((item.severity === 'alta' || item.severity === 'media') && AREA_NODE[item.area]) state.verdicts[AREA_NODE[item.area]] = 'warn';
+      for (const id of Object.keys(state.nodes)) state.nodes[id] = state.verdicts[id] === 'warn' || state.nodes[id] === 'warn' ? 'warn' : 'done';
       setAction(state, 'pronto');
       return report;
     } catch (error) {
@@ -420,6 +432,7 @@ function createDeepAnalysis(deps) {
   function cancel() {
     if (!current) return { ok: false };
     current.cancel = true;
+    current.onAbort?.();
     try { cancelBench(); } catch { /* nada rodando */ }
     return { ok: true };
   }
