@@ -262,7 +262,15 @@ const TASKS = {
   'perf-log-users': (args) => perfLogUsersBody(args?.action, args?.sid),
   'sensor-service': (args) => sensorServiceBody(args),
   'registry-tweaks': (args) => registryTweaksBody(args),
-  'optimizer-batch': (args) => optimizerBatchBody(args)
+  'optimizer-batch': (args) => optimizerBatchBody(args),
+  // Reiniciar direto na tela da BIOS/UEFI (shutdown /fw só funciona como administrador e em PCs com UEFI).
+  'restart-firmware': () => String.raw`
+$r = @{ ok = $false; note = '' }
+try {
+  $p = Start-Process -FilePath "$env:SystemRoot\System32\shutdown.exe" -ArgumentList '/r', '/fw', '/t', '15', '/c', 'O Nexo vai reiniciar direto na BIOS em 15 segundos (voce pediu). Salve o que estiver aberto.' -Wait -PassThru -WindowStyle Hidden
+  if ($p.ExitCode -eq 0) { $r.ok = $true } else { $r.note = "codigo $($p.ExitCode)" }
+} catch { $r.note = $_.Exception.Message }
+${WRITE_RESULT}`
 };
 
 /** Ferramentas nativas do Windows chamadas com elevação (sem PowerShell no meio do caminho elevado). */

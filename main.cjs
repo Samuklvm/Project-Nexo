@@ -100,10 +100,10 @@ const isBug = (error) => ['TypeError', 'ReferenceError', 'RangeError', 'SyntaxEr
 const SLOW_IPC_MS = {
   'system:snapshot': 15000, 'sensors:snapshot': 15000, 'watch:current': 5000, 'cloud:status': 8000, 'app:self-metrics': 5000, 'settings:get': 5000, 'privacy:get': 5000,
   'window:minimize': 3000, 'window:toggle-maximize': 3000, 'window:close': 3000, 'window:get-state': 3000, 'games:scan': 120000, 'games:fetch-art': 90000, 'scan:run': 120000,
-  'cleanup:scan': 120000, 'cleanup:preview': 90000, 'net:diagnose': 90000, 'lab:preflight': 60000, 'updates:check': 60000, 'session:probe-test': 60000, 'steam:connect': 60000
+  'cleanup:scan': 120000, 'cleanup:preview': 90000, 'net:diagnose': 90000, 'lab:preflight': 60000, 'updates:check': 60000, 'session:probe-test': 60000, 'steam:connect': 60000, 'opt:plan': 120000, 'opt:games': 60000
 };
 for (const channel of ['bench:cpu', 'lab:run', 'lab:adopt', 'lab:recover', 'reboot:start', 'reboot:continue', 'reboot:restart', 'account:sign-in', 'steam:sign-in', 'xbox:sign-in', 'cloud:connect', 'net:fix', 'scan:apply',
-  'cleanup:run', 'drives:optimize', 'system:repair', 'updates:download', 'updates:install', 'sensors:service-install', 'fps:access', 'fps:choose', 'app:uninstall', 'account:import-config', 'integrations:import', 'games:add', 'games:set-cover']) SLOW_IPC_MS[channel] = Infinity;
+  'cleanup:run', 'drives:optimize', 'system:repair', 'opt:run', 'opt:fix', 'opt:revert', 'system:restart', 'updates:download', 'updates:install', 'sensors:service-install', 'fps:access', 'fps:choose', 'app:uninstall', 'account:import-config', 'integrations:import', 'games:add', 'games:set-cover']) SLOW_IPC_MS[channel] = Infinity;
 const slowSeen = new Map();
 function noteSlowIpc(channel, ms) {
   const hour = Math.floor(Date.now() / 3600000);
@@ -2135,9 +2135,8 @@ async function optimizerBusy() {
   return null;
 }
 registerIpcHandler('opt:games', async () => optimizerSystem.games());
-registerIpcHandler('opt:plan', async (_event, options) => {
-  if (process.platform !== 'win32') return { supported: false };
-  if (optState.running) throw new Error('A otimização já está rodando.');
+/** Lê o PC e monta o plano (guardado aqui: a interface só devolve os ids do que marcou). */
+async function buildOptimizerPlan(options) {
   const report = await deepAnalysis.last();
   if (!report?.profile) throw new Error('Faça a análise profunda primeiro: o plano sai dela.');
   const gameKey = typeof options?.game === 'string' ? options.game.slice(0, 120) : '';
@@ -2147,8 +2146,13 @@ registerIpcHandler('opt:plan', async (_event, options) => {
   const [scan, startup, nics, power, pre] = await Promise.all([systemScan.scan().catch(() => null), optimizerSystem.readStartup().catch(() => []), optimizerSystem.readNics().catch(() => []), optimizerSystem.readPower().catch(() => null), labSystem.preflight().catch(() => null)]);
   const sensors = Number.isFinite(pre?.tempC);
   const plan = NexoOptimizer.buildPlan({ report: { ...report, plan: deepPlanOf(report) }, scan, startup, nics, game, power, nicTweaks: OptimizerActions.NIC_TWEAKS, allowRisk, sensors });
-  optState.plan = { ...plan, at: Date.now(), game };
+  optState.plan = { ...plan, at: Date.now(), game, reportAt: report.at };
   return { supported: true, plan: publicPlan(plan), sensors, onBattery: Boolean(pre?.onBattery), reportAt: report.at, startupCount: startup.filter((item) => item.enabled).length };
+}
+registerIpcHandler('opt:plan', async (_event, options) => {
+  if (process.platform !== 'win32') return { supported: false };
+  if (optState.running) throw new Error('A otimização já está rodando.');
+  return buildOptimizerPlan(options);
 });
 registerIpcHandler('opt:run', async (_event, options) => {
   if (optState.running) throw new Error('A otimização já está rodando.');
@@ -2197,6 +2201,46 @@ registerIpcHandler('opt:run', async (_event, options) => {
     return { ...publicRun(result), id, summary: NexoOptimizer.summarize(result, plan) };
   } finally { optState.running = false; optState.signal = null; }
 });
+/* "Resolver agora" num achado da análise: só os passos daquele achado, sem a medição longa. */
+registerIpcHandler('opt:fix', async (_event, options) => {
+  if (process.platform !== 'win32') throw new Error('A correção automática funciona no Windows.');
+  if (optState.running) throw new Error('A otimização está rodando; espere ela terminar.');
+  const ids = (Array.isArray(options?.ids) ? options.ids : []).slice(0, 60).map((value) => String(value).slice(0, 80));
+  if (!optState.plan || Date.now() - optState.plan.at > PLAN_TTL_MS) await buildOptimizerPlan({});
+  const stored = optState.plan;
+  const consent = { acknowledged: options?.consent?.acknowledged === true, phrase: String(options?.consent?.phrase || '').slice(0, 40) };
+  optState.running = true;
+  try {
+    const system = {
+      now: () => Date.now(),
+      preflight: async () => ({ platform: process.platform, busy: await optimizerBusy() }),
+      apply: (changes, extra) => optimizerSystem.execute(changes, { ...extra, game: stored.game }),
+      waitNetwork: () => optimizerSystem.waitNetwork()
+    };
+    const result = await NexoOptimizer.fix(system, stored, ids, { consent });
+    const id = `fix-${result.startedAt.toString(36)}`;
+    if (result.records.length) await optimizerSystem.saveRun({ id, at: result.startedAt, game: null, records: result.records }).catch(() => {});
+    crumb('correcao', result.status, ids.join(',').slice(0, 80));
+    // Depois de mudar o PC, o plano antigo não vale mais (o que já foi feito sai da lista na próxima leitura).
+    optState.plan = null;
+    return { ...publicRun(result), id };
+  } finally { optState.running = false; }
+});
+/* Reiniciar agora (reinício pendente) ou direto na BIOS/UEFI (para ligar XMP, Resizable BAR...): só com o clique. */
+registerIpcHandler('system:restart', async (_event, options) => {
+  if (process.platform !== 'win32') throw new Error('Reinicie pelo menu do sistema.');
+  const firmware = options?.firmware === true;
+  if (firmware) {
+    const answer = await elevate('restart-firmware', {});
+    if (answer.declined) return { declined: true };
+    if (!answer.result?.ok) throw new Error(answer.result?.note || 'Este PC não aceitou reiniciar direto na BIOS. Reinicie e aperte Del (ou F2) na tela do fabricante.');
+    return { ok: true, seconds: 15 };
+  }
+  const result = await runCode(systemTool('shutdown'), ['/r', '/t', '15', '/c', 'O Nexo vai reiniciar o PC em 15 segundos (você pediu). Salve o que estiver aberto.'], 10000);
+  if (result.code !== 0) throw new Error('O Windows não aceitou reiniciar agora.');
+  return { ok: true, seconds: 15 };
+});
+registerIpcHandler('system:restart-abort', async () => { await runCode(systemTool('shutdown'), ['/a'], 10000); return { ok: true }; });
 registerIpcHandler('opt:cancel', async () => { if (optState.signal) optState.signal.cancelled = true; stopBench(); return { ok: true }; });
 registerIpcHandler('opt:status', async () => ({ running: optState.running }));
 registerIpcHandler('opt:revert', async (_event, options) => {

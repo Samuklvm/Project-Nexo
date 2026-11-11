@@ -364,6 +364,61 @@
    *   lab(options) → resultado do laboratório (NexoLab.run);  waitNetwork() → boolean;  sleep(ms);  now()
    * options: consent, allowRisk, goal, signal ({ cancelled }), emit(event), rounds, labBudgetMin
    */
+  /**
+   * Aplica um conjunto de passos de uma vez (uma permissão do Windows para tudo que precisa de administrador) e
+   * registra o resultado de cada um. Usado pela otimização completa e pelo "Resolver agora" de cada achado.
+   */
+  async function applySteps(system, steps, result, { mark, say, restorePoint }) {
+    const changes = steps.map((step) => ({ ...step.change, stepId: step.id }));
+    const outcome = await system.apply(changes, { restorePoint });
+    result.restore = outcome.restore || null;
+    if (outcome.restore?.ok) say(outcome.restore.created ? 'Ponto de restauração do Windows criado.' : `Ponto de restauração: ${outcome.restore.note || 'usando um recente'}.`);
+    else if (outcome.restore) say(`Sem ponto de restauração (${outcome.restore.note || 'o Windows não criou'}); cada mudança continua no Diário com o valor anterior.`);
+    if (outcome.declined) say('Você recusou a permissão do Windows: os ajustes que precisam de administrador ficaram de fora.');
+    for (const record of outcome.records || []) {
+      const step = steps.find((item) => item.id === record.stepId);
+      if (!step) continue;
+      if (record.ok) {
+        const reboot = step.method === 'reiniciar' ? 'reiniciar' : step.reboot || 'nao';
+        result.records.push({ ...record, kind: step.kind, category: step.category, title: step.title, risk: step.risk, reboot, immediate: IMMEDIATE.has(step.kind) || (step.kind === 'scan' && reboot === 'nao') });
+        mark(step, 'feito', REBOOT_NOTE[reboot] || '');
+      } else mark(step, 'falhou', record.error || (outcome.declined && step.admin ? 'sem a permissão do Windows' : 'o Windows recusou'));
+    }
+    for (const step of steps) if (!result.steps[step.id]) mark(step, 'falhou', 'não chegou a ser aplicado');
+    result.rebootPending = result.records.some((record) => record.reboot !== 'nao');
+    return outcome;
+  }
+
+  /**
+   * "Resolver agora" de um achado: aplica só os passos pedidos, sem a medição longa (são correções de efeito
+   * conhecido). O laboratório (que precisa medir) fica de fora: esse vai pela otimização completa.
+   */
+  async function fix(system, plan, ids, options = {}) {
+    const wanted = new Set((ids || []).map(String));
+    const steps = (plan?.steps || []).filter((step) => wanted.has(step.id) && ['aplicar', 'reiniciar'].includes(step.method) && !step.blocked).map((step) => ({ ...step, selected: true }));
+    const now = system.now || (() => Date.now());
+    const result = { startedAt: now(), endedAt: null, status: 'running', reason: null, quick: true, comparison: {}, steps: {}, records: [], restore: null, undone: [], rebootPending: false, log: [] };
+    const say = (message) => result.log.push({ t: now(), message });
+    const mark = (step, status, note = '') => { result.steps[step.id] = { status, note }; };
+    try {
+      if (!steps.length) throw Object.assign(new Error('Esse ajuste não pode ser feito daqui.'), { code: 'vazio' });
+      assertConsent(steps, options.consent);
+      const pre = await system.preflight?.();
+      if (pre && pre.platform && pre.platform !== 'win32') throw Object.assign(new Error('A correção automática funciona no Windows.'), { code: 'plataforma' });
+      if (pre?.busy) throw Object.assign(new Error(pre.busy), { code: 'ocupado' });
+      await applySteps(system, steps, result, { mark, say, restorePoint: steps.some((step) => (RISK_RANK[step.risk] || 1) >= 2) });
+      if (result.records.some((record) => record.kind === 'nic')) await system.waitNetwork?.();
+      result.status = result.records.length ? 'completed' : 'aborted';
+      if (!result.records.length) result.reason = Object.values(result.steps)[0]?.note || 'Nada foi aplicado.';
+    } catch (error) {
+      result.status = 'aborted';
+      result.reason = String(error?.message || error).slice(0, 240);
+      result.code = error?.code || 'erro';
+    }
+    result.endedAt = now();
+    return result;
+  }
+
   /* eslint-disable no-await-in-loop -- Sequencial de propósito: cada medição precisa da máquina só para ela, e cada
      mudança é aplicada (e, se for o caso, desfeita) antes da próxima medição. */
   async function run(system, plan, options = {}) {
@@ -417,25 +472,8 @@
         checkCancel();
         const admin = direct.some((step) => step.admin);
         stage('aplicar', admin ? 'Aplicando (o Windows vai pedir permissão uma vez)' : 'Aplicando');
-        const changes = direct.map((step) => ({ ...step.change, stepId: step.id }));
-        const outcome = await system.apply(changes, { restorePoint: true });
+        await applySteps(system, direct, result, { mark, say, restorePoint: true });
         applied = true;
-        result.restore = outcome.restore || null;
-        if (outcome.restore?.ok) say(outcome.restore.created ? 'Ponto de restauração do Windows criado.' : `Ponto de restauração: ${outcome.restore.note || 'usando um recente'}.`);
-        else if (outcome.restore) say(`Sem ponto de restauração (${outcome.restore.note || 'o Windows não criou'}); cada mudança continua no Diário com o valor anterior.`);
-        if (outcome.declined) say('Você recusou a permissão do Windows: os ajustes que precisam de administrador ficaram de fora.');
-        for (const record of outcome.records || []) {
-          const step = direct.find((item) => item.id === record.stepId);
-          if (!step) continue;
-          if (record.ok) {
-            const reboot = step.method === 'reiniciar' ? 'reiniciar' : step.reboot || 'nao';
-            result.records.push({ ...record, kind: step.kind, category: step.category, title: step.title, risk: step.risk, reboot, immediate: IMMEDIATE.has(step.kind) || (step.kind === 'scan' && reboot === 'nao') });
-            mark(step, 'feito', REBOOT_NOTE[reboot] || '');
-          }
-          else mark(step, 'falhou', record.error || (outcome.declined && step.admin ? 'sem a permissão do Windows' : 'o Windows recusou'));
-        }
-        for (const step of direct) if (!result.steps[step.id]) mark(step, 'falhou', 'não chegou a ser aplicado');
-        result.rebootPending = result.records.some((record) => record.reboot !== 'nao');
         if (result.records.some((record) => record.kind === 'nic')) {
           stage('rede', 'Esperando a internet voltar (a placa de rede reiniciou)');
           const back = await system.waitNetwork();
@@ -534,5 +572,5 @@
     return { headline, lines, done, undone, failed, manual };
   }
 
-  return { CATEGORIES, CATEGORY, METHOD_LABEL, EVIDENCE_LABEL, CONSENT_PHRASE, STARTUP_KB, METRICS, METRIC, BENCHES, classifyStartup, costOf, buildPlan, needsPhrase, assertConsent, compareMetric, compareAll, run, summarize, countsOf, POWER_SAVER, BALANCED, EFFICIENCY_MODE, BEST_PERFORMANCE };
+  return { CATEGORIES, CATEGORY, METHOD_LABEL, EVIDENCE_LABEL, CONSENT_PHRASE, STARTUP_KB, METRICS, METRIC, BENCHES, classifyStartup, costOf, buildPlan, needsPhrase, assertConsent, compareMetric, compareAll, run, fix, summarize, countsOf, POWER_SAVER, BALANCED, EFFICIENCY_MODE, BEST_PERFORMANCE };
 });

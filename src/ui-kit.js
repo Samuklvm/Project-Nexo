@@ -13,6 +13,7 @@
     });
     $$('.view').forEach((panel) => panel.classList.toggle('active', panel.dataset.viewPanel === view));
     setText('page-title', TITLES[view]);
+    document.body.dataset.view = view;
     $('#stage')?.scrollTo({ top: 0 });
     Nexo.emit('view', view);
   };

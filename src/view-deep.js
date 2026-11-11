@@ -36,11 +36,21 @@
   /** Véu de nebulosa: um degradê radial de uma cor só, bem suave. */
   const veil = (id, color, opacity) => `<radialGradient id="${id}"><stop offset="0" stop-color="${color}" stop-opacity="${opacity}" /><stop offset="1" stop-color="${color}" stop-opacity="0" /></radialGradient>`;
   /**
-   * Luz de uma estrela: halo que se esvai (degradê na cor da própria estrela, definido aqui dentro para herdar a cor)
-   * e dois raios finos, como numa foto do céu.
+   * Estrela de quatro pontas com lados curvos (um brilho, como nas fotos), a vertical um pouco mais longa, uma
+   * menor atravessada a 45° e o centro branco. O halo é um degradê na cor da própria estrela (definido aqui dentro
+   * para herdar a cor): quase tudo no centro, e uma luz larga e fraquinha que some sem borda.
    */
-  const starLight = (prefix, id, glow, spike) => `<radialGradient id="${prefix}-glow-${id}" class="deep-glowdef"><stop offset="0" class="g0" /><stop offset="0.28" class="g1" /><stop offset="1" class="g2" /></radialGradient>`
-    + `<circle class="deep-glow" r="${glow}" fill="url(#${prefix}-glow-${id})" /><path class="deep-spikes" d="M${-spike} 0H${spike}M0 ${-spike}V${spike}" />`;
+  const sparkPath = (r) => {
+    const h = r * 0.78;
+    const c = r * 0.12;
+    return `M0 ${-r}Q${c.toFixed(2)} ${(-c).toFixed(2)} ${h.toFixed(2)} 0Q${c.toFixed(2)} ${c.toFixed(2)} 0 ${r}Q${(-c).toFixed(2)} ${c.toFixed(2)} ${(-h).toFixed(2)} 0Q${(-c).toFixed(2)} ${(-c).toFixed(2)} 0 ${-r}Z`;
+  };
+  const starGlow = (prefix, id, glow) => `<radialGradient id="${prefix}-glow-${id}" class="deep-glowdef"><stop offset="0" class="g0" /><stop offset="0.07" class="g1" /><stop offset="0.2" class="g2" /><stop offset="0.48" class="g3" /><stop offset="1" class="g4" /></radialGradient>`
+    + `<circle class="deep-glow" r="${glow}" fill="url(#${prefix}-glow-${id})" />`;
+  const starSpark = (prefix, id, r) => `<radialGradient id="${prefix}-spark-${id}" class="deep-sparkdef" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="${r}"><stop offset="0" class="s0" /><stop offset="0.14" class="s1" /><stop offset="0.48" class="s2" /><stop offset="1" class="s3" /></radialGradient>`
+    + `<g class="deep-core"><path class="deep-spark minor" d="${sparkPath(r * 0.5)}" transform="rotate(45)" fill="url(#${prefix}-spark-${id})" filter="url(#${prefix}-soft)" /><path class="deep-spark" d="${sparkPath(r)}" fill="url(#${prefix}-spark-${id})" filter="url(#${prefix}-soft)" /><circle class="deep-heart" r="${(r * 0.12).toFixed(2)}" filter="url(#${prefix}-soft)" /></g>`;
+  /** Borda macia do brilho (sem contorno duro): um desfoque mínimo, do tamanho de meio pixel. */
+  const softDef = (prefix) => `<filter id="${prefix}-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.42" /></filter>`;
   function drawSky() {
     buildSky(sky);
   }
@@ -50,11 +60,11 @@
     const edges = EDGES.map(([a, b]) => `<line class="deep-edge" data-a="${a}" data-b="${b}" x1="${POS[a][0]}" y1="${POS[a][1]}" x2="${POS[b][0]}" y2="${POS[b][1]}" pathLength="1" />`).join('');
     // Nebulosa de cada peça: acende junto com a estrela (âmbar quando ela tem algo para ajustar).
     const prefix = target.id || 'sky';
-    const defs = '<defs>' + veil(prefix + '-neb', '#9fb8ff', 0.2) + veil(prefix + '-neb-warn', '#ffc98a', 0.2) + '</defs>';
+    const defs = '<defs>' + veil(prefix + '-neb', '#ffe7b8', 0.06) + veil(prefix + '-neb-warn', '#ffc98a', 0.12) + softDef(prefix) + '</defs>';
     const stars = NODES.map((item) => {
       const [x, y] = POS[item.id];
       return `<g class="deep-star" data-node="${item.id}" data-state="pending" transform="translate(${x} ${y})">
-        <circle class="deep-neb" r="84" fill="url(#${prefix}-neb)" /><circle class="deep-neb deep-neb-warn" r="96" fill="url(#${prefix}-neb-warn)" />${starLight(prefix, item.id, 26, 15)}<circle class="deep-ring" r="15" /><circle class="deep-core" r="5.5" />
+        <circle class="deep-neb" r="84" fill="url(#${prefix}-neb)" /><circle class="deep-neb deep-neb-warn" r="96" fill="url(#${prefix}-neb-warn)" />${starGlow(prefix, item.id, 24)}<circle class="deep-ring" r="14" />${starSpark(prefix, item.id, 10)}
         <text class="deep-label" y="${TOP.has(item.id) ? -26 : 34}">${escapeHtml(labelOf(item))}</text><text class="deep-name" y="${TOP.has(item.id) ? -26 : 52}"></text></g>`;
     }).join('');
     const comet = (i) => '<circle class="deep-comet" cx="' + (310 + 118 * Math.cos(i * 2.1)).toFixed(1) + '" cy="' + (148 + 62 * Math.sin(i * 2.1)).toFixed(1) + '" r="2.4" />';
@@ -66,6 +76,52 @@
   /** O espaço profundo atrás de uma constelação (src/space.js), sem a textura no modo Leve. */
   function space(target, kind) {
     try { NexoSpace.mount(target, kind, { lite: Boolean(Nexo.effectsLite) }); } catch { /* sem o fundo, a constelação continua */ }
+    requestAnimationFrame(() => veilLabels(target));
+  }
+  /** O céu da página inteira (src/space.js): desenhado na primeira vez que a verificação completa aparece. */
+  function pageSpace() { try { NexoSpace.mountPage(document.getElementById('space-page'), { lite: Boolean(Nexo.effectsLite) }); } catch { /* sem o céu, a página continua */ } }
+  /**
+   * Atrás do tipo e do nome de cada peça, o espaço vira um borrão (vidro fosco entre o fundo e a constelação): as
+   * estrelas e a nebulosa se dissolvem em volta das letras, que parecem feitas da mesma luz. Medido no próprio SVG e
+   * posicionado em porcentagem, acompanha qualquer tamanho de tela. Só as estrelas já acesas ganham o véu.
+   */
+  function veilLabels(target) {
+    const stage = target?.parentElement;
+    if (!stage?.classList.contains('space-stage') || !target.isConnected || !target.getClientRects().length) return;
+    const box = target.viewBox?.baseVal;
+    if (!box?.width) return;
+    const pads = [];
+    for (const star of target.querySelectorAll('.deep-star')) {
+      if ((star.dataset.state || 'done') === 'pending') continue;
+      const texts = [...star.querySelectorAll('.deep-label, .deep-name')].filter((text) => text.textContent.trim());
+      if (!texts.length) continue;
+      const matrix = star.transform?.baseVal?.consolidate()?.matrix;
+      let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+      for (const text of texts) {
+        let rect = null;
+        try { rect = text.getBBox(); } catch { rect = null; }
+        if (!rect?.width) continue;
+        x0 = Math.min(x0, rect.x); y0 = Math.min(y0, rect.y); x1 = Math.max(x1, rect.x + rect.width); y1 = Math.max(y1, rect.y + rect.height);
+      }
+      if (!Number.isFinite(x0)) continue;
+      const cx = (matrix?.e || 0) + (x0 + x1) / 2;
+      const cy = (matrix?.f || 0) + (y0 + y1) / 2;
+      const w = x1 - x0 + 70;
+      const h = y1 - y0 + 34;
+      pads.push([((cx - box.x) / box.width) * 100, ((cy - box.y) / box.height) * 100, (w / box.width) * 100, (h / box.height) * 100, star.dataset.state || 'done']);
+    }
+    let layer = stage.querySelector(':scope > .space-veils');
+    if (!layer) { layer = document.createElement('div'); layer.className = 'space-veils'; layer.setAttribute('aria-hidden', 'true'); stage.insertBefore(layer, target); }
+    const key = pads.map((pad) => pad.map((value) => (typeof value === 'number' ? value.toFixed(1) : value)).join(',')).join('|');
+    if (layer.dataset.key === key) return;
+    layer.dataset.key = key;
+    layer.replaceChildren(...pads.map(([left, top, width, height, state]) => {
+      const veil = document.createElement('i');
+      veil.className = 'space-veil';
+      veil.dataset.state = state;
+      Object.assign(veil.style, { left: `${left.toFixed(2)}%`, top: `${top.toFixed(2)}%`, width: `${width.toFixed(2)}%`, height: `${height.toFixed(2)}%` });
+      return veil;
+    }));
   }
   Nexo.mountSpace = space;
   const calm = () => reduce.matches || Nexo.effectsLite;
@@ -124,6 +180,7 @@
       if (TOP.has(id)) star.querySelector('.deep-label')?.setAttribute('y', name ? '-44' : '-26');
       star.classList.toggle('named', Boolean(name));
     }
+    veilLabels(target);
   }
 
   // Cada etapa tem a cor e o ícone da peça que ela examina; a de "por trás" é lilás e a de carga, cor de brasa.
@@ -165,6 +222,7 @@
       }
       star.dataset.hot = stage === 'load' && progress.status === 'running' && (star.dataset.node === 'cpu' || star.dataset.node === 'gpu') && state === 'active' ? '1' : '';
     }
+    veilLabels(sky);
     const lit = (id) => ['done', 'warn', 'seen', 'active'].includes(progress.nodes?.[id]);
     const done = (id) => ['done', 'warn'].includes(progress.nodes?.[id]);
     for (const edge of sky.querySelectorAll('.deep-edge')) {
@@ -217,6 +275,10 @@
     const optBox = document.getElementById('deep-opt');
     if (optBox) optBox.hidden = which !== 'opt';
     panel.dataset.mode = which;
+    // O espaço preto toma a página só a partir da verificação completa (rodando, relatório, otimização).
+    document.body.classList.toggle('deep-space', which !== 'intro');
+    if (which !== 'intro') pageSpace();
+    requestAnimationFrame(() => { for (const svg of panel.querySelectorAll('.space-stage > .deep-sky')) veilLabels(svg); });
   }
 
   /* ---------------- Despertar da placa de vídeo (link PCIe sob carga) ---------------- */
@@ -521,7 +583,7 @@
    * as ligações e cada estrela com o tipo e o nome da peça. O número na estrela é quantos pontos ela tem para ajustar.
    */
   function chartSvg(names, nodes, counts, platform) {
-    const defs = veil('deep-chart-neb', '#9fb8ff', 0.16) + veil('deep-chart-neb-warn', '#ffc98a', 0.22);
+    const defs = veil('deep-chart-neb', '#ffe7b8', 0.05) + veil('deep-chart-neb-warn', '#ffb35c', 0.1) + softDef('deep-chart');
     const nebula = NODES.map((item) => {
       const [x, y] = CHART[item.id];
       const warn = nodes[item.id] === 'warn';
@@ -536,7 +598,7 @@
       const badge = count ? `<g class="deep-badge" transform="translate(25 -3)"><circle r="10.5" /><text y="4">${count}</text></g>` : '';
       const name = names[item.id] ? `<text class="deep-name" y="${top ? -30 : 60}">${escapeHtml(names[item.id])}</text>` : '';
       return `<g class="deep-star${name ? ' named' : ''}" data-node="${item.id}" data-state="${nodes[item.id] || 'done'}" data-order="${index}" transform="translate(${x} ${y})">
-        <circle class="deep-hit" r="30" />${starLight('deep-chart', item.id, 36, 22)}<circle class="deep-ring" r="19" /><circle class="deep-core" r="6.5" />${badge}
+        <circle class="deep-hit" r="30" />${starGlow('deep-chart', item.id, 30)}<circle class="deep-ring" r="17" />${starSpark('deep-chart', item.id, 12.5)}${badge}
         <text class="deep-label" y="${top ? (name ? -52 : -30) : 40}">${escapeHtml(labelOf(item, platform))}</text>${name}</g>`;
     }).join('');
     return `<defs>${defs}</defs><g class="deep-nebula" aria-hidden="true">${nebula}</g>${orbits}<g class="deep-edges">${edges}</g><g class="deep-stars">${stars}</g>`;
@@ -595,8 +657,8 @@
           <div class="deep-head-text">${el('span', 'deep-kicker', fromDisk ? 'Seu PC, da última análise' : 'Seu PC, entendido')}${el('h3', '', story.identity || (main.length ? 'O que encontrei no seu PC' : 'Seu PC está em ordem'))}${story.verdict ? el('p', 'deep-verdict', story.verdict) : ''}${story.good ? el('p', 'deep-good', story.good) : ''}${tallyHtml(count, more, ok)}</div>
           <div class="deep-hero-actions">${Nexo.platform === 'win32' && bridge?.planOptimization ? `<button class="btn primary opt-cta" type="button" data-deep-optimize="1">${icon('i-bolt')}Otimizar este PC</button><button class="btn" type="button" data-deep-again="1">Analisar de novo</button>` : '<button class="btn primary" type="button" data-deep-again="1">Analisar de novo</button>'}${el('small', 'muted', stamp(report, fromDisk))}</div>
         </div>
-        <svg class="deep-sky deep-chart" id="deep-report-sky" viewBox="0 0 1000 320" role="group" aria-label="Carta celeste do seu PC: cada estrela é uma peça; as amarelas têm algo para ajustar. Toque numa para ver a peça.">${chartSvg(names, nodes, counts, report.platform || report.profile?.os?.platform)}</svg>
-        <p class="deep-chart-hint">Cada estrela é uma peça do seu PC. As amarelas têm algo para ajustar; toque numa para ver os detalhes dela.</p>
+        <svg class="deep-sky deep-chart" id="deep-report-sky" viewBox="0 0 1000 320" role="group" aria-label="Carta celeste do seu PC: cada estrela é uma peça; as alaranjadas, com um número, têm algo para ajustar. Toque numa para ver a peça.">${chartSvg(names, nodes, counts, report.platform || report.profile?.os?.platform)}</svg>
+        <p class="deep-chart-hint">Cada estrela é uma peça do seu PC. As alaranjadas, com um anel e um número, têm algo para ajustar; toque numa para ver os detalhes dela.</p>
       </div>
       <div class="deep-grid">
         <div class="deep-col">
@@ -696,7 +758,7 @@
   Nexo.runDeepAnalysis = start;
   /** O que a otimização reaproveita daqui: a carta celeste, o fundo, a troca de telas e o último relatório. */
   Nexo.deepView = {
-    show, report: () => lastReport, back: () => backToRest(), space, paintStates, AREA_NODE, NODES, CHART,
+    show, report: () => lastReport, back: () => backToRest(), space, veil: veilLabels, AREA_NODE, NODES, CHART,
     chart: (report, nodes = {}, counts = {}) => {
       let names = {};
       try { names = NexoHardware.shortNames(report?.profile || {}); } catch { names = {}; }
@@ -734,6 +796,6 @@
   bridge?.onGpuWake?.((payload) => { try { gpuWake(payload?.ms); } catch { /* sem WebGL: o link fica o do repouso */ } });
   Nexo.on('view', (view) => { if (view === 'analysis') loadLast(); });
   // Modo Leve ligado ou desligado: o fundo troca (com ou sem a textura da nebulosa).
-  Nexo.on('effects', () => { for (const [id, kind] of [['deep-intro-sky', 'mini'], ['deep-sky', 'sky'], ['deep-report-sky', 'chart']]) { const target = document.getElementById(id); if (target?.dataset.ready || id === 'deep-report-sky') space(target, kind); } });
+  Nexo.on('effects', () => { if (document.getElementById('space-page')?.dataset.lite) pageSpace(); for (const [id, kind] of [['deep-intro-sky', 'mini'], ['deep-sky', 'sky'], ['deep-report-sky', 'chart']]) { const target = document.getElementById(id); if (target?.dataset.ready || id === 'deep-report-sky') space(target, kind); } });
   if (Nexo.state.view === 'analysis') loadLast();
 })();
