@@ -1087,7 +1087,7 @@ registerIpcHandler('power:set', async (_event, guid) => {
   return { ok: true, plans: await listPowerPlans() };
 });
 
-registerIpcHandler('startup:list', async () => {
+async function listStartupItems() {
   if (IS_LINUX) return linux.startupItems();
   if (process.platform !== 'win32') return [];
   const script = UTF8_PS + String.raw`$s=@(Get-CimInstance Win32_StartupCommand | ForEach-Object { [pscustomobject]@{ name = [string]$_.Name; command = [string]$_.Command; location = [string]$_.Location; user = [string]$_.User } }); ConvertTo-Json -InputObject $s -Compress`;
@@ -1100,7 +1100,8 @@ registerIpcHandler('startup:list', async () => {
     location: String(item.location || '').slice(0, 120),
     user: String(item.user || '').slice(0, 60)
   }));
-});
+}
+registerIpcHandler('startup:list', listStartupItems);
 
 /*
  * Trabalhos de medição em arquivos próprios (electron/workers/*.cjs), nunca código montado em texto (nada de eval).
@@ -1366,7 +1367,8 @@ registerIpcHandler('fps:stop', async () => fpsRunner.stop());
 
 
 const SETTINGS_PAGES = { startup: 'ms-settings:startupapps', power: 'ms-settings:powersleep', storage: 'ms-settings:storagesense', graphics: 'ms-settings:display-advancedgraphics',
-  gamemode: 'ms-settings:gaming-gamemode', display: 'ms-settings:display-advanced', captures: 'ms-settings:gaming-gamedvr', recovery: 'ms-settings:recovery', coreisolation: 'windowsdefender://coreisolation' };
+  gamemode: 'ms-settings:gaming-gamemode', display: 'ms-settings:display-advanced', captures: 'ms-settings:gaming-gamedvr', recovery: 'ms-settings:recovery', coreisolation: 'windowsdefender://coreisolation',
+  windowsupdate: 'ms-settings:windowsupdate' };
 registerIpcHandler('system:open-settings', async (_event, page) => {
   if (IS_LINUX) throw new Error('Esta tela é das Configurações do Windows; no Linux, use as configurações do seu ambiente (GNOME, KDE…).');
   const uri = Object.hasOwn(SETTINGS_PAGES, String(page)) ? SETTINGS_PAGES[page] : null;
@@ -1623,7 +1625,7 @@ $dg = Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName W
 $vbs = $null; $hvci = $null
 if ($dg) { $vbs = [int]$dg.VirtualizationBasedSecurityStatus; $hvci = [bool](@($dg.SecurityServicesRunning) -contains 2) }
 [pscustomobject]@{ memory = $mem; displays = $disp; hags = $hags; gameMode = $gm; capture = $cap; historical = $hist; vbs = $vbs; hvci = $hvci } | ConvertTo-Json -Depth 4 -Compress`;
-registerIpcHandler('system:facts', async () => {
+async function readSystemFacts() {
   if (IS_LINUX) {
     const [profiles, mangohud, gamemode, governor] = await Promise.all([linux.powerProfiles(), linux.which('mangohud'), linux.which('gamemoded'), fs.readFile('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor', 'utf8').then((text) => text.trim()).catch(() => null)]);
     return { platform: 'linux', session: process.env.XDG_SESSION_TYPE || null, kernel: os.release(), powerProfile: profiles.find((profile) => profile.active)?.guid || null, ppd: profiles.length > 0, mangohud, gamemode, governor };
@@ -1631,7 +1633,8 @@ registerIpcHandler('system:facts', async () => {
   if (process.platform !== 'win32') return { platform: process.platform };
   const result = await runPowerShellCode(FACTS_SCRIPT, 20000);
   try { return { platform: 'win32', ...JSON.parse(result.stdout) }; } catch { return { platform: 'win32' }; }
-});
+}
+registerIpcHandler('system:facts', readSystemFacts);
 
 // ---- Conexões (Steam deste PC, Xbox, Discord) e capas oficiais ----
 const CONNECTIONS_FILE = () => path.join(app.getPath('userData'), 'connections.bin');
@@ -1870,6 +1873,7 @@ registerIpcHandler('lab:run', async (_event, options) => {
   if (labState.running) throw new Error('O laboratório já está rodando.');
   if (await rebootTest.active()) throw new Error('Há um teste com reinício em andamento; termine ou cancele ele antes (as medidas se misturariam).');
   if (activeBench) throw new Error('Há um teste de desempenho em andamento.');
+  if (deepAnalysis.isRunning()) throw new Error('A análise profunda está rodando; espere ela terminar.');
   const memory = NexoLab.sanitizeMemory(options?.evidence, options?.tabu);
   labState.running = true;
   labState.signal = { cancelled: false };
@@ -1894,6 +1898,65 @@ registerIpcHandler('lab:run', async (_event, options) => {
     return result;
   } finally { labState.running = false; labState.signal = null; }
 });
+// ---- Análise profunda: 7 etapas, no mínimo 60 s, tudo somente leitura (electron/deep-run.cjs) ----
+const NexoSessionRules = require('./src/session.js');
+const DeepScan = require('./electron/deep-scan.cjs');
+const { createDeepAnalysis, createLinuxSystemReader } = require('./electron/deep-run.cjs');
+const DEEP_FILE = () => path.join(app.getPath('userData'), 'analise-profunda.json');
+/** nvidia-smi com a placa acordada: link PCIe (atual, o da placa e o do slot), clock, energia, motivo do clock baixo e BAR1. */
+async function deepNvidia() {
+  if (nvidiaSmiFile === undefined) nvidiaSmiFile = nvidiaSmi();
+  if (!nvidiaSmiFile) return [];
+  const query = (fields) => execFileAsync(nvidiaSmiFile, [`--query-gpu=${fields}`, '--format=csv,noheader,nounits'], { windowsHide: true, timeout: 5000, maxBuffer: 64 * 1024 }).then((out) => String(out.stdout || '').trim().split(/\r?\n/).filter(Boolean).map((line) => line.split(',').map((cell) => cell.trim()))).catch(() => []);
+  const value = (cell) => { const n = Number(cell); return Number.isFinite(n) ? n : null; };
+  const [main, extra, memory] = await Promise.all([
+    query('pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current,pcie.link.width.max,clocks.gr,clocks.max.gr,temperature.gpu,power.draw,power.limit,clocks_throttle_reasons.active,memory.total'),
+    query('pcie.link.gen.gpumax,pcie.link.gen.hostmax'),
+    execFileAsync(nvidiaSmiFile, ['-q', '-d', 'MEMORY'], { windowsHide: true, timeout: 5000, maxBuffer: 256 * 1024 }).then((out) => String(out.stdout || '')).catch(() => '')
+  ]);
+  const bar1 = DeepScan.parseBar1(memory);
+  return main.map((cells, index) => {
+    const bits = /^0x[0-9a-f]+$/i.test(cells[9] || '') ? Number.parseInt(cells[9], 16) : null;
+    return {
+      pcieGen: value(cells[0]), pcieGenSlotMax: value(cells[1]), pcieWidth: value(cells[2]), pcieWidthMax: value(cells[3]), clock: value(cells[4]), clockMax: value(cells[5]), temp: value(cells[6]), power: value(cells[7]), powerLimit: value(cells[8]),
+      limits: bits === null ? null : { power: Boolean(bits & 0x4 || bits & 0x80), thermal: Boolean(bits & 0x20 || bits & 0x40), hardware: Boolean(bits & 0x8) },
+      vramMB: value(cells[10]), pcieGenMax: value(extra[index]?.[0]), pcieGenHostMax: value(extra[index]?.[1]) ?? value(cells[1]), bar1MB: index === 0 ? bar1 : null
+    };
+  });
+}
+const deepAnalysis = createDeepAnalysis({
+  platform: process.platform, runPowerShellCode, spawnFn: spawn,
+  linuxCollector: IS_LINUX ? DeepScan.createLinuxCollector({ fs, path, os, run: (file, args) => runCode(file, args) }) : null,
+  linuxProcesses: IS_LINUX ? () => linux.processSample() : null,
+  linuxSystem: IS_LINUX ? createLinuxSystemReader({ fs }) : null,
+  sensors: () => getHardwareSensors(), nvidia: deepNvidia,
+  bench: (mode, ms) => runCpuBench(mode, ms),
+  cancelBench: () => { if (activeBench) { activeBench.cancelled = true; for (const worker of activeBench.workers) worker.terminate(); } },
+  facts: readSystemFacts, startup: listStartupItems, drives: listDrives,
+  screenDisplays: () => { try { return require('electron').screen.getAllDisplays().map((display) => ({ hz: Math.round(display.displayFrequency || 0) || null, width: Math.round(display.size.width * display.scaleFactor), height: Math.round(display.size.height * display.scaleFactor), internal: display.internal === true })); } catch { return []; } },
+  selfPids: () => new Set([process.pid, ...(typeof app.getAppMetrics === 'function' ? app.getAppMetrics().map((metric) => metric.pid) : []), probe.pid?.()].filter(Boolean)),
+  match: (exePath) => library.matchPath(exePath), classify: NexoSessionRules.classifyForeground,
+  onBattery: () => Boolean(powerMonitor?.isOnBatteryPower?.()),
+  gpuWake: (ms) => sendToWindow('analysis:gpu-wake', { ms }),
+  emit: (progress) => sendToWindow('analysis:progress', progress),
+  memoryTotal: () => os.totalmem(),
+  store: {
+    load: async () => JSON.parse(await fs.readFile(DEEP_FILE(), 'utf8')),
+    save: async (data) => { const file = DEEP_FILE(); await fs.writeFile(`${file}.tmp`, JSON.stringify(data)); await fs.rename(`${file}.tmp`, file); }
+  }
+});
+registerIpcHandler('analysis:deep-run', async () => {
+  if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
+  if (activeBench) throw new Error('Há um teste de desempenho em andamento; espere ele terminar.');
+  if (await rebootTest.active()) throw new Error('Há um teste com reinício em andamento; termine ou cancele ele antes (as medidas se misturariam).');
+  const result = await deepAnalysis.run();
+  crumb('analise', result?.cancelled ? 'profunda-cancelada' : 'profunda', result?.findings ? String(result.findings.length) : '');
+  return result;
+});
+registerIpcHandler('analysis:deep-cancel', async () => deepAnalysis.cancel());
+registerIpcHandler('analysis:deep-status', async () => deepAnalysis.status());
+registerIpcHandler('analysis:deep-last', async () => deepAnalysis.last());
+
 // ---- Diagnóstico de rede ("a internet está boa, mas os sites demoram") ----
 const NetDoctor = require('./electron/net-doctor.cjs');
 const netDoctor = NetDoctor.createNetDoctor({
@@ -2291,7 +2354,10 @@ const TELEMETRY_PARTS = ['usage', 'features', 'app', 'perf', 'health', 'settings
 registerIpcHandler('cloud:status', async () => {
   const target = await withCloud();
   // Entrou ou saiu da equipe do painel depois do login: confere sem segurar a tela e avisa se mudou.
-  target.refreshRole().then((changed) => { if (changed) sendToWindow('cloud:changed', {}); return changed; }).catch(() => {});
+  target.refreshRole().then((changed) => {
+    if (changed) { sendToWindow('cloud:changed', {}); }
+    return changed;
+  }).catch(() => {});
   return target.status();
 });
 registerIpcHandler('cloud:set', async (_event, options) => {

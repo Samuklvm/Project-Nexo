@@ -1112,3 +1112,122 @@ body.lite .rise, body.lite .game-card, body.lite .modal-backdrop > * { animation
 .svg-defs { position: absolute; }
 /* Embrulho só para acessibilidade (aria-hidden ou role="img" sem mexer no canvas): não participa do layout. */
 .aria-skip { display: contents; }
+
+/* ===================== Análise profunda: constelação do PC e relatório ===================== */
+.deep { overflow: hidden; }
+.deep-intro { display: grid; grid-template-columns: 1fr auto; gap: 22px; align-items: center; }
+.deep-intro h3 { font-size: 19px; font-weight: 650; margin-bottom: 6px; }
+.deep-intro p { color: var(--mist); max-width: 78ch; }
+.deep-intro p + p { margin-top: 6px; }
+.deep-intro-actions { display: grid; gap: 8px; justify-items: end; }
+@media (max-width: 860px) { .deep-intro { grid-template-columns: 1fr; } .deep-intro-actions { justify-items: start; } }
+
+.deep-run { display: grid; gap: 14px; }
+.deep-sky { width: 100%; height: auto; max-height: 320px; display: block; overflow: visible; }
+.deep-dust { fill: rgba(228, 234, 255, 0.32); }
+.deep-edge { stroke-width: 1.3; stroke-linecap: round; transition: stroke 0.6s; }
+.deep-edge[data-state="pending"] { stroke: rgba(150, 175, 255, 0.08); }
+.deep-edge[data-state="seen"] { stroke: rgba(var(--neon-rgb), 0.22); }
+.deep-edge[data-state="done"] { stroke: rgba(var(--neon-rgb), 0.58); stroke-dasharray: 1; animation: deep-draw 1.4s var(--ease-out) both; filter: drop-shadow(0 0 3px rgba(var(--neon-rgb), 0.6)); }
+.deep-star .deep-core { transform-box: fill-box; transform-origin: center; }
+.deep-star .deep-core { fill: rgba(228, 234, 255, 0.22); transition: fill 0.5s, transform 0.5s var(--ease-out), filter 0.5s; }
+.deep-star .deep-halo { fill: rgba(var(--neon-rgb), 0); transition: fill 0.6s; }
+.deep-star .deep-ring { fill: none; stroke: rgba(var(--neon-rgb), 0); stroke-width: 1.2; stroke-dasharray: 4 6; transition: stroke 0.4s; }
+.deep-label { fill: var(--mist); font-size: 12.5px; font-weight: 600; text-anchor: middle; opacity: 0.5; transition: opacity 0.5s, fill 0.5s; }
+.deep-star[data-state="seen"] .deep-core { fill: rgba(228, 234, 255, 0.55); }
+.deep-star[data-state="seen"] .deep-label { opacity: 0.75; }
+.deep-star[data-state="active"] .deep-core { fill: #fff; transform: scale(1.35); }
+/* Pulso, giro do anel e cometas andam no relógio único do app (30 quadros, src/view-deep.js), nunca em loop de CSS. */
+.deep-star[data-state="active"] .deep-halo { fill: rgba(var(--neon-rgb), 0.2); }
+.deep-star[data-state="active"] .deep-ring { stroke: rgba(var(--neon-rgb), 0.85); }
+.deep-star[data-state="active"] .deep-label { opacity: 1; fill: var(--moon); }
+.deep-star[data-state="done"] .deep-core { fill: var(--neon); transform: scale(1.15); filter: drop-shadow(0 0 6px rgba(var(--neon-rgb), 0.9)); }
+.deep-star[data-state="done"] .deep-halo { fill: rgba(var(--neon-rgb), 0.1); }
+.deep-star[data-state="done"] .deep-label { opacity: 1; fill: var(--moon); }
+.deep-star[data-state="warn"] .deep-core { fill: var(--warn); transform: scale(1.15); filter: drop-shadow(0 0 6px rgba(255, 196, 107, 0.9)); }
+.deep-star[data-state="warn"] .deep-halo { fill: rgba(255, 196, 107, 0.13); }
+.deep-star[data-state="warn"] .deep-label { opacity: 1; fill: var(--warn); }
+.deep-star[data-hot="1"] .deep-core { fill: #ff9a5c; filter: drop-shadow(0 0 8px rgba(255, 120, 80, 0.95)); }
+.deep-star[data-hot="1"] .deep-halo { fill: rgba(255, 120, 80, 0.26); }
+.deep-star[data-hot="1"] .deep-ring { stroke: rgba(255, 140, 90, 0.9); }
+.deep-orbit { opacity: 0; transition: opacity 0.8s; }
+.deep-sky[data-stage="behind"] .deep-orbit { opacity: 1; }
+.deep-comet { fill: var(--neon-2); filter: drop-shadow(0 0 4px rgba(var(--neon-2-rgb), 0.9)); }
+@keyframes deep-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes deep-in { from { opacity: 0; transform: translateY(4px); } }
+
+.deep-now { display: flex; gap: 10px; align-items: center; font-size: 15px; }
+.deep-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--neon); box-shadow: 0 0 10px var(--neon); flex: none; }
+.deep-facts { display: grid; gap: 4px; min-height: 110px; align-content: start; font-size: 13.5px; color: var(--mist); }
+.deep-facts li { position: relative; padding-left: 18px; }
+.deep-facts li::before { content: "▸"; position: absolute; left: 0; color: rgba(var(--neon-rgb), 0.85); }
+.deep-facts li[data-level="warn"] { color: var(--moon); }
+.deep-facts li[data-level="warn"]::before { color: var(--warn); }
+.deep-facts li[data-level="ok"]::before { content: "✓"; color: var(--good); }
+.deep-facts li.fresh { color: var(--moon); animation: deep-in 0.5s var(--ease-out) both; }
+.deep-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 14px; align-items: center; }
+.deep-bar { height: 6px; border-radius: 6px; background: rgba(150, 175, 255, 0.12); overflow: hidden; }
+.deep-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--neon-2), var(--neon)); box-shadow: 0 0 12px rgba(var(--neon-rgb), 0.6); transition: width 0.8s var(--ease-out); }
+#deep-count { font-size: 13px; font-weight: 600; color: var(--moon); }
+.deep-time { font-size: 13px; color: var(--mist); font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { .deep-progress { grid-template-columns: minmax(0, 1fr) auto; } }
+.deep-sky.calm *, body.lite .deep-sky * { animation: none !important; transition: none !important; }
+body.lite .deep-facts li.fresh { animation: none; }
+@media (prefers-reduced-motion: reduce) { .deep-sky *, .deep-facts li.fresh, .deep-bar i { animation: none !important; transition: none !important; } }
+
+.deep-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px; align-items: center; margin-bottom: 18px; }
+.deep-score { width: 86px; height: 86px; border-radius: 50%; display: grid; place-content: center; text-align: center; border: 2px solid var(--good); box-shadow: 0 0 24px rgba(110, 242, 194, 0.22), inset 0 0 18px rgba(110, 242, 194, 0.12); }
+.deep-score strong { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+.deep-score span { font-size: 11px; color: var(--mist); }
+.deep-score[data-tone="warn"] { border-color: var(--warn); box-shadow: 0 0 24px rgba(255, 196, 107, 0.22), inset 0 0 18px rgba(255, 196, 107, 0.12); }
+.deep-score[data-tone="bad"] { border-color: var(--bad); box-shadow: 0 0 24px rgba(255, 122, 149, 0.22), inset 0 0 18px rgba(255, 122, 149, 0.12); }
+.deep-head-text h3 { font-size: 19px; font-weight: 650; }
+.deep-head-text p { margin: 2px 0 4px; color: var(--moon); }
+@media (max-width: 700px) { .deep-head { grid-template-columns: auto minmax(0, 1fr); } .deep-head-actions { grid-column: 1 / -1; } }
+.deep-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .deep-grid { grid-template-columns: minmax(0, 1fr); } }
+.deep-col { display: grid; gap: 16px; }
+.deep-card { padding: 16px 18px; border-radius: 16px; background: rgba(8, 12, 34, 0.42); border: 1px solid var(--hair); }
+.deep-card h4 { font-size: 15px; font-weight: 650; margin-bottom: 10px; }
+.finding { position: relative; padding: 12px 14px 12px 18px; border-radius: 12px; background: rgba(12, 18, 46, 0.5); border: 1px solid var(--hair); }
+.finding + .finding { margin-top: 10px; }
+.finding::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--star); }
+.finding[data-severity="alta"]::before { background: var(--bad); box-shadow: 0 0 10px var(--bad); }
+.finding[data-severity="media"]::before { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+.finding[data-severity="info"]::before { background: var(--mist); }
+.finding header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
+.finding header strong { font-size: 14.5px; font-weight: 600; }
+.finding-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; color: var(--star); background: rgba(90, 215, 255, 0.1); white-space: nowrap; }
+.finding[data-severity="alta"] .finding-tag { color: var(--bad); background: rgba(255, 122, 149, 0.12); }
+.finding[data-severity="media"] .finding-tag { color: var(--warn); background: rgba(255, 196, 107, 0.12); }
+.finding[data-severity="info"] .finding-tag { color: var(--mist); background: rgba(154, 168, 214, 0.12); }
+.finding-area { font-size: 12px; color: var(--mist); white-space: nowrap; }
+.finding p { margin-top: 6px; font-size: 13.5px; color: var(--mist); }
+.finding .finding-how { color: var(--moon); }
+.finding-evidence { display: grid; gap: 2px; margin-top: 6px; font-size: 12.5px; color: var(--moon); }
+.finding-evidence li::before { content: "• "; color: var(--mist); }
+.finding footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--mist); }
+.deep-more summary { margin-top: 12px; cursor: pointer; font-weight: 600; color: var(--moon); }
+.deep-more[open] summary { margin-bottom: 10px; }
+.deep-resolved { margin-top: 12px; font-size: 13px; color: var(--good); }
+.deep-clean { color: var(--good); }
+.pc-list { display: grid; gap: 10px; }
+.pc-list li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; }
+.pc-node { padding-top: 2px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(var(--neon-rgb), 0.9); }
+.pc-list p { font-size: 13.5px; overflow-wrap: anywhere; }
+.pc-list p + p { color: var(--mist); }
+.pc-know { margin-top: 10px; font-size: 12.5px; }
+.pill-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.pill[data-role="game"] { border-color: rgba(110, 242, 194, 0.4); color: var(--good); }
+.deep-ledger li small { font-size: 12px; color: var(--mist); }
+.deep-ledger li[data-impact="alto"] .bar i { background: var(--bad); box-shadow: 0 0 10px rgba(255, 122, 149, 0.5); }
+.deep-ledger li[data-impact="medio"] .bar i { background: var(--warn); }
+.deep-behind > small { display: block; margin-top: 12px; }
+.deep-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.deep-tiles div { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; background: rgba(150, 175, 255, 0.06); border: 1px solid var(--hair); }
+.deep-tiles span { font-size: 12px; color: var(--mist); }
+.deep-tiles strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.deep-load > p { margin-top: 10px; }
+.deep-ok ul { display: grid; gap: 6px; }
+.deep-ok li { position: relative; padding-left: 20px; font-size: 13.5px; }
+.deep-ok li::before { content: "✓"; position: absolute; left: 0; color: var(--good); }

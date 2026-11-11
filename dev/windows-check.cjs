@@ -16,6 +16,9 @@ const Sys = require('../electron/lab-system.cjs');
 const LabSpace = require('../src/lab-space.js');
 const { BOOT_SCRIPT } = require('../electron/reboot-test.cjs');
 const Disk = require('../electron/disk-models.cjs');
+const DeepScan = require('../electron/deep-scan.cjs');
+const NexoHardware = require('../src/hardware-kb.js');
+const NexoDeep = require('../src/deep-analysis.js');
 
 if (process.platform !== 'win32') { console.log('Só no Windows.'); process.exit(0); }
 const failures = [];
@@ -97,6 +100,42 @@ async function parses(name, script) {
   check(keys.length >= 20, `powercfg /qh scheme_current: ${keys.length} configurações lidas`);
   const found = LabSpace.SPACE.filter((knob) => map[`${knob.subGuid}/${knob.guid}`]);
   console.log(`     laboratório: ${found.length} de ${LabSpace.SPACE.length} ajustes existem neste Windows`);
+
+  // 6. Análise profunda: os scripts compilam, rodam sem administrador e o resultado é decodificado.
+  for (const name of ['INVENTORY_SCRIPT', 'HEALTH_SCRIPT', 'OBSERVE_SCRIPT', 'LOAD_SCRIPT', 'LINK_SCRIPT']) await parses(`análise profunda: ${name}`, DeepScan[name]);
+  const invRun = await ps(DeepScan.INVENTORY_SCRIPT, 90000);
+  const inventory = DeepScan.parseInventory(invRun.stdout);
+  check(inventory && inventory.cpu.name && inventory.cpu.cores >= 1, `inventário: ${inventory ? `${inventory.cpu.name}, ${inventory.cpu.cores} núcleos` : invRun.stdout.slice(0, 400) || invRun.stderr.slice(0, 800)}`);
+  if (inventory) {
+    check(inventory.memory.modules.length >= 1 || inventory.memory.slots === null, `memória: ${inventory.memory.modules.length} pente(s), ${inventory.memory.slots} slot(s)`);
+    check(inventory.disks.length >= 1 && inventory.disks.some((disk) => disk.system), `discos: ${inventory.disks.map((disk) => `${disk.model} ${disk.bus}/${disk.media}${disk.system ? ' (sistema)' : ''}`).join(', ')}`);
+    check(inventory.gpus.length >= 1, `vídeo: ${inventory.gpus.map((gpu) => `${gpu.name} link=${JSON.stringify(gpu.link)}`).join(', ')}`);
+    console.log(`     telas: ${JSON.stringify(inventory.displays)}`);
+    console.log(`     rede: ${JSON.stringify(inventory.network)}`);
+    console.log(`     nvme: ${JSON.stringify(inventory.nvme)}`);
+    const profile = NexoHardware.identify(inventory);
+    console.log(NexoHardware.factLines(profile).map((line) => `     ${line.node.padEnd(8)} ${line.text}`).join('\n'));
+  }
+  const healthRun = await ps(DeepScan.HEALTH_SCRIPT, 90000);
+  const health = DeepScan.parseHealth(healthRun.stdout);
+  check(health && health.events && typeof health.events.bugcheck.count === 'number' && health.lastBoot, `saúde: ${health ? `telas azuis ${health.events.bugcheck.count}, apps que fecharam ${health.events.appCrash.count}, plano ${health.planGuid}, paginação ${JSON.stringify(health.pagefile)}` : healthRun.stdout.slice(0, 400) || healthRun.stderr.slice(0, 800)}`);
+  const lines = [];
+  const observe = DeepScan.streamScript({ script: DeepScan.OBSERVE_SCRIPT, env: { NEXO_TICKS: '3', NEXO_WAIT_MS: '1000' }, timeoutMs: 120000, onLine: (line) => lines.push(DeepScan.parseObserveLine(line)) });
+  await observe.done;
+  const meta = lines.find((line) => line?.kind === 'meta');
+  const ticks = lines.filter((line) => line?.kind === 'tick');
+  check(meta && meta.services.size > 5 && meta.procs.size > 10 && ticks.length >= 3 && lines.some((line) => line?.kind === 'end'), `observação: ${meta ? `${meta.procs.size} processos, ${meta.services.size} svchost com serviços` : 'sem meta'}, ${ticks.length} leituras, CPU ${ticks.map((tick) => Math.round(tick.cpu.total ?? -1)).join('/')}, DPC ${ticks.map((tick) => tick.cpu.dpc).join('/')}, máx. freq ${ticks.map((tick) => tick.cpu.maxFreq).join('/')}`);
+  if (meta) {
+    const summary = NexoDeep.summarizeObservation({ ticks, procs: meta.procs, services: meta.services, probePid: meta.self });
+    console.log(`     por trás: ${summary.background.slice(0, 6).map((item) => `${item.label}=${item.cpuAvg}%/${item.impact}`).join(', ') || 'nada'}`);
+  }
+  const loadLines = [];
+  const load = DeepScan.streamScript({ script: DeepScan.LOAD_SCRIPT, env: { NEXO_TICKS: '2' }, timeoutMs: 60000, onLine: (line) => loadLines.push(DeepScan.parseLoadLine(line)) });
+  await load.done;
+  const loadTicks = loadLines.filter((line) => line?.kind === 'tick');
+  check(loadTicks.length >= 2 && loadTicks[0].cores.length >= 1 && loadTicks[0].mhz > 0, `carga: ${loadTicks.length} leituras, ${loadTicks[0]?.cores.length} núcleos, ${loadTicks[0]?.mhz} MHz nominal, desempenho ${loadTicks.map((tick) => tick.perf).join('/')}%`);
+  const links = DeepScan.parseLinks((await ps(DeepScan.LINK_SCRIPT, 30000)).stdout);
+  check(links.length >= 1, `link PCIe das placas de vídeo: ${JSON.stringify(links)}`);
 
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(failures.length ? `\n${failures.length} falha(s).` : '\nTudo certo.');

@@ -188,7 +188,7 @@ function createProbe({ spawnFn = spawn, emit = () => {}, platform = process.plat
     });
   }
 
-  return { start, stop, test, isRunning: () => child !== null };
+  return { start, stop, test, isRunning: () => child !== null, pid: () => child?.pid || null };
 }
 
 /** Sonda do Linux, toda em Node: primeiro plano (xprop), CPU por programa (/proc) e o custo do próprio Nexo. GPU por programa não tem fonte padrão no Linux. */

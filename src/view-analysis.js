@@ -100,8 +100,11 @@
     } finally { setButtonBusy(button, false); }
   }
 
-  Nexo.runAnalysis = async function runAnalysis() {
-    const button = document.getElementById('run-diagnosis');
+  /** "Analisar agora" de qualquer lugar do app = análise profunda (src/view-deep.js); a rápida continua no botão "Rápida". */
+  Nexo.runAnalysis = function runAnalysis() { return Nexo.runDeepAnalysis ? Nexo.runDeepAnalysis() : Nexo.quickAnalysis(); };
+
+  Nexo.quickAnalysis = async function quickAnalysis() {
+    const button = document.getElementById('run-quick');
     setAppStatus('Analisando');
     await measureProcesses(button);
     renderAll();
@@ -112,6 +115,7 @@
   };
 
   document.getElementById('run-diagnosis')?.addEventListener('click', () => Nexo.runAnalysis());
+  document.getElementById('run-quick')?.addEventListener('click', () => Nexo.quickAnalysis());
   document.getElementById('refresh-processes')?.addEventListener('click', (event) => measureProcesses(event.currentTarget).then(renderInsights));
   $$('[data-habit]').forEach((button) => button.addEventListener('click', () => {
     habitMetric = button.dataset.habit;

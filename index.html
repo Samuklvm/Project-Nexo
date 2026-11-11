@@ -150,7 +150,28 @@
 
       <!-- ANÁLISE -->
       <section class="view" data-view-panel="analysis">
-        <header class="page-head"><div><h2>Análise inteligente</h2><p>O Nexo compara o que acontece agora com a sua rotina, aponta causas prováveis e mostra a evidência de cada uma. São indícios, não certezas.</p></div><div class="page-actions"><button class="btn primary" id="run-diagnosis" type="button">Analisar agora</button></div></header>
+        <header class="page-head"><div><h2>Análise inteligente</h2><p>O Nexo conhece as peças do seu PC, observa o que roda por trás e compara com a sua rotina. Cada achado vem com a evidência, a confiança e o que fazer.</p></div><div class="page-actions"><button class="btn" id="run-quick" type="button" title="Mede os programas agora (cerca de um segundo)">Rápida</button><button class="btn primary" id="run-diagnosis" type="button">Análise profunda</button></div></header>
+        <section class="sheet deep" id="deep-panel" aria-labelledby="deep-title">
+          <div class="deep-intro" id="deep-intro">
+            <div class="deep-intro-text">
+              <h3 id="deep-title">Análise profunda</h3>
+              <p>O Nexo identifica cada peça e entende o que ela é (chipset da placa-mãe, geração do processador, velocidade da memória, link da placa de vídeo, porta do monitor), lê 30 dias de eventos do sistema, observa o que roda por trás e faz um teste de carga curto. Leva de 1 a 2 minutos e não muda nada no PC.</p>
+              <p class="muted">Pode deixar um jogo aberto: ele, o próprio Nexo e os launchers ficam fora da lista de culpados.</p>
+            </div>
+            <div class="deep-intro-actions"><button class="btn primary" id="deep-start" type="button">Começar análise profunda</button><small class="muted" id="deep-last-info"></small></div>
+          </div>
+          <div class="deep-run" id="deep-run" hidden>
+            <svg class="deep-sky" id="deep-sky" viewBox="0 0 640 280" role="img" aria-label="Constelação do PC: cada peça acende quando é examinada"></svg>
+            <div class="deep-now"><i class="deep-dot" aria-hidden="true"></i><strong id="deep-action" aria-live="polite">Começando…</strong></div>
+            <ul class="deep-facts" id="deep-facts" aria-live="polite"></ul>
+            <div class="deep-progress">
+              <div class="deep-bar" id="deep-bar" role="progressbar" aria-label="Progresso da análise" aria-valuemin="0" aria-valuemax="7" aria-valuenow="0"><i id="deep-bar-fill"></i></div>
+              <span id="deep-count">1 de 7</span><span class="deep-time" id="deep-time">0:00</span>
+              <button class="btn sm" id="deep-cancel" type="button">Cancelar</button>
+            </div>
+          </div>
+          <div class="deep-report" id="deep-report" hidden></div>
+        </section>
         <div class="learn sheet" id="learn-strip" aria-label="O que o Nexo já aprendeu">
           <div><strong id="learn-days">0</strong><span>dias de convivência</span></div>
           <div><strong id="learn-coverage">0%</strong><span>da sua rotina semanal conhecida</span></div>
@@ -158,7 +179,7 @@
           <div><strong id="learn-culprits">0</strong><span>programas identificados</span></div>
         </div>
         <div class="split">
-          <section class="sheet"><div class="sheet-head"><h3>O que encontrei</h3></div><div id="insight-list" aria-live="polite"></div><small class="muted" id="diagnosis-learning-status"></small></section>
+          <section class="sheet"><div class="sheet-head"><h3>O que notei com o tempo</h3></div><div id="insight-list" aria-live="polite"></div><small class="muted" id="diagnosis-learning-status"></small></section>
           <div class="stack">
             <section class="sheet"><div class="sheet-head"><h3>Lentidões recentes</h3></div><ol class="timeline" id="episode-list"></ol></section>
             <section class="sheet"><div class="sheet-head"><h3>Quem mais atrapalha</h3></div><ul class="ledger" id="ledger-list"></ul></section>
@@ -499,6 +520,8 @@
   <script src="src/lab-space.js"></script>
   <script src="src/lab.js"></script>
   <script src="src/atlas.js"></script>
+  <script src="src/hardware-kb.js"></script>
+  <script src="src/deep-analysis.js"></script>
   <script src="src/core.js"></script>
   <script src="src/ui-kit.js"></script>
   <script src="src/perf.js"></script>
@@ -511,6 +534,7 @@
   <script src="src/view-home.js"></script>
   <script src="src/orbit.js"></script>
   <script src="src/view-analysis.js"></script>
+  <script src="src/view-deep.js"></script>
   <script src="src/view-optimize.js"></script>
   <script src="src/view-experiment.js"></script>
   <script src="src/view-journal.js"></script>
