@@ -43,6 +43,12 @@ function expected(pattern, blockIndex, pass) {
   return (i) => (1 << ((i + pass) & 31)) >>> 0;
 }
 
+if (!blocks.length) {
+  // Sem memória livre para testar: avisa e sai (nada de girar em falso até o prazo).
+  parentPort.postMessage({ kind: 'done', testedMB: 0, passes: 0, errors: 0, samples: [], bandwidthMBs: null, elapsedMs: 0 });
+  process.exit(0);
+}
+
 let errors = 0;
 let passes = 0;
 let bytes = 0;

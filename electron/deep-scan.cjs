@@ -187,8 +187,8 @@ foreach ($e in $kp) {
   try {
     $x = [xml]$e.ToXml(); $d = @{}
     foreach ($n in @($x.Event.EventData.Data)) { $d[[string]$n.Name] = [string]$n.'#text' }
-    $code = 0; [void][int64]::TryParse([string]$d['BugcheckCode'], [ref]$code)
-    $button = 0; [void][int64]::TryParse([string]$d['PowerButtonTimestamp'], [ref]$button)
+    [int64]$code = 0; [void][int64]::TryParse([string]$d['BugcheckCode'], [ref]$code)
+    [int64]$button = 0; [void][int64]::TryParse([string]$d['PowerButtonTimestamp'], [ref]$button)
     if ($code -ne 0) { $kpInfo.bugcheck++; $kpCodes += ('0x{0:x8}' -f $code) }
     elseif ($button -ne 0 -or $d['LongPowerButtonPressDetected'] -eq 'true') { $kpInfo.button++ }
     elseif ([string]$d['SleepInProgress'] -notin @('', '0', 'false')) { $kpInfo.sleep++ }
@@ -314,12 +314,13 @@ $out = @(Get-CimInstance Win32_VideoController | ForEach-Object { @{ name = [str
  */
 const DRIVERS_SCRIPT = PS_HEAD + String.raw`
 $cls = @('DISPLAY', 'NET', 'MEDIA', 'SYSTEM', 'HDC', 'SCSIADAPTER', 'BLUETOOTH')
-$rows = @(Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $cls -contains ([string]$_.DeviceClass).ToUpper() } | ForEach-Object {
+# Da classe SYSTEM só os drivers de fabricante (chipset, ME, PSP); os genéricos da Microsoft são centenas e não mudam nada.
+$rows = @(Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $cls -contains ([string]$_.DeviceClass).ToUpper() -and (([string]$_.DeviceClass).ToUpper() -ne 'SYSTEM' -or [string]$_.DriverProviderName -notmatch '^Microsoft') } | ForEach-Object {
   $hw = [string](@($_.HardWareID)[0])
   $ids = ''
   if ($hw -match '(VEN|VID)_([0-9A-Fa-f]{4}).*?(DEV|PID)_([0-9A-Fa-f]{4})') { $ids = ($Matches[2] + ':' + $Matches[4]).ToUpper() }
   @{ name = [string]$_.DeviceName; cls = ([string]$_.DeviceClass).ToUpper(); provider = [string]$_.DriverProviderName; maker = [string]$_.Manufacturer; version = [string]$_.DriverVersion; date = (D $_.DriverDate); ids = $ids; signed = [bool]$_.IsSigned }
-} | Select-Object -First 160)
+} | Select-Object -First 220)
 [Console]::Out.Write((ConvertTo-Json -InputObject $rows -Depth 3 -Compress))`;
 
 /* Erros que apareceram DURANTE a verificação (desde NEXO_SINCE, em ms Unix): hardware (WHEA), vídeo e disco. */
@@ -463,7 +464,7 @@ function parseDrivers(stdout) {
   const start = body.search(/[[{]/);
   let raw = null;
   try { raw = start >= 0 ? JSON.parse(body.slice(start)) : null; } catch { raw = null; }
-  return asList(raw).slice(0, 160).map((item) => ({
+  return asList(raw).slice(0, 220).map((item) => ({
     name: text(item?.name, 90), cls: text(item?.cls, 16).toUpperCase(), provider: text(item?.provider, 60), maker: text(item?.maker, 60),
     version: text(item?.version, 40), date: isoDate(item?.date), ids: /^[0-9A-F]{4}:[0-9A-F]{4}$/.test(String(item?.ids || '')) ? item.ids : null, signed: item?.signed === false ? false : item?.signed === true ? true : null
   })).filter((item) => item.name && item.cls);

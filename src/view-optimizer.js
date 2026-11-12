@@ -518,6 +518,10 @@
       if (name === 'chrome') { const ids = byId(['raiox-chromebg']); if (ids.length) return { kind: 'steps', ids, label: 'Fechar de verdade ao sair' }; }
       const start = steps.find((step) => step.kind === 'startup' && step.match === name);
       if (start) return { kind: 'steps', ids: [start.id], label: 'Tirar do início' };
+      // Sem ajuste automático: a configuração do próprio programa, a página certa do Nexo ou o Gerenciador de Tarefas.
+      if (finding.action?.settings) return { kind: 'settings', page: finding.action.settings, label: 'Abrir a configuração' };
+      if (finding.action?.goto) return { kind: 'goto', view: finding.action.goto, label: 'Abrir' };
+      if (finding.action) return { kind: 'taskmgr', label: 'Fechar pelo Gerenciador' };
       return null;
     }
     if (id.startsWith('causa-') && finding.diagnosis?.fix && CAUSE_FIX[finding.diagnosis.fix]) return CAUSE_FIX[finding.diagnosis.fix]();

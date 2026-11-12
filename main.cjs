@@ -1987,10 +1987,17 @@ async function deepNetQuality({ signal, onProgress } = {}) {
     }
     return Deep.summarizePings(values, lost);
   };
-  const internetHost = await (async () => { for (const [host, port] of [['1.1.1.1', 443], ['8.8.8.8', 443]]) { if (Number.isFinite(await connectTime(host, port))) return [host, port]; } return null; })();
+  const internetHost = await (async () => {
+    for (const [host, port] of [['1.1.1.1', 443], ['8.8.8.8', 443]]) {
+      // eslint-disable-next-line no-await-in-loop -- tenta o segundo só se o primeiro não respondeu
+      for (let attempt = 0; attempt < 3; attempt += 1) if (Number.isFinite(await connectTime(host, port))) return [host, port];
+    }
+    return null;
+  })();
   const [local, remote] = await Promise.all([
     gateway ? series(gateway.host, gateway.port, 90, 350, null) : null,
-    internetHost ? series(internetHost[0], internetHost[1], 90, 350, 'a internet') : null
+    // Sem resposta nenhuma da internet: vira "100% perdido" (o diagnóstico abaixo confirma se é bloqueio ou queda).
+    internetHost ? series(internetHost[0], internetHost[1], 90, 350, 'a internet') : Deep.summarizePings([], 6)
   ]);
   if (signal?.aborted) return null;
   say('conferindo DNS, proxy e a abertura de um site…');
@@ -2016,7 +2023,19 @@ const deepAnalysis = createDeepAnalysis({
   memoryTotal: () => os.totalmem(),
   freeMemory: () => os.freemem(),
   memtest: ({ totalMB, ms, signal, onProgress }) => deepWorker(MEMTEST_WORKER, { totalMB, ms }, { signal, onProgress }),
-  diskTest: ({ signal, onProgress }) => deepWorker(DISKTEST_WORKER, { dir: path.join(app.getPath('userData'), 'teste-disco'), sizeMB: 256, smallCount: 300, ms: 40000 }, { signal, onProgress }),
+  diskTest: async ({ signal, onProgress }) => {
+    const dir = path.join(app.getPath('userData'), 'teste-disco');
+    // Nunca enche o disco: com menos de 2 GB livres o teste grava menos; com menos de 600 MB, não grava.
+    let freeMB = null;
+    try { const st = await fs.statfs(app.getPath('userData')); freeMB = (Number(st.bavail) * Number(st.bsize)) / 1048576; } catch { freeMB = null; }
+    if (freeMB !== null && freeMB < 600) return null;
+    const sizeMB = freeMB !== null && freeMB < 2048 ? 64 : 256;
+    try { return await deepWorker(DISKTEST_WORKER, { dir, sizeMB, smallCount: 300, ms: 40000 }, { signal, onProgress }); }
+    finally {
+      // Cancelado no meio, o worker não chega a apagar: apaga aqui.
+      for (const name of ['nexo-teste-disco.tmp', 'nexo-teste-disco-4k.tmp']) await fs.rm(path.join(dir, name), { force: true }).catch(() => {});
+    }
+  },
   netQuality: (options) => deepNetQuality(options),
   store: {
     load: async () => JSON.parse(await fs.readFile(DEEP_FILE(), 'utf8')),

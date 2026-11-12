@@ -707,3 +707,17 @@ test('correção: todo achado que pede ação tem um caminho para o botão do ap
   assert.deepEqual(missing.map((item) => item.id), [], 'achados sem nenhum botão possível');
   assert.ok(findings.filter((item) => item.id.startsWith('causa-')).every((item) => item.diagnosis?.fix), 'toda causa provável diz qual correção usar');
 });
+
+test('verificação completa: com a memória errando, não manda ligar o XMP, e o resumo não repete os sintomas da causa', () => {
+  const now = Date.parse('2026-11-11T12:00:00Z');
+  const profile = H.identify(baseInventory({ memory: { modules: [
+    { capacity: 8 * GB, speed: 2133, configured: 2133, part: 'F4-3600C16-8GVKC', type: 26, formFactor: 8, locator: 'DIMM_A2' },
+    { capacity: 8 * GB, speed: 2133, configured: 2133, part: 'F4-3600C16-8GVKC', type: 26, formFactor: 8, locator: 'DIMM_B2' }], slots: 4 } }), { now });
+  assert.ok(D.buildFindings({ profile, now }).some((item) => item.id === 'mem-xmp'), 'sem erro: sugere ligar o perfil');
+  const health = Scan.parseHealth(JSON.stringify({ events: { bugcheck: { count: 3 } }, bugCodes: [{ code: '0x0000001a', count: 3 }] }));
+  const findings = D.buildFindings({ profile, health, memtest: { testedMB: 2048, passes: 9, errors: 5 }, now });
+  assert.ok(!findings.some((item) => item.id === 'mem-xmp'), 'com erro: nada de ligar o XMP');
+  const story = D.narrative(profile, findings);
+  assert.match(story.verdict, /^Causa mais provável dos problemas: memória instável/);
+  assert.doesNotMatch(story.verdict, /telas azuis|errou no teste/, 'os sintomas já estão na causa');
+});

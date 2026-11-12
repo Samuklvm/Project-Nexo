@@ -322,14 +322,17 @@
     const passes = span > 10000 ? 6 : 4;
     let alive = true;
     const stop = () => { if (!alive) return; alive = false; gl.getExtension('WEBGL_lose_context')?.loseContext(); };
+    // Com a janela minimizada ou escondida não há quadros de tela (requestAnimationFrame para): aí o laço segue por
+    // temporizador, e o gl.finish() garante que cada volta seja trabalho de verdade na placa.
+    const next = () => { if (document.hidden) setTimeout(() => frame(performance.now()), 0); else requestAnimationFrame(frame); };
     const frame = (now) => {
       if (!alive) return;
       for (let i = 0; i < passes; i += 1) { gl.uniform1f(time, now / 1000 + i); gl.drawArrays(gl.TRIANGLES, 0, 3); }
       gl.finish();
-      if (now < until) requestAnimationFrame(frame); else stop();
+      if (now < until) next(); else stop();
     };
     gpuLoad = { stop };
-    requestAnimationFrame(frame);
+    next();
   }
 
   /* ---------------- Relatório ---------------- */
@@ -362,10 +365,12 @@
   function findingHtml(item) {
     const evidence = (item.evidence || []).filter(Boolean);
     const detail = item.detail ? el('p', '', item.detail) : '';
-    const proof = evidence.length ? '<ul class="finding-evidence">' + list(evidence, (line) => el('li', '', line)) + '</ul>' : '';
+    const proofTitle = item.id.startsWith('causa-') ? el('span', 'finding-why', 'Por que eu acho isso') : '';
+    const proof = evidence.length ? proofTitle + '<ul class="finding-evidence">' + list(evidence, (line) => el('li', '', line)) + '</ul>' : '';
     const how = item.action?.how ? '<p class="finding-how"><b>O que fazer:</b> ' + escapeHtml(item.action.how) + '</p>' : '';
     const trust = [CONFIDENCE[item.confidence], item.gain].filter(Boolean).join(' · ');
-    return `<article class="finding" data-severity="${escapeHtml(item.severity)}" data-node="${AREA_NODE[item.area] || 'windows'}" data-finding="${escapeHtml(item.id)}">
+    const cause = item.id.startsWith('causa-') && item.id !== 'causa-engasgos';
+    return `<article class="finding${cause ? ' finding-cause' : ''}" data-severity="${escapeHtml(item.severity)}" data-node="${AREA_NODE[item.area] || 'windows'}" data-finding="${escapeHtml(item.id)}">
       <header><span class="finding-badge">${icon(AREA_ICON[item.area] || 'i-spark')}</span>${el('span', 'finding-tag', SEVERITY[item.severity] || item.severity)}${el('strong', '', item.title)}${el('span', 'finding-area', item.area === 'windows' && Nexo.platform === 'linux' ? 'Sistema' : AREA[item.area] || '')}</header>
       ${detail}${proof}${how}
       <footer>${el('span', '', trust)}<span class="finding-actions">${actionButton(item.action)}</span></footer>
@@ -505,6 +510,24 @@
     const accepts = [betterGen ? 'PCIe ' + maxGen + '.0' : '', wider ? 'x' + maxWidth : ''].filter(Boolean).join(' ');
     if (accepts) note = 'a placa aceita ' + accepts;
     return `<div class="lanes"><div class="meter-head">${el('span', '', 'Link da placa de vídeo')}<strong>${escapeHtml(now)}</strong></div><div class="lane-row" aria-hidden="true">${lanes}</div>${el('small', '', note)}</div>`;
+  }
+
+  /** O que a verificação completa testou de verdade, com o resultado de cada teste numa linha. */
+  function testsHtml(report) {
+    const t = report.tests;
+    if (!t) return '';
+    const rows = [];
+    const gb = (mb) => NexoHardware.gbText(mb * 1048576);
+    if (t.memtest?.testedMB) rows.push(['memory', 'i-ram', 'Memória', `${gb(t.memtest.testedMB)} gravados e conferidos em ${plural(t.memtest.passes, 'passada', 'passadas')}`, t.memtest.errors ? `${plural(t.memtest.errors, 'erro', 'erros')}` : 'nenhum erro', t.memtest.errors ? 'warn' : 'ok']);
+    if (Number.isFinite(t.gpuStress?.tempPeak)) rows.push(['gpu', 'i-gpu', 'Placa de vídeo', `${t.gpuStress.seconds || 45} s sob carga${Number.isFinite(t.gpuStress.clockEnd) ? `, ${n(t.gpuStress.clockEnd)} MHz no fim` : ''}`, `${t.gpuStress.tempPeak} °C`, t.gpuStress.thermalHits >= 2 ? 'warn' : 'ok']);
+    if (Number.isFinite(t.diskTest?.seqWriteMBs)) rows.push(['disk', 'i-disk', 'Disco', `${t.diskTest.sizeMB} MB gravados${t.diskTest.latency ? `, resposta de ${n(t.diskTest.latency.p50Ms, 1)} ms` : ''}`, `${n(t.diskTest.seqWriteMBs)} MB/s`, 'ok']);
+    const net = t.network?.internet;
+    if (net) rows.push(['network', 'i-net', 'Rede', Number.isFinite(net.ms) ? `${net.count} medidas; oscila ${n(net.jitter, 1)} ms${t.network.gateway && Number.isFinite(t.network.gateway.ms) ? `, roteador ${n(t.network.gateway.ms, 1)} ms` : ''}` : 'sem resposta da internet', Number.isFinite(net.ms) ? `${n(net.ms)} ms · ${n(net.loss, 0)}% perdido` : '—', !Number.isFinite(net.ms) || net.loss >= 2 ? 'warn' : 'ok']);
+    const driverCount = t.drivers ? Object.values(t.drivers).reduce((sum, items) => sum + items.length, 0) : 0;
+    if (driverCount) rows.push(['board', 'i-chip', 'Drivers', 'vídeo, rede, áudio, chipset e armazenamento', `${driverCount} conferidos`, 'ok']);
+    if (t.during) { const bad = (t.during.whea || 0) + (t.during.tdr || 0) + (t.during.disk || 0); rows.push(['windows', 'i-alert', 'Durante os testes', 'erros de hardware, do vídeo e do disco registrados pelo Windows', bad ? `${plural(bad, 'erro', 'erros')}` : 'nenhum erro', bad ? 'warn' : 'ok']); }
+    if (!rows.length) return '';
+    return `<section class="deep-card deep-tests">${cardTitle('i-flask', 'O que foi testado')}<ul class="test-rows">${list(rows, ([node, ico, label, detail, result, tone]) => `<li data-node="${node}" data-tone="${tone}"><span class="test-ico">${icon(ico)}</span><div>${el('strong', '', label)}${el('small', '', detail)}</div>${el('b', 'test-result', result)}</li>`)}</ul></section>`;
   }
 
   function loadHtml(report) {
@@ -688,7 +711,7 @@
           ${loadHtml(report)}
           ${routineHtml(routine)}
         </div>
-        <div class="deep-col">${pcHtml(report)}${planHtml(report)}${okHtml}</div>
+        <div class="deep-col">${testsHtml(report)}${pcHtml(report)}${planHtml(report)}${okHtml}</div>
       </div>`;
     show('report');
     space(document.getElementById('deep-report-sky'), 'chart');

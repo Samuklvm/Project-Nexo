@@ -737,8 +737,10 @@
   /** Memória acima do padrão (perfil XMP/EXPO ou ajuste manual): é o primeiro suspeito em instabilidade. */
   function memoryOverclocked(memory = {}) {
     const top = JEDEC_MAX[memory.type];
-    if (finite(memory.configured) && top && memory.configured > top + 50) return true;
-    return Boolean(memory.xmpKnown && !memory.belowRated && finite(memory.configured) && finite(memory.rated) && memory.rated > (top || 99999) - 400 && memory.configured >= memory.rated - 50 && memory.configured > ({ DDR3: 1333, DDR4: 2666, DDR5: 4800 }[memory.type] || 99999));
+    if (!finite(memory.configured) || !top) return false;
+    if (memory.configured > top + 50) return true; // acima de qualquer padrão: perfil XMP/EXPO ou ajuste manual
+    // Kit vendido com perfil, rodando na velocidade da caixa: o perfil está ligado.
+    return Boolean(memory.xmpKnown && finite(memory.rated) && memory.configured >= memory.rated - 50 && memory.configured > { DDR3: 1333, DDR4: 2400, DDR5: 4800 }[memory.type]);
   }
 
   /* ---------------- Placa de vídeo sob carga (45 s) ---------------- */
@@ -860,6 +862,9 @@
     const localFix = wifi ? 'Teste com o PC mais perto do roteador ou ligado por cabo; em Wi-Fi, prefira a rede de 5 GHz.' : 'Troque o cabo de rede ou a porta do roteador e reinicie o roteador.';
     const ev = [local ? `roteador: ${comma(local.ms ?? 0, 0)} ms (oscila ${comma(local.jitter ?? 0, 0)} ms, perdeu ${comma(local.loss, 0)}%)` : null, remote ? `internet: ${comma(remote.ms ?? 0, 0)} ms (95% abaixo de ${comma(remote.p95 ?? 0, 0)} ms, perdeu ${comma(remote.loss, 0)}%)` : null, `ligado por ${via}`];
     let problem = false;
+    // 1.1.1.1 e 8.8.8.8 bloqueados (rede de empresa, firewall) mas um site de verdade abriu: não é "sem internet".
+    const webOk = (net.doctor?.checks || []).some((check) => check.id === 'http' && check.level !== 'problema');
+    if (remote && !finite(remote.ms) && webOk) return;
     if (remote && !finite(remote.ms)) {
       add(F('rede-sem-internet', 'rede', 'alta', 'Sem resposta da internet durante o teste', local && finite(local.ms) ? 'O roteador respondeu, mas nada passou dele para a internet: o problema está no roteador, no modem ou na operadora.' : 'Nem o roteador respondeu: confira o cabo ou o Wi-Fi deste PC.', { evidence: ev, action: { how: local && finite(local.ms) ? 'Reinicie o modem e o roteador (tire da tomada por 30 segundos). Se continuar, ligue para a operadora.' : 'Confira se o Wi-Fi está conectado ou se o cabo está firme nas duas pontas.' } }));
       return;
@@ -935,10 +940,11 @@
       for (const code of codes) {
         const target = code.cls === 'hardware' ? 'processador' : code.cls === 'sistema' ? 'disco' : code.cls;
         if (score[target] !== undefined) hint(target, Math.min(6, 3 * code.count), `tela azul ${code.name || code.hex}${code.count > 1 ? ` (${code.count}×)` : ''}`);
-        if (code.cls === 'driver') hint('memoria', 1, null);
       }
       const memory = profile.memory || {};
       const over = memoryOverclocked(memory);
+      // Telas azuis "de driver" também aparecem quando a memória erra (o driver só tropeça no dado corrompido).
+      if (over && codes.some((code) => code.cls === 'driver')) hint('memoria', 1, 'esse tipo de tela azul também aparece com memória instável');
       if (memtest?.errors) hint('memoria', 8, `o teste de memória achou ${plural(memtest.errors, 'erro', 'erros')}`);
       if (over && (bugchecks || freezes || memtest?.errors)) hint('memoria', 2, `memória acima do padrão (${memory.configured} MT/s com XMP/EXPO)`);
       if (memory.mixed && (bugchecks || freezes)) hint('memoria', 1, 'pentes diferentes misturados');
@@ -962,7 +968,8 @@
       if (has('cpu-freio-calor') || has('cpu-quente') || has('gpu-calor') || has('firmware-limite')) hint('calor', silent ? 4 : 1, 'temperatura alta medida no teste de carga');
       if (silent) {
         const hot = has('cpu-freio-calor') || has('gpu-calor') || has('gpu-quente') || has('cpu-quente');
-        if (!hot) hint('fonte', Math.min(8, 3 * silent), `${plural(silent, 'desligamento', 'desligamentos')} sem tela azul, com temperatura normal no teste`);
+        // Um desligamento só pode ser uma queda de luz: a fonte só vira suspeita quando se repete.
+        if (!hot) hint('fonte', silent >= 2 ? Math.min(8, 3 * silent) : 1, `${plural(silent, 'desligamento', 'desligamentos')} sem tela azul, com temperatura normal no teste`);
         const dedicated = (profile.gpus || []).some((item) => item.discrete);
         if (dedicated && finite(stress?.powerPeak) && stress.powerPeak >= 200) hint('fonte', 1, `placa de vídeo puxando ${stress.powerPeak} W`);
       }
@@ -978,7 +985,8 @@
         const [top, points] = ranked[0];
         const also = ranked.slice(1).filter(([, value]) => value >= Math.max(3, points * 0.6)).map(([key]) => SUSPECTS[key].what);
         const suspect = SUSPECTS[top];
-        const finding = F(`causa-${top}`, suspect.area, 'alta', `Causa provável: ${suspect.what}`, `Sintoma: ${joinPt(symptoms)}. Juntando as pistas de todas as etapas, o que mais aponta para a causa é ${suspect.what}.${also.length ? ` Também pode ser ${joinPt(also)}.` : ''}`, { evidence: why[top].slice(0, 5), confidence: points >= 8 ? 'alta' : points >= 5 ? 'media' : 'baixa', action: { how: CAUSE_HOW[top] } });
+        const how = top === 'memoria' && !over ? CAUSE_HOW.memoriaPadrao : CAUSE_HOW[top];
+        const finding = F(`causa-${top}`, suspect.area, 'alta', `Causa provável: ${suspect.what}`, `Sintoma: ${joinPt(symptoms)}. Juntando as pistas de todas as etapas, o que mais aponta para a causa é ${suspect.what}.${also.length ? ` Também pode ser ${joinPt(also)}.` : ''}`, { evidence: why[top].slice(0, 5), confidence: points >= 8 ? 'alta' : points >= 5 ? 'media' : 'baixa', action: { how } });
         finding.diagnosis = { suspect: top, points, symptoms, also: ranked.slice(1, 3).map(([key, value]) => ({ suspect: key, points: value })), fix: suspect.fix };
         out.push(finding);
       }
@@ -995,7 +1003,8 @@
     return out;
   }
   const CAUSE_HOW = {
-    memoria: 'Na BIOS, desligue o XMP/EXPO (ou baixe a velocidade um degrau) e rode a verificação de novo. Se os erros sumirem, era a memória. Sem XMP, teste um pente por vez.',
+    memoria: 'Na BIOS, desligue o XMP/EXPO (ou baixe a velocidade um degrau) e rode a verificação de novo. Se os erros sumirem, era o perfil de memória.',
+    memoriaPadrao: 'A memória já está na velocidade padrão, então o suspeito é um pente: desligue o PC, tire e encaixe de novo os pentes e rode o Diagnóstico de Memória do Windows. Se continuar, teste um pente por vez para achar o defeituoso.',
     video: 'Reinstale o driver de vídeo do site do fabricante (opção de instalação limpa). Se tiver overclock na placa, volte ao padrão; limpe as ventoinhas.',
     driver: 'Atualize os drivers da placa-mãe (chipset), da rede e do vídeo pelo site do fabricante. O código da tela azul costuma apontar o grupo.',
     disco: 'Faça cópia do que importa agora. Depois, em Manutenção, rode o reparo do sistema; se os erros continuarem, troque o cabo SATA ou o disco.',
@@ -1029,6 +1038,11 @@
     comparisonFindings(comparison, add);
     // A causa provável vem por último porque lê todos os outros achados (e entra no topo do relatório).
     for (const cause of diagnose({ profile, health, findings: list, memtest, stress: gpuStress, load, during, drivers, observation })) add(cause);
+    // Memória errando: "ligue o XMP" seria o conselho errado agora (primeiro a memória precisa ficar estável).
+    if (list.some((item) => item.id === 'mem-teste-erros' || item.id === 'causa-memoria')) {
+      const xmp = list.findIndex((item) => item.id === 'mem-xmp');
+      if (xmp >= 0) list.splice(xmp, 1);
+    }
     const rank = (item) => (item.id.startsWith('causa-') ? -1 : SEVERITY_ORDER[item.severity]);
     return list.sort((a, b) => rank(a) - rank(b));
   }
@@ -1097,9 +1111,14 @@
     const kind = profile.kindLabel ? profile.kindLabel.charAt(0).toUpperCase() + profile.kindLabel.slice(1) : 'Um PC';
     const parts = [mem, gpuName].filter(Boolean);
     const identity = `${kind} com ${cpuName}${arch ? ' (' + arch + ')' : ''}${boardName ? ' ' + boardName : ''}${parts.length ? ', ' + joinPt(parts) : ''}.`;
-    const serious = findings.filter((item) => item.severity === 'alta' || item.severity === 'media');
+    const cause = findings.find((item) => item.id.startsWith('causa-') && item.id !== 'causa-engasgos');
+    // Com a causa provável na frente, os sintomas dela (telas azuis, travadas, o teste que errou) não se repetem no resumo.
+    const SYMPTOMS = new Set(['tela-azul', 'desligou-sozinho', 'travou-botao', 'mem-teste-erros', 'teste-whea', 'teste-tdr', 'teste-disco', 'driver-video-travou', 'whea', 'whea-fatal', 'disco-erros']);
+    const serious = findings.filter((item) => (item.severity === 'alta' || item.severity === 'media') && item !== cause && !item.id.startsWith('causa-') && !(cause && SYMPTOMS.has(item.id)));
     const more = serious.length > 2 ? ' (e mais ' + (serious.length - 2) + ')' : '';
-    const verdict = serious.length ? `O que mais segura ele hoje: ${joinPt(serious.slice(0, 2).map((item) => lowerFirst(item.title)))}${more}.` : 'Nada importante segurando ele agora.';
+    const confidenceText = { alta: 'pistas fortes', media: 'pistas razoáveis', baixa: 'poucas pistas' }[cause?.confidence] || '';
+    let verdict = serious.length ? `O que mais segura ele hoje: ${joinPt(serious.slice(0, 2).map((item) => lowerFirst(item.title)))}${more}.` : 'Nada importante segurando ele agora.';
+    if (cause) verdict = `Causa mais provável dos problemas: ${cause.title.replace(/^Causa provável: /, '')}${confidenceText ? ` (${confidenceText})` : ''}. ${serious.length ? `Além disso: ${joinPt(serious.slice(0, 2).map((item) => lowerFirst(item.title)))}${more}.` : ''}`.trim();
     const ok = findings.filter((item) => item.severity === 'ok').slice(0, 3).map((item) => lowerFirst(item.title));
     return { identity, verdict, good: ok.length ? `Já está certo: ${joinPt(ok)}.` : null };
   }
