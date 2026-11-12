@@ -118,7 +118,7 @@ test('telemetria: um dia cheio (tudo no máximo) passa no servidor e cabe no lim
   const { cleanTelemetry, LIMITS } = await import('../server/src/validate.js');
   const t = loadTelemetry();
   const s = JSON.parse(JSON.stringify(t.context.Nexo.telemetry.today()));
-  const views = ['home', 'analysis', 'hardware', 'maintenance', 'optimize', 'sessions', 'library', 'atlas', 'lab', 'activity', 'settings', 'updates'];
+  const views = ['home', 'analysis', 'hardware', 'maintenance', 'drivers', 'sessions', 'library', 'atlas', 'lab', 'activity', 'settings', 'updates'];
   s.usage.views = Object.fromEntries(views.map((v) => [v, 999]));
   s.usage.viewTime = Object.fromEntries(views.map((v) => [v, 99999]));
   s.usage.actions = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`maintenance.recurso-com-nome-longo-${i}`, 99]));

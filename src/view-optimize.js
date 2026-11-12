@@ -1,4 +1,4 @@
-/* Otimizar: limpeza segura por categorias, plano de energia e programas de inicialização. */
+/* Limpeza segura por categorias, plano de energia e programas de inicialização (na tela Manutenção). */
 (function () {
   const AUTO_THRESHOLD = 90;
   const AUTO_SAMPLES = 4;
@@ -218,6 +218,6 @@
   runButton().addEventListener('click', runCleanup);
   document.getElementById('open-startup-settings').addEventListener('click', () => desktopBridge?.openWindowsSettings?.('startup'));
   Nexo.on('snapshot', maybeAutoClean);
-  Nexo.on('view', (view) => { if (view === 'optimize') { scan(); Nexo.loadPower(); loadStartup(); } });
+  Nexo.on('view', (view) => { if (view === 'maintenance') { scan(); Nexo.loadPower(); loadStartup(); } });
   Nexo.scanCleanup = scan;
 })();

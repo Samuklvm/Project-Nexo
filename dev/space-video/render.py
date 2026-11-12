@@ -10,8 +10,10 @@ aurora), com uma sobra nas bordas para a câmera andar. O que se mexe:
   - a câmera anda num círculo quase imperceptível, com paralaxe (estrelas um pouco mais que a nebulosa).
 Todo movimento periódico tem um número inteiro de ciclos no loop, e os eventos começam e terminam dentro dele.
 
-Uso: python3 dev/space-video/render.py <pasta das camadas> <saída.mp4> [--seconds 30] [--fps 30] [--crf 22] [--preset slow]
-(o vídeo do app: 1920×1080, 30 quadros por segundo, H.264 com CRF 22 no preset slow, porque o arquivo vai no instalador)
+Uso: python3 dev/space-video/render.py <pasta das camadas> <saída.mp4> [--scale 1|2] [--seconds 30] [--fps 30] [--crf 22] [--preset slow]
+(os vídeos do app: 1920×1080 (--scale 1) e 3840×2160 (--scale 2, camadas de layers.cjs em 3936×2256), 30 quadros por
+segundo, H.264 no preset slow, porque os arquivos vão no instalador. Todas as medidas em pixels abaixo são da versão
+Full HD e crescem com a escala, então as duas versões são o mesmo filme.)
 """
 import argparse
 import math
@@ -22,7 +24,8 @@ import time
 import cv2
 import numpy as np
 
-W, H = 1920, 1080
+BASE_W, BASE_H = 1920, 1080
+W, H = BASE_W, BASE_H
 
 
 def load(folder):
@@ -34,10 +37,11 @@ def load(folder):
     return sky, aurora, star_rgb
 
 
-def label_stars(star_rgb, rng):
+def label_stars(star_rgb, rng, scale=1):
     """Cada pixel da camada de estrelas ganha o número da estrela mais perto (pico local), e cada estrela um ritmo."""
     lum = star_rgb.max(axis=2)
-    peak = cv2.dilate(lum, np.ones((5, 5), np.uint8))
+    k = 4 * scale + 1  # a estrela fica com o dobro de pixels na versão 4K
+    peak = cv2.dilate(lum, np.ones((k, k), np.uint8))
     seeds = ((lum >= peak) & (lum > 0.05)).astype(np.uint8)
     src = (1 - seeds).astype(np.uint8)
     _, labels = cv2.distanceTransformWithLabels(src, cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_CCOMP)
@@ -96,7 +100,7 @@ def soft_dot(canvas, x, y, sigma, color, strength):
     canvas[ay0:ay1, ax0:ax1] += patch[..., None] * (np.array(color, np.float32) * strength)
 
 
-def streak(canvas, hx, hy, dx, dy, length, color_head, color_tail, strength, width=1.0):
+def streak(canvas, hx, hy, dx, dy, length, color_head, color_tail, strength, width=1.0, blur=1.0):
     """Rastro que some para trás (estrela cadente / cauda): várias linhas finas com brilho caindo, depois suavizadas."""
     layer = np.zeros(canvas.shape[:2], np.uint8)
     steps = 28
@@ -110,7 +114,7 @@ def streak(canvas, hx, hy, dx, dy, length, color_head, color_tail, strength, wid
             continue
         cv2.line(layer, (int(round(x1 * 16)), int(round(y1 * 16))), (int(round(x2 * 16)), int(round(y2 * 16))), value, max(1, int(round(width))), cv2.LINE_AA, shift=4)
     glow = layer.astype(np.float32) / 255.0
-    glow = cv2.GaussianBlur(glow, (0, 0), 0.7) * 0.85 + cv2.GaussianBlur(glow, (0, 0), 2.4) * 0.6
+    glow = cv2.GaussianBlur(glow, (0, 0), 0.7 * blur) * 0.85 + cv2.GaussianBlur(glow, (0, 0), 2.4 * blur) * 0.6
     # Cor: perto da cabeça (brilho alto) a cor da cabeça; no fim da cauda (brilho baixo), a da cauda.
     tint = np.array(color_tail, np.float32)[None, None, :] + (np.array(color_head, np.float32) - np.array(color_tail, np.float32))[None, None, :] * glow[..., None]
     canvas += glow[..., None] * tint * strength
@@ -120,6 +124,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('layers')
     ap.add_argument('out')
+    ap.add_argument('--scale', type=int, default=1, choices=[1, 2])
     ap.add_argument('--seconds', type=float, default=30)
     ap.add_argument('--fps', type=int, default=30)
     ap.add_argument('--crf', type=int, default=22)
@@ -127,12 +132,15 @@ def main():
     ap.add_argument('--frames', type=int, default=0, help='só os N primeiros quadros (teste)')
     ap.add_argument('--still', default='', help='grava também o primeiro quadro como imagem')
     args = ap.parse_args()
+    global W, H
+    S = args.scale
+    W, H = BASE_W * S, BASE_H * S
 
     rng = np.random.default_rng(59)
     sky, aurora, star_rgb = load(args.layers)
     sh, sw = sky.shape[:2]
     mx, my = (sw - W) / 2, (sh - H) / 2
-    labels, params = label_stars(star_rgb, rng)
+    labels, params = label_stars(star_rgb, rng, S)
     breath = noise_fields(rng, (sh // 4, sw // 4), 4, (22, 13))
     breath_k = [1, 1, 2, 3]
     breath_p = rng.uniform(0, 2 * math.pi, 4)
@@ -143,10 +151,11 @@ def main():
     frames = args.frames or total
     T = args.seconds
     # Estrelas cadentes: (início em s, duração, x, y, ângulo em graus, percurso em px, cauda em px, força)
-    meteors = [(3.6, 0.85, 1500, 140, 152, 420, 170, 1.0), (12.9, 0.7, 520, 90, 28, 360, 140, 0.8), (21.4, 0.95, 1180, 230, 160, 480, 200, 0.95), (27.0, 0.6, 300, 420, 20, 300, 120, 0.6)]
-    comet = dict(t0=7.0, t1=21.0, a=(2010.0, 120.0), b=(1230.0, 345.0))
+    meteors = [(t0, dur, x * S, y * S, ang, path * S, tail * S, power) for (t0, dur, x, y, ang, path, tail, power) in
+               [(3.6, 0.85, 1500, 140, 152, 420, 170, 1.0), (12.9, 0.7, 520, 90, 28, 360, 140, 0.8), (21.4, 0.95, 1180, 230, 160, 480, 200, 0.95), (27.0, 0.6, 300, 420, 20, 300, 120, 0.6)]]
+    comet = dict(t0=7.0, t1=21.0, a=(2010.0 * S, 120.0 * S), b=(1230.0 * S, 345.0 * S))
     enc = subprocess.Popen(['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-s', f'{W}x{H}', '-r', str(args.fps), '-i', '-',
-                            '-c:v', 'libx264', '-preset', args.preset, '-crf', str(args.crf), '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+                            '-c:v', 'libx264', '-preset', args.preset, '-crf', str(args.crf), '-profile:v', 'high', '-level:v', '5.1' if S > 1 else '4.1', '-pix_fmt', 'yuv420p',
                             '-x264-params', 'keyint=60:min-keyint=30', '-movflags', '+faststart', args.out], stdin=subprocess.PIPE)
     started = time.time()
     tau = 2 * math.pi
@@ -154,7 +163,7 @@ def main():
         phase = i / total
         t = phase * T
         # Câmera: um círculo pequeno no loop; estrelas andam 1,35× a nebulosa (paralaxe), a aurora 0,7×.
-        cx, cy = 10.0 * math.cos(tau * phase), 6.0 * math.sin(tau * phase)
+        cx, cy = 10.0 * S * math.cos(tau * phase), 6.0 * S * math.sin(tau * phase)
         # Nebulosa respirando por regiões.
         b = np.ones_like(breath[0])
         for field, k, p in zip(breath, breath_k, breath_p):
@@ -167,10 +176,10 @@ def main():
         ax, ay = mx + cx * 0.7, my + cy * 0.7
         sx = gx + ax
         sy = gy + ay
-        dx = 7.0 * np.sin(tau * (sy / 260.0 + phase)) + 5.0 * np.sin(tau * (sx / 610.0 - 2 * phase) + 1.3)
-        dy = 6.0 * np.sin(tau * (sx / 420.0 - 2 * phase)) + 3.0 * np.sin(tau * (sx / 150.0 + 3 * phase))
+        dx = S * (7.0 * np.sin(tau * (sy / (260.0 * S) + phase)) + 5.0 * np.sin(tau * (sx / (610.0 * S) - 2 * phase) + 1.3))
+        dy = S * (6.0 * np.sin(tau * (sx / (420.0 * S) - 2 * phase)) + 3.0 * np.sin(tau * (sx / (150.0 * S) + 3 * phase)))
         moved = cv2.remap(aurora, sx + dx, sy + dy, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-        pulse = 0.74 + 0.26 * np.sin(tau * (gx[0] / 520.0 - 3 * phase)) + 0.12 * np.sin(tau * (gx[0] / 190.0 + 5 * phase))
+        pulse = 0.74 + 0.26 * np.sin(tau * (gx[0] / (520.0 * S) - 3 * phase)) + 0.12 * np.sin(tau * (gx[0] / (190.0 * S) + 5 * phase))
         frame += moved * (pulse * (0.92 + 0.08 * math.sin(tau * phase)))[None, :, None]
         # Estrelas: cada uma no seu ritmo, posicionadas em 2x e reduzidas (sem tremer entre os pixels).
         wv = star_weights(params, phase)
@@ -186,8 +195,8 @@ def main():
                 env = max(0.0, math.sin(math.pi * p)) ** 0.8
                 ddx, ddy = math.cos(math.radians(ang)), math.sin(math.radians(ang))
                 hx, hy = x0 + ddx * path * p - cx * 1.35, y0 + ddy * path * p - cy * 1.35
-                streak(frame, hx, hy, ddx, ddy, tail * min(1.0, 0.3 + p * 1.6), (1.0, 0.98, 0.95), (1.0, 0.82, 0.62), 0.9 * env * power)
-                soft_dot(frame, hx, hy, 1.6, (1.0, 0.98, 0.96), 0.8 * env * power)
+                streak(frame, hx, hy, ddx, ddy, tail * min(1.0, 0.3 + p * 1.6), (1.0, 0.98, 0.95), (1.0, 0.82, 0.62), 0.9 * env * power, width=S, blur=S)
+                soft_dot(frame, hx, hy, 1.6 * S, (1.0, 0.98, 0.96), 0.8 * env * power)
         # Cometa: atravessa o canto de cima com a cauda longa e a cabeleira azulada.
         if comet['t0'] <= t <= comet['t1']:
             p = (t - comet['t0']) / (comet['t1'] - comet['t0'])
@@ -198,12 +207,12 @@ def main():
             n = math.hypot(vx, vy)
             ux, uy = vx / n, vy / n
             # Cores em BGR. Cauda de íons reta e azulada; cauda de poeira mais curta, curvada e amarelada.
-            streak(frame, hx, hy, ux, uy, 300, (1.0, 0.97, 0.92), (1.0, 0.72, 0.45), 0.42 * env, width=2)
+            streak(frame, hx, hy, ux, uy, 300 * S, (1.0, 0.97, 0.92), (1.0, 0.72, 0.45), 0.42 * env, width=2 * S, blur=S)
             qx, qy = ux * 0.97 + 0.14, uy * 0.97 - 0.22
             qn = math.hypot(qx, qy)
-            streak(frame, hx, hy, qx / qn, qy / qn, 190, (0.85, 0.93, 1.0), (0.62, 0.84, 1.0), 0.22 * env, width=3)
-            soft_dot(frame, hx, hy, 6.0, (1.0, 0.95, 0.85), 0.32 * env)
-            soft_dot(frame, hx, hy, 1.5, (1.0, 1.0, 1.0), 0.9 * env)
+            streak(frame, hx, hy, qx / qn, qy / qn, 190 * S, (0.85, 0.93, 1.0), (0.62, 0.84, 1.0), 0.22 * env, width=3 * S, blur=S)
+            soft_dot(frame, hx, hy, 6.0 * S, (1.0, 0.95, 0.85), 0.32 * env)
+            soft_dot(frame, hx, hy, 1.5 * S, (1.0, 1.0, 1.0), 0.9 * env)
         out = np.clip(frame + dither, 0, 1)
         data = (out * 255.0 + 0.5).astype(np.uint8)
         if i == 0 and args.still:

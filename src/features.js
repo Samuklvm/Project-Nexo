@@ -10,7 +10,7 @@
   const PIN_KEY = 'nexo-feats-pins';
   const FILTER_KEY = 'nexo-feats-filter';
   const KINDS = { leitura: 'Leitura', ferramenta: 'Ferramenta', acao: 'Ação' };
-  const VIEW_TITLE = { home: 'do Início', analysis: 'da Análise', hardware: 'do Hardware', maintenance: 'da Manutenção', optimize: 'da Otimização', sessions: 'das Sessões', library: 'dos Jogos', atlas: 'do Atlas', lab: 'do Extremo', activity: 'da Atividade', settings: 'dos Ajustes', updates: 'das Atualizações' };
+  const VIEW_TITLE = { home: 'do Início', analysis: 'da Análise', hardware: 'do Hardware', maintenance: 'da Manutenção', drivers: 'dos Drivers', sessions: 'das Sessões', library: 'dos Jogos', atlas: 'do Atlas', lab: 'do Extremo', activity: 'da Atividade', settings: 'dos Ajustes', updates: 'das Atualizações' };
 
   /* ---------- Formatos e contas ---------- */
   const fin = Number.isFinite;
@@ -327,9 +327,10 @@
 
   /** Desenha os grupos de cartões da tela, em partes pequenas para não travar a rolagem. */
   function render(view) {
+    const defs = forView(view);
+    if (!defs.length) return; // tela sem recursos (ex.: Drivers): nada de seção vazia
     const section = ensureSection(view);
     if (!section) return;
-    const defs = forView(view);
     const pinned = pins()[view] || [];
     const filter = filterOf(view);
     const query = search[view] || '';

@@ -1,9 +1,10 @@
 /* Interface: navegação, confirmação, paleta de comandos, efeitos e céu animado. */
 (function () {
-  const TITLES = { home: 'Início', analysis: 'Análise e otimização', sessions: 'Sessões', library: 'Biblioteca de jogos', optimize: 'Otimizar', lab: 'Otimização extrema (beta)', atlas: 'Atlas de opções', hardware: 'Hardware', maintenance: 'Manutenção', activity: 'Atividade', updates: 'Atualizações', settings: 'Ajustes' };
+  const TITLES = { home: 'Início', analysis: 'Análise e otimização', sessions: 'Sessões', library: 'Biblioteca de jogos', drivers: 'Drivers', lab: 'Otimização extrema (beta)', atlas: 'Atlas de opções', hardware: 'Hardware', maintenance: 'Manutenção', activity: 'Atividade', updates: 'Atualizações', settings: 'Ajustes' };
 
   /** Troca de tela (marca o item da barra lateral e avisa quem precisa redesenhar). */
   Nexo.go = function go(view) {
+    if (view === 'optimize') view = 'maintenance'; // a antiga tela Otimizar foi para a Manutenção
     if (!TITLES[view]) view = 'home';
     Nexo.state.view = view;
     $$('.rail-item').forEach((button) => {

@@ -13,7 +13,7 @@
   const lastActivity = (c, re) => c.activity.filter((a) => re.test(a.title)).sort((a, b) => b.timestamp - a.timestamp)[0] || null;
 
   /* ======================= Otimização ======================= */
-  add('optimize', [
+  add('maintenance', [
     { id: 'plano-ativo', icon: 'bolt', title: 'Plano de energia ativo', needs: ['plans'], empty: 'Lendo…', compute: (c) => { const p = c.src('plans'); if (!Array.isArray(p) || !p.length) { return null; } const a = p.find((x) => x.active); return { value: a?.name || 'Nenhum', text: true, detail: `${H.plural(p.length, 'plano disponível', 'planos disponíveis')}`, list: p.filter((x) => !x.active).slice(0, 3).map((x) => [x.name, '']) }; }, action: { label: 'Trocar', run: () => document.getElementById('power-list')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) } },
     { id: 'tomada', icon: 'plug', title: 'Tomada ou bateria', needs: ['power'], compute: (c) => { const p = c.src('power'); if (!p) { return null; } return { value: p.onBattery ? 'Bateria' : 'Tomada', detail: p.onBattery ? 'Ligue na tomada antes de jogar ou medir: o Windows segura o desempenho na bateria.' : 'Sem limite de bateria.', tone: p.onBattery ? 'warn' : 'good' }; } },
     { id: 'ajustes-ativos', icon: 'book', title: 'Ajustes aplicados e ativos', compute: (c) => { const a = c.journal.filter((e) => e.status === 'applied'); return { value: H.nf(a.length), detail: a.length ? `${a.filter((e) => e.reversible).length} podem ser revertidos pelo Diário` : 'Nada alterado no sistema agora.', list: a.slice(0, 3).map((e) => [e.title, H.ago(e.at)]) }; }, action: { label: 'Diário', run: go('activity') } },

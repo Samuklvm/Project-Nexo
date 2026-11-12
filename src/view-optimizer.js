@@ -428,7 +428,7 @@
    * precisa, tudo no Diário). O que não dá para fazer por um app (BIOS, cabo, limpeza física) vira passo a passo
    * guiado, com "Reiniciar direto na BIOS" quando é lá.
    * ==================================================================================================== */
-  const DRIVER_PAGES = { NVIDIA: 'https://www.nvidia.com/pt-br/drivers/', AMD: 'https://www.amd.com/pt/support/download/drivers.html', Intel: 'https://www.intel.com.br/content/www/br/pt/support/detect.html' };
+  const DRIVER_PAGES = { NVIDIA: 'https://www.nvidia.com/pt-br/drivers/', AMD: 'https://www.amd.com/pt/support/download/drivers.html', Intel: 'https://www.intel.com/content/www/br/pt/support/detect.html' };
   const BOARD_PAGES = { ASUS: 'https://www.asus.com/br/support/download-center/', MSI: 'https://br.msi.com/support/download', GIGABYTE: 'https://www.gigabyte.com/br/Support', ASRock: 'https://www.asrock.com/support/index.pt.asp' };
   const makerOf = (profile) => { const text = `${profile?.board?.maker || ''} ${profile?.board?.model || ''}`; return /asus|rog|tuf|prime/i.test(text) ? 'ASUS' : /micro-star|msi/i.test(text) ? 'MSI' : /gigabyte|aorus/i.test(text) ? 'GIGABYTE' : /asrock/i.test(text) ? 'ASRock' : null; };
   const gpuMaker = (profile) => { const name = ((profile?.gpus || []).find((gpu) => gpu.discrete) || (profile?.gpus || [])[0])?.name || ''; return /nvidia|geforce|rtx|gtx|quadro/i.test(name) ? 'NVIDIA' : /amd|radeon/i.test(name) ? 'AMD' : /intel|arc|iris|uhd/i.test(name) ? 'Intel' : null; };
@@ -474,13 +474,11 @@
     'win10': ['O Windows 10 não recebe mais atualizações de segurança gratuitas.', 'Se o PC aceitar, atualize para o Windows 11 pelo Windows Update.']
   };
   GUIDES['gpu-quente'] = GUIDES['gpu-calor'];
-  const NET_PAGES = { Intel: DRIVER_PAGES.Intel, Realtek: 'https://www.realtek.com/Download/List?cate_id=584' };
-  const netMaker = (name) => (/intel|killer/i.test(name) ? 'Intel' : /realtek/i.test(name) && !/wireless|wi-?fi|802\.11/i.test(name) ? 'Realtek' : null);
   /** O que fazer com a causa provável: cada suspeito tem o seu caminho. */
   const CAUSE_FIX = {
     'bios-memoria': () => (globalThis.NexoDeep?.memoryOverclocked?.(decorated.report?.profile?.memory) ? { kind: 'bios', guide: 'xmpoff', label: 'Desligar o XMP para testar' } : { kind: 'memtest', label: 'Testar a memória (Windows)' }),
-    driver: () => ({ kind: 'driver', label: 'Baixar o driver oficial' }),
-    drivers: () => ({ kind: 'vendor-board', label: 'Abrir os drivers da placa' }),
+    driver: () => ({ kind: 'drivers', group: 'video', label: 'Atualizar o driver de vídeo' }),
+    drivers: () => ({ kind: 'drivers', group: null, label: 'Conferir os drivers' }),
     disco: () => ({ kind: 'repair', label: 'Reparar o Windows' }),
     bios: () => ({ kind: 'bios', guide: 'update', label: 'Atualizar a BIOS', vendor: true }),
     fonte: () => ({ kind: 'how', label: 'Como resolver' }),
@@ -526,13 +524,15 @@
     }
     if (id.startsWith('causa-') && finding.diagnosis?.fix && CAUSE_FIX[finding.diagnosis.fix]) return CAUSE_FIX[finding.diagnosis.fix]();
     if (id === 'mem-teste-erros') return CAUSE_FIX['bios-memoria']();
-    if (id === 'teste-tdr') return { kind: 'driver', label: 'Reinstalar o driver de vídeo' };
+    if (id === 'teste-tdr') return { kind: 'drivers', group: 'video', label: 'Reinstalar o driver de vídeo' };
     if (id === 'teste-disco') return { kind: 'repair', label: 'Reparar o Windows' };
     if (id === 'disco-lento') return { kind: 'goto', view: 'maintenance', label: 'Liberar espaço' };
     if (finding.action?.netFix?.id) return { kind: 'net', fix: finding.action.netFix, label: finding.action.netFix.label || 'Corrigir' };
-    if (id.startsWith('driver-rede-')) { const maker = netMaker(finding.title); return maker ? { kind: 'vendor', url: NET_PAGES[maker], label: 'Baixar o driver oficial' } : { kind: 'vendor-board', label: 'Abrir os drivers da placa' }; }
-    if (id === 'driver-chipset-antigo') return /amd|ryzen/i.test(decorated.report?.profile?.cpu?.vendor || '') ? { kind: 'vendor', url: DRIVER_PAGES.AMD, label: 'Baixar o driver de chipset' } : { kind: 'vendor', url: DRIVER_PAGES.Intel, label: 'Baixar o driver de chipset' };
-    if (id === 'driver-audio-antigo') return { kind: 'vendor-board', label: 'Abrir os drivers da placa' };
+    // Drivers: a página de Drivers mostra o instalado, o mais recente e o botão para o site oficial certo.
+    if (id.startsWith('driver-rede-')) return { kind: 'drivers', group: 'rede', label: 'Atualizar o driver de rede' };
+    if (id === 'driver-chipset-antigo') return { kind: 'drivers', group: 'placa', label: 'Atualizar o chipset' };
+    if (id === 'driver-audio-antigo') return { kind: 'drivers', group: 'audio', label: 'Atualizar o driver de áudio' };
+    if (id === 'driver-sem-assinatura') return { kind: 'drivers', group: null, label: 'Conferir os drivers' };
     if (id === 'reinicio-pendente' || id === 'tempo-ligado') return { kind: 'restart', label: 'Reiniciar agora' };
     if (id === 'update-falhou') return { kind: 'settings', page: 'windowsupdate', label: 'Abrir o Windows Update' };
     if (id === 'x3d-gamebar') return { kind: 'settings', page: 'gamebar', label: 'Abrir a Game Bar' };
@@ -542,7 +542,7 @@
     if (id === 'disco-cheio') return { kind: 'goto', view: 'maintenance', label: 'Liberar espaço' };
     if (['tela-azul', 'whea', 'whea-fatal', 'desligou-sozinho', 'mem-travada'].includes(id)) return { kind: 'memtest', label: 'Testar a memória' };
     if (['crashes', 'disco-ntfs', 'disco-erros'].includes(id)) return { kind: 'repair', label: 'Reparar o Windows' };
-    if (['driver-video-travou', 'crash-driver-video', 'gpu-sem-driver', 'gpu-legado'].includes(id)) return { kind: 'driver', label: 'Baixar o driver oficial' };
+    if (['driver-video-travou', 'crash-driver-video', 'gpu-sem-driver', 'gpu-legado'].includes(id) || /^gpu-driver-/.test(id)) return { kind: 'drivers', group: 'video', label: 'Atualizar o driver de vídeo' };
     if (id === 'gpu-hibrida') return { kind: 'optimizer', label: 'Escolher o jogo' };
     if (['pc-ocupado', 'memoria-acabando'].includes(id)) return { kind: 'taskmgr', label: 'Ver o que está pesando' };
     if (GUIDES[id]) return { kind: 'guide', label: 'Passo a passo' };
@@ -609,6 +609,7 @@
       if (fix.kind === 'goto') { Nexo.go(fix.view); return; }
       if (fix.kind === 'taskmgr') { await bridge.openTaskManager(); return; }
       if (fix.kind === 'optimizer') { open(); return; }
+      if (fix.kind === 'drivers') { if (Nexo.platform === 'win32' && Nexo.openDrivers) { Nexo.openDrivers(fix.group); return; } const maker = gpuMaker(report.profile); if (maker) await bridge.openVendorPage(DRIVER_PAGES[maker]); else showToast('Atualize pelo gerenciador de pacotes do sistema.'); return; }
       if (fix.kind === 'driver') { const maker = gpuMaker(report.profile); if (maker) await bridge.openVendorPage(DRIVER_PAGES[maker]); else showToast('Não identifiquei o fabricante da placa de vídeo.'); return; }
       if (fix.kind === 'memtest') {
         const ok = await Nexo.confirm({ title: 'Testar a memória', body: 'O Diagnóstico de Memória do Windows (a ferramenta oficial) testa os pentes no próximo reinício, antes do Windows abrir. Leva de 10 a 20 minutos; o resultado aparece depois de entrar no Windows. Se o XMP estiver ligado e der erro, o culpado costuma ser ele.', confirmLabel: 'Abrir o teste' });

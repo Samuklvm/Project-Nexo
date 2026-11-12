@@ -15,6 +15,7 @@ function scripts() {
   take('deep-scan', require('../electron/deep-scan.cjs'));
   take('net-doctor', require('../electron/net-doctor.cjs'));
   take('optimizer-actions', require('../electron/optimizer-actions.cjs'));
+  take('drivers', require('../electron/drivers.cjs'));
   try { take('optimizer-system', require('../electron/optimizer-system.cjs')); } catch { /* módulo sem scripts exportados */ }
   // O lote elevado do otimizador, montado com um exemplo de cada tipo de mudança (o mesmo do teste do otimizador).
   out['elevate.optimizerBatchBody'] = require('../electron/elevate.cjs').optimizerBatchBody({

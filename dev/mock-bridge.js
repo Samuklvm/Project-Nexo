@@ -413,6 +413,48 @@ if (window.__nexoPlatform === 'linux') {
   const optEmit = (event) => optListeners.forEach((cb) => cb(event));
   const opt = (id, label, current, currentKind, options, extra = {}) => ({ id, label, available: true, values: options.find((o) => o.label === current)?.values || [null], current, currentKind, options, evidence: 'medido', risk: 'baixo', reboot: 'nao', admin: false, ...extra });
   const O = (label, values, kind = 'alternativa') => ({ label, values, kind });
+  function mockDrivers() {
+    const d = (name, cls, provider, version, date, ids) => ({ name, cls, provider, maker: provider, version, date, ids: ids || null, signed: true });
+    return {
+      platform: 'win32', at: Date.now(),
+      devices: [
+        d('NVIDIA GeForce RTX 4070 SUPER', 'DISPLAY', 'NVIDIA', '32.0.15.6614', '2025-10-30', '10DE:2783'),
+        d('Intel(R) UHD Graphics 770', 'DISPLAY', 'Intel Corporation', '31.0.101.4502', '2023-06-10', '8086:4680'),
+        d('Realtek Gaming 2.5GbE Family Controller', 'NET', 'Realtek', '10.50.511.2021', '2021-05-11', '10EC:8125'),
+        d('Intel(R) Wi-Fi 6E AX211 160MHz', 'NET', 'Microsoft', '22.0.0.1', '2022-01-01', '8086:51F1'),
+        d('WAN Miniport (IP)', 'NET', 'Microsoft', '10.0.22621.1', '2006-06-21'),
+        d('Realtek(R) Audio', 'MEDIA', 'Realtek Semiconductor Corp.', '6.0.9235.1', '2021-09-01'),
+        d('NVIDIA High Definition Audio', 'MEDIA', 'NVIDIA', '1.4.0.1', '2024-01-01'),
+        d('Intel(R) Management Engine Interface #1', 'SYSTEM', 'Intel', '2229.1.4.0', '2022-07-18'),
+        d('Intel(R) SMBus - 7AA3', 'SYSTEM', 'INTEL', '10.1.18793.8276', '2018-03-15'),
+        d('Intel(R) Serial IO I2C Host Controller - 7AF8', 'SYSTEM', 'Intel Corporation', '30.100.2221.20', '2022-05-30'),
+        d('Standard NVM Express Controller', 'SCSIADAPTER', 'Microsoft', '10.0.22621.3672', '2006-06-21'),
+        d('Intel(R) Wireless Bluetooth(R)', 'BLUETOOTH', 'Intel Corporation', '23.60.0.1', '2024-06-20'),
+        d('Elgato HD60 X', 'MEDIA', 'Elgato', '1.4.0.0', '2023-11-02', '0FD9:0082'),
+        d('Parsec Virtual Display Adapter', 'DISPLAY', 'Parsec Cloud, Inc.', '0.45.0.0', '2023-02-10')
+      ],
+      others: [
+        d('Logitech G502 HERO Gaming Mouse', 'MOUSE', 'Logitech', '1.1.48.0', '2024-03-12', '046D:C08B'),
+        d('Razer Huntsman Mini', 'KEYBOARD', 'Razer Inc', '3.5.1.0', '2019-08-20', '1532:0257'),
+        d('8BitDo Ultimate Controller', 'HIDCLASS', '8BitDo', '1.0.2.0', '2023-11-02', '2DC8:3106'),
+        d('EPSON L3250 Series', 'PRINTER', 'EPSON', '3.1.0.0', '2022-02-15', '04B8:1188'),
+        d('Wacom Tablet', 'HIDCLASS', 'Wacom Technology', '6.4.5.4', '2024-09-01', '056A:0374')
+      ],
+      generic: 94,
+      runtimes: {
+        os: { build: 22631, name: 'Windows 11 Pro', display: '23H2' },
+        board: { maker: 'ASUSTeK COMPUTER INC.', product: 'TUF GAMING B760M-PLUS WIFI', systemMaker: 'System manufacturer', model: 'System Product Name', mobile: false },
+        vc: { x64: '14.44.35211.00', x86: null, arm64: null },
+        uninstall: [{ name: 'Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219', version: '10.0.40219' }, { name: 'Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664', version: '12.0.40664' }, { name: 'NVIDIA PhysX System Software 9.23.1019', version: '9.23.1019' }],
+        dx: { d3dx9: false, xinput13: true, x3daudio: true }, netfx: 533320, desktop: ['8.0.11', '9.0.6'], vulkan: '1.4.303.0', amd: null,
+        missing: [{ name: 'Dispositivo PCI', code: 28, cls: '', ids: '8086:7AE8' }]
+      },
+      latest: {
+        nvidia: { modern: { version: '621.14', date: '2026-11-04', name: 'GeForce Game Ready Driver', details: 'https://www.nvidia.com/en-us/drivers/details/283968/', size: '1.04 GB' } },
+        dotnet: { '9.0': { latest: '9.0.23', phase: 'eol', eol: '2026-11-10' }, '8.0': { latest: '8.0.34', phase: 'eol', eol: '2026-11-10' } }
+      }
+    };
+  }
   const mockScan = { items: [
     opt('gamedvr', 'Gravação em segundo plano', 'Ligada', 'padrao', [O('Ligada', [1, 1], 'padrao'), O('Desligada', [0, 0], 'recomendado')], { reboot: 'sessao' }),
     opt('gamemode', 'Modo de Jogo', 'Desligado', 'alternativa', [O('Ligado', [1], 'recomendado'), O('Desligado', [0])]),
@@ -472,6 +514,10 @@ if (window.__nexoPlatform === 'linux') {
     fixFinding: async ({ ids }) => { await wait(900); const steps = (optPlan || buildMockPlan()).steps.filter((step) => ids.includes(step.id)); return { id: 'fix-mock', status: 'completed', steps: Object.fromEntries(steps.map((step) => [step.id, { status: 'feito', note: '' }])), records: steps.map((step, i) => ({ id: 'c' + i, stepId: step.id, kind: step.kind, title: step.title, risk: step.risk, reboot: step.reboot || 'nao' })) }; },
     revertOptimization: async () => ({ reverted: 1, failed: 0, declined: false, remaining: 0 }),
     restartComputer: async () => ({ ok: true, seconds: 15 }), abortRestart: async () => ({ ok: true }),
-    openVendorPage: async () => ({ ok: true }), openMemoryTest: async () => ({ ok: true })
+    openVendorPage: async () => ({ ok: true }), openMemoryTest: async () => ({ ok: true }),
+    // Página de Drivers: um desktop com NVIDIA + vídeo Intel, rede Realtek, Wi-Fi Intel genérico e componentes de jogo.
+    scanDrivers: async () => { await wait(1200); return mockDrivers(); },
+    // Na prévia não há internet: os ícones oficiais (que o app busca no site de cada fabricante) não aparecem.
+    vendorIcons: async () => ({})
   });
 })();

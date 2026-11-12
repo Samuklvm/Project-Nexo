@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   revertOptimization: (options) => call('opt:revert', options),
   fixFinding: (options) => call('opt:fix', options),
   openVendorPage: (url) => call('app:open-vendor', url),
+  scanDrivers: (options) => call('drivers:scan', options),
+  vendorIcons: (keys) => call('drivers:icons', keys),
   openMemoryTest: () => call('system:memtest'),
   restartComputer: (options) => call('system:restart', options),
   abortRestart: () => call('system:restart-abort'),

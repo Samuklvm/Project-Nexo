@@ -163,7 +163,7 @@
     const action = event.target.closest('[data-insight-action]');
     if (action) {
       if (action.dataset.insightAction === 'task-manager') desktopBridge?.openTaskManager?.();
-      if (action.dataset.insightAction === 'goto-optimize') Nexo.go('optimize');
+      if (action.dataset.insightAction === 'goto-optimize') Nexo.go('maintenance');
     }
     const feedback = event.target.closest('[data-feedback]');
     if (feedback) Nexo.store.addFeedback(feedback.dataset.feedback, feedback.dataset.helpful === '1');
@@ -175,7 +175,7 @@
     drawCharts();
   }));
   $('#hero-analyze')?.addEventListener('click', () => { Nexo.go('analysis'); Nexo.runAnalysis?.(); });
-  $('#hero-clean')?.addEventListener('click', () => Nexo.go('optimize'));
+  $('#hero-clean')?.addEventListener('click', () => Nexo.go('maintenance'));
   $('#why-score')?.addEventListener('click', () => Nexo.confirm({
     title: 'Como o índice Nexo é calculado',
     body: 'Começa em 100 e perde pontos por sinais reais do seu PC. É um indicador heurístico: ajuda a enxergar tendências, mas não garante nem mede ganho de desempenho.',

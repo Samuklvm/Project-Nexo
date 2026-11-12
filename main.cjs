@@ -100,7 +100,7 @@ const isBug = (error) => ['TypeError', 'ReferenceError', 'RangeError', 'SyntaxEr
 const SLOW_IPC_MS = {
   'system:snapshot': 15000, 'sensors:snapshot': 15000, 'watch:current': 5000, 'cloud:status': 8000, 'app:self-metrics': 5000, 'settings:get': 5000, 'privacy:get': 5000,
   'window:minimize': 3000, 'window:toggle-maximize': 3000, 'window:close': 3000, 'window:get-state': 3000, 'games:scan': 120000, 'games:fetch-art': 90000, 'scan:run': 120000,
-  'cleanup:scan': 120000, 'cleanup:preview': 90000, 'net:diagnose': 90000, 'lab:preflight': 60000, 'updates:check': 60000, 'session:probe-test': 60000, 'steam:connect': 60000, 'opt:plan': 120000, 'opt:games': 60000
+  'cleanup:scan': 120000, 'cleanup:preview': 90000, 'net:diagnose': 90000, 'lab:preflight': 60000, 'updates:check': 60000, 'session:probe-test': 60000, 'steam:connect': 60000, 'opt:plan': 120000, 'opt:games': 60000, 'drivers:scan': 150000, 'drivers:icons': 60000
 };
 for (const channel of ['analysis:deep-run', 'bench:cpu', 'lab:run', 'lab:adopt', 'lab:recover', 'reboot:start', 'reboot:continue', 'reboot:restart', 'account:sign-in', 'steam:sign-in', 'xbox:sign-in', 'cloud:connect', 'net:fix', 'scan:apply',
   'cleanup:run', 'drives:optimize', 'system:repair', 'opt:run', 'opt:fix', 'opt:revert', 'system:restart', 'updates:download', 'updates:install', 'sensors:service-install', 'fps:access', 'fps:choose', 'app:uninstall', 'account:import-config', 'integrations:import', 'games:add', 'games:set-cover']) SLOW_IPC_MS[channel] = Infinity;
@@ -1401,8 +1401,12 @@ registerIpcHandler('app:open-doc', async (_event, url) => {
 
 /* Sites oficiais de fabricantes (drivers, BIOS, suporte): só https, só estes domínios e os subdomínios deles. */
 const VENDOR_DOMAINS = ['nvidia.com', 'amd.com', 'intel.com', 'asus.com', 'msi.com', 'gigabyte.com', 'asrock.com', 'biostar.com.tw', 'lenovo.com', 'hp.com', 'dell.com', 'acer.com', 'samsung.com',
-  'realtek.com', 'microsoft.com', 'xbox.com', 'evga.com', 'zotac.com', 'sapphiretech.com', 'westerndigital.com', 'crucial.com', 'kingston.com', 'seagate.com', 'corsair.com', 'logitech.com', 'logitechg.com', 'razer.com', 'steelseries.com'];
-const vendorHost = (host) => VENDOR_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  'realtek.com', 'microsoft.com', 'xbox.com', 'evga.com', 'zotac.com', 'sapphiretech.com', 'westerndigital.com', 'crucial.com', 'kingston.com', 'seagate.com', 'corsair.com', 'logitech.com', 'logitechg.com', 'razer.com', 'steelseries.com',
+  // Página de Drivers: permalinks oficiais da Microsoft (Visual C++) e fabricantes de placas de rede e de notebooks.
+  'aka.ms', 'intel.com.br', 'geforce.com', 'qualcomm.com', 'mediatek.com', 'broadcom.com', 'lg.com', 'positivotecnologia.com.br', 'avell.com.br', 'vaio.com', 'gigabyte.com.br', 'msi.com.br'];
+// Além da lista acima, os sites oficiais dos fabricantes de drivers (src/vendors.js), para o botão de cada driver.
+const DRIVER_VENDOR_DOMAINS = require('./src/vendors.js').LIST.map((vendor) => vendor.domain);
+const vendorHost = (host) => [...VENDOR_DOMAINS, ...DRIVER_VENDOR_DOMAINS].some((domain) => host === domain || host.endsWith(`.${domain}`));
 registerIpcHandler('app:open-vendor', async (_event, url) => {
   if (typeof url !== 'string' || url.length > 2048) throw new Error('Link não permitido.');
   let parsed;
@@ -1411,6 +1415,35 @@ registerIpcHandler('app:open-vendor', async (_event, url) => {
   await shell.openExternal(parsed.href);
   return { ok: true };
 });
+/* Página de Drivers: o que está instalado e a versão mais recente nas fontes oficiais (só leitura; o botão abre o site). */
+const DriversPage = require('./electron/drivers.cjs');
+const driversPage = DriversPage.createDrivers({ runPowerShellCode, fetchJson: async (url) => {
+  const response = await net.fetch(url, { signal: withTimeout(12000), headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const body = await response.text();
+  if (body.length > 2 * 1024 * 1024) throw new Error('Resposta grande demais.');
+  return JSON.parse(body);
+} });
+registerIpcHandler('drivers:scan', async (_event, options = {}) => driversPage.scan({ force: options?.force === true, online: options?.online !== false }));
+// Ícones oficiais dos fabricantes (buscados no site de cada um, guardados por 30 dias). Só domínios da lista oficial.
+const vendorIcons = require('./electron/vendor-icons.cjs').createVendorIcons({ dir: path.join(app.getPath('userData'), 'vendor-icons'), fetchRaw: async (url, max) => {
+  const response = await net.fetch(url, { signal: withTimeout(9000), headers: { Accept: 'text/html,image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5' } });
+  if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > max) throw new Error('Grande demais.');
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > max) { try { await reader.cancel(); } catch { /* já fechou */ } throw new Error('Grande demais.'); }
+    chunks.push(Buffer.from(value));
+  }
+  return { url: response.url || url, bytes: Buffer.concat(chunks) };
+} });
+registerIpcHandler('drivers:icons', async (_event, keys) => vendorIcons.icons(keys));
 /* Diagnóstico de Memória do Windows (a ferramenta oficial): agenda o teste para o próximo reinício. */
 registerIpcHandler('system:memtest', async () => {
   if (process.platform !== 'win32') throw new Error('O teste de memória do Windows é só no Windows.');

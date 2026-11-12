@@ -159,10 +159,10 @@
       if (!entry && ctx.active !== current.guid) {
         // Cancelou no meio dos pares: volta o plano original direto (a troca ainda não foi para o Diário).
         const restored = await desktopBridge.setPowerPlan(current.guid).then(() => true, () => false);
-        showToast(error === CANCELLED ? (restored ? `Teste cancelado. O plano ${current.name} foi restaurado.` : 'Teste cancelado. Confira o plano de energia em Otimizar.') : (error.message || 'O experimento não pôde ser concluído.'));
+        showToast(error === CANCELLED ? (restored ? `Teste cancelado. O plano ${current.name} foi restaurado.` : 'Teste cancelado. Confira o plano de energia em Manutenção.') : (error.message || 'O experimento não pôde ser concluído.'));
       } else if (entry) {
         const reverted = await Nexo.revertJournal(entry.id);
-        showToast(error === CANCELLED ? (reverted ? `Teste cancelado. O plano ${current.name} foi restaurado.` : 'Teste cancelado. Confira o plano de energia em Otimizar.') : (error.message || 'O experimento não pôde ser concluído.'));
+        showToast(error === CANCELLED ? (reverted ? `Teste cancelado. O plano ${current.name} foi restaurado.` : 'Teste cancelado. Confira o plano de energia em Manutenção.') : (error.message || 'O experimento não pôde ser concluído.'));
       } else showToast(error === CANCELLED ? 'Teste cancelado. Nada foi alterado.' : (error.message || 'O experimento não pôde ser concluído.'));
     }
   };

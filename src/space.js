@@ -427,13 +427,14 @@
   }
 
   /*
-   * O céu da página animado (dev/space-video): um vídeo em loop de 30 s, 1920×1080 a 30 quadros, feito com as mesmas
+   * O céu da página animado (dev/space-video): um vídeo em loop de 30 s a 30 quadros, em Full HD e em 4K, feito com as mesmas
    * camadas deste desenho. Quem toca é o decodificador de vídeo da placa (quase nada de processamento). O quadro mostra
    * a região central da página (1561 × 878 das 1600 × 1000 unidades), então o vídeo é posicionado para as estrelas
    * caírem no mesmo lugar da imagem parada que fica embaixo (a troca entre os dois não "pula").
    * Sem vídeo no modo Leve, com "reduzir movimento" do sistema ou se não der para tocar: fica a imagem parada.
    */
-  const VIDEO = { src: `${(typeof window !== 'undefined' && window.__assetBase) || ''}assets/space/espaco.mp4`, units: [1920 / (1968 / 1600), 1080 / (1968 / 1600)] };
+  const BASE = (typeof window !== 'undefined' && window.__assetBase) || '';
+  const VIDEO = { src: `${BASE}assets/space/espaco.mp4`, src4k: `${BASE}assets/space/espaco-4k.mp4`, units: [1920 / (1968 / 1600), 1080 / (1968 / 1600)] };
   const motionReduced = () => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
   function fitVideo(video, holder) {
     const W = holder.clientWidth;
@@ -445,6 +446,29 @@
     video.style.height = `${Math.ceil(uh * scale)}px`;
     video.style.left = `${Math.floor((W - uw * scale) / 2)}px`;
     video.style.top = `${Math.floor((H - uh * scale) / 2)}px`;
+  }
+  /*
+   * Full HD ou 4K: o 4K só entra quando a área na tela passa do Full HD (tela 1440p/4K ou escala alta) E a placa de
+   * vídeo decodifica 4K no próprio hardware (decodingInfo.powerEfficient). Senão, Full HD: PC fraco nunca paga o 4K.
+   */
+  let can4k = null;
+  async function hardware4k() {
+    if (can4k !== null) return can4k;
+    try {
+      const info = await navigator.mediaCapabilities?.decodingInfo?.({ type: 'file', video: { contentType: 'video/mp4; codecs="avc1.640033"', width: 3840, height: 2160, bitrate: 20000000, framerate: 30 } });
+      can4k = Boolean(info?.supported && info.powerEfficient);
+    } catch { can4k = false; }
+    return can4k;
+  }
+  const needs4k = (holder) => { const dpr = window.devicePixelRatio || 1; return Math.max((holder.clientWidth * dpr) / 1920, (holder.clientHeight * dpr) / 1080) > 1.15; };
+  async function chooseSource(video, holder) {
+    const want = needs4k(holder) && (await hardware4k()) && holder.dataset.video4k !== 'off' ? VIDEO.src4k : VIDEO.src;
+    if (!video.isConnected || video.dataset.src === want) return;
+    const at = video.currentTime || 0;
+    video.dataset.src = want;
+    video.src = want;
+    if (at) video.addEventListener('loadedmetadata', () => { try { video.currentTime = at % (video.duration || 30); } catch { /* sem pular */ } }, { once: true });
+    if (holder.dataset.play === '1' && !document.hidden) { const attempt = video.play(); if (attempt?.catch) attempt.catch(() => {}); }
   }
   function pageVideo(holder, lite) {
     let video = holder.querySelector('video.space-video');
@@ -466,18 +490,31 @@
     video.setAttribute('aria-hidden', 'true');
     video.tabIndex = -1;
     video.addEventListener('playing', () => { holder.dataset.video = 'on'; });
-    // Sem o arquivo ou sem decodificador: fica a imagem parada, e não tenta de novo nesta sessão.
-    video.addEventListener('error', () => { holder.dataset.video = 'off'; video.remove(); }, { once: true });
-    video.src = VIDEO.src;
+    // Sem o 4K (arquivo ou decodificador): volta para o Full HD. Sem o Full HD: fica a imagem parada nesta sessão.
+    video.addEventListener('error', () => {
+      if (video.dataset.src === VIDEO.src4k) { holder.dataset.video4k = 'off'; video.dataset.src = ''; chooseSource(video, holder); return; }
+      holder.dataset.video = 'off';
+      video.remove();
+    });
     holder.appendChild(video);
     fitVideo(video, holder);
-    if (typeof ResizeObserver === 'function') new ResizeObserver(() => fitVideo(video, holder)).observe(holder);
+    chooseSource(video, holder);
+    let timer = 0;
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(() => {
+        fitVideo(video, holder);
+        // Janela cresceu (maximizou numa tela grande): troca para o 4K quando valer, sem voltar ao Full HD depois.
+        clearTimeout(timer);
+        timer = setTimeout(() => { if (video.dataset.src !== VIDEO.src4k) chooseSource(video, holder); }, 600);
+      }).observe(holder);
+    }
     return video;
   }
   /** Toca ou pausa o céu animado (pausa fora da página, com a janela escondida ou minimizada). */
   function playPage(holder, on) {
+    if (holder) holder.dataset.play = on ? '1' : '';
     const video = holder?.querySelector('video.space-video');
-    if (!video) return;
+    if (!video || !video.dataset.src) return;
     if (on && !document.hidden) { const attempt = video.play(); if (attempt?.catch) attempt.catch(() => {}); } else video.pause();
   }
 

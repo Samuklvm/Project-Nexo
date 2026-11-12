@@ -10,7 +10,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
-const VIEWS = ['home', 'analysis', 'hardware', 'maintenance', 'optimize', 'sessions', 'library', 'atlas', 'lab', 'activity', 'settings', 'updates'];
+const VIEWS = ['home', 'analysis', 'hardware', 'maintenance', 'sessions', 'library', 'atlas', 'lab', 'activity', 'settings', 'updates'];
 const FEATURE_FILES = ['features.js', 'feats-1.js', 'feats-2.js', 'feats-3.js', 'feats-4.js', 'novidades.js'];
 const MIN = 60e3;
 const DAY = 24 * 60 * MIN;

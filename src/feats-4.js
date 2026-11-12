@@ -38,7 +38,7 @@
   ]);
 
   const memFree = (c) => (c.snap?.memoryTotalBytes ? c.snap.memoryTotalBytes - c.snap.memoryUsedBytes : null);
-  add('optimize', [
+  add('maintenance', [
     { id: 'carga-agora', icon: 'cpu', title: 'Carga do processador agora', compute: (c) => { const v = H.vals(c.live, 'cpu'); if (!v.length) { return null; } return { value: H.nf(v[v.length - 1]), unit: '%', detail: 'Para comparar antes e depois de um ajuste.', spark: v.slice(-60), tone: H.tone(v[v.length - 1], 80, 95) }; } },
     { id: 'memoria-jogos', icon: 'mem', title: 'Memória livre para jogos', compute: (c) => { const free = memFree(c); if (!H.fin(free)) { return null; } const gb = free / 1024 ** 3; return { value: H.bytes(free), detail: gb < 6 ? 'Jogos atuais pedem 6–8 GB livres: feche o navegador antes de jogar.' : 'Folga boa para jogar.', tone: gb < 4 ? 'bad' : gb < 6 ? 'warn' : 'good' }; } },
     { id: 'espaco-atualizacoes', icon: 'disk', title: 'Espaço para atualizações', compute: (c) => { const d = c.snap?.primaryDrive; if (!d?.sizeBytes) { return null; } const gb = d.freeBytes / 1024 ** 3; return { value: H.bytes(d.freeBytes), detail: gb < 30 ? 'Atualizações grandes de jogos e do sistema pedem uns 30 GB.' : 'Cabe atualização grande.', tone: gb < 15 ? 'bad' : gb < 30 ? 'warn' : 'good' }; } },
