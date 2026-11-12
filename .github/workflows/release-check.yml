@@ -1,0 +1,49 @@
+# Temporário: confere que o coletor (.NET) compila e que o pacote do Windows sai completo, sem publicar nada.
+name: Release check
+on:
+  push:
+    branches: [release-check]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: node dev/windows-check.cjs
+      - run: npm run build:sensors
+      - name: Collector runs
+        shell: pwsh
+        run: |
+          & sensor-host/publish/Nexo.SensorHost.exe --version
+          $out = "x" | & sensor-host/publish/Nexo.SensorHost.exe
+          $out.Substring(0, [Math]::Min(300, $out.Length))
+      - run: npx electron-builder --win nsis --publish never
+      - name: Arquivos da interface no pacote
+        shell: pwsh
+        run: |
+          $list = npx --yes @electron/asar list release/win-unpacked/resources/app.asar
+          foreach ($f in @('\theme.css', '\src\sky.js', '\src\features.js', '\src\feats-4.js', '\src\view-novidades.js', '\src\appearance.js', '\src\drivers.js', '\src\vendors.js', '\src\view-drivers.js', '\src\space.js', '\electron\drivers.cjs', '\electron\vendor-icons.cjs', '\electron\workers\memtest.cjs', '\electron\workers\disktest.cjs')) { if (-not ($list -contains $f)) { throw "faltou $f no pacote" } else { Write-Host "ok $f" } }
+          foreach ($v in @('espaco.mp4', 'espaco-4k.mp4')) { if (-not (($list -contains "\assets\space\$v") -or (Test-Path "release/win-unpacked/resources/app.asar.unpacked/assets/space/$v"))) { throw "faltou o vídeo $v" } else { Write-Host "ok vídeo $v" } }
+          Get-ChildItem release/*.exe | Select-Object Name, Length
+      - name: Package contents
+        shell: pwsh
+        run: |
+          Get-ChildItem release/win-unpacked/resources | Select-Object Name
+          if (-not (Test-Path release/win-unpacked/resources/sensor-host/Nexo.SensorHost.exe)) { throw 'sensor-host ausente' }
+          if (-not (Test-Path release/win-unpacked/resources/THIRD-PARTY-NOTICES.md)) { throw 'avisos ausentes' }
+      - name: Instalador visual (mesmos passos da release)
+        shell: pwsh
+        run: |
+          npm --prefix installer-launcher install --ignore-scripts
+          npm --prefix installer-launcher run dist
+          Get-ChildItem installer-launcher/dist/Nexo-Instalador-*.exe | Select-Object Name, Length
