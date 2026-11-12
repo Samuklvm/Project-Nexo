@@ -137,6 +137,62 @@ async function parses(name, script) {
   const links = DeepScan.parseLinks((await ps(DeepScan.LINK_SCRIPT, 30000)).stdout);
   check(links.length >= 1, `link PCIe das placas de vídeo: ${JSON.stringify(links)}`);
 
+  // 7. Verificação completa (0.11.3): drivers, erros durante os testes e os testes de memória e de disco de verdade.
+  const deepDrivers = DeepScan.parseDrivers((await ps(DeepScan.DRIVERS_SCRIPT, 120000)).stdout);
+  check(deepDrivers.length >= 1, `drivers da verificação: ${deepDrivers.length} (${deepDrivers.slice(0, 4).map((item) => `${item.cls}:${item.name}`).join(', ')})`);
+  const during = DeepScan.parseDuring((await ps(`$env:NEXO_SINCE='${Date.now() - 600000}'\n${DeepScan.DURING_SCRIPT}`, 60000)).stdout);
+  check(during && Number.isFinite(during.whea), `erros durante os testes: ${JSON.stringify(during)}`);
+  const { Worker } = require('worker_threads');
+  const worker = (file, data, ms) => new Promise((resolve) => {
+    const w = new Worker(path.join(__dirname, '..', 'electron', 'workers', file), { workerData: data });
+    let last = null;
+    const timer = setTimeout(() => { w.terminate(); resolve(last); }, ms);
+    w.on('message', (msg) => { last = msg; if (msg?.kind === 'done' || msg?.ok !== undefined) { clearTimeout(timer); resolve(msg); } });
+    w.on('error', (error) => { clearTimeout(timer); resolve({ error: String(error) }); });
+  });
+  const mem = await worker('memtest.cjs', { totalMB: 64, ms: 4000 }, 30000);
+  check(mem?.kind === 'done' && mem.errors === 0 && mem.passes >= 1, `teste de memória: ${JSON.stringify(mem && { testedMB: mem.testedMB, passes: mem.passes, errors: mem.errors, bandwidthMBs: mem.bandwidthMBs })}`);
+  const disk = await worker('disktest.cjs', { dir: path.join(tmp, 'disco'), sizeMB: 64, smallCount: 40, ms: 20000 }, 60000);
+  check(disk && Number.isFinite(disk.seqWriteMBs) && disk.seqWriteMBs > 0, `teste de disco: ${JSON.stringify(disk)}`);
+  check(!fs.existsSync(path.join(tmp, 'disco', 'nexo-teste-disco.tmp')), 'teste de disco apagou o arquivo grande');
+
+  // 8. Página de Drivers: leitura completa, componentes dos jogos e os ícones dos programas instalados.
+  const DriversMain = require('../electron/drivers.cjs');
+  const NexoDrivers = require('../src/drivers.js');
+  const all = DriversMain.parseAllDrivers((await ps(DriversMain.ALL_DRIVERS_SCRIPT, 150000)).stdout);
+  check(all && all.devices.length + all.others.length >= 1 && all.generic >= 1, `todos os drivers: ${all?.devices.length} principais, ${all?.others.length} outros, ${all?.generic} do Windows`);
+  const runtimes = DriversMain.parseRuntimes((await ps(DriversMain.RUNTIMES_SCRIPT, 90000)).stdout);
+  check(runtimes && runtimes.os.build > 0 && runtimes.systemRoot, `componentes: build ${runtimes?.os.build}, VC++ x64 ${runtimes?.vc.x64}, x86 ${runtimes?.vc.x86}, .NET Framework ${runtimes?.netfx}, Desktop ${JSON.stringify(runtimes?.desktop)}, Vulkan ${runtimes?.vulkan}, DirectX 9 ${JSON.stringify(runtimes?.dx)}, ${runtimes?.apps.length} programas com ícone, sem driver: ${JSON.stringify(runtimes?.missing)}`);
+  const sources = DriversMain.iconSources(runtimes);
+  check(Boolean(sources.directx) && fs.existsSync(sources.directx), `ícone do DirectX: ${sources.directx}`);
+  console.log(`     ícones do PC: ${JSON.stringify(sources)}`);
+  const model = NexoDrivers.build({ ...all, runtimes, latest: {} }, Date.now());
+  check(model.groups.length >= 1, `página: ${model.groups.map((group) => `${group.id}=${group.items.length}`).join(', ')}; ${NexoDrivers.headline(model.summary)}`);
+
+  // 9. Fontes oficiais de verdade (o runner tem internet): NVIDIA, índice do .NET e os ícones dos fabricantes.
+  const getJson = async (url) => { const response = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { Accept: 'application/json' } }); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); };
+  for (const line of ['modern', 'legacy']) {
+    let nv = null;
+    try { nv = DriversMain.parseNvidia(await getJson(DriversMain.nvidiaUrl(line, { win11: true }))); } catch (error) { console.log(`     NVIDIA ${line}: ${error.message}`); }
+    check(Boolean(nv?.version) && Boolean(nv?.details), `NVIDIA (${line}): ${JSON.stringify(nv)}`);
+  }
+  let dotnet = null;
+  try { dotnet = DriversMain.parseDotnet(await getJson(DriversMain.DOTNET_INDEX)); } catch (error) { console.log(`     .NET: ${error.message}`); }
+  check(Boolean(dotnet?.['8.0']?.latest), `índice do .NET: ${JSON.stringify(dotnet && Object.fromEntries(Object.entries(dotnet).slice(0, 4)))}`);
+  const Icons = require('../electron/vendor-icons.cjs');
+  const iconDir = path.join(tmp, 'icones');
+  const icons = Icons.createVendorIcons({ dir: iconDir, fetchRaw: async (url, max) => {
+    const response = await fetch(url, { signal: AbortSignal.timeout(9000), redirect: 'follow', headers: { Accept: 'text/html,image/*;q=0.9,*/*;q=0.5', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > max) throw new Error('grande');
+    return { url: response.url || url, bytes };
+  } });
+  const wanted = ['nvidia', 'amd', 'intel', 'realtek', 'microsoft', 'logitech', 'razer', 'asus', 'msi', 'gigabyte', 'dell', 'lenovo', 'qualcomm', 'mediatek', 'vs', 'dotnet', 'vulkan'];
+  const got = await icons.icons(wanted);
+  console.log(`     ícones dos sites: ${Object.keys(got).length}/${wanted.length} — ${wanted.map((key) => `${key}:${got[key] ? got[key].slice(5, got[key].indexOf(';')) : 'não'}`).join(', ')}`);
+  check(Object.keys(got).length >= Math.ceil(wanted.length / 2), `ícones oficiais: ${Object.keys(got).length} de ${wanted.length}`);
+
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(failures.length ? `\n${failures.length} falha(s).` : '\nTudo certo.');
   process.exit(failures.length ? 1 : 0);
