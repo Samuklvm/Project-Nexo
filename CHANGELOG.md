@@ -6,6 +6,16 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.3: análise e otimização
+- Novo: Análise e otimização numa tela só. Cada achado que pede ação tem um botão (ajuste automático, BIOS guiada com reinício direto nela, driver oficial, correções de rede, Gerenciador de Tarefas ou passo a passo).
+- Novo: verificação completa de no mínimo 10 minutos: teste de estabilidade da memória, placa de vídeo sob carga, gravação real no disco, drivers por função, 30 dias de eventos com o código de cada tela azul e o tipo de cada desligamento, um minuto de rede, observação estendida, carga no processador e os erros registrados durante os próprios testes.
+- Novo: causa provável das telas azuis, desligamentos e travadas, cruzando todas as pistas (memória, placa de vídeo, driver, disco, processador, fonte ou calor), com "Por que eu acho isso" e o botão certo.
+- Novo: Otimizar este PC. Plano para este PC (jogo escolhido, inclusive Roblox; rede; energia; o que abre com o Windows; ajustes do sistema), uma permissão só do Windows com ponto de restauração, medição antes e depois, desfaz sozinho o que piorar e confere depois do reinício o que só vale depois de reiniciar. Tudo no Diário com "Reverter".
+- Novo: página de Drivers no lugar de Otimizar: cada driver com o ícone oficial do fabricante, para que serve, instalado e mais recente (NVIDIA e .NET consultados nas fontes oficiais), estado e botão para o site oficial; também Visual C++, DirectX 9, .NET, Vulkan, PhysX, dispositivos sem driver e todos os outros dispositivos. Nunca pelo Windows Update.
+- Novo: a Análise vira o espaço: céu animado (Full HD ou 4K, conforme a tela e a placa de vídeo), nebulosa, aurora, Via Láctea, constelações de verdade e estrelas de quatro pontas; a constelação reage à otimização.
+- Melhoria: Limpeza segura, Plano de energia e Início com o sistema foram para a Manutenção.
+- Correção: o botão do assistente de drivers da Intel não abria a página.
+
 ### 0.11.2: análise profunda
 - Novo: análise profunda em Análise (no mínimo 60 s, mais quando precisa): peças entendidas pelo nome (chipset e o que ele permite, geração do processador e caminho de upgrade, velocidade de cada pente pelo código, link PCIe da placa de vídeo e do SSD, porta e taxa do monitor), 30 dias de eventos, o que roda por trás do jogo (jogo, launchers e o próprio Nexo fora da conta), teste de carga com a placa de vídeo acordada, plano para o PC (BIOS, laboratório, acompanhar) e comparação com a análise anterior. Também no Linux.
 - Novo: constelação do PC durante a análise (cada peça acende e ganha o nome) e relatório com a carta celeste do PC, nota, placar, termômetros até o limite da peça e as pistas do PCIe.
@@ -112,6 +122,16 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.3: analysis and optimization
+- New: Analysis and optimization on one screen. Every finding that needs action has a button (automatic tweak, guided BIOS steps with a restart straight into it, official driver, network fixes, Task Manager or step by step).
+- New: a complete check of at least 10 minutes: memory stability test, graphics card under load, a real disk write, drivers by role, 30 days of events with each blue screen's code and the kind of each shutdown, one minute of network, longer observation, processor load and the errors logged during the tests themselves.
+- New: probable cause of blue screens, shutdowns and freezes, crossing every clue (memory, graphics card, driver, disk, processor, power supply or heat), with "Why I think so" and the right button.
+- New: Optimize this PC. A plan for this PC (chosen game, Roblox included; network; power; what starts with Windows; system tweaks), a single Windows permission with a restore point, measurement before and after, automatic undo of whatever got worse and, after the restart, a check of what only applies after restarting. Everything in the Journal with "Revert".
+- New: Drivers page in place of Optimize: each driver with the manufacturer's official icon, what it is for, installed and latest version (NVIDIA and .NET checked at the official sources), status and a button to the official site; also Visual C++, DirectX 9, .NET, Vulkan, PhysX, devices without a driver and every other device. Never through Windows Update.
+- New: the Analysis becomes space: an animated sky (Full HD or 4K, depending on the screen and the graphics card), nebula, aurora, Milky Way, real constellations and four-point stars; the constellation reacts to the optimization.
+- Improvement: Safe cleanup, Power plan and Startup moved to Maintenance.
+- Fix: the Intel driver assistant button did not open the page.
 
 ### 0.11.2: deep analysis
 - New: deep analysis in Analysis (at least 60 s, longer when it needs to): parts understood by name (the chipset and what it allows, the processor generation and the socket's upgrade path, each memory stick's rated speed from its part number, the PCIe link of the graphics card and the SSD, the monitor's port and refresh rate), 30 days of events, what runs behind the game (the game, launchers and Nexo itself are left out), a load test with the graphics card awake, a plan for the PC (BIOS, lab, keep an eye on) and a comparison with the previous analysis. On Linux too.

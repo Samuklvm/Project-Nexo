@@ -8,6 +8,27 @@
   root.NexoNovidades = {
     versions: [
       {
+        version: '0.11.3', date: '2026-11-12', emoji: '🌌', title: 'Análise e otimização',
+        tagline: 'O Nexo agora resolve o que encontra: verificação completa de 10 minutos, um botão para cada problema, otimização que mede e desfaz o que piorar e a página de Drivers.',
+        sections: [
+          { emoji: '✨', title: 'Novidades', tone: 'new', items: [
+            { emoji: '🧭', title: 'Análise e otimização numa tela só', text: 'A análise encontra, explica e resolve: cada achado que pede ação tem um botão (ajuste automático, BIOS guiada com reinício direto nela, driver oficial, rede, passo a passo).' },
+            { emoji: '🔬', title: 'Verificação completa', text: 'No mínimo 10 minutos testando de verdade: estabilidade da memória, placa de vídeo sob carga, gravação no disco, drivers, 30 dias de eventos com o código de cada tela azul, um minuto de rede, o que roda por trás e carga no processador.' },
+            { emoji: '🕵️', title: 'Causa provável', text: 'Com tela azul, desligamento ou travada, o Nexo cruza as pistas de todas as etapas e diz o que mais provavelmente causa (memória, placa de vídeo, driver, disco, processador, fonte ou calor), por quê e o que fazer.' },
+            { emoji: '🚀', title: 'Otimizar este PC', text: 'Monta um plano para este PC (jogo escolhido, rede, energia, o que abre com o Windows e o sistema), aplica tudo com uma permissão só, mede antes e depois e desfaz sozinho o que piorar. O que só vale depois de reiniciar é conferido quando você reinicia.' },
+            { emoji: '🧩', title: 'Página de Drivers', text: 'Cada driver do PC com o ícone oficial do fabricante, para que serve, a versão instalada e a mais recente, e o botão para o site oficial. Também o que os jogos usam: Visual C++, DirectX 9, .NET, Vulkan e PhysX. Nunca pelo Windows Update.' },
+            { emoji: '🌠', title: 'O espaço inteiro', text: 'A Análise vira o espaço: céu animado em Full HD ou 4K (estrelas cintilando, nebulosa, aurora, estrelas cadentes), constelações de verdade e estrelas de quatro pontas. Para no Modo Leve e com movimento reduzido.' }
+          ] },
+          { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
+            { emoji: '🧹', title: 'Manutenção reúne tudo', text: 'Limpeza segura, plano de energia e o que abre com o sistema agora ficam em Manutenção.' },
+            { emoji: '🎯', title: 'Ping por jogo', text: 'A otimização acha o jogo (o Roblox inclusive, pela pasta de versões) e cuida da prioridade, da placa de vídeo certa em notebook e da prioridade dos pacotes de rede dele.' }
+          ] },
+          { emoji: '🛠️', title: 'Correções', tone: 'fix', items: [
+            { emoji: '🔗', title: 'Link da Intel', text: 'O botão do assistente de drivers da Intel não abria a página.' }
+          ] }
+        ]
+      },
+      {
         version: '0.11.2', date: '2026-11-11', emoji: '🔭', title: 'Análise profunda',
         tagline: 'O Nexo entende o seu PC peça por peça, vê o que pesa por trás do jogo e monta um plano feito para a sua máquina.',
         sections: [
