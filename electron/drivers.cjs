@@ -10,6 +10,7 @@
  */
 'use strict';
 const Scan = require('./deep-scan.cjs');
+const Vendors = require('../src/vendors.js');
 
 const RUNTIMES_SCRIPT = Scan.PS_HEAD + String.raw`
 $cs = Get-CimInstance Win32_ComputerSystem
@@ -25,6 +26,10 @@ function VC($arch) {
 $un = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' |
   Where-Object { [string]$_.DisplayName -match 'Visual C\+\+ .*Redistributable|PhysX' } |
   ForEach-Object { @{ name = [string]$_.DisplayName; version = [string]$_.DisplayVersion } } | Select-Object -First 40)
+# Programas instalados com ícone (DisplayIcon): o ícone de verdade de cada componente e de cada fabricante vem daqui.
+$apps = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
+  Where-Object { $_.DisplayName -and $_.DisplayIcon } |
+  ForEach-Object { @{ name = [string]$_.DisplayName; publisher = [string]$_.Publisher; icon = [string]$_.DisplayIcon } } | Select-Object -First 400)
 $sys = "$env:SystemRoot\System32"
 $wow = "$env:SystemRoot\SysWOW64"
 $dx = @{ d3dx9 = [bool]((Test-Path "$sys\d3dx9_43.dll") -or (Test-Path "$wow\d3dx9_43.dll")); xinput13 = [bool]((Test-Path "$sys\xinput1_3.dll") -or (Test-Path "$wow\xinput1_3.dll")); x3daudio = [bool]((Test-Path "$sys\X3DAudio1_7.dll") -or (Test-Path "$wow\X3DAudio1_7.dll")) }
@@ -55,6 +60,9 @@ $out = @{
   vulkan = $vk
   amd = [string]$amd.RadeonSoftwareVersion
   missing = $bad
+  apps = $apps
+  systemRoot = [string]$env:SystemRoot
+  programFiles = [string]$env:ProgramFiles
 }
 [Console]::Out.Write((ConvertTo-Json -InputObject $out -Depth 4 -Compress))`;
 
@@ -93,6 +101,18 @@ const text = (value, max = 120) => (typeof value === 'string' ? value.replace(/[
 const asList = (value) => (Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : []);
 const version = (value) => { const v = text(value, 40).replace(/^v(?=\d)/i, ''); return /^\d+(\.\d+){1,3}[a-z0-9.-]*$/i.test(v) ? v : null; };
 
+/*
+ * Caminho de ícone vindo do registro (DisplayIcon: "C:\\...\\x.exe",0): só arquivo local de verdade (letra de unidade,
+ * nunca \\servidor — abrir caminho de rede mandaria as credenciais do Windows para fora), só .exe/.dll/.ico.
+ */
+function iconPath(value) {
+  let v = text(String(value || ''), 400).replace(/^"+|"+$/g, '');
+  v = v.replace(/"?\s*,\s*-?\d+\s*$/, '').replace(/^"+|"+$/g, '').trim();
+  if (!/^[A-Za-z]:\\[^<>"|?*\u0000-\u001f]+\.(exe|dll|ico)$/i.test(v) || v.includes('..')) return null;
+  return v;
+}
+const localDir = (value) => { const v = text(String(value || ''), 200); return /^[A-Za-z]:\\[^<>"|?*\u0000-\u001f]*$/.test(v) && !v.includes('..') ? v.replace(/\\+$/, '') : null; };
+
 function parseRuntimes(stdout) {
   const body = String(stdout || '').trim();
   const start = body.indexOf('{');
@@ -110,6 +130,8 @@ function parseRuntimes(stdout) {
     desktop: [...new Set(asList(raw.desktop).map((item) => version(item)).filter(Boolean))].slice(0, 16),
     vulkan: version(raw.vulkan),
     amd: version(raw.amd),
+    apps: asList(raw.apps).slice(0, 400).map((item) => ({ name: text(item?.name, 120), publisher: text(item?.publisher, 80), icon: iconPath(item?.icon) })).filter((item) => item.name && item.icon),
+    systemRoot: localDir(raw.systemRoot), programFiles: localDir(raw.programFiles),
     missing: asList(raw.missing).slice(0, 12).map((item) => ({ name: text(item?.name, 90), code: Number.isInteger(item?.code) ? item.code : null, cls: text(item?.cls, 30), ids: /^[0-9A-F]{4}:[0-9A-F]{4}$/.test(String(item?.ids || '')) ? item.ids : null })).filter((item) => item.name)
   };
 }
@@ -174,7 +196,45 @@ function nvidiaLine(name) {
   return 'modern';
 }
 
-function createDrivers({ runPowerShellCode, fetchJson, now = () => Date.now(), platform = process.platform } = {}) {
+/*
+ * O ícone de verdade de cada componente e fabricante, tirado dos programas instalados neste PC (o mesmo que o Windows
+ * mostra em "Aplicativos instalados"): Visual C++ do instalador do Visual C++, .NET do runtime, PhysX do PhysX,
+ * DirectX do dxdiag do Windows; para os fabricantes, o do pacote de driver deles. Volta chave → caminho do arquivo.
+ */
+const COMPONENT_APPS = [
+  ['vs', /visual c\+\+ (2015|2017|2019|2022|v14).*redistributable.*(x64|amd64)/i],
+  ['vs', /visual c\+\+ .*redistributable/i],
+  ['dotnet', /windows desktop runtime|\.net (desktop )?runtime|microsoft \.net/i],
+  ['physx', /physx/i]
+];
+const DRIVER_APP = /driver|graphics|gráfico|audio|áudio|chipset|wi-?fi|wireless|bluetooth|ethernet|\blan\b|control panel|painel|software|synapse|g hub|icue|engine/i;
+function iconSources(runtimes) {
+  const out = {};
+  const apps = runtimes?.apps || [];
+  for (const [key, re] of COMPONENT_APPS) if (!out[key]) { const hit = apps.find((app) => re.test(app.name)); if (hit) out[key] = hit.icon; }
+  if (runtimes?.systemRoot) out.directx = `${runtimes.systemRoot}\\System32\\dxdiag.exe`;
+  // Fabricantes: o programa dele que tem cara de driver primeiro, depois qualquer outro dele.
+  const ranked = [...apps].sort((a, b) => Number(DRIVER_APP.test(b.name)) - Number(DRIVER_APP.test(a.name)));
+  for (const app of ranked) {
+    const vendor = app.publisher ? Vendors.vendorOf({ provider: app.publisher }) : null;
+    if (vendor && !out[vendor.key] && vendor.key !== 'microsoft') out[vendor.key] = app.icon;
+  }
+  return out;
+}
+
+function createDrivers({ runPowerShellCode, fetchJson, fileIcon = null, now = () => Date.now(), platform = process.platform } = {}) {
+  const iconCache = new Map(); // caminho → data: URL (ou null)
+  async function localIcons(runtimes) {
+    if (!fileIcon) return {};
+    const entries = Object.entries(iconSources(runtimes)).slice(0, 60);
+    const out = {};
+    await Promise.all(entries.map(async ([key, file]) => {
+      if (!iconCache.has(file)) iconCache.set(file, await fileIcon(file).catch(() => null));
+      const data = iconCache.get(file);
+      if (typeof data === 'string' && /^data:image\/png;base64,/.test(data) && data.length > 200) out[key] = data;
+    }));
+    return out;
+  }
   let local = null;
   let localAt = 0;
   const online = new Map(); // url → { at, value }
@@ -199,7 +259,7 @@ function createDrivers({ runPowerShellCode, fetchJson, now = () => Date.now(), p
   }
   /** Tudo que a página precisa. `online: false` não consulta nada fora do PC. */
   async function scan({ force = false, online: allowOnline = true } = {}) {
-    if (platform !== 'win32') return { platform, devices: [], others: [], generic: null, runtimes: null, latest: {}, at: now() };
+    if (platform !== 'win32') return { platform, devices: [], others: [], generic: null, runtimes: null, latest: {}, icons: {}, at: now() };
     const { devices, others, generic, runtimes } = await readLocal(force);
     const latest = {};
     if (allowOnline) {
@@ -209,9 +269,10 @@ function createDrivers({ runPowerShellCode, fetchJson, now = () => Date.now(), p
       if (nv.length) latest.nvidia = Object.fromEntries(nv);
       if (runtimes?.desktop?.length) latest.dotnet = await cachedFetch(DOTNET_INDEX, parseDotnet);
     }
-    return { platform, devices: devices || [], others: others || [], generic, runtimes, latest, at: now() };
+    const icons = await localIcons(runtimes);
+    return { platform, devices: devices || [], others: others || [], generic, runtimes, latest, icons, at: now() };
   }
   return { scan };
 }
 
-module.exports = { createDrivers, ALL_DRIVERS_SCRIPT, RUNTIMES_SCRIPT, parseRuntimes, parseAllDrivers, parseNvidia, parseDotnet, nvidiaUrl, nvidiaLine, officialLink, NV_ENDPOINT, DOTNET_INDEX };
+module.exports = { createDrivers, iconSources, iconPath, ALL_DRIVERS_SCRIPT, RUNTIMES_SCRIPT, parseRuntimes, parseAllDrivers, parseNvidia, parseDotnet, nvidiaUrl, nvidiaLine, officialLink, NV_ENDPOINT, DOTNET_INDEX };

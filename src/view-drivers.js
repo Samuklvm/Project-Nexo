@@ -12,15 +12,20 @@
   let focus = null;
   /** Ícones oficiais já buscados (chave do fabricante → data: URL), guardados enquanto o app está aberto. */
   const logos = {};
+  /** Ícones tirados dos programas instalados no PC (Visual C++, .NET, PhysX, DirectX e o pacote de cada fabricante). */
+  let localLogos = {};
   let asked = new Set();
+  // Componente: o ícone do próprio programa instalado é o certo; fabricante: o do site oficial, e o do PC na falta dele.
+  const COMPONENTS = new Set(['vs', 'dotnet', 'physx', 'directx', 'vulkan']);
+  const pick = (key) => (!key ? null : COMPONENTS.has(key) ? localLogos[key] || logos[key] : logos[key] || localLogos[key]) || null;
 
   const groupsBox = () => document.getElementById('drivers-groups');
   const heroBox = () => document.getElementById('drivers-hero');
   const ico = (id) => `<svg aria-hidden="true"><use href="#${id}"/></svg>`;
   /** O quadrado do ícone: o logotipo oficial do fabricante (quando já veio do site dele) com o ícone da categoria no canto. */
-  const tile = (brand, icon, cls = 'driver-ico') => {
-    const logo = brand && logos[brand];
-    return `<span class="${cls}${logo ? ' has-logo' : ''}"${brand ? ` data-brand="${escapeHtml(brand)}"` : ''}>${logo ? `<img class="driver-logo" src="${escapeHtml(logo)}" alt="" decoding="async" draggable="false" />` : ''}<span class="driver-glyph">${ico(icon)}</span></span>`;
+  const tile = (brand, icon, cls = 'driver-ico', alt = null) => {
+    const logo = pick(brand) || pick(alt);
+    return `<span class="${cls}${logo ? ' has-logo' : ''}"${brand ? ` data-brand="${escapeHtml(brand)}"` : ''}${alt ? ` data-brand-alt="${escapeHtml(alt)}"` : ''}>${logo ? `<img class="driver-logo" src="${escapeHtml(logo)}" alt="" decoding="async" draggable="false" />` : ''}<span class="driver-glyph">${ico(icon)}</span></span>`;
   };
   const timeText = (at) => new Date(at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
@@ -33,7 +38,7 @@
     const extra = item.extra?.length ? `<details class="driver-parts"><summary>${item.extra.length === 1 ? 'Ver o componente' : `Ver os ${item.extra.length} componentes`}</summary><ul>${item.extra.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul></details>` : '';
     const action = item.action ? `<button class="btn sm${item.state === 'update' || item.state === 'missing' ? ' primary' : ''}" type="button" data-driver-url="${escapeHtml(item.action.url)}">${escapeHtml(item.action.label)}</button>` : '';
     return `<li class="driver" data-state="${escapeHtml(item.state)}">
-      ${tile(item.brand, item.icon)}
+      ${tile(item.brand, item.icon, 'driver-ico', item.brandAlt)}
       <div class="driver-main"><strong class="driver-name">${escapeHtml(item.name)}</strong><span class="driver-purpose">${escapeHtml(item.purpose)}</span>${item.note ? `<span class="driver-note">${escapeHtml(item.note)}</span>` : ''}${extra}</div>
       ${item.plain ? '<span class="driver-ver"></span>' : `<dl class="driver-ver">${versionCell('Instalado', item.installed)}${latest}</dl>`}
       <div class="driver-side"><span class="driver-state">${escapeHtml(D.STATES[item.state] || '')}</span>${action}</div>
@@ -80,7 +85,7 @@
 
   /** Pede ao processo principal os ícones oficiais que a página vai mostrar e troca no lugar, sem redesenhar a lista. */
   async function loadLogos() {
-    const wanted = D.brands(model).filter((key) => !logos[key] && !asked.has(key));
+    const wanted = D.brands(model).filter((key) => !logos[key] && !asked.has(key) && !(COMPONENTS.has(key) && localLogos[key]));
     if (!wanted.length || !bridge.vendorIcons) return;
     wanted.forEach((key) => asked.add(key));
     let found = {};
@@ -88,15 +93,19 @@
     for (const [key, data] of Object.entries(found)) {
       if (typeof data !== 'string' || !/^data:image\/(png|x-icon|jpeg|gif|webp|svg\+xml);base64,/.test(data)) continue;
       logos[key] = data;
-      for (const box of document.querySelectorAll(`.drivers-view [data-brand="${CSS.escape(key)}"]`)) {
-        if (box.classList.contains('has-logo')) continue;
-        const img = document.createElement('img');
-        img.className = 'driver-logo';
-        img.alt = '';
-        img.decoding = 'async';
-        img.draggable = false;
-        img.src = data;
-        box.prepend(img);
+      for (const box of document.querySelectorAll(`.drivers-view [data-brand="${CSS.escape(key)}"], .drivers-view [data-brand-alt="${CSS.escape(key)}"]`)) {
+        const best = pick(box.dataset.brand) || pick(box.dataset.brandAlt);
+        if (!best) continue;
+        let img = box.querySelector('img.driver-logo');
+        if (!img) {
+          img = document.createElement('img');
+          img.className = 'driver-logo';
+          img.alt = '';
+          img.decoding = 'async';
+          img.draggable = false;
+          box.prepend(img);
+        }
+        if (img.getAttribute('src') !== best) img.src = best;
         box.classList.add('has-logo');
       }
     }
@@ -113,6 +122,7 @@
     try {
       const data = await bridge.scanDrivers({ force });
       model = D.build(data, Date.now());
+      localLogos = Object.fromEntries(Object.entries(data?.icons || {}).filter(([, value]) => typeof value === 'string' && /^data:image\/png;base64,/.test(value)));
       loadLogos();
     } catch {
       failed = true;

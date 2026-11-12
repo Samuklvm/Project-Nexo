@@ -1417,7 +1417,14 @@ registerIpcHandler('app:open-vendor', async (_event, url) => {
 });
 /* Página de Drivers: o que está instalado e a versão mais recente nas fontes oficiais (só leitura; o botão abre o site). */
 const DriversPage = require('./electron/drivers.cjs');
-const driversPage = DriversPage.createDrivers({ runPowerShellCode, fetchJson: async (url) => {
+// Ícone de arquivo local (o que o Windows mostra para o programa): só caminho que existe, nunca de rede.
+const driverFileIcon = async (file) => {
+  if (typeof file !== 'string' || !/^[A-Za-z]:\\/.test(file) || file.startsWith('\\\\')) return null;
+  try { if (!(await fs.stat(file)).isFile()) return null; } catch { return null; }
+  const image = await app.getFileIcon(file, { size: 'large' });
+  return image && !image.isEmpty() ? image.toDataURL() : null;
+};
+const driversPage = DriversPage.createDrivers({ runPowerShellCode, fileIcon: driverFileIcon, fetchJson: async (url) => {
   const response = await net.fetch(url, { signal: withTimeout(12000), headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const body = await response.text();

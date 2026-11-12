@@ -120,7 +120,7 @@
   /** Quem fez o driver (o provedor do pacote): a chave do ícone oficial e o site do fabricante. */
   const vendorOf = (item) => (Vendors && item ? Vendors.vendorOf(item) : null);
   function card(base) {
-    return { id: base.id, icon: base.icon, brand: base.brand || vendorOf(base.source)?.key || BRAND_OF[base.maker] || null, name: base.name, maker: base.maker || null, purpose: base.purpose, installed: base.installed || null, latest: base.latest || null, state: base.state, note: base.note || null, action: base.action || null, extra: base.extra || null, sourceName: base.source?.name || null, plain: base.plain === true };
+    return { id: base.id, icon: base.icon, brand: base.brand || vendorOf(base.source)?.key || BRAND_OF[base.maker] || null, name: base.name, maker: base.maker || null, purpose: base.purpose, installed: base.installed || null, latest: base.latest || null, state: base.state, note: base.note || null, action: base.action || null, extra: base.extra || null, sourceName: base.source?.name || null, plain: base.plain === true, brandAlt: base.brandAlt || null };
   }
   // Drivers que vêm com o Windows têm a data fixa de 21/06/2006: mostrar "jun/2006" assustaria à toa.
   const installedOf = (item) => { const inbox = /^2006-06-21/.test(item.date || ''); return { version: item.version || null, date: inbox ? null : item.date || null, month: inbox ? null : monthText(item.date) }; };
@@ -238,15 +238,15 @@
     for (const [arch, label, url] of [['x64', '64 bits', PAGES.vc64], ['x86', '32 bits', PAGES.vc86]]) {
       const v = runtimes.vc?.[arch];
       const state = vcState(v);
-      out.push(card({ id: `vc-${arch}`, icon: 'i-box', brand: 'vs', name: `Visual C++ (${label})`, maker: 'Microsoft', purpose: `Quase todo jogo ${arch === 'x86' ? 'mais antigo ' : ''}precisa. Sem ele aparece erro de MSVCP140.dll ou VCRUNTIME140.dll.`, installed: v ? { version: v.replace(/^v/i, '') } : null, state, note: state === 'old' ? 'Versão antiga: a atual corrige falhas e é usada pelos jogos novos.' : null, action: { label: state === 'ok' ? 'Baixar da Microsoft' : 'Instalar da Microsoft', url } }));
+      out.push(card({ id: `vc-${arch}`, icon: 'i-box', brand: 'vs', brandAlt: 'microsoft', name: `Visual C++ (${label})`, maker: 'Microsoft', purpose: `Quase todo jogo ${arch === 'x86' ? 'mais antigo ' : ''}precisa. Sem ele aparece erro de MSVCP140.dll ou VCRUNTIME140.dll.`, installed: v ? { version: v.replace(/^v/i, '') } : null, state, note: state === 'old' ? 'Versão antiga: a atual corrige falhas e é usada pelos jogos novos.' : null, action: { label: state === 'ok' ? 'Baixar da Microsoft' : 'Instalar da Microsoft', url } }));
     }
     const years = new Set((runtimes.uninstall || []).map((item) => (/Visual C\+\+ (\d{4})/i.exec(item.name) || [])[1]).filter(Boolean));
     const old = ['2005', '2008', '2010', '2012', '2013'];
     const have = old.filter((year) => years.has(year));
-    out.push(card({ id: 'vc-antigos', icon: 'i-box', brand: 'vs', name: 'Visual C++ antigos (2005 a 2013)', maker: 'Microsoft', purpose: 'Jogos antigos ainda pedem estas versões. Instale só a que um jogo pedir.', installed: have.length ? { version: have.join(', ') } : null, state: have.length === old.length ? 'ok' : 'check', note: have.length < old.length ? `Faltam: ${old.filter((year) => !years.has(year)).join(', ')}.` : null, action: { label: 'Página da Microsoft', url: PAGES.vcOld } }));
+    out.push(card({ id: 'vc-antigos', icon: 'i-box', brand: 'vs', brandAlt: 'microsoft', name: 'Visual C++ antigos (2005 a 2013)', maker: 'Microsoft', purpose: 'Jogos antigos ainda pedem estas versões. Instale só a que um jogo pedir.', installed: have.length ? { version: have.join(', ') } : null, state: have.length === old.length ? 'ok' : 'check', note: have.length < old.length ? `Faltam: ${old.filter((year) => !years.has(year)).join(', ')}.` : null, action: { label: 'Página da Microsoft', url: PAGES.vcOld } }));
     const dx = runtimes.dx || {};
     const dxOk = dx.d3dx9 && dx.xinput13;
-    out.push(card({ id: 'directx9', icon: 'i-game', name: 'DirectX 9 (componentes antigos)', maker: 'Microsoft', purpose: 'O Windows já traz o DirectX 12, mas jogos mais antigos (e alguns novos) pedem peças do DirectX 9, como d3dx9_43.dll e XInput 1.3.', installed: dxOk ? { version: 'instalado' } : null, state: dxOk ? 'ok' : 'missing', note: dxOk ? null : `Falta${!dx.d3dx9 && !dx.xinput13 ? 'm d3dx9_43.dll e xinput1_3.dll' : !dx.d3dx9 ? ' d3dx9_43.dll' : ' xinput1_3.dll'}.`, action: { label: dxOk ? 'Instalador da Microsoft' : 'Instalar da Microsoft', url: PAGES.directx } }));
+    out.push(card({ id: 'directx9', icon: 'i-game', brand: 'directx', brandAlt: 'microsoft', name: 'DirectX 9 (componentes antigos)', maker: 'Microsoft', purpose: 'O Windows já traz o DirectX 12, mas jogos mais antigos (e alguns novos) pedem peças do DirectX 9, como d3dx9_43.dll e XInput 1.3.', installed: dxOk ? { version: 'instalado' } : null, state: dxOk ? 'ok' : 'missing', note: dxOk ? null : `Falta${!dx.d3dx9 && !dx.xinput13 ? 'm d3dx9_43.dll e xinput1_3.dll' : !dx.d3dx9 ? ' d3dx9_43.dll' : ' xinput1_3.dll'}.`, action: { label: dxOk ? 'Instalador da Microsoft' : 'Instalar da Microsoft', url: PAGES.directx } }));
     // .NET (para programas, launchers e mods): o mais alto de cada versão instalada contra o índice oficial.
     const byChannel = {};
     for (const v of runtimes.desktop || []) { const channel = v.split('.').slice(0, 2).join('.'); if (!byChannel[channel] || compare(v, byChannel[channel]) > 0) byChannel[channel] = v; }
@@ -254,17 +254,17 @@
       const info = latest?.dotnet?.[channel];
       const newer = info && compare(info.latest, v) > 0;
       const eol = info?.phase === 'eol';
-      out.push(card({ id: `dotnet-${channel}`, icon: 'i-box', brand: 'dotnet', name: `.NET ${channel} Desktop Runtime`, maker: 'Microsoft', purpose: 'Programas, launchers e ferramentas de mods feitos em .NET usam.', installed: { version: v }, latest: info ? { version: info.latest } : null, state: newer ? 'update' : info ? 'ok' : 'check', note: eol ? `A Microsoft encerrou o suporte do .NET ${channel}${info.eol ? ` em ${monthText(info.eol)}` : ''}; o programa que pediu esta versão pode precisar de atualização.` : null, action: { label: newer ? 'Baixar da Microsoft' : 'Página da Microsoft', url: PAGES.dotnet(channel) } }));
+      out.push(card({ id: `dotnet-${channel}`, icon: 'i-box', brand: 'dotnet', brandAlt: 'microsoft', name: `.NET ${channel} Desktop Runtime`, maker: 'Microsoft', purpose: 'Programas, launchers e ferramentas de mods feitos em .NET usam.', installed: { version: v }, latest: info ? { version: info.latest } : null, state: newer ? 'update' : info ? 'ok' : 'check', note: eol ? `A Microsoft encerrou o suporte do .NET ${channel}${info.eol ? ` em ${monthText(info.eol)}` : ''}; o programa que pediu esta versão pode precisar de atualização.` : null, action: { label: newer ? 'Baixar da Microsoft' : 'Página da Microsoft', url: PAGES.dotnet(channel) } }));
     }
     if (runtimes.netfx) {
       const v = runtimes.netfx >= 533320 ? '4.8.1' : runtimes.netfx >= 528040 ? '4.8' : runtimes.netfx >= 461808 ? '4.7.2' : '4.7 ou anterior';
-      out.push(card({ id: 'netfx', icon: 'i-box', brand: 'dotnet', name: '.NET Framework', maker: 'Microsoft', purpose: 'Programas mais antigos para Windows (e alguns launchers) usam.', installed: { version: v }, state: runtimes.netfx >= 528040 ? 'ok' : 'old', action: { label: 'Página da Microsoft', url: PAGES.netfx } }));
+      out.push(card({ id: 'netfx', icon: 'i-box', brand: 'dotnet', brandAlt: 'microsoft', name: '.NET Framework', maker: 'Microsoft', purpose: 'Programas mais antigos para Windows (e alguns launchers) usam.', installed: { version: v }, state: runtimes.netfx >= 528040 ? 'ok' : 'old', action: { label: 'Página da Microsoft', url: PAGES.netfx } }));
     }
     const hasGpuDriver = devices.some((item) => item.cls === 'DISPLAY' && !VIRTUAL_GPU.test(item.name));
-    out.push(card({ id: 'vulkan', icon: 'i-gpu', name: 'Vulkan', maker: 'Khronos', purpose: 'Usado por vários jogos e emuladores. Vem junto com o driver de vídeo.', installed: runtimes.vulkan ? { version: runtimes.vulkan } : null, state: runtimes.vulkan ? 'ok' : hasGpuDriver ? 'check' : 'missing', note: runtimes.vulkan ? null : 'Reinstalar o driver de vídeo do fabricante traz o Vulkan de volta.' }));
+    out.push(card({ id: 'vulkan', icon: 'i-gpu', brand: 'vulkan', brandAlt: 'khronos', name: 'Vulkan', maker: 'Khronos', purpose: 'Usado por vários jogos e emuladores. Vem junto com o driver de vídeo.', installed: runtimes.vulkan ? { version: runtimes.vulkan } : null, state: runtimes.vulkan ? 'ok' : hasGpuDriver ? 'check' : 'missing', note: runtimes.vulkan ? null : 'Reinstalar o driver de vídeo do fabricante traz o Vulkan de volta.' }));
     if (devices.some((item) => item.cls === 'DISPLAY' && chipMaker(item) === 'NVIDIA')) {
       const physx = (runtimes.uninstall || []).find((item) => /physx/i.test(item.name));
-      out.push(card({ id: 'physx', icon: 'i-spark', name: 'PhysX', maker: 'NVIDIA', purpose: 'Física de alguns jogos (principalmente os mais antigos). Vem com o driver da NVIDIA.', installed: physx?.version ? { version: physx.version } : null, state: physx ? 'ok' : 'check', note: physx ? null : 'Não encontrado: instale o driver da NVIDIA com o PhysX marcado.', action: { label: 'Site da NVIDIA', url: PAGES.nvidia } }));
+      out.push(card({ id: 'physx', icon: 'i-spark', brand: 'physx', brandAlt: 'nvidia', name: 'PhysX', maker: 'NVIDIA', purpose: 'Física de alguns jogos (principalmente os mais antigos). Vem com o driver da NVIDIA.', installed: physx?.version ? { version: physx.version } : null, state: physx ? 'ok' : 'check', note: physx ? null : 'Não encontrado: instale o driver da NVIDIA com o PhysX marcado.', action: { label: 'Site da NVIDIA', url: PAGES.nvidia } }));
     }
     return out;
   }
@@ -332,6 +332,6 @@
   }
   const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Antigo', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova' };
   /** As chaves de ícone que a página vai mostrar (para pedir só essas). */
-  const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.map((item) => item.brand))].filter(Boolean))];
+  const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.flatMap((item) => [item.brand, item.brandAlt]))].filter(Boolean))];
   return { build, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });

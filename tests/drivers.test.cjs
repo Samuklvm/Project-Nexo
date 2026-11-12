@@ -211,3 +211,30 @@ test('ícones oficiais: só do domínio do fabricante, só imagem de verdade, co
     assert.ok((await later.icons(['intel'])).intel, '"não achei" vale só um dia');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('ícones do PC: cada componente com o ícone do próprio programa, nunca caminho de rede', async () => {
+  assert.equal(Main.iconPath('"C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore\\NVI2.DLL",0'), 'C:\\Program Files\\NVIDIA Corporation\\Installer2\\InstallerCore\\NVI2.DLL');
+  assert.equal(Main.iconPath('C:\\ProgramData\\Package Cache\\{1}\\VC_redist.x64.exe,0'), 'C:\\ProgramData\\Package Cache\\{1}\\VC_redist.x64.exe');
+  assert.equal(Main.iconPath('\\\\servidor\\share\\x.exe'), null, 'caminho de rede mandaria as credenciais do Windows');
+  assert.equal(Main.iconPath('C:\\a\\..\\b.exe'), null);
+  assert.equal(Main.iconPath('C:\\a\\b.txt'), null);
+  const rt = Main.parseRuntimes(JSON.stringify({ systemRoot: 'C:\\WINDOWS', apps: [
+    { name: 'Microsoft Visual C++ 2013 Redistributable (x86)', publisher: 'Microsoft Corporation', icon: 'C:\\PC\\vc2013.exe' },
+    { name: 'Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44', publisher: 'Microsoft Corporation', icon: 'C:\\PC\\VC_redist.x64.exe,0' },
+    { name: 'Microsoft Windows Desktop Runtime - 8.0.11 (x64)', publisher: 'Microsoft Corporation', icon: 'C:\\PC\\windowsdesktop.exe,0' },
+    { name: 'NVIDIA FrameView SDK', publisher: 'NVIDIA Corporation', icon: 'C:\\a\\fv.exe' },
+    { name: 'NVIDIA Graphics Driver 566.14', publisher: 'NVIDIA Corporation', icon: 'C:\\a\\NVI2.DLL,0' },
+    { name: 'NVIDIA PhysX System Software 9.23', publisher: 'NVIDIA Corporation', icon: 'C:\\a\\physx.ico' },
+    { name: 'Logitech G HUB', publisher: 'Logitech', icon: '\\\\rede\\ghub.exe' }] }));
+  assert.deepEqual(Main.iconSources(rt), { vs: 'C:\\PC\\VC_redist.x64.exe', dotnet: 'C:\\PC\\windowsdesktop.exe', physx: 'C:\\a\\physx.ico', directx: 'C:\\WINDOWS\\System32\\dxdiag.exe', nvidia: 'C:\\a\\NVI2.DLL' });
+  const asked = [];
+  const svc = Main.createDrivers({ platform: 'win32', now: () => NOW, fetchJson: async () => { throw new Error('offline'); },
+    runPowerShellCode: async (script) => ({ stdout: script.includes('ConfigManagerErrorCode') ? JSON.stringify({ systemRoot: 'C:\\WINDOWS', apps: [{ name: 'NVIDIA Graphics Driver', publisher: 'NVIDIA Corporation', icon: 'C:\\a\\x.exe' }] }) : '{}' }),
+    fileIcon: async (file) => { asked.push(file); return file.endsWith('dxdiag.exe') ? `data:image/png;base64,${'A'.repeat(300)}` : 'data:text/html;base64,PHNjcmlwdD4=' } });
+  const out = await svc.scan();
+  assert.deepEqual(Object.keys(out.icons), ['directx'], 'só PNG de verdade passa');
+  const model = D.build(sample(), NOW);
+  const vc = model.groups.find((group) => group.id === 'jogos').items.find((item) => item.id === 'vc-x64');
+  assert.deepEqual([vc.brand, vc.brandAlt], ['vs', 'microsoft']);
+  assert.ok(D.brands(model).includes('physx') && D.brands(model).includes('directx'));
+});
