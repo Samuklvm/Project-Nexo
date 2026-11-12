@@ -552,6 +552,90 @@
   }
   /* eslint-enable no-await-in-loop */
 
+  /* eslint-disable no-await-in-loop */
+  /**
+   * Conferência depois do reinício: os ajustes que só valem depois de reiniciar (paginação, serviços, registro do
+   * sistema) não puderam ser medidos na hora. Depois do reinício, mede do mesmo jeito que antes da otimização e
+   * compara com a medição de antes. Piorou além do ruído? Confirma com mais uma medição e, se continuar pior, desfaz os
+   * ajustes de reinício do grupo que piorou (rede ou processador); o desfazer vale no próximo reinício.
+   * `saved`: { before, records, endedAt } guardados pelo processo principal.
+   */
+  async function afterBoot(system, saved, options = {}) {
+    const settings = { ...DEFAULTS, ...options };
+    const emit = typeof options.emit === 'function' ? options.emit : () => {};
+    const now = system.now || (() => Date.now());
+    const signal = options.signal || {};
+    const result = { startedAt: now(), endedAt: null, status: 'running', reason: null, after: null, comparison: {}, undone: [], rebootAgain: false, log: [] };
+    const say = (message) => { const entry = { t: now(), message }; result.log.push(entry); emit({ type: 'log', ...entry }); };
+    const stage = (name, detail = '') => emit({ type: 'stage', stage: name, detail });
+    const checkCancel = () => { if (signal.cancelled) throw Object.assign(new Error('Você cancelou a conferência.'), { code: 'cancelado' }); };
+    const measure = async (side) => {
+      const out = Object.fromEntries(METRICS.map((metric) => [metric.id, []]));
+      for (let round = 0; round < settings.rounds; round += 1) {
+        const order = round % 2 ? [...BENCHES].reverse() : BENCHES;
+        for (const bench of order) {
+          checkCancel();
+          const score = await system.bench(bench).catch(() => null);
+          if (finite(score)) out[bench].push(score);
+        }
+        const ping = await system.ping().catch(() => null);
+        for (const key of ['gatewayMs', 'gatewayJitter', 'internetMs', 'internetJitter']) if (finite(ping?.[key])) out[key].push(ping[key]);
+        emit({ type: 'measure', side, round: round + 1, rounds: settings.rounds });
+      }
+      return out;
+    };
+    const pending = (saved?.records || []).filter((record) => record.ok !== false && !record.undone && record.reboot && record.reboot !== 'nao');
+    try {
+      if (!saved?.before || !pending.length) throw Object.assign(new Error('Não há ajuste esperando reinício para conferir.'), { code: 'vazio' });
+      stage('preparar', 'Conferindo se dá para medir direito');
+      const pre = await system.preflight();
+      if (pre?.platform !== 'win32') throw Object.assign(new Error('A conferência funciona no Windows.'), { code: 'plataforma' });
+      if (pre.busy) throw Object.assign(new Error(pre.busy), { code: 'ocupado' });
+      if (pre.onBattery) throw Object.assign(new Error('Ligue o PC na tomada: na bateria, a medição não vale.'), { code: 'bateria' });
+      if (finite(pre.cpuLoad) && pre.cpuLoad >= 50) throw Object.assign(new Error(`O processador está ${Math.round(pre.cpuLoad)}% ocupado (o Windows ainda pode estar terminando de ligar). Tente em alguns minutos.`), { code: 'ocupado' });
+      if (finite(pre.uptimeSec) && pre.uptimeSec < 120) throw Object.assign(new Error('O Windows acabou de ligar e ainda está carregando coisas por trás. Espere uns 2 minutos para a medição ser justa.'), { code: 'cedo' });
+      say(`${pending.length} ${pending.length === 1 ? 'ajuste valia' : 'ajustes valiam'} depois do reinício.`);
+      stage('depois', 'Medindo do mesmo jeito que antes da otimização');
+      result.after = await measure('depois-do-reinicio');
+      result.comparison = compareAll(saved.before, result.after);
+      const worse = Object.entries(result.comparison).filter(([, value]) => value.verdict === 'piorou').map(([id]) => id);
+      if (worse.length) {
+        stage('conferir', 'Algo piorou: conferindo se não foi acaso');
+        const again = await measure('confirmacao');
+        const confirm = compareAll(saved.before, again);
+        const still = worse.filter((id) => confirm[id]?.verdict === 'piorou');
+        if (still.length) {
+          const groups = new Set(still.map(groupOf));
+          const culprits = pending.filter((record) => { const network = ['nic', 'qos'].includes(record.kind); return (groups.has('rede') && network) || (groups.has('processador') && !network); });
+          if (culprits.length) {
+            say(`Piorou de verdade: ${still.map((id) => METRIC.get(id).label.toLowerCase()).join(', ')}. Desfazendo ${culprits.length} ${culprits.length === 1 ? 'ajuste de reinício' : 'ajustes de reinício'}.`);
+            const undo = await system.revert(culprits.map((record) => record.id));
+            result.undone = (undo?.records || []).filter((record) => record.ok).map((record) => record.id);
+            result.rebootAgain = result.undone.length > 0;
+            if (result.rebootAgain) say('Desfeito. Vale no próximo reinício.');
+          } else say('Piorou, mas não por um ajuste de reinício (o resto já tinha sido medido na hora).');
+          result.after = again;
+          result.comparison = confirm;
+        } else {
+          say('Na segunda medição a diferença sumiu: era oscilação do PC, não o ajuste.');
+          result.after = again;
+          result.comparison = confirm;
+        }
+      }
+      result.status = 'completed';
+    } catch (error) {
+      result.status = error?.code === 'cancelado' ? 'cancelled' : 'aborted';
+      result.reason = String(error?.message || error).slice(0, 240);
+      result.code = error?.code || 'erro';
+      say(result.reason);
+    }
+    result.endedAt = now();
+    stage('fim', result.status);
+    emit({ type: 'done' });
+    return result;
+  }
+  /* eslint-enable no-await-in-loop */
+
   /** Resumo em palavras para o fim: quantos ajustes, o que melhorou e o que ficou para depois do reinício. */
   function summarize(result, plan) {
     const done = Object.values(result.steps || {}).filter((step) => step.status === 'feito').length;
@@ -572,5 +656,5 @@
     return { headline, lines, done, undone, failed, manual };
   }
 
-  return { CATEGORIES, CATEGORY, METHOD_LABEL, EVIDENCE_LABEL, CONSENT_PHRASE, STARTUP_KB, METRICS, METRIC, BENCHES, classifyStartup, costOf, buildPlan, needsPhrase, assertConsent, compareMetric, compareAll, run, fix, summarize, countsOf, POWER_SAVER, BALANCED, EFFICIENCY_MODE, BEST_PERFORMANCE };
+  return { CATEGORIES, CATEGORY, METHOD_LABEL, EVIDENCE_LABEL, CONSENT_PHRASE, STARTUP_KB, METRICS, METRIC, BENCHES, classifyStartup, costOf, buildPlan, needsPhrase, assertConsent, compareMetric, compareAll, run, fix, afterBoot, summarize, countsOf, POWER_SAVER, BALANCED, EFFICIENCY_MODE, BEST_PERFORMANCE };
 });

@@ -176,6 +176,7 @@
   }
 
   function onEvent(event) {
+    if (event?.scope === 'afterboot') { onAfterBootEvent(event); return; }
     if (!state.running || !state.live || !event) return;
     const live = state.live;
     if (event.type === 'stage') { live.stage = event.stage; live.detail = event.detail; if (event.stage === 'aplicar') charge(); }
@@ -680,6 +681,66 @@
       }).catch((error) => { undo.disabled = false; showToast(error.message || 'Não consegui desfazer.'); });
     }
   });
+
+  /* ---------------- Conferência depois do reinício ---------------- */
+  // Os ajustes que só valem depois de reiniciar são medidos quando a pessoa volta, contra a medição de antes.
+  const afterBoot = { info: null, running: false, live: null, result: null };
+  function onAfterBootEvent(event) {
+    if (!afterBoot.running) return;
+    const live = afterBoot.live || (afterBoot.live = {});
+    if (event.type === 'stage') live.detail = event.detail;
+    else if (event.type === 'measure') live.measure = event;
+    paintAfterBoot();
+  }
+  function paintAfterBoot() {
+    const sheet = document.getElementById('opt-afterboot');
+    if (!sheet) return;
+    const { info, result } = afterBoot;
+    if (!info && !result && !afterBoot.running) { sheet.hidden = true; sheet.innerHTML = ''; return; }
+    sheet.hidden = false;
+    const head = (title, text) => `<div class="ab-head"><span class="ab-ico">${ico('i-refresh')}</span><div><h3>${esc(title)}</h3><p class="muted">${esc(text)}</p></div></div>`;
+    if (afterBoot.running) {
+      const m = afterBoot.live?.measure;
+      sheet.innerHTML = head('Conferindo os ajustes depois do reinício', `${afterBoot.live?.detail || 'Começando'}${m ? ` (rodada ${m.round} de ${m.rounds})` : ''}. O processador trabalha por cerca de um minuto.`);
+      return;
+    }
+    if (result) {
+      if (result.status !== 'completed') {
+        sheet.innerHTML = `${head('A conferência não terminou', result.reason || 'Tente de novo em alguns minutos.')}<div class="ab-actions"><button class="btn sm" type="button" data-afterboot-run>Tentar de novo</button></div>`;
+        return;
+      }
+      const undone = result.undone?.length || 0;
+      const text = undone ? `${undone} ${undone === 1 ? 'ajuste piorou e foi desfeito' : 'ajustes pioraram e foram desfeitos'}; o desfazer vale no próximo reinício.` : 'Medido do mesmo jeito que antes da otimização: os ajustes que valiam depois do reinício não pioraram nada.';
+      sheet.innerHTML = `${head(undone ? 'Conferido: desfiz o que piorou' : 'Conferido depois do reinício', text)}${metricRows(result)}<div class="ab-actions">${result.rebootAgain ? '<button class="btn sm primary" type="button" data-afterboot-restart>Reiniciar agora</button>' : ''}<button class="btn sm ghost" type="button" data-afterboot-close>Fechar</button></div>`;
+      return;
+    }
+    const when = new Date(info.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    sheet.innerHTML = `${head(`Falta conferir ${info.count} ${info.count === 1 ? 'ajuste' : 'ajustes'} da otimização de ${when}`, `${info.count === 1 ? 'Ele só valia' : 'Eles só valiam'} depois de reiniciar. O Nexo mede do mesmo jeito que antes da otimização (cerca de um minuto, com o processador trabalhando) e desfaz o que tiver piorado.`)}<div class="ab-actions"><button class="btn sm primary" type="button" data-afterboot-run>Conferir agora</button><button class="btn sm ghost" type="button" data-afterboot-close>Depois</button></div>`;
+  }
+  async function checkAfterBoot() {
+    if (Nexo.platform !== 'win32' || !bridge?.afterBootStatus || afterBoot.running) return;
+    try { afterBoot.info = await bridge.afterBootStatus(); } catch { afterBoot.info = null; }
+    if (afterBoot.info) afterBoot.result = null;
+    paintAfterBoot();
+  }
+  document.addEventListener('click', async (event) => {
+    const target = event.target.closest?.('[data-afterboot-run], [data-afterboot-close], [data-afterboot-restart]');
+    if (!target || !target.closest('#opt-afterboot')) return;
+    if (target.hasAttribute('data-afterboot-close')) { afterBoot.info = null; afterBoot.result = null; paintAfterBoot(); return; }
+    if (target.hasAttribute('data-afterboot-restart')) {
+      const ok = await Nexo.confirm({ title: 'Reiniciar agora?', body: 'Salve o que estiver aberto. O Windows reinicia em 15 segundos e o desfazer passa a valer.', confirmLabel: 'Reiniciar' });
+      if (ok) { try { await bridge.restartComputer({}); } catch (error) { showToast(error?.message || 'Não consegui reiniciar.'); } }
+      return;
+    }
+    afterBoot.running = true;
+    afterBoot.live = { detail: 'Conferindo se dá para medir direito' };
+    paintAfterBoot();
+    try { afterBoot.result = await bridge.runAfterBoot(); } catch (error) { afterBoot.result = { status: 'aborted', reason: error?.message || 'Não consegui conferir agora.' }; }
+    afterBoot.running = false;
+    if (afterBoot.result?.status === 'completed') afterBoot.info = null;
+    paintAfterBoot();
+  });
+  Nexo.on('view', (view) => { if (view === 'analysis') checkAfterBoot(); });
   Nexo.decorateFindings = decorateFindings;
 
   bridge?.onOptimizerEvent?.(onEvent);

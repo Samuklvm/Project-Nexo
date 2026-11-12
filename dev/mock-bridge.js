@@ -518,6 +518,8 @@ if (window.__nexoPlatform === 'linux') {
     // Página de Drivers: um desktop com NVIDIA + vídeo Intel, rede Realtek, Wi-Fi Intel genérico e componentes de jogo.
     scanDrivers: async () => { await wait(1200); return mockDrivers(); },
     // Na prévia não há internet: os ícones oficiais (que o app busca no site de cada fabricante) não aparecem.
-    vendorIcons: async () => ({})
+    vendorIcons: async () => ({}),
+    afterBootStatus: async () => null,
+    runAfterBoot: async () => ({ status: 'completed', comparison: {}, undone: [], rebootAgain: false, log: [] })
   });
 })();

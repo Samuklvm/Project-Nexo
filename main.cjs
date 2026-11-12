@@ -102,7 +102,7 @@ const SLOW_IPC_MS = {
   'window:minimize': 3000, 'window:toggle-maximize': 3000, 'window:close': 3000, 'window:get-state': 3000, 'games:scan': 120000, 'games:fetch-art': 90000, 'scan:run': 120000,
   'cleanup:scan': 120000, 'cleanup:preview': 90000, 'net:diagnose': 90000, 'lab:preflight': 60000, 'updates:check': 60000, 'session:probe-test': 60000, 'steam:connect': 60000, 'opt:plan': 120000, 'opt:games': 60000, 'drivers:scan': 150000, 'drivers:icons': 60000
 };
-for (const channel of ['analysis:deep-run', 'bench:cpu', 'lab:run', 'lab:adopt', 'lab:recover', 'reboot:start', 'reboot:continue', 'reboot:restart', 'account:sign-in', 'steam:sign-in', 'xbox:sign-in', 'cloud:connect', 'net:fix', 'scan:apply',
+for (const channel of ['analysis:deep-run', 'opt:after-boot-run', 'bench:cpu', 'lab:run', 'lab:adopt', 'lab:recover', 'reboot:start', 'reboot:continue', 'reboot:restart', 'account:sign-in', 'steam:sign-in', 'xbox:sign-in', 'cloud:connect', 'net:fix', 'scan:apply',
   'cleanup:run', 'drives:optimize', 'system:repair', 'opt:run', 'opt:fix', 'opt:revert', 'system:restart', 'updates:download', 'updates:install', 'sensors:service-install', 'fps:access', 'fps:choose', 'app:uninstall', 'account:import-config', 'integrations:import', 'games:add', 'games:set-cover']) SLOW_IPC_MS[channel] = Infinity;
 const slowSeen = new Map();
 function noteSlowIpc(channel, ms) {
@@ -2332,7 +2332,9 @@ registerIpcHandler('opt:run', async (_event, options) => {
   try {
     const result = await NexoOptimizer.run(system, plan, { consent, allowRisk, goal: 'jogos', signal, emit: (event) => sendToWindow('opt:event', event) });
     const id = `opt-${result.startedAt.toString(36)}`;
-    if (result.records.length) await optimizerSystem.saveRun({ id, at: result.startedAt, game: stored.game ? stored.game.name : null, records: result.records }).catch(() => {});
+    // Com ajuste que só vale depois de reiniciar, guarda também a medição de antes: a conferência depois do reinício compara com ela.
+    const baseline = result.status === 'completed' && result.rebootPending && result.before ? { before: result.before, rebootPending: true, endedAt: result.endedAt } : {};
+    if (result.records.length) await optimizerSystem.saveRun({ id, at: result.startedAt, game: stored.game ? stored.game.name : null, records: result.records, ...baseline }).catch(() => {});
     if (result.status === 'aborted') noteInterruption('otimizacao', result.reason, { codigo: result.code || 'erro', passos: plan.steps.filter((step) => step.selected).length });
     crumb('otimizacao', result.status, String(result.records.length));
     return { ...publicRun(result), id, summary: NexoOptimizer.summarize(result, plan) };
@@ -2380,6 +2382,50 @@ registerIpcHandler('system:restart', async (_event, options) => {
 registerIpcHandler('system:restart-abort', async () => { await runCode(systemTool('shutdown'), ['/a'], 10000); return { ok: true }; });
 registerIpcHandler('opt:cancel', async () => { if (optState.signal) optState.signal.cancelled = true; stopBench(); return { ok: true }; });
 registerIpcHandler('opt:status', async () => ({ running: optState.running }));
+/* Conferência depois do reinício: a otimização mais recente com ajuste que só vale depois de reiniciar, ainda não
+   conferida, e o PC reiniciou depois dela. */
+async function pendingAfterBoot() {
+  if (process.platform !== 'win32') return null;
+  const bootAt = Date.now() - os.uptime() * 1000;
+  const runs = (await optimizerSystem.loadStore().catch(() => ({ runs: [] }))).runs;
+  const run = [...runs].reverse().find((item) => item.rebootPending && item.before && !item.afterBoot);
+  if (!run || !(Number(run.endedAt) < bootAt - 30000)) return null;
+  const count = run.records.filter((record) => record.ok !== false && !record.undone && record.reboot && record.reboot !== 'nao').length;
+  return count ? { id: run.id, at: run.at, game: run.game || null, count } : null;
+}
+registerIpcHandler('opt:after-boot', async () => pendingAfterBoot());
+registerIpcHandler('opt:after-boot-run', async () => {
+  if (optState.running) throw new Error('A otimização já está rodando.');
+  const pending = await pendingAfterBoot();
+  if (!pending) throw new Error('Não há ajuste esperando reinício para conferir.');
+  const store = await optimizerSystem.loadStore();
+  const saved = store.runs.find((item) => item.id === pending.id);
+  const signal = { cancelled: false };
+  optState.running = true;
+  optState.signal = signal;
+  const system = {
+    now: () => Date.now(),
+    preflight: async () => ({ ...(await labSystem.preflight()), busy: await optimizerBusy(), uptimeSec: os.uptime() }),
+    bench: async (name) => (await labBench(name)).mopsPerSec,
+    ping: () => optimizerSystem.ping(),
+    revert: async (ids) => {
+      await optimizerSystem.revertRun(saved.id, ids);
+      const after = (await optimizerSystem.loadStore()).runs.find((item) => item.id === saved.id);
+      return { records: ids.map((recordId) => ({ id: recordId, ok: Boolean(after?.records.find((record) => record.id === recordId)?.undone) })) };
+    }
+  };
+  try {
+    const result = await NexoOptimizer.afterBoot(system, saved, { signal, emit: (event) => sendToWindow('opt:event', { ...event, scope: 'afterboot' }) });
+    // Medida de verdade (ou nada para conferir): marca como conferida. PC ocupado ou recém-ligado: fica para depois.
+    if (result.status === 'completed') {
+      const fresh = await optimizerSystem.loadStore();
+      const run = fresh.runs.find((item) => item.id === saved.id);
+      if (run) { run.afterBoot = { at: result.endedAt, comparison: result.comparison, undone: result.undone, rebootAgain: result.rebootAgain }; await optimizerSystem.saveRun(run).catch(() => {}); }
+    }
+    crumb('otimizacao', `depois-do-reinicio:${result.status}`, String(result.undone.length));
+    return { status: result.status, reason: result.reason, code: result.code || null, comparison: result.comparison, undone: result.undone, rebootAgain: result.rebootAgain, log: result.log.slice(-8) };
+  } finally { optState.running = false; optState.signal = null; }
+});
 registerIpcHandler('opt:revert', async (_event, options) => {
   if (optState.running) throw new Error('A otimização está rodando; espere ela terminar.');
   const runId = String(options?.runId || '').slice(0, 40);

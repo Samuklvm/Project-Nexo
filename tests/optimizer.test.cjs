@@ -285,3 +285,34 @@ test('leituras: scripts sem dado de fora embutido sem escape; nomes da Loja leg�
   assert.match(nicScript(), /'\*EEE'/);
   assert.match(STARTUP_SCRIPT, /StartupApproved/);
 });
+
+test('otimizador: conferência depois do reinício mede contra o antes e desfaz só o ajuste de reinício que piorou', async () => {
+  const Opt = require('../src/optimizer.js');
+  const before = Object.fromEntries(Opt.METRICS.map((metric) => [metric.id, []]));
+  for (const id of Opt.BENCHES) before[id] = [1000, 1010, 990];
+  before.gatewayMs = [2, 2.1, 1.9]; before.gatewayJitter = [0.3, 0.3, 0.3]; before.internetMs = [12, 12.4, 11.8]; before.internetJitter = [1, 1, 1];
+  const saved = { before, records: [
+    { id: 'c1', kind: 'pagefile', reboot: 'reiniciar', ok: true },
+    { id: 'c2', kind: 'nic', reboot: 'reiniciar', ok: true },
+    { id: 'c3', kind: 'registry', reboot: 'nao', ok: true }
+  ] };
+  const fake = (scores, extra = {}) => {
+    const reverted = [];
+    return { reverted, system: { now: () => 1, preflight: async () => ({ platform: 'win32', uptimeSec: 600, cpuLoad: 5, ...extra }), bench: async (name) => scores[name] ?? 1000, ping: async () => ({ gatewayMs: 2, gatewayJitter: 0.3, internetMs: 12, internetJitter: 1 }), revert: async (ids) => { reverted.push(...ids); return { records: ids.map((id) => ({ id, ok: true })) }; } } };
+  };
+  const same = fake({});
+  const fine = await Opt.afterBoot(same.system, saved, { rounds: 3 });
+  assert.equal(fine.status, 'completed');
+  assert.deepEqual(fine.undone, []);
+  assert.equal(fine.rebootAgain, false);
+  const slow = fake({ multi: 700 });
+  const worse = await Opt.afterBoot(slow.system, saved, { rounds: 3 });
+  assert.equal(worse.status, 'completed');
+  assert.deepEqual(slow.reverted, ['c1'], 'processador piorou: desfaz só o ajuste de reinício do processador (não o de rede, nem o que vale na hora)');
+  assert.deepEqual(worse.undone, ['c1']);
+  assert.equal(worse.rebootAgain, true);
+  const early = await Opt.afterBoot(fake({}, { uptimeSec: 30 }).system, saved, { rounds: 1 });
+  assert.equal(early.code, 'cedo');
+  const nothing = await Opt.afterBoot(same.system, { before, records: [{ id: 'c3', reboot: 'nao', ok: true }] }, { rounds: 1 });
+  assert.equal(nothing.code, 'vazio');
+});

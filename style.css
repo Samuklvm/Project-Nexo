@@ -1742,3 +1742,14 @@ body.lite .drivers-group { backdrop-filter: none; }
 .ds-logo.has-logo .driver-glyph { display: none; }
 .ds-logo .driver-logo { width: 26px; height: 26px; }
 .drivers-group[data-group="outros"] .driver { padding: 11px 0; }
+
+/* Conferência depois do reinício (na Análise e otimização) */
+.opt-afterboot { border-color: rgba(255, 214, 128, 0.35); }
+.opt-afterboot[hidden] + .sheet { margin-top: 0; }
+.opt-afterboot .ab-head { display: flex; gap: 14px; align-items: flex-start; }
+.opt-afterboot .ab-head h3 { margin: 0; font-size: 16px; font-weight: 620; letter-spacing: -0.008em; }
+.opt-afterboot .ab-head p { margin: 4px 0 0; max-width: 72ch; }
+.opt-afterboot .ab-ico { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: #ffd88a; background: rgba(255, 214, 128, 0.12); }
+.opt-afterboot .ab-ico svg { width: 18px; height: 18px; }
+.opt-afterboot .ab-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.opt-afterboot .opt-metrics { margin-top: 12px; }
