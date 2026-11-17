@@ -28,6 +28,37 @@
   <a href="https://github.com/Samuklvm/Project-Nexo/releases/latest"><b>⬇️ Baixar a última versão</b></a>
 </p>
 
+<!-- aviso-assinatura: tirar quando a 0.11.4 assinada sair -->
+> [!WARNING]
+> **Aviso temporário: o Windows pode bloquear o Nexo.** O Nexo ainda não tem assinatura digital. Por isso o Windows 11 pode mostrar **"O Controle Inteligente de Aplicativos bloqueou parte deste aplicativo"** ou a tela azul **"O Windows protegeu o computador"**. A assinatura já foi pedida e chega na **0.11.4**; até lá, veja abaixo como usar o Nexo, se quiser.
+
+<details>
+<summary><b>Como abrir o Nexo até a versão assinada sair</b></summary>
+
+**Tela azul "O Windows protegeu o computador" (SmartScreen):** clique em **Mais informações** e depois em **Executar assim mesmo**. Isso libera só o Nexo.
+
+**"O Controle Inteligente de Aplicativos bloqueou…":** esse controle não aceita exceção para um app só. As opções são:
+
+- **Esperar a 0.11.4**, que vem assinada e não é bloqueada.
+- **Ou desligar o Controle Inteligente de Aplicativos**, se você decidir que vale a pena:
+  1. Abra o menu Iniciar e procure **Segurança do Windows**.
+  2. Entre em **Controle de aplicativos e do navegador**.
+  3. Clique em **Configurações do Controle Inteligente de Aplicativos**.
+  4. Escolha **Desativado**.
+  5. Abra o instalador do Nexo de novo.
+
+**O que muda ao desligar:** o Windows deixa de barrar programas desconhecidos ou sem assinatura **no PC inteiro**, não só no Nexo. O antivírus do Windows (Microsoft Defender) continua ligado e funcionando. Para voltar, siga os mesmos passos e escolha **Ativado**; nas versões atualizadas do Windows 11 (desde abril de 2026) dá para religar sem reinstalar o Windows, desde que os dados de diagnóstico opcionais estejam ligados.
+
+**Por que dá para confiar no Nexo:**
+- É um projeto **independente, feito por uma pessoa só**, e a assinatura digital é paga e burocrática; por isso ela ainda não existe. Não é um sinal de nada escondido.
+- O código é **aberto** (licença GPL-3.0): qualquer pessoa pode ler tudo o que o Nexo faz, aqui neste repositório.
+- Os instaladores são gerados **automaticamente pelo GitHub** a partir desse código público, e os registros de cada build ficam abertos na aba Actions.
+- O Nexo **não invade nem acessa** outros computadores, **não desliga** antivírus nem nenhuma proteção do Windows, e toda mudança no PC pede a sua confirmação e pode ser desfeita.
+- Baixe **só da [página de releases oficial](https://github.com/Samuklvm/Project-Nexo/releases)**. Cópias de outros sites não são do projeto.
+
+</details>
+<!-- /aviso-assinatura -->
+
 <p align="center">
   <img src="docs/images/home.jpg" alt="Tela inicial do Nexo: Índice Nexo, medições ao vivo e mapa do sistema" width="92%">
 </p>

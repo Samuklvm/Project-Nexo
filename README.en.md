@@ -28,6 +28,37 @@
   <a href="https://github.com/Samuklvm/Project-Nexo/releases/latest"><b>⬇️ Download the latest version</b></a>
 </p>
 
+<!-- aviso-assinatura: tirar quando a 0.11.4 assinada sair -->
+> [!WARNING]
+> **Temporary notice: Windows may block Nexo.** Nexo does not have a digital signature yet. Because of that, Windows 11 may show **"Smart App Control has blocked part of this app"** or the blue **"Windows protected your PC"** screen. The signature has been requested and arrives in **0.11.4**; until then, see below how to use Nexo, if you want to.
+
+<details>
+<summary><b>How to open Nexo until the signed version is out</b></summary>
+
+**Blue "Windows protected your PC" screen (SmartScreen):** click **More info** and then **Run anyway**. This only allows Nexo.
+
+**"Smart App Control has blocked…":** this control does not accept an exception for a single app. Your options are:
+
+- **Wait for 0.11.4**, which is signed and is not blocked.
+- **Or turn off Smart App Control**, if you decide it is worth it:
+  1. Open the Start menu and search for **Windows Security**.
+  2. Go to **App & browser control**.
+  3. Click **Smart App Control settings**.
+  4. Choose **Off**.
+  5. Open the Nexo installer again.
+
+**What changes when you turn it off:** Windows stops blocking unknown or unsigned programs **on the whole PC**, not only Nexo. The Windows antivirus (Microsoft Defender) stays on and working. To go back, follow the same steps and choose **On**; on up-to-date Windows 11 (since April 2026) you can turn it back on without reinstalling Windows, as long as optional diagnostic data is on.
+
+**Why you can trust Nexo:**
+- It is an **independent project made by a single person**, and a digital signature is paid and bureaucratic; that is why it does not exist yet. It is not a sign of anything hidden.
+- The code is **open source** (GPL-3.0 license): anyone can read everything Nexo does, right here in this repository.
+- The installers are built **automatically by GitHub** from that public code, and the logs of every build are open in the Actions tab.
+- Nexo **does not break into or access** other computers, **does not turn off** antivirus or any Windows protection, and every change to the PC asks for your confirmation and can be undone.
+- Download **only from the [official releases page](https://github.com/Samuklvm/Project-Nexo/releases)**. Copies from other sites are not from the project.
+
+</details>
+<!-- /aviso-assinatura -->
+
 <p align="center">
   <img src="docs/images/home.jpg" alt="Nexo home screen: Nexo Index, live readings and system map" width="92%">
 </p>
