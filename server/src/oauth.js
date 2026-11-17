@@ -60,7 +60,8 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
       code_challenge_methods_supported: ['S256'],
       token_endpoint_auth_methods_supported: ['none'],
       revocation_endpoint_auth_methods_supported: ['none'],
-      scopes_supported: [SCOPE]
+      scopes_supported: [SCOPE],
+      authorization_response_iss_parameter_supported: true
     });
   }
 
@@ -98,7 +99,7 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
     const get = (name) => (typeof params[name] === 'string' ? params[name] : '');
     if (get('response_type') !== 'code') throw new OAuthError(400, 'unsupported_response_type', 'Só o fluxo de código é aceito.');
     const clientId = get('client_id');
-    const client = CLIENT_ID.test(clientId) ? await env.DB.prepare('SELECT client_id, name, redirect_uris FROM oauth_clients WHERE client_id = ?').bind(clientId).first() : null;
+    const client = CLIENT_ID.test(clientId) ? await env.DB.prepare('SELECT client_id, name, redirect_uris, created_at FROM oauth_clients WHERE client_id = ?').bind(clientId).first() : null;
     if (!client) throw new OAuthError(400, 'invalid_client', 'Cliente desconhecido.');
     let uris = [];
     try { uris = JSON.parse(client.redirect_uris); } catch { uris = []; }
@@ -125,7 +126,7 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
     if (!admin) return json({ error: 'Abra o painel pelo Nexo neste navegador.' }, 401);
     try {
       const { client } = await checkAuthorize(env, Object.fromEntries(url.searchParams), url.origin);
-      return json({ email: maskEmail(admin.email), role: admin.role, roleName: ROLE_NAMES[admin.role] || admin.role, client: client.name || 'Claude' });
+      return json({ email: maskEmail(admin.email), role: admin.role, roleName: ROLE_NAMES[admin.role] || admin.role, client: client.name || 'Claude', registradoHaSegundos: Math.max(0, Math.round((now() - client.created_at) / 1000)) });
     } catch (error) { if (error instanceof OAuthError) return json({ error: error.message }, 400); throw error; }
   }
 
@@ -188,26 +189,28 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
     const row = code && code.length <= 80 ? await env.DB.prepare('SELECT * FROM oauth_codes WHERE code_hash = ?').bind(await sha256Hex(code)).first() : null;
     if (!row || row.used || row.expires_at < now()) throw new OAuthError(400, 'invalid_grant', 'Código inválido, vencido ou já usado.');
     if (String(form.client_id || '') !== row.client_id) throw new OAuthError(400, 'invalid_grant', 'Código de outro cliente.');
+    // Gasta o código ANTES de conferir o resto: tentativa errada (verificador, endereço) também queima o código, e dois
+    // pedidos ao mesmo tempo nunca passam os dois.
+    const spent = await env.DB.prepare('UPDATE oauth_codes SET used = 1 WHERE code_hash = ? AND used = 0').bind(row.code_hash).run();
+    if (!spent?.meta?.changes) throw new OAuthError(400, 'invalid_grant', 'Código já usado.');
     if (form.redirect_uri !== undefined && form.redirect_uri !== row.redirect_uri) throw new OAuthError(400, 'invalid_grant', 'Endereço de volta diferente.');
     const verifier = String(form.code_verifier || '');
     if (!VERIFIER.test(verifier) || !sameBytes(utf8(await s256(verifier)), utf8(row.challenge))) throw new OAuthError(400, 'invalid_grant', 'Verificador PKCE não confere.');
     if (form.resource && form.resource !== `${origin}/mcp`) throw new OAuthError(400, 'invalid_target', 'Este servidor só emite tokens para o próprio /mcp.');
-    // Gasta o código antes de emitir (dois pedidos ao mesmo tempo: só um passa).
-    const spent = await env.DB.prepare('UPDATE oauth_codes SET used = 1 WHERE code_hash = ? AND used = 0').bind(row.code_hash).run();
-    if (!spent?.meta?.changes) throw new OAuthError(400, 'invalid_grant', 'Código já usado.');
     if (!await roleOf(env, row.email)) throw new OAuthError(400, 'invalid_grant', 'Quem autorizou não está mais no painel.');
     const grantId = randomId(12);
     await env.DB.prepare('INSERT INTO oauth_grants (grant_id, client_id, email, scope, created_at) VALUES (?, ?, ?, ?, ?)').bind(grantId, row.client_id, row.email, row.scope, now()).run();
     return issue(env, grantId);
   }
 
-  async function exchangeRefresh(env, form) {
+  async function exchangeRefresh(env, form, origin) {
     const token = String(form.refresh_token || '');
     const row = TOKEN.test(token) ? await env.DB.prepare(`SELECT t.token_hash, t.used, t.expires_at, g.grant_id, g.client_id, g.email, g.revoked
       FROM oauth_tokens t JOIN oauth_grants g ON g.grant_id = t.grant_id WHERE t.token_hash = ? AND t.kind = 'renovacao'`).bind(await sha256Hex(token)).first() : null;
     if (!row || row.revoked) throw new OAuthError(400, 'invalid_grant', 'Renovação inválida ou revogada.');
     if (String(form.client_id || '') !== row.client_id) throw new OAuthError(400, 'invalid_grant', 'Renovação de outro cliente.');
     if (row.expires_at < now()) throw new OAuthError(400, 'invalid_grant', 'Renovação vencida.');
+    if (form.resource && form.resource !== `${origin}/mcp`) throw new OAuthError(400, 'invalid_target', 'Este servidor só emite tokens para o próprio /mcp.');
     // Já trocada (used = quando): repetição dentro de 60 s é resposta perdida ou corrida e ganha par novo; depois
     // disso é sinal de roubo e corta a autorização inteira.
     const reused = async (usedAt) => {
@@ -231,7 +234,7 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
       const form = await readForm(request);
       const origin = new URL(request.url).origin;
       if (form.grant_type === 'authorization_code') return oauthJson(await exchangeCode(env, form, origin));
-      if (form.grant_type === 'refresh_token') return oauthJson(await exchangeRefresh(env, form));
+      if (form.grant_type === 'refresh_token') return oauthJson(await exchangeRefresh(env, form, origin));
       throw new OAuthError(400, 'unsupported_grant_type', 'Só código de autorização e renovação.');
     } catch (error) {
       if (error instanceof OAuthError) return fail(error);
@@ -259,7 +262,7 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
    */
   async function bearer(request, env) {
     const header = request.headers.get('authorization') || '';
-    const value = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    const value = /^bearer\s+/i.test(header) ? header.replace(/^bearer\s+/i, '').trim() : '';
     const unauthorized = (message) => Object.assign(new Error(message), { status: 401 });
     if (!value.startsWith('nexo_at_') || !TOKEN.test(value)) throw unauthorized('Conecte o Claude ao painel do Nexo.');
     const row = await env.DB.prepare(`SELECT t.expires_at, g.grant_id, g.email, g.revoked FROM oauth_tokens t JOIN oauth_grants g ON g.grant_id = t.grant_id

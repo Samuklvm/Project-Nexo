@@ -32,7 +32,8 @@ export const CONNECT_HTML = shell(`
     <li class="yes" data-write><i>✓</i><span><strong>Marcar erros como corrigidos ou abertos</strong><small>cada mudança fica em "O que o Claude fez"</small></span></li>
   </ul>
   <div class="never"><span>Nunca:</span><b>✕ E-mails dos usuários</b><b>✕ Equipe</b><b>✕ Chaves</b></div>
-  <p class="muted small">Pedido feito por <strong data-client></strong>. Você revoga quando quiser, em Equipe e acessos no painel.</p>
+  <p class="warn small"><strong>Só autorize se você acabou de clicar em Conectar no seu Claude.</strong> Se alguém te mandou este link, recuse.</p>
+  <p class="muted small">Pedido feito por <strong data-client></strong> <span data-when></span>. Você revoga quando quiser, em Equipe e acessos no painel.</p>
   <div class="actions"><button type="button" class="ghost" data-act="recusar">Recusar</button><button type="button" class="primary" data-act="autorizar"><span>✦</span> Autorizar</button></div>
 </section>
 <section data-state="abrir" hidden>
@@ -70,6 +71,8 @@ export const CONNECT_JS = `(() => {
     $('[data-who]').textContent = data.email || '--';
     $('[data-role]').textContent = ROLES[data.role] || data.role || '--';
     $('[data-client]').textContent = data.client || 'Claude';
+    const secs = Number(data.registradoHaSegundos);
+    $('[data-when]').textContent = !Number.isFinite(secs) ? '' : secs < 90 ? 'agora há pouco' : secs < 5400 ? 'há ' + Math.round(secs / 60) + ' min' : 'há ' + Math.round(secs / 3600) + ' h (antigo: desconfie)';
     $('[data-write]').hidden = data.role === 'leitura';
     show('consentir');
   }
@@ -130,6 +133,8 @@ h1 { margin: 0 0 8px; font: 650 25px/1.22 "Segoe UI Variable Display", "Segoe UI
 .can i { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; font-style: normal; font-size: 12px; font-weight: 800; color: #04121a; background: linear-gradient(135deg, var(--ok), var(--star)); box-shadow: 0 0 12px -2px rgba(70, 230, 160, 0.7); }
 .can strong { display: block; font-weight: 600; font-size: 14px; }
 .can small { display: block; color: var(--mist); font-size: 12.5px; }
+.warn { margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; border: 1px solid rgba(255, 193, 90, 0.45); background: rgba(255, 193, 90, 0.08); color: #ffd58a; }
+.warn strong { font-weight: 650; }
 .never { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; margin: 0 0 16px; font-size: 12.5px; color: var(--mist); }
 .never b { font-weight: 600; padding: 3px 10px; border-radius: 99px; border: 1px solid rgba(255, 91, 110, 0.4); background: rgba(255, 91, 110, 0.1); color: #ff9aa6; }
 .steps { text-align: left; margin: 14px auto 12px; padding: 0 0 0 4px; list-style: none; counter-reset: s; display: grid; gap: 8px; max-width: 360px; }

@@ -86,7 +86,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   };
   const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES, CAN });
   // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
-  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now });
+  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -423,7 +423,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   /** Um erro com os PCs que mandaram; os e-mails só aparecem para quem tem a permissão "emails". */
   /** Um erro e os relatórios dele (com e-mail: quem chama decide o que mostra). null se não existe. */
   async function errorDetailRows(env, signature) {
-    const group = await env.DB.prepare('SELECT * FROM error_groups WHERE signature = ?').bind(signature).first();
+    // Colunas listadas uma a uma: coluna nova numa migração futura não sai sozinha pelo painel nem pelo conector.
+    const group = await env.DB.prepare('SELECT signature, source, level, message, stack, context, first_at, last_at, status, fixed_in, note FROM error_groups WHERE signature = ?').bind(signature).first();
     if (!group) return null;
     const { results = [] } = await env.DB.prepare('SELECT email, email_verified, version, platform, count, first_at, last_at FROM error_reports WHERE signature = ? ORDER BY last_at DESC LIMIT 500').bind(signature).all();
     return { group, results };
@@ -457,7 +458,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const pick = 'SELECT status, fixed_in, note FROM error_groups WHERE signature = ?';
     const before = await env.DB.prepare(pick).bind(signature).first();
     if (!before) return null;
-    const after = { status, fixed_in: status === 'corrigido' ? fixedIn : null, note: note ?? before.note ?? null };
+    const after = { status, fixed_in: status === 'corrigido' ? fixedIn : null, note: note === undefined ? before.note ?? null : note };
     await env.DB.batch([
       env.DB.prepare('UPDATE error_groups SET status = ?, fixed_in = ?, note = ? WHERE signature = ?').bind(after.status, after.fixed_in, after.note, signature),
       env.DB.prepare('INSERT INTO claude_actions (at, grant_id, tool, target, before, after) VALUES (?, ?, ?, ?, ?, ?)').bind(now(), grantId, 'nexo_marcar_erro', signature, JSON.stringify({ ...before }), JSON.stringify(after))
@@ -477,11 +478,12 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   async function adminClaude({ env, need }) {
     need('chaves');
     const today = dayOf(now());
-    const { results = [] } = await env.DB.prepare(`SELECT g.grant_id, g.email, g.created_at, g.last_used, g.calls, g.revoked, c.name, r.count AS today
+    const { results = [] } = await env.DB.prepare(`SELECT g.grant_id, g.email, g.created_at, g.last_used, g.calls, g.revoked, c.name, r.count AS today,
+        EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.grant_id = g.grant_id AND t.kind = 'renovacao' AND t.used = 0 AND t.expires_at > ?) AS viva
       FROM oauth_grants g LEFT JOIN oauth_clients c ON c.client_id = g.client_id LEFT JOIN rate r ON r.key = 'mcp:' || g.grant_id AND r.day = ?
-      ORDER BY g.revoked, g.created_at DESC LIMIT 50`).bind(today).all();
+      ORDER BY g.revoked, g.created_at DESC LIMIT 50`).bind(now(), today).all();
     return json({
-      conexoes: results.map((row) => ({ id: row.grant_id, cliente: row.name || 'Claude', autorizadoPor: row.email, criadoEm: row.created_at, ultimoUso: row.last_used, chamadas: row.calls, chamadasHoje: row.today || 0, revogada: row.revoked === 1 })),
+      conexoes: results.map((row) => ({ id: row.grant_id, cliente: row.name || 'Claude', autorizadoPor: row.email, criadoEm: row.created_at, ultimoUso: row.last_used, chamadas: row.calls, chamadasHoje: row.today || 0, revogada: row.revoked === 1, estado: row.revoked === 1 ? 'revogada' : row.viva ? 'ativa' : 'expirada' })),
       acoes: await claudeHistory(env, 30)
     });
   }
@@ -719,6 +721,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         env.DB.prepare('DELETE FROM oauth_codes WHERE expires_at < ?').bind(at),
         env.DB.prepare('DELETE FROM oauth_tokens WHERE expires_at < ? OR grant_id IN (SELECT grant_id FROM oauth_grants WHERE revoked = 1)').bind(at),
         env.DB.prepare('DELETE FROM oauth_grants WHERE revoked = 1 AND revoked_at < ?').bind(at - 30 * DAY),
+        // Conexão parada até a renovação vencer (30 dias sem uso): sai também.
+        env.DB.prepare("DELETE FROM oauth_grants WHERE revoked = 0 AND created_at < ? AND grant_id NOT IN (SELECT grant_id FROM oauth_tokens WHERE kind = 'renovacao' AND expires_at >= ?)").bind(at - DAY, at),
         env.DB.prepare('DELETE FROM oauth_clients WHERE created_at < ? AND client_id NOT IN (SELECT client_id FROM oauth_grants)').bind(at - 7 * DAY),
         env.DB.prepare('DELETE FROM claude_actions WHERE at < ?').bind(at - 180 * DAY)
       ]);

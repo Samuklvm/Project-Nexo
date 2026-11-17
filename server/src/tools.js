@@ -124,7 +124,8 @@ export function createTools({ summaryData, usersData, errorListData, errorDetail
         if (!status) throw new ToolError('Diga o status: corrigido, aberto, ignorado ou reaberto.');
         const fixedIn = typeof args.versao === 'string' && RE.version.test(args.versao) ? args.versao : null;
         if (status === 'corrigido' && !fixedIn) throw new ToolError('Para marcar como corrigido, diga em qual versão a correção sai (ex.: 0.11.4).');
-        const note = typeof args.nota === 'string' ? args.nota.slice(0, 500) : undefined;
+        let note; // sem nota: mantém a que já existe; nota vazia: apaga
+        if (typeof args.nota === 'string') note = args.nota.trim() ? args.nota.slice(0, 500) : null;
         const result = await markErrorByClaude(env, who.grantId, signature, { status, fixedIn, note });
         if (!result) throw new ToolError('Erro não encontrado.');
         return result;
@@ -155,8 +156,9 @@ Medidas: ${Object.entries(MEDIDAS).map(([name, measure]) => `${name} (${measure.
       heavy: true,
       run: async (args, { env }) => {
         const days = dias(args.dias, 60);
+        const rows = await telemetryRows(env, days); // falha do banco = erro interno, não erro de argumento
         let table;
-        try { table = crossTab(await telemetryRows(env, days), { linha: args.linha, coluna: args.medida ? undefined : args.coluna, medida: args.medida, filtro: args.filtro }); }
+        try { table = crossTab(rows, { linha: args.linha, coluna: args.medida ? undefined : args.coluna, medida: args.medida, filtro: args.filtro }); }
         catch (error) { throw new ToolError(error.message); }
         return { dias: days, ...table };
       }

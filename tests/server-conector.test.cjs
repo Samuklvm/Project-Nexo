@@ -124,9 +124,10 @@ test('fluxo completo com PKCE: código de uso único, de 60 s, preso ao verifica
   assert.equal(back.searchParams.get('state'), 'estado-123');
   assert.equal(back.searchParams.get('iss'), ORIGIN);
   const code = back.searchParams.get('code');
-  const exchange = (extra = {}) => call('POST', '/oauth/token', { form: { grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: CLAUDE_CB, client_id: client.client_id, ...extra } });
-  assert.equal((await exchange({ code_verifier: pkce().verifier })).data.error, 'invalid_grant', 'outro verificador');
-  assert.equal((await exchange({ redirect_uri: CLAUDE_COM_CB })).data.error, 'invalid_grant', 'outro endereço de volta');
+  const exchange = (extra = {}, useCode = code) => call('POST', '/oauth/token', { form: { grant_type: 'authorization_code', code: useCode, code_verifier: verifier, redirect_uri: CLAUDE_CB, client_id: client.client_id, ...extra } });
+  const freshCode = async () => new URL((await approve(call, cookie, params)).data.location).searchParams.get('code');
+  assert.equal((await exchange({ code_verifier: pkce().verifier }, await freshCode())).data.error, 'invalid_grant', 'outro verificador');
+  assert.equal((await exchange({ redirect_uri: CLAUDE_COM_CB }, await freshCode())).data.error, 'invalid_grant', 'outro endereço de volta');
   const ok = await exchange({ resource: `${ORIGIN}/mcp` });
   assert.equal(ok.status, 200);
   assert.match(ok.data.access_token, /^nexo_at_[A-Za-z0-9_-]{30,}$/);
@@ -582,4 +583,89 @@ test('revisão: dias nulo ou vazio usa o padrão (30), não 1 dia', async () => 
   assert.equal((await callTool(env.call, t, 'nexo_usuarios', { dias: null })).structuredContent.dias, 30);
   assert.equal((await callTool(env.call, t, 'nexo_telemetria', { dias: '' })).structuredContent.dias, 30);
   assert.equal((await callTool(env.call, t, 'nexo_cruzar', { linha: 'versao', dias: null })).structuredContent.dias, 30);
+});
+
+/* ---------- Pontos menores da revisão ---------- */
+test('menores: renovação com resource de outro servidor é recusada', async () => {
+  const env = h.setup();
+  const { client, tokens } = await connect(env);
+  const bad = await env.call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: client.client_id, resource: 'https://evil.example/mcp' } });
+  assert.equal(bad.status, 400);
+  assert.equal(bad.data.error, 'invalid_target');
+  const ok = await env.call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: client.client_id, resource: `${ORIGIN}/mcp` } });
+  assert.equal(ok.status, 200);
+});
+
+test('menores: conexão parada com a renovação vencida aparece como expirada e some na limpeza', async () => {
+  const env = h.setup();
+  await connect(env);
+  h.tick(31 * 24 * 3600 * 1000);
+  const view = await panelApi(env.call, await env.panelCookie(), 'GET', 'claude');
+  assert.equal(view.data.conexoes[0].estado, 'expirada');
+  assert.equal(view.data.conexoes[0].revogada, false);
+  await env.app.scheduled({}, env.env);
+  assert.equal((await env.env.DB.prepare('SELECT COUNT(*) AS n FROM oauth_grants').first()).n, 0);
+  assert.equal((await env.env.DB.prepare('SELECT COUNT(*) AS n FROM oauth_clients').first()).n, 0, 'o cliente dela sai também (depois de 7 dias sem conexão)');
+});
+
+test('menores: página de autorização avisa contra golpe e mostra quando o pedido começou', async () => {
+  const env = h.setup();
+  const client = (await register(env.call)).data;
+  const params = authParams(client.client_id, pkce().challenge);
+  const html = await (await env.call('GET', `/painel/conectar?${qs(params)}`, { raw: true })).text();
+  assert.match(html, /Só autorize se você acabou de clicar em Conectar/);
+  h.tick(90 * 1000);
+  const who = await env.call('GET', `/painel/api/conectar/quem?${qs(params)}`, { cookie: await env.panelCookie() });
+  assert.equal(who.data.registradoHaSegundos, 90);
+});
+
+test('menores: resposta 202 também leva os cabeçalhos de segurança', async () => {
+  const env = h.setup();
+  const t = (await connect(env)).tokens.access_token;
+  const note = await env.call('POST', '/mcp', { token: t, body: { jsonrpc: '2.0', method: 'notifications/initialized' }, raw: true });
+  assert.equal(note.status, 202);
+  assert.equal(note.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(note.headers.get('cache-control'), 'no-store');
+});
+
+test('menores: o detalhe do erro só leva as colunas conhecidas', async () => {
+  const env = h.setup();
+  await seed(env);
+  await env.env.DB.prepare('ALTER TABLE error_groups ADD COLUMN segredo_futuro TEXT').run();
+  await env.env.DB.prepare("UPDATE error_groups SET segredo_futuro = 'x'").run();
+  const t = (await connect(env)).tokens.access_token;
+  const group = (await callTool(env.call, t, 'nexo_erro', { assinatura: SIGS[0] })).structuredContent.group;
+  assert.deepEqual(Object.keys(group).sort(), ['context', 'first_at', 'fixed_in', 'last_at', 'level', 'message', 'note', 'signature', 'source', 'stack', 'status']);
+});
+
+test('menores: falha do banco no cruzamento é erro interno, não erro de argumento', async () => {
+  const env = h.setup();
+  const t = (await connect(env)).tokens.access_token;
+  const prepare = env.env.DB.prepare.bind(env.env.DB);
+  env.env.DB.prepare = (sql) => { if (/FROM telemetry WHERE day >=/.test(sql)) throw new Error('D1_ERROR: banco fora do ar'); return prepare(sql); };
+  const result = await callTool(env.call, t, 'nexo_cruzar', { linha: 'versao' });
+  assert.equal(result.isError, true);
+  assert.equal(result.content[0].text, 'Erro interno ao rodar a ferramenta.');
+});
+
+test('menores: metadados anunciam o iss na resposta da autorização', async () => {
+  const env = h.setup();
+  assert.equal((await env.call('GET', '/.well-known/oauth-authorization-server')).data.authorization_response_iss_parameter_supported, true);
+});
+
+test('menores: "bearer" em minúsculas, PKCE errado gasta o código e nota vazia vira nula', async () => {
+  const env = h.setup();
+  await seed(env);
+  const t = (await connect(env)).tokens.access_token;
+  const lower = await env.call('POST', '/mcp', { headers: { authorization: `bearer ${t}` }, body: { jsonrpc: '2.0', id: 1, method: 'ping' } });
+  assert.equal(lower.status, 200);
+  const client = (await register(env.call)).data;
+  const { verifier, challenge } = pkce();
+  const code = new URL((await approve(env.call, await env.panelCookie(), authParams(client.client_id, challenge))).data.location).searchParams.get('code');
+  const exchange = (v) => env.call('POST', '/oauth/token', { form: { grant_type: 'authorization_code', code, code_verifier: v, redirect_uri: CLAUDE_CB, client_id: client.client_id } });
+  assert.equal((await exchange(pkce().verifier)).data.error, 'invalid_grant');
+  assert.equal((await exchange(verifier)).data.error, 'invalid_grant', 'depois de um verificador errado o código não vale mais');
+  await callTool(env.call, t, 'nexo_marcar_erro', { assinatura: SIGS[0], status: 'ignorado', nota: 'algo' });
+  await callTool(env.call, t, 'nexo_marcar_erro', { assinatura: SIGS[0], status: 'ignorado', nota: '   ' });
+  assert.equal((await env.env.DB.prepare('SELECT note FROM error_groups WHERE signature = ?').bind(SIGS[0]).first()).note, null);
 });

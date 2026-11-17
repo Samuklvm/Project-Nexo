@@ -30,7 +30,7 @@ export class ToolError extends Error {}
 
 export const INSTRUCTIONS = 'Você está conectado ao servidor do Nexo Device Care, app grátis de manutenção de PCs gamer do Samuel (Windows e Linux). As ferramentas leem métricas, usuários, telemetria anônima e erros agrupados, e marcam erros como corrigidos, abertos ou ignorados. E-mails e dados de conta nunca vêm. Ao marcar um erro como corrigido, informe a versão em que a correção sai. Tudo que você mudar fica registrado no painel, em "O que o Claude fez".';
 
-export function createMcp({ tools, serverVersion, bearer, limit, json, now }) {
+export function createMcp({ tools, serverVersion, bearer, limit, json, now, emptyHeaders = {} }) {
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   const listed = tools.map(({ name, title, description, inputSchema, outputSchema, annotations }) => ({ name, title, description, inputSchema, ...(outputSchema ? { outputSchema } : {}), annotations: { openWorldHint: false, ...annotations } }));
   const reply = (id, result) => json({ jsonrpc: '2.0', id, result });
@@ -79,7 +79,7 @@ export function createMcp({ tools, serverVersion, bearer, limit, json, now }) {
     try { message = JSON.parse(raw); } catch { return rpcError(null, -32700, 'JSON inválido.', 400); }
     if (Array.isArray(message) || !message || typeof message !== 'object' || message.jsonrpc !== '2.0' || typeof message.method !== 'string') return rpcError(message?.id, -32600, 'Pedido JSON-RPC inválido (lotes não são aceitos).', 400);
     const { id, method, params } = message;
-    if (id === undefined) return new Response(null, { status: 202 }); // notificação: nada a responder
+    if (id === undefined) return new Response(null, { status: 202, headers: emptyHeaders }); // notificação: nada a responder
     switch (method) {
       case 'initialize': {
         const asked = params?.protocolVersion;
