@@ -10,12 +10,13 @@ Um Worker da Cloudflare (`server/`) com banco D1. Recebe os relatórios de erro 
 | Entrar com a Steam | `GET /v1/steam/start`, `/back`, `/me`, `/library`, `/achievements` | o app, quando a pessoa conecta a conta Steam |
 | Painel do criador | `/painel` | navegador (link de uso único que o app abre) |
 | Leitura para ferramentas | `GET /v1/tools/errors` | chave `nexo_…` criada no painel (só erros, sem e-mails) |
+| Conector do Claude (MCP) | `POST /mcp`, `/oauth/register`, `/oauth/token`, `/oauth/revoke`, `/.well-known/oauth-*`, `/painel/conectar` | o Claude, depois que alguém do painel autoriza |
 
 O que cada parte guarda, por quanto tempo e como apagar está em [PRIVACIDADE.md](../PRIVACIDADE.md#servidor-do-nexo).
 
 ## Plano gratuito
 
-O plano grátis da Cloudflare dá 100 mil pedidos por dia, 10 ms de CPU por pedido e 5 GB no D1. O app faz poucos pedidos por PC: telemetria (se ligada): um resumo por dia, mais o parcial de hoje no máximo a cada 3 horas; erros só quando há erro novo (no máximo a cada 30 min) e uma cópia da sincronização a cada 30 min, se ligada.
+O plano grátis da Cloudflare dá 100 mil pedidos por dia, 10 ms de CPU por pedido e 5 GB no D1. O conector do Claude tem limite próprio: 2.000 chamadas de ferramenta por dia para cada conexão. O app faz poucos pedidos por PC: telemetria (se ligada): um resumo por dia, mais o parcial de hoje no máximo a cada 3 horas; erros só quando há erro novo (no máximo a cada 30 min) e uma cópia da sincronização a cada 30 min, se ligada.
 
 ## Testar sem a Cloudflare
 
@@ -54,6 +55,19 @@ No app, entre com o e-mail de dono e ligue a sincronização: aparece **Abrir o 
 - **Erros:** agrupados por assinatura, com quantos PCs, versões, sistemas e, para quem pediu aviso, os e-mails. Marque *corrigido em* uma versão: se o mesmo erro aparecer de novo nessa versão ou numa mais nova, ele reabre sozinho.
 - **Telemetria:** só somas (PCs ativos, versões, sistemas, hardware, telas e recursos mais usados).
 - **Equipe e acessos** (só o dono): adicione pessoas por e-mail Google com o papel **colaborador** (vê e-mails e muda o estado dos erros) ou **leitura** (vê erros e telemetria, sem e-mails). Tirar alguém corta o acesso no próximo pedido. Também é ali que se cria uma **chave de ferramenta** (`nexo_…`, mostrada uma vez só) para um assistente ou script ler os erros, sem e-mails.
+
+## Conectar o Claude
+
+O servidor também é um **conector remoto (MCP)** do Claude: com ele, o Claude lê métricas, usuários, telemetria e erros do painel e marca erros, sem nunca ver e-mails, equipe ou chaves.
+
+1. No Claude: **Configurações → Conectores → Adicionar conector personalizado**.
+   - Nome: `Nexo`.
+   - URL: `https://nexo-api.<subdomínio>.workers.dev/mcp` (o endereço aparece em **Equipe e acessos**, no cartão "Conexões do Claude", com botão de copiar).
+   - Configurações avançadas: **em branco**. O Claude se registra sozinho, e o servidor só aceita os endereços de volta do próprio Claude.
+2. Abre a página **Conectar o Claude ao painel do Nexo**. Com o painel aberto **no mesmo navegador**, ela mostra o que o Claude pode e não pode fazer. Clique em **Autorizar**.
+3. Pronto: em qualquer conversa o Claude tem as ferramentas `nexo_resumo`, `nexo_usuarios`, `nexo_erros`, `nexo_erro`, `nexo_marcar_erro`, `nexo_telemetria`, `nexo_cruzar` e `nexo_historico`.
+
+O Claude herda o papel de quem autorizou: com **leitura**, ele só lê. Tirar a pessoa da equipe corta o Claude dela no próximo pedido. Em **Equipe e acessos**, o dono vê as conexões (com **Revogar**) e o cartão **O que o Claude fez**, com cada mudança. O acesso vale 1 hora e é renovado sozinho por até 30 dias; reusar um token de renovação já trocado revoga a conexão inteira.
 
 ## Relatórios num repositório privado (opcional)
 
