@@ -14,6 +14,7 @@ const Sig = require('./driver-signature.cjs');
 
 const MAX_BYTES = 1536 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
+const IDLE_MS = 60000; // sem nenhum pedaço em 60 s: a conexão travou (libera a vaga e guarda o pedaço)
 const EMIT_EVERY = 100; // ms: no máximo 10 atualizações de progresso por segundo
 const DAY = 24 * 3600 * 1000;
 const KEEP_INSTALLED = 14 * DAY;
@@ -33,7 +34,7 @@ function official(value, domains) {
   } catch { return null; }
 }
 
-function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, elevate, emit = () => {}, now = () => Date.now(), max = 4 }) {
+function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, elevate, emit = () => {}, now = () => Date.now(), max = 4, idleMs = IDLE_MS }) {
   const items = new Map();
   const queue = [];
   let active = 0;
@@ -66,6 +67,9 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     if (!Sig.allowedSigner(plan.signer)) throw new Error('Assinante não permitido.');
     const current = items.get(id);
     if (current && (BUSY.has(current.phase) || current.phase === 'ready')) return snapshot(current);
+    for (const other of items.values()) {
+      if (other.id !== id && other.plan.fileName === plan.fileName && (other.phase === 'queued' || other.phase === 'downloading' || other.phase === 'verifying')) throw new Error('Esse mesmo arquivo já está sendo baixado em outro cartão.');
+    }
     // Cópia: depois de começar, o motor não depende mais da leitura (nem de quem mandou o plano).
     const frozen = Object.freeze({ url: plan.url, domains: Object.freeze([...domains]), fileName: plan.fileName, signer: plan.signer, sha512: /^[0-9a-f]{128}$/i.test(String(plan.sha512 || '')) ? String(plan.sha512).toLowerCase() : null });
     const item = { id, plan: frozen, phase: 'queued', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, lastEmit: 0, cancel: null, samples: [] };
@@ -126,11 +130,20 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     } finally { await fh.close(); }
   }
 
-  async function open(url, offset, item) {
+  const canceled = () => new DownloadError('canceled');
+  /** Erro local de arquivo: sem espaço vira 'disk'; o resto (permissão, arquivo em uso) vira 'file'. Nunca "Sem internet". */
+  const fileError = (error) => (error instanceof DownloadError ? error : new DownloadError(error?.code === 'ENOSPC' || error?.code === 'EDQUOT' ? 'disk' : 'file', String(error?.code || 'fs')));
+  const metaOf = (part) => `${part}.json`;
+  async function readMeta(part) { try { const raw = JSON.parse(await fs.readFile(metaOf(part), 'utf8')); return typeof raw?.validator === 'string' && raw.validator.length <= 200 ? raw.validator : null; } catch { return null; } }
+
+  /** Pede a URL seguindo no máximo 5 redirecionamentos, todos no domínio oficial. Cancelar enquanto espera também vale. */
+  async function open(url, headers, item) {
     let current = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
       if (!official(current, item.plan.domains)) throw new DownloadError('domain');
-      const res = await request(current, { headers: offset ? { Range: `bytes=${offset}-` } : {} });
+      let res;
+      try { res = await request(current, { headers }); } catch { if (item.canceled) throw canceled(); throw new DownloadError('offline'); }
+      if (item.canceled) { res.abort?.(); throw canceled(); }
       if ([301, 302, 303, 307, 308].includes(res.status)) {
         res.abort?.();
         let next = null;
@@ -146,60 +159,108 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
 
   async function download(item) {
     const { plan } = item;
-    await fs.mkdir(dir, { recursive: true });
+    try { await fs.mkdir(dir, { recursive: true }); } catch (error) { throw fileError(error); }
     const part = partOf(plan);
     // Pedaço de outra versão (outra URL para o mesmo arquivo) não serve: apaga.
     for (const name of await fs.readdir(dir).catch(() => [])) {
-      if (name.startsWith(`${plan.fileName}.`) && name.endsWith('.part') && path.join(dir, name) !== part) await rm(path.join(dir, name));
+      const full = path.join(dir, name);
+      if (name.startsWith(`${plan.fileName}.`) && (name.endsWith('.part') || name.endsWith('.part.json')) && full !== part && full !== metaOf(part)) await rm(full);
     }
+    // Só continua de onde parou se souber que o arquivo do servidor é o mesmo (ETag/Last-Modified + If-Range): o link
+    // fixo da Microsoft (aka.ms/vc14) troca de conteúdo a cada versão nova, e emendar dois arquivos não pode.
     let offset = await size(part);
+    const validator = offset ? await readMeta(part) : null;
+    if (offset && !validator) { await rm(part); offset = 0; }
     const keep = { part: false };
     let fh = null;
+    let res = null;
     try {
-      let res;
-      try { res = await open(plan.url, offset, item); } catch (error) { if (error instanceof DownloadError) throw error; keep.part = true; throw new DownloadError('offline'); }
+      res = await open(plan.url, offset ? { Range: `bytes=${offset}-`, 'If-Range': validator } : {}, item);
       item.cancel = () => res.abort?.();
-      if (res.status === 200 && offset) offset = 0; // o servidor ignorou o Range: recomeça do zero
-      else if (res.status === 206) {
+      if (res.status === 416 && offset) {
+        // O pedaço já tinha tudo (o app fechou entre a última gravação e o nome final): confere como está.
+        res.abort?.();
+        Object.assign(item, { received: offset, total: offset });
+        if (plan.sha512) { const hash = crypto.createHash('sha512'); await hashExisting(part, hash, offset); if (hash.digest('hex') !== plan.sha512) throw new DownloadError('hash'); }
+        await finish(item, part);
+        return;
+      }
+      if (res.status === 206) {
         const range = /bytes (\d+)-/.exec(String(res.headers['content-range'] || ''));
-        if (!range || Number(range[1]) !== offset) offset = 0;
-      } else if (res.status !== 200) throw new DownloadError('http');
+        if (!range || Number(range[1]) !== offset) {
+          // Veio outro pedaço que o pedido: recomeça do zero, sem Range.
+          res.abort?.();
+          offset = 0;
+          res = await open(plan.url, {}, item);
+          item.cancel = () => res.abort?.();
+          if (res.status !== 200) throw new DownloadError('http');
+        }
+      } else if (res.status === 200) {
+        offset = 0; // começo do zero (ou o servidor ignorou o Range / o arquivo mudou)
+      } else throw new DownloadError('http');
       const length = Number(res.headers['content-length']);
-      const total = Number.isFinite(length) && length >= 0 ? offset + length : null;
+      const total = Number.isFinite(length) && length >= 0 && res.headers['content-length'] !== undefined ? offset + length : null;
       if (total !== null && total > MAX_BYTES) throw new DownloadError('too-big');
       const hash = plan.sha512 ? crypto.createHash('sha512') : null;
-      if (hash && offset) await hashExisting(part, hash, offset);
-      fh = await fs.open(part, offset ? 'a' : 'w');
+      try {
+        if (hash && offset) await hashExisting(part, hash, offset);
+        fh = await fs.open(part, offset ? 'a' : 'w');
+        const tag = String(res.headers.etag || res.headers['last-modified'] || '').slice(0, 200);
+        if (!offset) { if (tag) await fs.writeFile(metaOf(part), JSON.stringify({ validator: tag })); else await rm(metaOf(part)); }
+      } catch (error) { throw fileError(error); }
       Object.assign(item, { received: offset, total, samples: [[now(), offset]] });
       try {
-        for await (const chunk of res.body) {
-          if (item.canceled) throw new DownloadError('canceled');
+        for await (const chunk of idle(res.body, idleMs, () => res.abort?.())) {
+          if (item.canceled) throw canceled();
           item.received += chunk.length;
           if (item.received > MAX_BYTES || (total !== null && item.received > total)) throw new DownloadError('too-big');
-          try { await fh.write(chunk); } catch (error) { throw new DownloadError('disk', String(error?.code || 'write')); }
+          try { await fh.write(chunk); } catch (error) { throw fileError(error); }
           hash?.update(chunk);
           measure(item);
           send(item, false);
         }
       } catch (error) {
-        if (item.canceled) throw new DownloadError('canceled');
-        if (error instanceof DownloadError) throw error;
-        keep.part = true; // a internet caiu: guarda o pedaço para continuar depois
+        if (item.canceled) throw canceled();
+        if (error instanceof DownloadError && error.code !== 'offline') throw error;
+        keep.part = true; // a internet caiu ou travou: guarda o pedaço para continuar depois
         throw new DownloadError('offline');
       }
-      if (item.canceled) throw new DownloadError('canceled');
-      await fh.close();
+      if (item.canceled) throw canceled();
+      try { await fh.close(); } catch (error) { throw fileError(error); }
       fh = null;
       if (total !== null && item.received !== total) { keep.part = true; throw new DownloadError('offline'); }
       if (hash && hash.digest('hex') !== plan.sha512) throw new DownloadError('hash');
-      const final = finalOf(plan);
+      await finish(item, part);
+    } catch (error) {
+      res?.abort?.();
+      if (fh) await fh.close().catch(() => {});
+      // Sem a identificação do arquivo não dá para continuar depois: não adianta guardar o pedaço.
+      const canResume = keep.part && (await fs.readFile(metaOf(part), 'utf8').then(() => true, () => false));
+      if (!canResume) { await rm(part); await rm(metaOf(part)); }
+      throw error;
+    }
+  }
+
+  async function finish(item, part) {
+    const final = finalOf(item.plan);
+    try {
       await rm(final);
       await fs.rename(part, final);
-      item.file = final;
-    } catch (error) {
-      if (fh) await fh.close().catch(() => {});
-      if (!keep.part) await rm(part);
-      throw error;
+    } catch (error) { throw fileError(error); }
+    await rm(metaOf(part));
+    item.file = final;
+  }
+
+  /** Repassa os pedaços, mas desiste (e fecha a resposta) se nenhum chegar em `ms`. */
+  async function* idle(body, ms, abort) {
+    const it = body[Symbol.asyncIterator]();
+    for (;;) {
+      let timer = null;
+      const stall = new Promise((_, reject) => { timer = setTimeout(() => { abort(); reject(new DownloadError('offline')); }, ms); });
+      let next;
+      try { next = await Promise.race([it.next(), stall]); } finally { clearTimeout(timer); }
+      if (next.done) return;
+      yield next.value;
     }
   }
 
@@ -252,7 +313,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     }
     const result = answer?.result;
     if (answer?.declined) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: true, restore: null, note: 'Você recusou a permissão de administrador.' }; }
-    if (!result) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore: null, note: 'Não recebi a resposta da instalação.' }; }
+    if (!result) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore: null, note: 'A instalação ainda pode estar aberta. Termine na janela do fabricante e clique em Conferir de novo.' }; }
     const restore = result.restore || null;
     if (result.signature && result.signature.valid === false) {
       await rm(item.file);
@@ -293,4 +354,10 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
   };
 }
 
-module.exports = { createDriverDownloads, MAX_BYTES, MAX_REDIRECTS, official };
+/** A pasta dos instaladores: AppData Local (arquivo de 1 GB não deve ir junto no perfil móvel); nunca pasta de rede. */
+function downloadsDir(env, userData, p = require('node:path').win32) {
+  const local = String(env?.LOCALAPPDATA || '');
+  return /^[A-Za-z]:\\/.test(local) ? p.join(local, 'Nexo', 'driver-downloads') : p.join(userData, 'driver-downloads');
+}
+
+module.exports = { createDriverDownloads, downloadsDir, IDLE_MS, MAX_BYTES, MAX_REDIRECTS, official };

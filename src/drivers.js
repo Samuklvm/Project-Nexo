@@ -318,7 +318,9 @@
     const safe = official(url, domains);
     if (!safe) return null;
     const size = extra.size || null;
-    return { url: safe, domains, fileName, signer, ...(extra.sha512 ? { sha512: extra.sha512 } : {}), ...(size ? { size } : {}), label: size ? `Baixar · ${size}` : 'Baixar' };
+    // Já em dia: dá para reinstalar, mas o botão fica discreto (não convida a baixar 1 GB à toa).
+    const verb = extra.reinstall ? 'Reinstalar' : 'Baixar';
+    return { url: safe, domains, fileName, signer, ...(extra.sha512 ? { sha512: extra.sha512 } : {}), ...(size ? { size } : {}), primary: !extra.reinstall, label: size ? `${verb} · ${size}` : verb };
   };
   function downloadOf(item, latest, runtimes) {
     if (item.id.startsWith('video-') && item.maker === 'NVIDIA' && (item.state === 'update' || item.state === 'ok')) {
@@ -327,7 +329,7 @@
       // Notebook: só o pacote de notebook. Sem ele, nada (o de desktop não serve).
       const top = runtimes?.board?.mobile === true ? latest?.nvidiaNotebook?.[line] : latest?.nvidia?.[line];
       if (!top?.download || !/^\d{3}\.\d{2}$/.test(String(top.version || ''))) return null;
-      return dl(top.download, ['nvidia.com'], `nvidia-${top.version}.exe`, SIGNER.nvidia, { size: top.size });
+      return dl(top.download, ['nvidia.com'], `nvidia-${top.version}.exe`, SIGNER.nvidia, { size: top.size, reinstall: item.state === 'ok' });
     }
     if ((item.id === 'vc-x64' || item.id === 'vc-x86') && (item.state === 'missing' || item.state === 'old')) {
       const arch = item.id.slice(3);
@@ -358,7 +360,8 @@
   const ERRORS = {
     offline: 'Sem internet. Tente de novo.', domain: 'O link saiu do site oficial, então parei.', redirects: 'O site redirecionou demais, então parei.',
     'too-big': 'O arquivo veio maior que o esperado, então parei.', hash: 'O arquivo não bateu com o oficial, então apaguei por segurança.',
-    signature: 'O arquivo não veio assinado pelo fabricante, então apaguei por segurança.', disk: 'Sem espaço no disco.', http: 'O site do fabricante não respondeu.'
+    signature: 'O arquivo não veio assinado pelo fabricante, então apaguei por segurança.', disk: 'Sem espaço no disco.', http: 'O site do fabricante não respondeu.',
+    file: 'Não consegui gravar o arquivo no disco.'
   };
   const signerName = (signer) => String(signer || 'fabricante').replace(/\s+(Corporation|Corp\.?|Inc\.?|Ltd\.?)$/i, '');
   function phaseText(item = {}) {
@@ -374,6 +377,16 @@
       case 'error': return ERRORS[item.error] || 'O download não terminou. Tente de novo.';
       default: return '';
     }
+  }
+
+  /** O cartão continua mostrando a área do download (barra, selo, avisos) mesmo depois de perder o download direto
+   *  (ex.: Visual C++ instalado vira "Em dia" e não precisa mais baixar, mas o "reinicie o PC" tem que continuar lá). */
+  function keepsZone(item, dl, hasNote) {
+    return Boolean(item?.download) || Boolean(hasNote) || ['queued', 'downloading', 'verifying', 'ready', 'install-queued', 'installing', 'installed'].includes(dl?.phase);
+  }
+  /** Depois de instalar e conferir de novo: a versão mudou mesmo? (instalador cancelado também sai com código 0) */
+  function installOutcome(stateAfter) {
+    return ['update', 'missing', 'old', 'error'].includes(stateAfter) || !stateAfter ? 'unchanged' : 'updated';
   }
 
   /** O download de um cartão pelo id (o processo principal usa a própria leitura; o id vem da tela). */
@@ -418,5 +431,5 @@
   const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Antigo', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova' };
   /** As chaves de ícone que a página vai mostrar (para pedir só essas). */
   const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.flatMap((item) => [item.brand, item.brandAlt]))].filter(Boolean))];
-  return { build, downloadFor, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  return { build, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });

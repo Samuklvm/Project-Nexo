@@ -196,7 +196,7 @@ test('drivers: cada cartão sabe qual arquivo oficial baixar (e só o certo para
   const desk = D.build(data, NOW);
   const gpu = find(desk, /^video-NVIDIA/);
   assert.equal(gpu.state, 'update');
-  assert.deepEqual(gpu.download, { url: 'https://us.download.nvidia.com/Windows/621.14/x.exe', domains: ['nvidia.com'], fileName: 'nvidia-621.14.exe', signer: 'NVIDIA Corporation', size: '1.04 GB', label: 'Baixar · 1.04 GB' });
+  assert.deepEqual(gpu.download, { url: 'https://us.download.nvidia.com/Windows/621.14/x.exe', domains: ['nvidia.com'], fileName: 'nvidia-621.14.exe', signer: 'NVIDIA Corporation', size: '1.04 GB', primary: true, label: 'Baixar · 1.04 GB' });
   assert.equal(find(desk, /^video-Intel/).download, null, 'Intel ainda abre o site (projeto 2)');
   const vc86 = find(desk, /^vc-x86$/);
   assert.equal(vc86.state, 'missing');
@@ -340,4 +340,32 @@ test('drivers: textos da barra de download e de cada fase', () => {
   for (const [error, text] of Object.entries(errors)) assert.equal(D.phaseText({ phase: 'error', error }), text);
   assert.equal(D.phaseText({ phase: 'error', error: 'desconhecido' }), 'O download não terminou. Tente de novo.');
   assert.equal(D.phaseText({ phase: 'canceled' }), 'Download cancelado.');
+});
+
+test('drivers: depois de instalar, o cartão mantém o aviso e sabe se a versão mudou', () => {
+  const item = { id: 'vc-x86', state: 'ok', download: null };
+  assert.equal(D.keepsZone(item, null, false), false);
+  assert.equal(D.keepsZone(item, null, true), true, 'aviso de reiniciar continua aparecendo mesmo sem download');
+  assert.equal(D.keepsZone(item, { phase: 'installed' }, false), true);
+  assert.equal(D.keepsZone(item, { phase: 'installing' }, false), true);
+  assert.equal(D.keepsZone(item, { phase: 'downloading' }, false), true, 'nova leitura sem internet não some com a barra');
+  assert.equal(D.keepsZone(item, { phase: 'ready' }, false), true);
+  assert.equal(D.keepsZone(item, { phase: 'canceled' }, false), false);
+  assert.equal(D.keepsZone({ ...item, download: { url: 'x' } }, null, false), true);
+  assert.equal(D.installOutcome('ok'), 'updated');
+  assert.equal(D.installOutcome('unknown'), 'updated');
+  for (const state of ['update', 'missing', 'old', 'error']) assert.equal(D.installOutcome(state), 'unchanged');
+  assert.equal(D.installOutcome(undefined), 'unchanged');
+});
+
+test('drivers: placa NVIDIA já em dia oferece reinstalar (botão discreto), não "Baixar" chamativo', () => {
+  const data = sample();
+  data.latest.nvidia.modern = { ...data.latest.nvidia.modern, version: '566.14' };
+  const gpu = D.build(data, NOW).groups.flatMap((g) => g.items).find((x) => /^video-NVIDIA/.test(x.id));
+  assert.equal(gpu.state, 'ok');
+  assert.equal(gpu.download.primary, false);
+  assert.match(gpu.download.label, /^Reinstalar/);
+  const upd = D.build(sample(), NOW).groups.flatMap((g) => g.items).find((x) => /^video-NVIDIA/.test(x.id));
+  assert.equal(upd.download.primary, true);
+  assert.equal(D.phaseText({ phase: 'error', error: 'file' }), 'Não consegui gravar o arquivo no disco.');
 });

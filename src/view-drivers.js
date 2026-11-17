@@ -49,8 +49,9 @@
     const extra = item.extra?.length ? `<details class="driver-parts"><summary>${item.extra.length === 1 ? 'Ver o componente' : `Ver os ${item.extra.length} componentes`}</summary><ul>${item.extra.map((name) => `<li>${escapeHtml(name)}</li>`).join('')}</ul></details>` : '';
     const direct = Boolean(item.download) && Nexo.platform !== 'linux';
     const action = item.action ? `<button class="btn sm${direct ? ' ghost' : item.state === 'update' || item.state === 'missing' ? ' primary' : ''}" type="button" data-driver-url="${escapeHtml(item.action.url)}">${escapeHtml(direct ? 'Site oficial' : item.action.label)}</button>` : '';
-    const dl = direct ? downloads.get(item.id) : null;
-    const zone = direct ? downloadZone(item, dl) : { side: '', below: '' };
+    const dl = Nexo.platform !== 'linux' ? downloads.get(item.id) || null : null;
+    // A área do download fica mesmo se o cartão perder o download direto (ex.: virou "Em dia" e precisa reiniciar).
+    const zone = Nexo.platform !== 'linux' && D.keepsZone(item, dl, notes.has(item.id)) ? downloadZone(item, dl) : { side: '', below: '' };
     return `<li class="driver${zone.below ? ' has-dl' : ''}${celebrate.has(item.id) ? ' celebrate' : ''}" data-state="${escapeHtml(item.state)}" data-id="${escapeHtml(item.id)}"${dl ? ` data-dl="${escapeHtml(dl.phase)}"` : ''}>
       ${tile(item.brand, item.icon, 'driver-ico', item.brandAlt)}
       <div class="driver-main"><strong class="driver-name">${escapeHtml(item.name)}</strong><span class="driver-purpose">${escapeHtml(item.purpose)}</span>${item.note ? `<span class="driver-note">${escapeHtml(item.note)}</span>` : ''}${extra}</div>
@@ -67,13 +68,15 @@
     const button = (label, attr, cls = 'primary', icon = 'i-down') => `<button class="btn sm ${cls}" type="button" ${attr}="${id}">${ico(icon)}${escapeHtml(label)}</button>`;
     if (phase === 'idle' || phase === 'canceled' || phase === 'error') {
       const error = phase === 'error' ? `<p class="dl-note" data-tone="bad">${escapeHtml(D.phaseText(dl))}</p>` : '';
-      return { side: button(phase === 'error' ? 'Tentar de novo' : item.download.label, 'data-driver-download'), below: error || noteHtml };
+      if (!item.download) return { side: '', below: error || noteHtml };
+      return { side: button(phase === 'error' ? 'Tentar de novo' : item.download.label, 'data-driver-download', item.download.primary === false && phase !== 'error' ? 'ghost' : 'primary'), below: error || noteHtml };
     }
     if (LIVE.has(phase)) {
       const pct = dl.total ? Math.min(100, (dl.received / dl.total) * 100) : 0;
       const text = phase === 'downloading' ? D.progressText(dl) : D.phaseText(dl);
       return {
-        side: `<button class="btn sm ghost dl-cancel" type="button" data-driver-cancel="${id}" aria-label="Cancelar o download">${ico('i-close')}</button>`,
+        // Conferindo a assinatura não dá para cancelar (é rapidinho): sem botão que não faz nada.
+        side: phase === 'verifying' ? '' : `<button class="btn sm ghost dl-cancel" type="button" data-driver-cancel="${id}" aria-label="Cancelar o download">${ico('i-close')}</button>`,
         below: `<div class="dl" data-phase="${escapeHtml(phase)}"><div class="dl-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="Download de ${escapeHtml(item.name)}"><i data-css="width: ${phase === 'downloading' ? pct.toFixed(1) : 100}%"></i></div><span class="dl-text">${escapeHtml(text)}</span></div>`
       };
     }
@@ -230,14 +233,24 @@
     if (inst && inst.closest('.drivers-view')) {
       const id = inst.dataset.driverInstall;
       const withPoint = restoreOn && inst.dataset.noRestore !== '1';
+      if (inst.disabled) return;
+      inst.disabled = true; // clique duplo não manda dois pedidos
       notes.delete(id);
       let result = null;
       try { result = await bridge.installDriver(id, { restorePoint: withPoint }); } catch (error) { result = { ok: false, note: error?.message || 'Não consegui abrir o instalador.' }; }
       if (result?.restore?.created && result.restore.at) { restoreAt = result.restore.at; store.set(RESTORE_AT_KEY, restoreAt); const line = document.getElementById('drivers-restore-line'); if (line) line.textContent = restoreLine(); }
       if (result?.ok) {
         if (result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' });
-        celebrate.add(id);
-        load(true);
+        await load(true);
+        // Confere se a versão mudou mesmo (instalador cancelado também sai com código 0).
+        const after = model?.groups.flatMap((g) => g.items).find((x) => x.id === id);
+        if (D.installOutcome(after?.state) === 'updated') celebrate.add(id);
+        else if (!result.restart) {
+          notes.set(id, { tone: 'warn', text: 'O instalador fechou, mas a versão continua a mesma. Se você cancelou, é só instalar de novo.' });
+          const dl = downloads.get(id);
+          if (dl?.phase === 'installed') downloads.set(id, { ...dl, phase: 'ready' });
+        }
+        render();
       } else if (result?.restore && result.restore.ok === false) {
         notes.set(id, { tone: 'warn', text: result.note || 'O ponto de restauração não foi criado.', retry: true });
         updateCard(id);

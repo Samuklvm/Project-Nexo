@@ -1444,7 +1444,7 @@ registerIpcHandler('drivers:scan', async (_event, options = {}) => {
  * pela tarefa de administrador (uma de cada vez). A tela manda só o id do cartão.
  */
 const DriverSig = require('./electron/driver-signature.cjs');
-const DRIVER_DOWNLOADS_DIR = () => path.join(app.getPath('userData'), 'driver-downloads');
+const DRIVER_DOWNLOADS_DIR = () => require('./electron/driver-download.cjs').downloadsDir(process.env, app.getPath('userData'), path);
 /** Pedido HTTPS em partes pelo net do Electron (proxy e certificados do sistema), sem seguir redirecionamento sozinho. */
 function driverRequest(url, { headers = {} } = {}) {
   return new Promise((resolve, reject) => {

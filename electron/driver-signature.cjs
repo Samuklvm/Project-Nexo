@@ -12,17 +12,22 @@ const path = require('node:path');
 const SIGNERS = Object.freeze({ nvidia: 'NVIDIA Corporation', microsoft: 'Microsoft Corporation' });
 const ALLOWED = new Set(Object.values(SIGNERS));
 const allowedSigner = (signer) => ALLOWED.has(signer);
-const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
+const BT = '`'; // crase do PowerShell (escape de linha) dentro de template string
+const psQuote = (value) => `'${String(value).replace(/['\u2018\u2019\u201A\u201B]/g, (q) => q + q)}'`;
 
 /** Trecho PowerShell que deixa em $sig o resultado da conferência do arquivo (sem gravar nada). */
-function signatureCore(file, signer) {
+function signatureCore(file, signer) { return signatureCoreFor(psQuote(file), signer); }
+/** O mesmo, para um caminho que só existe dentro do PowerShell (ex.: $dst, a cópia na pasta protegida). */
+function signatureCoreFor(pathExpr, signer) {
   return String.raw`
 $sig = @{ valid = $false; status = 'Missing'; org = $null }
 try {
-  $s = Get-AuthenticodeSignature -LiteralPath ${psQuote(file)} -ErrorAction Stop
+  $s = Get-AuthenticodeSignature -LiteralPath ${pathExpr} -ErrorAction Stop
   $sig.status = [string]$s.Status
-  $subject = [string]$s.SignerCertificate.Subject
-  if ($subject -match '(?:^|,\s*)O="?([^",]+)"?') { $sig.org = $Matches[1].Trim() }
+  # Nome formatado do certificado, um campo por linha (um CN com ", O=..." dentro não engana).
+  foreach ($line in ([string]$s.SignerCertificate.SubjectName.Format($true) -split "${BT}r?${BT}n")) {
+    if ($line -match '^\s*O=(.+)$') { $sig.org = $Matches[1].Trim().Trim('"'); break }
+  }
   $sig.valid = ([string]$s.Status -eq 'Valid') -and ($sig.org -ceq ${psQuote(signer)})
 } catch { $sig.status = 'Error' }`;
 }
@@ -53,4 +58,4 @@ function insideDir(file, dir) {
   return path.win32.dirname(full).toLowerCase() === base.toLowerCase();
 }
 
-module.exports = { SIGNERS, allowedSigner, signatureCore, signatureScript, parseSignature, insideDir, psQuote };
+module.exports = { SIGNERS, allowedSigner, signatureCore, signatureCoreFor, signatureScript, parseSignature, insideDir, psQuote };
