@@ -263,3 +263,14 @@ test('servidor do Nexo: canais registrados; sincronização e telemetria desliga
   assert.equal(netCalls.at(-1), `${shipped}/v1/telemetry`);
   await call('cloud:set', { telemetry: false });
 });
+
+test('drivers com um clique: canais existem, só aceitam id e fora do Windows não fazem nada', async () => {
+  for (const channel of ['drivers:download', 'drivers:cancel', 'drivers:install', 'drivers:downloads', 'drivers:show-file']) assert.ok(handlers.has(channel), `faltou ${channel}`);
+  const before = netCalls.length;
+  await assert.rejects(call('drivers:download', { url: 'https://evil.example/x.exe' }), /Cartão inválido/);
+  await assert.rejects(call('drivers:download', 'x'.repeat(201)), /Cartão inválido/);
+  assert.deepEqual(await call('drivers:download', 'video-NVIDIA GeForce RTX 4070'), { ok: false, note: 'Só no Windows.' });
+  assert.deepEqual(await call('drivers:install', 'video-NVIDIA GeForce RTX 4070', { restorePoint: true }), { ok: false, note: 'Só no Windows.' });
+  assert.deepEqual(await call('drivers:downloads'), []);
+  assert.equal(netCalls.length, before, 'nenhuma ida à internet');
+});

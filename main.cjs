@@ -1431,7 +1431,69 @@ const driversPage = DriversPage.createDrivers({ runPowerShellCode, fileIcon: dri
   if (body.length > 2 * 1024 * 1024) throw new Error('Resposta grande demais.');
   return JSON.parse(body);
 } });
-registerIpcHandler('drivers:scan', async (_event, options = {}) => driversPage.scan({ force: options?.force === true, online: options?.online !== false }));
+// A última leitura vira o modelo dos cartões aqui mesmo: é dele (e nunca da tela) que sai o link de cada download.
+const DriverRules = require('./src/drivers.js');
+let lastDriversModel = null;
+registerIpcHandler('drivers:scan', async (_event, options = {}) => {
+  const result = await driversPage.scan({ force: options?.force === true, online: options?.online !== false });
+  try { lastDriversModel = DriverRules.build(result, Date.now()); } catch { lastDriversModel = null; }
+  return result;
+});
+/*
+ * Drivers com um clique: baixa o arquivo oficial do cartão (fila, no máximo 4 juntos), confere hash e assinatura e instala
+ * pela tarefa de administrador (uma de cada vez). A tela manda só o id do cartão.
+ */
+const DriverSig = require('./electron/driver-signature.cjs');
+const DRIVER_DOWNLOADS_DIR = () => path.join(app.getPath('userData'), 'driver-downloads');
+/** Pedido HTTPS em partes pelo net do Electron (proxy e certificados do sistema), sem seguir redirecionamento sozinho. */
+function driverRequest(url, { headers = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = net.request({ url, redirect: 'manual', useSessionCookies: false });
+    let settled = false;
+    const done = (fn, value) => { if (!settled) { settled = true; clearTimeout(timer); fn(value); } };
+    const timer = setTimeout(() => { try { req.abort(); } catch { /* já fechou */ } done(reject, Object.assign(new Error('Tempo esgotado.'), { code: 'ETIMEDOUT' })); }, 30000);
+    for (const [key, value] of Object.entries(headers)) req.setHeader(key, String(value));
+    req.on('redirect', (status, _method, location) => {
+      done(resolve, { status, headers: {}, location, abort: () => {}, body: (async function* empty() {})() });
+      try { req.abort(); } catch { /* já fechou */ }
+    });
+    req.on('response', (res) => {
+      const flat = {};
+      for (const [key, value] of Object.entries(res.headers || {})) flat[key.toLowerCase()] = Array.isArray(value) ? String(value[0]) : String(value);
+      done(resolve, { status: res.statusCode, headers: flat, location: flat.location || null, abort: () => { try { req.abort(); } catch { /* já fechou */ } }, body: res });
+    });
+    req.on('error', (error) => done(reject, error));
+    req.end();
+  });
+}
+const driverDownloads = require('./electron/driver-download.cjs').createDriverDownloads({
+  request: driverRequest, fs, path, crypto: require('crypto'), dir: DRIVER_DOWNLOADS_DIR(), runPowerShell: runPowerShellCode,
+  elevate: (task, args) => elevate(task, args), emit: (channel, payload) => sendToWindow(channel, payload)
+});
+const ONLY_WINDOWS = Object.freeze({ ok: false, note: 'Só no Windows.' });
+const cardId = (id) => { if (typeof id !== 'string' || !id || id.length > 200) throw new Error('Cartão inválido.'); return id; };
+registerIpcHandler('drivers:download', async (_event, id) => {
+  cardId(id);
+  if (process.platform !== 'win32') return { ...ONLY_WINDOWS };
+  const plan = DriverRules.downloadFor(lastDriversModel, id);
+  if (!plan) throw new Error('Este driver não tem download direto.');
+  return driverDownloads.start(id, plan);
+});
+registerIpcHandler('drivers:cancel', async (_event, id) => (process.platform === 'win32' ? driverDownloads.cancel(cardId(id)) : { ...ONLY_WINDOWS }));
+registerIpcHandler('drivers:install', async (_event, id, options = {}) => {
+  cardId(id);
+  if (process.platform !== 'win32') return { ...ONLY_WINDOWS };
+  return driverDownloads.install(id, { restorePoint: options?.restorePoint === true });
+});
+registerIpcHandler('drivers:downloads', async () => (process.platform === 'win32' ? driverDownloads.list() : []));
+registerIpcHandler('drivers:show-file', async (_event, id) => {
+  cardId(id);
+  const file = process.platform === 'win32' ? driverDownloads.fileOf(id) : null;
+  if (!file || !DriverSig.insideDir(file, DRIVER_DOWNLOADS_DIR())) return { ok: false };
+  shell.showItemInFolder(file);
+  return { ok: true };
+});
+if (process.platform === 'win32') setTimeout(() => { driverDownloads.cleanup().catch(() => {}); }, 30000).unref?.();
 // Ícones oficiais dos fabricantes (buscados no site de cada um, guardados por 30 dias). Só domínios da lista oficial.
 const vendorIcons = require('./electron/vendor-icons.cjs').createVendorIcons({ dir: path.join(app.getPath('userData'), 'vendor-icons'), fetchRaw: async (url, max) => {
   const response = await net.fetch(url, { signal: withTimeout(9000), headers: { Accept: 'text/html,image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5' } });
