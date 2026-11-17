@@ -17,6 +17,7 @@ import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTeleme
 import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED, PANEL_WALLPAPER } from './panel.js';
 import { createSteam } from './steam.js';
 import { createOAuth } from './oauth.js';
+import { CONNECT_CSS, CONNECT_JS } from './connect-page.js';
 
 const DAY = 24 * 3600 * 1000;
 const SESSION_DAYS = 365;
@@ -80,7 +81,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const mixed = await sha256Hex(`${env.SESSION_SECRET}|${request.headers.get('cf-connecting-ip') || 'local'}`);
     return `ip:${mixed.slice(0, 20)}`;
   };
-  const oauth = createOAuth({ now, limit, ipKey, json, readJson });
+  const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -570,6 +571,14 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['GET /.well-known/oauth-protected-resource/mcp', (_request, _env, url) => oauth.protectedResource(url)],
     ['GET /.well-known/oauth-authorization-server', (_request, _env, url) => oauth.serverMetadata(url)],
     ['POST /oauth/register', (request, env) => oauth.register(request, env)],
+    ['POST /oauth/token', (request, env) => oauth.token(request, env)],
+    ['POST /oauth/revoke', (request, env) => oauth.revoke(request, env)],
+    // Autorização pelo painel (embaixo de /painel para o cookie do painel valer nos pedidos do próprio site).
+    ['GET /painel/conectar', (_request, env, url) => oauth.authorizePage(url, env)],
+    ['GET /painel/conectar.js', () => page(CONNECT_JS, 'text/javascript; charset=utf-8')],
+    ['GET /painel/conectar.css', () => page(CONNECT_CSS, 'text/css; charset=utf-8', 200, { 'cache-control': 'public, max-age=3600' })],
+    ['GET /painel/api/conectar/quem', (request, env, url) => oauth.who(request, env, url)],
+    ['POST /painel/api/conectar', (request, env, url) => oauth.approve(request, env, url)],
     ['GET /painel/entrar', (_request, env, url) => adminEnter(env, url)],
     ['GET /painel', panelPage],
     ['GET /painel/app.js', () => page(PANEL_JS, 'text/javascript; charset=utf-8')],

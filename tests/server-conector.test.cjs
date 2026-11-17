@@ -48,3 +48,137 @@ test('registro: só os callbacks do Claude', async () => {
   assert.equal(over.data.error, 'invalid_client_metadata');
 });
 
+
+/* ---------- Consentimento, código e tokens ---------- */
+const nodeCrypto = require('node:crypto');
+const VERIFIER_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+function pkce(length = 64) {
+  const bytes = nodeCrypto.randomBytes(length);
+  const verifier = [...bytes].map((byte) => VERIFIER_CHARS[byte % VERIFIER_CHARS.length]).join('');
+  return { verifier, challenge: nodeCrypto.createHash('sha256').update(verifier).digest('base64url') };
+}
+const authParams = (clientId, challenge, extra = {}) => ({ response_type: 'code', client_id: clientId, redirect_uri: CLAUDE_CB, code_challenge: challenge, code_challenge_method: 'S256', state: 'estado-123', scope: 'painel', resource: `${ORIGIN}/mcp`, ...extra });
+const qs = (params) => new URLSearchParams(params).toString();
+const approve = (call, cookie, params, decisao = 'autorizar', headers = { 'x-nexo-painel': '1' }) => call('POST', '/painel/api/conectar', { cookie, headers, body: { ...params, decisao } });
+
+/** Do registro ao par de tokens, como o Claude faz. */
+async function connect(env, { email } = {}) {
+  const { call, panelCookie } = env;
+  const client = (await register(call)).data;
+  const cookie = await panelCookie(email);
+  const { verifier, challenge } = pkce();
+  const params = authParams(client.client_id, challenge);
+  const answer = await approve(call, cookie, params);
+  assert.equal(answer.status, 200, JSON.stringify(answer.data));
+  const code = new URL(answer.data.location).searchParams.get('code');
+  const tokens = await call('POST', '/oauth/token', { form: { grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: CLAUDE_CB, client_id: client.client_id, resource: `${ORIGIN}/mcp` } });
+  assert.equal(tokens.status, 200, JSON.stringify(tokens.data));
+  return { client, cookie, tokens: tokens.data };
+}
+
+test('consentimento: a página não leva dado nenhum; "quem" exige o cookie do painel', async () => {
+  const env = h.setup();
+  const { call, panelCookie } = env;
+  const client = (await register(call)).data;
+  const { challenge } = pkce();
+  const params = authParams(client.client_id, challenge);
+  const pageResponse = await call('GET', `/painel/conectar?${qs(params)}`, { raw: true });
+  assert.equal(pageResponse.status, 200);
+  const html = await pageResponse.text();
+  assert.match(html, /<script src="\/painel\/conectar\.js"/);
+  assert.doesNotMatch(html, /@/);
+  assert.match(pageResponse.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  assert.equal(pageResponse.headers.get('x-frame-options'), 'DENY');
+  assert.equal((await call('GET', '/painel/conectar.js', { raw: true })).status, 200);
+  assert.equal((await call('GET', '/painel/conectar.css', { raw: true })).status, 200);
+  assert.equal((await call('GET', `/painel/conectar?${qs({ ...params, client_id: 'desconhecido-123456' })}`)).status, 400);
+  assert.equal((await call('GET', `/painel/conectar?${qs({ ...params, redirect_uri: CLAUDE_COM_CB })}`)).status, 400, 'endereço de volta que não foi registrado');
+  assert.equal((await call('GET', `/painel/conectar?${qs({ ...params, code_challenge_method: 'plain' })}`)).status, 400);
+  assert.equal((await call('GET', `/painel/conectar?${qs({ ...params, resource: 'https://outro.exemplo/mcp' })}`)).status, 400);
+  assert.equal((await call('GET', `/painel/api/conectar/quem?${qs(params)}`)).status, 401);
+  const cookie = await panelCookie();
+  const who = await call('GET', `/painel/api/conectar/quem?${qs(params)}`, { cookie });
+  assert.equal(who.status, 200);
+  assert.equal(who.data.role, 'dono');
+  assert.equal(who.data.client, 'Claude');
+  assert.notEqual(who.data.email, h.ADMIN);
+  assert.match(who.data.email, /^cr…@exemplo\.com$/);
+});
+
+test('fluxo completo com PKCE: código de uso único, de 60 s, preso ao verificador e ao endereço de volta', async () => {
+  const env = h.setup();
+  const { call, panelCookie } = env;
+  const client = (await register(call)).data;
+  const cookie = await panelCookie();
+  const { verifier, challenge } = pkce();
+  const params = authParams(client.client_id, challenge);
+  assert.equal((await approve(call, cookie, params, 'autorizar', {})).status, 403, 'sem o cabeçalho contra CSRF');
+  assert.equal((await approve(call, null, params)).status, 401, 'sem o cookie do painel');
+  const refused = await approve(call, cookie, params, 'recusar');
+  const refusedUrl = new URL(refused.data.location);
+  assert.equal(`${refusedUrl.origin}${refusedUrl.pathname}`, CLAUDE_CB);
+  assert.equal(refusedUrl.searchParams.get('error'), 'access_denied');
+  assert.equal(refusedUrl.searchParams.get('state'), 'estado-123');
+  const answer = await approve(call, cookie, params);
+  const back = new URL(answer.data.location);
+  assert.equal(`${back.origin}${back.pathname}`, CLAUDE_CB);
+  assert.equal(back.searchParams.get('state'), 'estado-123');
+  assert.equal(back.searchParams.get('iss'), ORIGIN);
+  const code = back.searchParams.get('code');
+  const exchange = (extra = {}) => call('POST', '/oauth/token', { form: { grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: CLAUDE_CB, client_id: client.client_id, ...extra } });
+  assert.equal((await exchange({ code_verifier: pkce().verifier })).data.error, 'invalid_grant', 'outro verificador');
+  assert.equal((await exchange({ redirect_uri: CLAUDE_COM_CB })).data.error, 'invalid_grant', 'outro endereço de volta');
+  const ok = await exchange({ resource: `${ORIGIN}/mcp` });
+  assert.equal(ok.status, 200);
+  assert.match(ok.data.access_token, /^nexo_at_[A-Za-z0-9_-]{30,}$/);
+  assert.match(ok.data.refresh_token, /^nexo_rt_[A-Za-z0-9_-]{30,}$/);
+  assert.equal(ok.data.token_type, 'Bearer');
+  assert.equal(ok.data.expires_in, 3600);
+  assert.equal(ok.data.scope, 'painel');
+  assert.equal(ok.headers.get('cache-control'), 'no-store');
+  const again = await exchange();
+  assert.equal(again.status, 400);
+  assert.equal(again.data.error, 'invalid_grant', 'código usado duas vezes');
+  // Código vencido.
+  const second = new URL((await approve(call, cookie, params)).data.location).searchParams.get('code');
+  h.tick(61 * 1000);
+  assert.equal((await call('POST', '/oauth/token', { form: { grant_type: 'authorization_code', code: second, code_verifier: verifier, redirect_uri: CLAUDE_CB, client_id: client.client_id } })).data.error, 'invalid_grant');
+  assert.equal((await call('POST', '/oauth/token', { form: { grant_type: 'password', username: 'x' } })).data.error, 'unsupported_grant_type');
+});
+
+test('renovação: troca o par e reusar o refresh antigo revoga a autorização', async () => {
+  const env = h.setup();
+  const { call } = env;
+  const { client, tokens } = await connect(env);
+  const refresh = (token, clientId = client.client_id) => call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: token, client_id: clientId } });
+  const other = (await register(call)).data;
+  assert.equal((await refresh(tokens.refresh_token, other.client_id)).data.error, 'invalid_grant', 'refresh de outro cliente');
+  const next = await refresh(tokens.refresh_token);
+  assert.equal(next.status, 200);
+  assert.notEqual(next.data.refresh_token, tokens.refresh_token);
+  assert.notEqual(next.data.access_token, tokens.access_token);
+  const reuse = await refresh(tokens.refresh_token);
+  assert.equal(reuse.data.error, 'invalid_grant', 'refresh antigo reusado');
+  const grant = await env.env.DB.prepare('SELECT revoked FROM oauth_grants').first();
+  assert.equal(grant.revoked, 1, 'reuso revoga a autorização inteira (o /mcp cai também: teste do /mcp)');
+  assert.equal((await refresh(next.data.refresh_token)).data.error, 'invalid_grant', 'nem o par novo vale mais');
+});
+
+test('token no formato do OAuth (x-www-form-urlencoded) e revogação', async () => {
+  const env = h.setup();
+  const { call } = env;
+  const client = (await register(call)).data;
+  const cookie = await env.panelCookie();
+  const { verifier, challenge } = pkce(128);
+  assert.match(verifier, /^[A-Za-z0-9._~-]{128}$/);
+  const code = new URL((await approve(call, cookie, authParams(client.client_id, challenge))).data.location).searchParams.get('code');
+  const raw = `grant_type=authorization_code&code=${encodeURIComponent(code)}&code_verifier=${encodeURIComponent(verifier)}&redirect_uri=${encodeURIComponent(CLAUDE_CB)}&client_id=${encodeURIComponent(client.client_id)}&scope=painel+extra`;
+  const ok = await call('POST', '/oauth/token', { body: raw, headers: { 'content-type': 'application/x-www-form-urlencoded; charset=utf-8' } });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  const revoked = await call('POST', '/oauth/revoke', { form: { token: ok.data.access_token, client_id: client.client_id } });
+  assert.equal(revoked.status, 200);
+  const grant = await env.env.DB.prepare('SELECT revoked FROM oauth_grants').first();
+  assert.equal(grant.revoked, 1);
+  assert.equal((await call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: ok.data.refresh_token, client_id: client.client_id } })).data.error, 'invalid_grant');
+  assert.equal((await call('POST', '/oauth/revoke', { form: { token: 'qualquer-coisa' } })).status, 200, 'token desconhecido: 200 (RFC 7009)');
+});
