@@ -342,6 +342,40 @@
     }
     return null;
   }
+  /* ---------------- Textos do download (barra e fases) ---------------- */
+  const MB = 1024 * 1024;
+  const decimal = (value) => value.toFixed(1).replace('.', ',');
+  const sizeText = (bytes) => (bytes >= 1024 * MB ? `${decimal(bytes / (1024 * MB))} GB` : `${Math.round(bytes / MB)} MB`);
+  /** "66% · 12,4 MB/s · faltam 19 s" (sem tamanho total: "450 MB · 12,4 MB/s"). */
+  function progressText(item = {}) {
+    const parts = [];
+    if (item.total > 0) parts.push(`${Math.min(100, Math.floor((item.received / item.total) * 100))}%`);
+    else parts.push(sizeText(item.received || 0));
+    if (item.speed > 0) parts.push(item.speed >= MB ? `${decimal(item.speed / MB)} MB/s` : `${Math.max(1, Math.round(item.speed / 1024))} KB/s`);
+    if (Number.isFinite(item.eta) && item.eta !== null) parts.push(item.eta > 90 ? `faltam ${Math.ceil(item.eta / 60)} min` : `faltam ${Math.max(1, Math.round(item.eta))} s`);
+    return parts.join(' · ');
+  }
+  const ERRORS = {
+    offline: 'Sem internet. Tente de novo.', domain: 'O link saiu do site oficial, então parei.', redirects: 'O site redirecionou demais, então parei.',
+    'too-big': 'O arquivo veio maior que o esperado, então parei.', hash: 'O arquivo não bateu com o oficial, então apaguei por segurança.',
+    signature: 'O arquivo não veio assinado pelo fabricante, então apaguei por segurança.', disk: 'Sem espaço no disco.', http: 'O site do fabricante não respondeu.'
+  };
+  const signerName = (signer) => String(signer || 'fabricante').replace(/\s+(Corporation|Corp\.?|Inc\.?|Ltd\.?)$/i, '');
+  function phaseText(item = {}) {
+    switch (item.phase) {
+      case 'queued': return item.position ? `Na fila (${item.position}º)` : 'Na fila';
+      case 'downloading': return progressText(item);
+      case 'verifying': return 'Conferindo a assinatura…';
+      case 'ready': return `✓ Assinado pela ${signerName(item.signer)}`;
+      case 'install-queued': return 'Na fila para instalar';
+      case 'installing': return 'Instalando… siga a janela do fabricante';
+      case 'installed': return '✓ Instalado';
+      case 'canceled': return 'Download cancelado.';
+      case 'error': return ERRORS[item.error] || 'O download não terminou. Tente de novo.';
+      default: return '';
+    }
+  }
+
   /** O download de um cartão pelo id (o processo principal usa a própria leitura; o id vem da tela). */
   function downloadFor(model, id) {
     if (!model || typeof id !== 'string') return null;
@@ -384,5 +418,5 @@
   const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Antigo', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova' };
   /** As chaves de ícone que a página vai mostrar (para pedir só essas). */
   const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.flatMap((item) => [item.brand, item.brandAlt]))].filter(Boolean))];
-  return { build, downloadFor, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  return { build, downloadFor, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });

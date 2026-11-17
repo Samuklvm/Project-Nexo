@@ -319,3 +319,25 @@ test('ícones do PC: cada componente com o ícone do próprio programa, nunca ca
   assert.deepEqual([vc.brand, vc.brandAlt], ['vs', 'microsoft']);
   assert.ok(D.brands(model).includes('physx') && D.brands(model).includes('directx'));
 });
+
+test('drivers: textos da barra de download e de cada fase', () => {
+  assert.equal(D.progressText({ received: 471859200, total: 713031680, speed: 13002342, eta: 19 }), '66% · 12,4 MB/s · faltam 19 s');
+  assert.equal(D.progressText({ received: 471859200, total: 713031680, speed: 13002342, eta: 170 }), '66% · 12,4 MB/s · faltam 3 min');
+  assert.equal(D.progressText({ received: 471859200, total: null, speed: 13002342, eta: null }), '450 MB · 12,4 MB/s');
+  assert.equal(D.progressText({ received: 0, total: 1000, speed: null, eta: null }), '0%');
+  assert.equal(D.progressText({ received: 150000, total: 300000, speed: 51200, eta: 3 }), '50% · 50 KB/s · faltam 3 s', 'arquivo pequeno: KB/s, nunca 0,0 MB/s');
+  assert.equal(D.phaseText({ phase: 'queued', position: 2 }), 'Na fila (2º)');
+  assert.equal(D.phaseText({ phase: 'verifying' }), 'Conferindo a assinatura…');
+  assert.equal(D.phaseText({ phase: 'ready', signer: 'NVIDIA Corporation' }), '✓ Assinado pela NVIDIA');
+  assert.equal(D.phaseText({ phase: 'ready', signer: 'Microsoft Corporation' }), '✓ Assinado pela Microsoft');
+  assert.equal(D.phaseText({ phase: 'install-queued' }), 'Na fila para instalar');
+  assert.equal(D.phaseText({ phase: 'installing' }), 'Instalando… siga a janela do fabricante');
+  const errors = {
+    offline: 'Sem internet. Tente de novo.', domain: 'O link saiu do site oficial, então parei.', redirects: 'O site redirecionou demais, então parei.',
+    'too-big': 'O arquivo veio maior que o esperado, então parei.', hash: 'O arquivo não bateu com o oficial, então apaguei por segurança.',
+    signature: 'O arquivo não veio assinado pelo fabricante, então apaguei por segurança.', disk: 'Sem espaço no disco.', http: 'O site do fabricante não respondeu.'
+  };
+  for (const [error, text] of Object.entries(errors)) assert.equal(D.phaseText({ phase: 'error', error }), text);
+  assert.equal(D.phaseText({ phase: 'error', error: 'desconhecido' }), 'O download não terminou. Tente de novo.');
+  assert.equal(D.phaseText({ phase: 'canceled' }), 'Download cancelado.');
+});
