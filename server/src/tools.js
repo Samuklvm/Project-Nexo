@@ -45,7 +45,7 @@ export function trimTelemetry(aggregate, { partes, days }) {
   return { dias: days, installs: aggregate.installs, reports: aggregate.reports, aviso: 'Grande demais: peça partes específicas.', partes: names };
 }
 
-export function createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry }) {
+export function createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }) {
   return [
     {
       name: 'nexo_resumo',
@@ -103,6 +103,38 @@ export function createTools({ summaryData, usersData, errorListData, errorDetail
         const days = dias(args.dias);
         return trimTelemetry(aggregateTelemetry(await telemetryRows(env, days)), { partes: args.partes, days });
       }
+    },
+    {
+      name: 'nexo_marcar_erro',
+      title: 'Marcar um erro',
+      description: 'Muda o status de um erro: corrigido (com a versão em que a correção sai, ex.: 0.11.4), aberto, ignorado ou reaberto, com uma nota opcional. Se um erro corrigido voltar numa versão igual ou mais nova, ele reabre sozinho. A mudança fica registrada no painel, em "O que o Claude fez".',
+      inputSchema: { type: 'object', properties: {
+        assinatura: { type: 'string', pattern: '^[0-9a-f]{16}$' },
+        status: { type: 'string', enum: [...STATUSES] },
+        versao: { type: 'string', description: 'Versão da correção (obrigatória para "corrigido").' },
+        nota: { type: 'string', maxLength: 500 }
+      }, required: ['assinatura', 'status'], additionalProperties: false },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      needs: 'status',
+      run: async (args, { env, who }) => {
+        const signature = signatureOf(args.assinatura);
+        const status = statusOf(args.status);
+        if (!status) throw new ToolError('Diga o status: corrigido, aberto, ignorado ou reaberto.');
+        const fixedIn = typeof args.versao === 'string' && RE.version.test(args.versao) ? args.versao : null;
+        if (status === 'corrigido' && !fixedIn) throw new ToolError('Para marcar como corrigido, diga em qual versão a correção sai (ex.: 0.11.4).');
+        const note = typeof args.nota === 'string' ? args.nota.slice(0, 500) : undefined;
+        const result = await markErrorByClaude(env, who.grantId, signature, { status, fixedIn, note });
+        if (!result) throw new ToolError('Erro não encontrado.');
+        return result;
+      }
+    },
+    {
+      name: 'nexo_historico',
+      title: 'O que o Claude fez',
+      description: 'As últimas mudanças feitas pelo Claude no painel (quando, qual erro, antes e depois e por qual conexão), do mais novo ao mais velho.',
+      inputSchema: { type: 'object', properties: { limite: { type: 'integer', minimum: 1, maximum: 200, default: 30 } }, additionalProperties: false },
+      annotations: READ,
+      run: async (args, { env }) => ({ acoes: await claudeHistory(env, clampInt(args.limite, 1, 200, 30)) })
     },
     {
       name: 'nexo_cruzar',

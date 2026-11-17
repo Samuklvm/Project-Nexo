@@ -426,3 +426,90 @@ test('nexo_cruzar: limite de dias e catálogo na descrição', async () => {
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /Campo desconhecido/);
 });
+
+/* ---------- Marcar erros, histórico e o painel ---------- */
+const panelApi = (call, cookie, method, path, body) => call(method, `/painel/api/${path}`, { cookie, headers: { 'x-nexo-painel': '1' }, body });
+
+test('marcar erro pelo Claude: muda, registra em "O que o Claude fez" e respeita o papel', async () => {
+  const env = h.setup();
+  await seed(env);
+  const t = (await connect(env)).tokens.access_token;
+  const marked = await callTool(env.call, t, 'nexo_marcar_erro', { assinatura: SIGS[0], status: 'corrigido', versao: '0.11.4', nota: 'cache do sensor' });
+  assert.ok(!marked.isError, marked.content?.[0]?.text);
+  assert.equal(marked.structuredContent.antes.status, 'aberto');
+  assert.equal(marked.structuredContent.depois.status, 'corrigido');
+  assert.equal(marked.structuredContent.depois.fixed_in, '0.11.4');
+  const row = await env.env.DB.prepare('SELECT status, fixed_in, note FROM error_groups WHERE signature = ?').bind(SIGS[0]).first();
+  assert.deepEqual({ ...row }, { status: 'corrigido', fixed_in: '0.11.4', note: 'cache do sensor' });
+  const noVersion = await callTool(env.call, t, 'nexo_marcar_erro', { assinatura: SIGS[1], status: 'corrigido' });
+  assert.equal(noVersion.isError, true);
+  assert.match(noVersion.content[0].text, /versão/);
+  assert.equal((await callTool(env.call, t, 'nexo_marcar_erro', { assinatura: 'eeeeeeeeeeeeeee5', status: 'ignorado' })).isError, true);
+  const actions = await env.env.DB.prepare('SELECT tool, target FROM claude_actions').all();
+  assert.deepEqual(actions.results.map((item) => ({ ...item })), [{ tool: 'nexo_marcar_erro', target: SIGS[0] }]);
+  const history = (await callTool(env.call, t, 'nexo_historico')).structuredContent;
+  assert.equal(history.acoes.length, 1);
+  assert.equal(history.acoes[0].mensagem, 'Falha ao ler sensores');
+  assert.equal(history.acoes[0].depois.status, 'corrigido');
+  assert.doesNotMatch(JSON.stringify(history), EMAIL_RE);
+  const reader = await connectAs(env, 'leitor@exemplo.com', 'leitura');
+  assert.equal((await callTool(env.call, reader.tokens.access_token, 'nexo_marcar_erro', { assinatura: SIGS[1], status: 'ignorado' })).isError, true);
+  const tools = (await rpc(env.call, t, 'tools/list')).data.result.tools;
+  const mark = tools.find((tool) => tool.name === 'nexo_marcar_erro');
+  assert.equal(mark.annotations.readOnlyHint, false);
+  assert.equal(mark.annotations.destructiveHint, false);
+});
+
+test('painel: o dono vê as conexões e o que o Claude fez, e revoga', async () => {
+  const env = h.setup();
+  await seed(env);
+  const { tokens, cookie } = await connect(env);
+  await callTool(env.call, tokens.access_token, 'nexo_marcar_erro', { assinatura: SIGS[2], status: 'ignorado', nota: 'ruído' });
+  const view = await panelApi(env.call, cookie, 'GET', 'claude');
+  assert.equal(view.status, 200);
+  assert.equal(view.data.conexoes.length, 1);
+  const connection = view.data.conexoes[0];
+  assert.equal(connection.cliente, 'Claude');
+  assert.equal(connection.autorizadoPor, h.ADMIN);
+  assert.equal(connection.revogada, false);
+  assert.ok(connection.chamadasHoje >= 1);
+  assert.equal(view.data.acoes.length, 1);
+  assert.equal(view.data.acoes[0].mensagem, 'Canal lento');
+  const owner = await env.panelCookie();
+  await panelApi(env.call, owner, 'POST', 'equipe', { email: 'colab@exemplo.com', role: 'colaborador' });
+  const colab = await env.panelCookie('colab@exemplo.com');
+  assert.equal((await panelApi(env.call, colab, 'GET', 'claude')).status, 403);
+  assert.equal((await panelApi(env.call, cookie, 'POST', 'claude/revogar', { id: connection.id })).status, 200);
+  assert.equal((await rpc(env.call, tokens.access_token, 'tools/list')).status, 401);
+  assert.equal((await panelApi(env.call, cookie, 'GET', 'claude')).data.conexoes[0].revogada, true);
+});
+
+test('papel conferido a cada pedido: tirar a pessoa da equipe corta o Claude dela', async () => {
+  const env = h.setup();
+  const colab = await connectAs(env, 'colab@exemplo.com', 'colaborador');
+  assert.equal((await rpc(env.call, colab.tokens.access_token, 'tools/list')).status, 200);
+  const owner = await env.panelCookie();
+  await panelApi(env.call, owner, 'POST', 'equipe/remover', { email: 'colab@exemplo.com' });
+  assert.equal((await rpc(env.call, colab.tokens.access_token, 'tools/list')).status, 401);
+});
+
+test('limpeza diária do conector: vencidos e órfãos somem, o que vale fica', async () => {
+  const env = h.setup();
+  const { tokens } = await connect(env);
+  const db = env.env.DB;
+  const old = h.clock.now - 40 * 24 * 3600 * 1000;
+  await db.prepare("INSERT INTO oauth_clients (client_id, name, redirect_uris, created_at) VALUES ('orfao-0000000000001', 'Claude', '[]', ?)").bind(h.clock.now - 8 * 24 * 3600 * 1000).run();
+  await db.prepare("INSERT INTO oauth_codes (code_hash, client_id, redirect_uri, challenge, email, scope, expires_at) VALUES ('velho', 'x', 'y', 'z', 'e', 'painel', ?)").bind(old).run();
+  await db.prepare("INSERT INTO oauth_grants (grant_id, client_id, email, scope, created_at, revoked, revoked_at) VALUES ('g-revogada', 'x', 'e', 'painel', ?, 1, ?)").bind(old, h.clock.now - 31 * 24 * 3600 * 1000).run();
+  await db.prepare("INSERT INTO oauth_tokens (token_hash, grant_id, kind, expires_at) VALUES ('tok-velho', 'g-revogada', 'acesso', ?)").bind(old).run();
+  await db.prepare("INSERT INTO claude_actions (at, grant_id, tool) VALUES (?, 'g', 'nexo_marcar_erro')").bind(h.clock.now - 181 * 24 * 3600 * 1000).run();
+  await env.app.scheduled({}, env.env);
+  const count = async (sql) => (await db.prepare(sql).first()).n;
+  assert.equal(await count("SELECT COUNT(*) AS n FROM oauth_clients WHERE client_id = 'orfao-0000000000001'"), 0);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM oauth_codes WHERE code_hash = 'velho'"), 0);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM oauth_grants WHERE grant_id = 'g-revogada'"), 0);
+  assert.equal(await count("SELECT COUNT(*) AS n FROM oauth_tokens WHERE token_hash = 'tok-velho'"), 0);
+  assert.equal(await count('SELECT COUNT(*) AS n FROM claude_actions'), 0);
+  assert.equal(await count('SELECT COUNT(*) AS n FROM oauth_clients'), 1, 'o cliente com conexão fica');
+  assert.equal((await rpc(env.call, tokens.access_token, 'tools/list')).status, 200, 'a conexão que vale continua');
+});

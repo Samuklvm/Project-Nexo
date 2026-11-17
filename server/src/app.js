@@ -86,7 +86,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   };
   const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES, CAN });
   // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
-  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now });
+  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -452,6 +452,48 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ ok: true });
   }
 
+  /** O Claude marca um erro (pelo conector): muda e registra antes/depois em claude_actions. null se o erro não existe. */
+  async function markErrorByClaude(env, grantId, signature, { status, fixedIn, note }) {
+    const pick = 'SELECT status, fixed_in, note FROM error_groups WHERE signature = ?';
+    const before = await env.DB.prepare(pick).bind(signature).first();
+    if (!before) return null;
+    const after = { status, fixed_in: status === 'corrigido' ? fixedIn : null, note: note ?? before.note ?? null };
+    await env.DB.batch([
+      env.DB.prepare('UPDATE error_groups SET status = ?, fixed_in = ?, note = ? WHERE signature = ?').bind(after.status, after.fixed_in, after.note, signature),
+      env.DB.prepare('INSERT INTO claude_actions (at, grant_id, tool, target, before, after) VALUES (?, ?, ?, ?, ?, ?)').bind(now(), grantId, 'nexo_marcar_erro', signature, JSON.stringify({ ...before }), JSON.stringify(after))
+    ]);
+    return { antes: { ...before }, depois: after };
+  }
+
+  /** O que o Claude mudou, do mais novo ao mais velho (com a mensagem do erro, para ler fácil). */
+  async function claudeHistory(env, limite = 30) {
+    const { results = [] } = await env.DB.prepare(`SELECT a.at, a.grant_id, a.tool, a.target, a.before, a.after, g.message FROM claude_actions a
+      LEFT JOIN error_groups g ON g.signature = a.target ORDER BY a.id DESC LIMIT ?`).bind(clampInt(limite, 1, 200, 30)).all();
+    const parse = (value) => { try { return JSON.parse(value); } catch { return null; } };
+    return results.map((row) => ({ em: row.at, ferramenta: row.tool, alvo: row.target, mensagem: row.message || null, antes: parse(row.before), depois: parse(row.after), conexao: row.grant_id }));
+  }
+
+  /** Conexões do Claude e o que ele fez (só o dono). */
+  async function adminClaude({ env, need }) {
+    need('chaves');
+    const today = dayOf(now());
+    const { results = [] } = await env.DB.prepare(`SELECT g.grant_id, g.email, g.created_at, g.last_used, g.calls, g.revoked, c.name, r.count AS today
+      FROM oauth_grants g LEFT JOIN oauth_clients c ON c.client_id = g.client_id LEFT JOIN rate r ON r.key = 'mcp:' || g.grant_id AND r.day = ?
+      ORDER BY g.revoked, g.created_at DESC LIMIT 50`).bind(today).all();
+    return json({
+      conexoes: results.map((row) => ({ id: row.grant_id, cliente: row.name || 'Claude', autorizadoPor: row.email, criadoEm: row.created_at, ultimoUso: row.last_used, chamadas: row.calls, chamadasHoje: row.today || 0, revogada: row.revoked === 1 })),
+      acoes: await claudeHistory(env, 30)
+    });
+  }
+
+  /** Revoga uma conexão do Claude (os tokens dela param na hora). */
+  async function adminClaudeRevoke({ request, env, need }) {
+    need('chaves');
+    const body = await readJson(request);
+    await oauth.revokeGrant(env, String(body.id || '').slice(0, 40));
+    return json({ ok: true });
+  }
+
   /** Telemetria agregada dos últimos dias (padrão 30, até 120). */
   async function telemetryRows(env, days) {
     const { results = [] } = await env.DB.prepare('SELECT install_id, day, version, platform, data FROM telemetry WHERE day >= ? ORDER BY day').bind(dayOf(now() - days * DAY)).all();
@@ -540,6 +582,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['GET chaves', adminKeyList],
     ['POST chaves', adminKeyCreate],
     ['POST chaves/revogar', adminKeyRevoke],
+    ['GET claude', adminClaude],
+    ['POST claude/revogar', adminClaudeRevoke],
     ['POST sair', adminLogout]
   ]);
   /** Rotas de um erro só (erros/<assinatura>). */
@@ -670,7 +714,13 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         env.DB.prepare('DELETE FROM rate WHERE day < ?').bind(dayOf(at - DAY)),
         // Cópia de PC sem atualizar há um ano some; conta sem sessão nem cópia (só nome e e-mail) some junto.
         env.DB.prepare('DELETE FROM snapshots WHERE updated_at < ?').bind(at - 365 * DAY),
-        env.DB.prepare('DELETE FROM users WHERE last_seen < ? AND uid NOT IN (SELECT uid FROM sessions) AND uid NOT IN (SELECT uid FROM snapshots)').bind(at - 30 * DAY)
+        env.DB.prepare('DELETE FROM users WHERE last_seen < ? AND uid NOT IN (SELECT uid FROM sessions) AND uid NOT IN (SELECT uid FROM snapshots)').bind(at - 30 * DAY),
+        // Conector do Claude: códigos e tokens vencidos, conexões revogadas há 30 dias, clientes sem conexão e ações velhas.
+        env.DB.prepare('DELETE FROM oauth_codes WHERE expires_at < ?').bind(at),
+        env.DB.prepare('DELETE FROM oauth_tokens WHERE expires_at < ? OR grant_id IN (SELECT grant_id FROM oauth_grants WHERE revoked = 1)').bind(at),
+        env.DB.prepare('DELETE FROM oauth_grants WHERE revoked = 1 AND revoked_at < ?').bind(at - 30 * DAY),
+        env.DB.prepare('DELETE FROM oauth_clients WHERE created_at < ? AND client_id NOT IN (SELECT client_id FROM oauth_grants)').bind(at - 7 * DAY),
+        env.DB.prepare('DELETE FROM claude_actions WHERE at < ?').bind(at - 180 * DAY)
       ]);
     }
   };
