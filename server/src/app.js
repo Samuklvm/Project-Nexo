@@ -484,6 +484,20 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return results.map((row) => ({ em: row.at, ferramenta: row.tool, alvo: row.target, mensagem: row.message || null, antes: parse(row.before), depois: parse(row.after), conexao: row.grant_id }));
   }
 
+  /** Contagem exata para o painel: funil, retenção, séries de 30 dias, GitHub (impreciso), a contagem antiga e os últimos PCs (sem código). */
+  async function adminContagem({ env }) {
+    const [funil, retencao, porDia, github, old, recent] = await Promise.all([
+      queries.funil(env), queries.retencao(env), queries.porDia(env, 30), cron.githubTotal(env), usersData(env, 30),
+      env.DB.prepare('SELECT first_seen, last_seen, last_version, platform, days_active, installs FROM pcs ORDER BY first_seen DESC LIMIT 15').all()
+    ]);
+    return json({
+      funil, retencao, porDia,
+      github: { ...(github || { dia: null, total: null, porTag: [] }), impreciso: true },
+      antigo: { instalacoesVistas: old.instalacoesVistas, novos30: old.novosPorDia.reduce((sum, row) => sum + (Number(row.n) || 0), 0) },
+      ultimos: (recent.results || []).map((row) => ({ primeira: row.first_seen, ultima: row.last_seen, versao: row.last_version, sistema: row.platform, dias: row.days_active, reinstalou: row.installs >= 2 }))
+    });
+  }
+
   /** Conexões do Claude e o que ele fez (só o dono). */
   async function adminClaude({ env, need }) {
     need('chaves');
@@ -595,6 +609,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['POST chaves', adminKeyCreate],
     ['POST chaves/revogar', adminKeyRevoke],
     ['GET claude', adminClaude],
+    ['GET contagem', adminContagem],
+    ['GET versoes', async ({ env }) => json(await queries.versoes(env))],
     ['POST claude/revogar', adminClaudeRevoke],
     ['POST sair', adminLogout]
   ]);

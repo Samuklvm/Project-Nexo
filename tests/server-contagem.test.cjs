@@ -214,3 +214,31 @@ test('limpeza: sinais de vida, eventos e PCs com mais de 400 dias somem', async 
   assert.equal((await rows(env, 'SELECT * FROM pulses')).length, 1);
   assert.equal((await rows(env, 'SELECT * FROM pc_events')).length, 0);
 });
+
+/* ---------- Painel ---------- */
+test('painel: contagem e versões sem código de PC', async () => {
+  const env = h.setup();
+  const { call } = env;
+  const codes = ['P1', 'P2'].map(pcOf);
+  await install(call, codes[0], 'instalou'); await install(call, codes[0], 'instalou');
+  await pulse(call, codes[0]); await pulse(call, codes[1], { platform: 'linux' });
+  const stored = (await rows(env.env, 'SELECT pc FROM pcs')).map((row) => row.pc);
+  const owner = await env.panelCookie();
+  await call('POST', '/painel/api/equipe', { cookie: owner, headers: { 'x-nexo-painel': '1' }, body: { email: 'leitor@exemplo.com', role: 'leitura' } });
+  const reader = await env.panelCookie('leitor@exemplo.com');
+  const contagem = await call('GET', '/painel/api/contagem', { cookie: reader });
+  assert.equal(contagem.status, 200);
+  assert.equal(contagem.data.funil.abriram, 2);
+  assert.ok(contagem.data.retencao.d1);
+  assert.ok(Array.isArray(contagem.data.porDia.ativos));
+  assert.equal(contagem.data.github.impreciso, true);
+  assert.equal(typeof contagem.data.antigo.instalacoesVistas, 'number');
+  assert.equal(contagem.data.ultimos.length, 2);
+  assert.deepEqual(Object.keys(contagem.data.ultimos[0]).sort(), ['dias', 'primeira', 'reinstalou', 'sistema', 'ultima', 'versao']);
+  assert.equal(contagem.data.ultimos.find((row) => row.sistema === 'win32').reinstalou, true);
+  const versoes = await call('GET', '/painel/api/versoes', { cookie: reader });
+  assert.equal(versoes.status, 200);
+  assert.equal(versoes.data.maisNova, '0.12.0');
+  for (const text of [JSON.stringify(contagem.data), JSON.stringify(versoes.data)]) for (const code of [...codes, ...stored]) assert.ok(!text.includes(code));
+  assert.equal((await call('GET', '/painel/api/contagem')).status, 401);
+});
