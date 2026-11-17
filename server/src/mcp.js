@@ -10,6 +10,20 @@
 export const PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const ALLOWED_ORIGINS = new Set(['https://claude.ai', 'https://claude.com']);
 const DAILY_CALLS = 2000;
+const HEAVY_CALLS = 100;
+/** E-mail em qualquer texto (a mesma forma que o redator do servidor usa). */
+const EMAIL = /\b[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,24}\b/g;
+
+/**
+ * Última barreira da regra "e-mail nunca passa pelo conector": troca qualquer e-mail em qualquer texto da resposta
+ * (inclusive notas digitadas no painel) por <e-mail>.
+ */
+export function scrubEmails(value) {
+  if (typeof value === 'string') return value.replace(EMAIL, '<e-mail>');
+  if (Array.isArray(value)) return value.map(scrubEmails);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrubEmails(item)]));
+  return value;
+}
 
 /** Erro que a ferramenta quer mostrar ao Claude (vira isError com a mensagem). */
 export class ToolError extends Error {}
@@ -30,6 +44,11 @@ export function createMcp({ tools, serverVersion, bearer, limit, json, now }) {
     if (tool.needs && !who.can(tool.needs)) return toolError(id, 'O seu papel no painel não permite isso (quem autorizou o Claude precisa poder mudar o estado dos erros).');
     try { await limit(env, `mcp:${who.grantId}`, DAILY_CALLS); }
     catch (error) { if (error?.status === 429) return toolError(id, `Limite de hoje atingido (${DAILY_CALLS} chamadas por conexão). Volta amanhã.`); throw error; }
+    // Ferramentas que leem a telemetria inteira do período gastam a cota grátis de leituras do D1: limite próprio.
+    if (tool.heavy) {
+      try { await limit(env, `mcp-scan:${who.grantId}`, HEAVY_CALLS); }
+      catch (error) { if (error?.status === 429) return toolError(id, `Limite de hoje para análises pesadas atingido (${HEAVY_CALLS} por conexão: nexo_telemetria e nexo_cruzar). Use nexo_resumo e nexo_erros, ou volte amanhã.`); throw error; }
+    }
     await env.DB.prepare('UPDATE oauth_grants SET calls = calls + 1, last_used = ? WHERE grant_id = ?').bind(now(), who.grantId).run();
     let result;
     try { result = await tool.run(args, { env, who, now }); }
@@ -38,7 +57,8 @@ export function createMcp({ tools, serverVersion, bearer, limit, json, now }) {
       console.error('nexo-mcp', tool.name, error?.name || 'Error');
       return toolError(id, 'Erro interno ao rodar a ferramenta.');
     }
-    return reply(id, { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result });
+    const safe = scrubEmails(result);
+    return reply(id, { content: [{ type: 'text', text: JSON.stringify(safe) }], structuredContent: safe });
   }
 
   /** Atende um pedido ao /mcp (o método HTTP e a autorização já vêm conferidos aqui dentro). */

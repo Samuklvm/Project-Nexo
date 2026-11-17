@@ -12,7 +12,8 @@ const TOP_N = 15;
 /** Partes da telemetria agregada que vêm sempre (as listas entram cortadas no top 15). */
 const ALWAYS = ['installs', 'reports', 'activeByDay', 'numbers'];
 
-const dias = (value, max = 120) => clampInt(value, 1, max, 30);
+/** Dias pedidos (nulo ou vazio = o padrão, 30). */
+const dias = (value, max = 120) => (value === null || value === undefined || value === '' ? Math.min(30, max) : clampInt(value, 1, max, 30));
 const signatureOf = (value) => {
   if (typeof value !== 'string' || !RE.signature.test(value)) throw new ToolError('Assinatura inválida (16 caracteres hexadecimais, como aparece em nexo_erros).');
   return value;
@@ -99,6 +100,7 @@ export function createTools({ summaryData, usersData, errorListData, errorDetail
         partes: { type: 'array', items: { type: 'string' }, description: 'Nomes das partes (ex.: gpus, versions, views, numbers).' }
       }, additionalProperties: false },
       annotations: READ,
+      heavy: true,
       run: async (args, { env }) => {
         const days = dias(args.dias);
         return trimTelemetry(aggregateTelemetry(await telemetryRows(env, days)), { partes: args.partes, days });
@@ -150,6 +152,7 @@ Medidas: ${Object.entries(MEDIDAS).map(([name, measure]) => `${name} (${measure.
         dias: { type: 'integer', minimum: 1, maximum: 60, default: 30 }
       }, required: ['linha'], additionalProperties: false },
       annotations: READ,
+      heavy: true,
       run: async (args, { env }) => {
         const days = dias(args.dias, 60);
         let table;

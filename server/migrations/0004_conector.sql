@@ -35,13 +35,14 @@ CREATE TABLE IF NOT EXISTS oauth_grants (
   revoked_at INTEGER
 );
 
--- Tokens de acesso (1 h) e de renovação (30 dias, trocado a cada uso; reusar um já trocado revoga a autorização).
+-- Tokens de acesso (1 h) e de renovação (30 dias, trocado a cada uso; reusar um já trocado depois de 60 s revoga a
+-- autorização; dentro de 60 s é resposta perdida e ganha par novo).
 CREATE TABLE IF NOT EXISTS oauth_tokens (
   token_hash TEXT PRIMARY KEY,
   grant_id TEXT NOT NULL,
   kind TEXT NOT NULL,            -- acesso | renovacao
   expires_at INTEGER NOT NULL,
-  used INTEGER NOT NULL DEFAULT 0
+  used INTEGER NOT NULL DEFAULT 0  -- renovação: quando foi trocada (0 = ainda não)
 );
 CREATE INDEX IF NOT EXISTS oauth_tokens_grant ON oauth_tokens (grant_id);
 

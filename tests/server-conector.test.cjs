@@ -30,7 +30,7 @@ test('descoberta: metadados do recurso e do servidor de autorização', async ()
 });
 
 test('registro: só os callbacks do Claude', async () => {
-  const { call } = h.setup();
+  const { call, env } = h.setup();
   const ok = await register(call);
   assert.equal(ok.status, 201);
   assert.ok(typeof ok.data.client_id === 'string' && ok.data.client_id.length >= 16);
@@ -43,9 +43,8 @@ test('registro: só os callbacks do Claude', async () => {
   assert.equal((await register(call, [CLAUDE_CB, CLAUDE_COM_CB, 'https://evil.example/cb'])).status, 400);
   assert.equal((await register(call, [])).status, 400);
   for (let i = 2; i < 20; i += 1) assert.equal((await register(call)).status, 201);
-  const over = await register(call);
-  assert.equal(over.status, 400, 'o 21º cliente');
-  assert.equal(over.data.error, 'invalid_client_metadata');
+  assert.equal((await register(call)).status, 201, 'o 21º entra e o mais antigo sem conexão sai');
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM oauth_clients').first()).n, 20);
 });
 
 
@@ -157,6 +156,7 @@ test('renovação: troca o par e reusar o refresh antigo revoga a autorização'
   assert.equal(next.status, 200);
   assert.notEqual(next.data.refresh_token, tokens.refresh_token);
   assert.notEqual(next.data.access_token, tokens.access_token);
+  h.tick(61 * 1000);
   const reuse = await refresh(tokens.refresh_token);
   assert.equal(reuse.data.error, 'invalid_grant', 'refresh antigo reusado');
   const grant = await env.env.DB.prepare('SELECT revoked FROM oauth_grants').first();
@@ -223,6 +223,7 @@ test('mcp: só com token válido; 401 aponta para os metadados (inclusive token 
   const { client, tokens: second } = await connect(env);
   const next = (await call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: second.refresh_token, client_id: client.client_id } })).data;
   assert.equal((await rpc(call, next.access_token, 'tools/list')).status, 200);
+  h.tick(61 * 1000);
   await call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: second.refresh_token, client_id: client.client_id } });
   assert.equal((await rpc(call, next.access_token, 'tools/list')).status, 401);
 });
@@ -512,4 +513,73 @@ test('limpeza diária do conector: vencidos e órfãos somem, o que vale fica', 
   assert.equal(await count('SELECT COUNT(*) AS n FROM claude_actions'), 0);
   assert.equal(await count('SELECT COUNT(*) AS n FROM oauth_clients'), 1, 'o cliente com conexão fica');
   assert.equal((await rpc(env.call, tokens.access_token, 'tools/list')).status, 200, 'a conexão que vale continua');
+});
+
+/* ---------- Correções da revisão final ---------- */
+test('revisão: e-mail digitado numa nota do painel nunca sai pelo /mcp (filtro final em toda resposta)', async () => {
+  const env = h.setup();
+  await seed(env);
+  const { tokens, cookie } = await connect(env);
+  const t = tokens.access_token;
+  await panelApi(env.call, cookie, 'POST', `erros/${SIGS[1]}`, { status: 'aberto', note: 'avisar fulano@exemplo.com quando sair' });
+  await callTool(env.call, t, 'nexo_marcar_erro', { assinatura: SIGS[2], status: 'ignorado', nota: 'falei com beltrano@exemplo.org' });
+  const all = [...READ_TOOLS, ['nexo_erro', { assinatura: SIGS[1] }], ['nexo_erro', { assinatura: SIGS[2] }], ['nexo_historico', {}], ['nexo_cruzar', { linha: 'gpu_marca', coluna: 'efeitos' }], ['nexo_marcar_erro', { assinatura: SIGS[1], status: 'aberto' }]];
+  for (const [name, args] of all) {
+    const result = await callTool(env.call, t, name, args);
+    assert.ok(!result.isError, `${name}: ${result.content?.[0]?.text}`);
+    assert.doesNotMatch(JSON.stringify(result), EMAIL_RE, name);
+  }
+  const note = (await callTool(env.call, t, 'nexo_erro', { assinatura: SIGS[1] })).structuredContent.group.note;
+  assert.equal(note, 'avisar <e-mail> quando sair');
+});
+
+test('revisão: registro em massa não impede o Claude de se conectar (clientes sem conexão saem primeiro)', async () => {
+  const env = h.setup();
+  const { client } = await connect(env);
+  for (let i = 0; i < 25; i += 1) assert.equal((await register(env.call)).status, 201, `registro ${i}`);
+  const loose = await env.env.DB.prepare('SELECT COUNT(*) AS n FROM oauth_clients WHERE client_id NOT IN (SELECT client_id FROM oauth_grants)').first();
+  assert.ok(loose.n <= 20);
+  const kept = await env.env.DB.prepare('SELECT COUNT(*) AS n FROM oauth_clients WHERE client_id = ?').bind(client.client_id).first();
+  assert.equal(kept.n, 1, 'o cliente que tem conexão nunca sai');
+  const fresh = (await register(env.call)).data;
+  const ok = await approve(env.call, await env.panelCookie(), authParams(fresh.client_id, pkce().challenge));
+  assert.equal(ok.status, 200);
+});
+
+test('revisão: análises pesadas (telemetria e cruzamentos) têm limite diário próprio', async () => {
+  const env = h.setup();
+  await seed(env);
+  const t = (await connect(env)).tokens.access_token;
+  const grant = await env.env.DB.prepare('SELECT grant_id FROM oauth_grants').first();
+  await env.env.DB.prepare('INSERT INTO rate (key, day, count) VALUES (?, ?, 100)').bind(`mcp-scan:${grant.grant_id}`, new Date(h.clock.now).toISOString().slice(0, 10)).run();
+  for (const name of ['nexo_telemetria', 'nexo_cruzar']) {
+    const result = await callTool(env.call, t, name, { linha: 'gpu_marca' });
+    assert.equal(result.isError, true, name);
+    assert.match(result.content[0].text, /análises pesadas/);
+  }
+  assert.ok(!(await callTool(env.call, t, 'nexo_resumo')).isError, 'o resto continua');
+});
+
+test('revisão: renovação repetida logo em seguida (resposta perdida) não derruba a conexão; reuso tardio derruba', async () => {
+  const env = h.setup();
+  const { client, tokens } = await connect(env);
+  const refresh = (token) => env.call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: token, client_id: client.client_id } });
+  const first = await refresh(tokens.refresh_token);
+  assert.equal(first.status, 200);
+  h.tick(20 * 1000);
+  const retry = await refresh(tokens.refresh_token);
+  assert.equal(retry.status, 200, 'repetição dentro de 60 s: par novo');
+  assert.equal((await rpc(env.call, retry.data.access_token, 'tools/list')).status, 200);
+  assert.equal((await env.env.DB.prepare('SELECT revoked FROM oauth_grants').first()).revoked, 0);
+  h.tick(61 * 1000);
+  assert.equal((await refresh(tokens.refresh_token)).data.error, 'invalid_grant', 'reuso depois de 60 s');
+  assert.equal((await env.env.DB.prepare('SELECT revoked FROM oauth_grants').first()).revoked, 1);
+});
+
+test('revisão: dias nulo ou vazio usa o padrão (30), não 1 dia', async () => {
+  const env = h.setup();
+  const t = (await connect(env)).tokens.access_token;
+  assert.equal((await callTool(env.call, t, 'nexo_usuarios', { dias: null })).structuredContent.dias, 30);
+  assert.equal((await callTool(env.call, t, 'nexo_telemetria', { dias: '' })).structuredContent.dias, 30);
+  assert.equal((await callTool(env.call, t, 'nexo_cruzar', { linha: 'versao', dias: null })).structuredContent.dias, 30);
 });

@@ -21,6 +21,8 @@ const MAX_CLIENTS = 20;
 const CODE_MS = 60 * 1000;
 const ACCESS_MS = 3600 * 1000;
 const REFRESH_MS = 30 * 24 * 3600 * 1000;
+/** Renovação repetida logo depois de trocada (resposta perdida, duas ao mesmo tempo): par novo, sem revogar. */
+const REUSE_GRACE_MS = 60 * 1000;
 const CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
 const VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 const CLIENT_ID = /^[A-Za-z0-9_-]{16,64}$/;
@@ -70,8 +72,11 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
       const uris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
       if (!uris.length || uris.length > 2 || !uris.every((uri) => typeof uri === 'string' && CLAUDE_REDIRECTS.has(uri))) throw new OAuthError(400, 'invalid_redirect_uri', 'Só o Claude pode se conectar ao painel do Nexo.');
       if (body.token_endpoint_auth_method !== undefined && body.token_endpoint_auth_method !== 'none') throw new OAuthError(400, 'invalid_client_metadata', 'Só clientes públicos (PKCE, sem segredo).');
-      const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM oauth_clients').first();
-      if ((count?.n || 0) >= MAX_CLIENTS) throw new OAuthError(400, 'invalid_client_metadata', 'Clientes demais registrados. Revogue conexões antigas no painel.');
+      // Só os clientes SEM conexão contam no limite; passando dele, os mais antigos saem (registro em massa de fora
+      // não impede o Claude de verdade de se registrar, e um cliente com conexão autorizada nunca sai).
+      const loose = await env.DB.prepare('SELECT COUNT(*) AS n FROM oauth_clients WHERE client_id NOT IN (SELECT client_id FROM oauth_grants)').first();
+      const excess = (loose?.n || 0) - MAX_CLIENTS + 1;
+      if (excess > 0) await env.DB.prepare('DELETE FROM oauth_clients WHERE client_id IN (SELECT client_id FROM oauth_clients WHERE client_id NOT IN (SELECT client_id FROM oauth_grants) ORDER BY created_at, rowid LIMIT ?)').bind(excess).run();
       const clientId = randomId(18);
       const name = text(body.client_name, 60).replace(/[\u0000-\u001f<>]/g, '').trim() || 'Claude';
       const at = now();
@@ -202,11 +207,19 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
       FROM oauth_tokens t JOIN oauth_grants g ON g.grant_id = t.grant_id WHERE t.token_hash = ? AND t.kind = 'renovacao'`).bind(await sha256Hex(token)).first() : null;
     if (!row || row.revoked) throw new OAuthError(400, 'invalid_grant', 'Renovação inválida ou revogada.');
     if (String(form.client_id || '') !== row.client_id) throw new OAuthError(400, 'invalid_grant', 'Renovação de outro cliente.');
-    // Renovação já trocada sendo usada de novo: sinal de roubo. Corta a autorização inteira.
-    if (row.used) { await revokeGrant(env, row.grant_id); throw new OAuthError(400, 'invalid_grant', 'Renovação já usada: a conexão foi revogada por segurança.'); }
     if (row.expires_at < now()) throw new OAuthError(400, 'invalid_grant', 'Renovação vencida.');
-    const spent = await env.DB.prepare('UPDATE oauth_tokens SET used = 1 WHERE token_hash = ? AND used = 0').bind(row.token_hash).run();
-    if (!spent?.meta?.changes) { await revokeGrant(env, row.grant_id); throw new OAuthError(400, 'invalid_grant', 'Renovação já usada: a conexão foi revogada por segurança.'); }
+    // Já trocada (used = quando): repetição dentro de 60 s é resposta perdida ou corrida e ganha par novo; depois
+    // disso é sinal de roubo e corta a autorização inteira.
+    const reused = async (usedAt) => {
+      if (usedAt && now() - usedAt <= REUSE_GRACE_MS) return null;
+      await revokeGrant(env, row.grant_id);
+      throw new OAuthError(400, 'invalid_grant', 'Renovação já usada: a conexão foi revogada por segurança.');
+    };
+    if (row.used) await reused(row.used);
+    else {
+      const spent = await env.DB.prepare('UPDATE oauth_tokens SET used = ? WHERE token_hash = ? AND used = 0').bind(now(), row.token_hash).run();
+      if (!spent?.meta?.changes) await reused((await env.DB.prepare('SELECT used FROM oauth_tokens WHERE token_hash = ?').bind(row.token_hash).first())?.used);
+    }
     if (!await roleOf(env, row.email)) { await revokeGrant(env, row.grant_id); throw new OAuthError(400, 'invalid_grant', 'Quem autorizou não está mais no painel.'); }
     return issue(env, row.grant_id);
   }
