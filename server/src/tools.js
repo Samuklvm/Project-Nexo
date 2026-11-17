@@ -4,6 +4,7 @@
  */
 import { ToolError } from './mcp.js';
 import { RE, STATUSES, clampInt } from './validate.js';
+import { CAMPOS, MEDIDAS, crossTab } from './cruzar.js';
 
 const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true };
 const TELEMETRY_BUDGET = 60000;
@@ -101,6 +102,28 @@ export function createTools({ summaryData, usersData, errorListData, errorDetail
       run: async (args, { env }) => {
         const days = dias(args.dias);
         return trimTelemetry(aggregateTelemetry(await telemetryRows(env, days)), { partes: args.partes, days });
+      }
+    },
+    {
+      name: 'nexo_cruzar',
+      title: 'Cruzar a telemetria',
+      description: `Responde perguntas livres cruzando a telemetria anônima, por um catálogo fechado de campos. Sem "medida": conta PCs (o resumo mais recente de cada um) por "linha" (e "coluna", se vier). Com "medida": mediana e p90 da medida por "linha", entre todos os resumos do período. "filtro" restringe por campo = valor (ex.: { "sistema": "win32" }). Exemplo: quem tem AMD usa mais o Modo Leve? → linha gpu_marca, coluna efeitos.
+Campos: ${Object.entries(CAMPOS).map(([name, field]) => `${name} (${field.titulo})`).join('; ')}.
+Medidas: ${Object.entries(MEDIDAS).map(([name, measure]) => `${name} (${measure.titulo})`).join('; ')}.`,
+      inputSchema: { type: 'object', properties: {
+        linha: { type: 'string', description: 'Campo das linhas.' },
+        coluna: { type: 'string', description: 'Campo das colunas (opcional).' },
+        medida: { type: 'string', description: 'Medida para mediana e p90 por linha (opcional; não combina com coluna).' },
+        filtro: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] }, description: 'Campo → valor que a linha precisa ter.' },
+        dias: { type: 'integer', minimum: 1, maximum: 60, default: 30 }
+      }, required: ['linha'], additionalProperties: false },
+      annotations: READ,
+      run: async (args, { env }) => {
+        const days = dias(args.dias, 60);
+        let table;
+        try { table = crossTab(await telemetryRows(env, days), { linha: args.linha, coluna: args.medida ? undefined : args.coluna, medida: args.medida, filtro: args.filtro }); }
+        catch (error) { throw new ToolError(error.message); }
+        return { dias: days, ...table };
       }
     }
   ];

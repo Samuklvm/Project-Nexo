@@ -19,6 +19,7 @@ import { createSteam } from './steam.js';
 import { createOAuth } from './oauth.js';
 import { createMcp } from './mcp.js';
 import { createTools } from './tools.js';
+import { AGE_BANDS, DAY_METRICS, RAM_BANDS, SKY_FLAGS, SYSTEM_FLAGS, band, num } from './cruzar.js';
 import { CONNECT_CSS, CONNECT_JS } from './connect-page.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -677,48 +678,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
 
 /* ---------- Telemetria agregada para o painel ---------- */
 
-/** Número de verdade (finito) ou null. */
-const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
-/** Fração (0–1) em porcentagem, ou null. */
-const pct = (value) => (num(value) === null ? null : value * 100);
-/** Faixa de um valor (em vez de ternários encadeados): a primeira cujo limite é maior que ele. */
-const band = (value, limits) => limits.find(([max]) => value < max)?.[1] ?? limits.at(-1)[1];
-const RAM_BANDS = [[8.5, 'até 8 GB'], [16.5, '9–16 GB'], [32.5, '17–32 GB'], [Infinity, 'mais de 32 GB']];
-const AGE_BANDS = [[1, 'menos de 1 dia'], [7, '1 a 6 dias'], [30, '1 a 4 semanas'], [90, '1 a 3 meses'], [Infinity, 'mais de 3 meses']];
-const SYSTEM_FLAGS = ['autostart', 'tray', 'autoSession', 'onlineCovers'];
-const SKY_FLAGS = ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor', 'skyHour', 'wallpaper', 'autoClean', 'reducedMotion'];
 /** Ajustes contados como estão: campo do resumo → lista no painel. */
 const SETTING_LISTS = [['effects', 'effects'], ['accent', 'accents'], ['skyDensity', 'skyDensity'], ['profile', 'profiles'], ['liveRate', 'liveRates']];
-/** Números do dia (mediana e p90 entre os resumos): rótulo → valor de um resumo. */
-const DAY_METRICS = [
-  ['Minutos com o Nexo em foco', (data) => data.app?.focusMin],
-  ['Minutos com o Nexo aberto', (data) => data.app?.openMin],
-  ['Aberturas no dia', (data) => data.app?.launches],
-  ['Tempo de abertura (ms)', (data) => data.app?.startMs],
-  ['CPU do Nexo em foco (%)', (data) => data.perf?.cpuFocus],
-  ['CPU do Nexo em segundo plano (%)', (data) => data.perf?.cpuBack],
-  ['Memória do Nexo em foco (MB)', (data) => data.perf?.memFocusMB],
-  ['Pico de memória do Nexo (MB)', (data) => data.perf?.memMaxMB],
-  ['Quadros do céu por segundo', (data) => data.perf?.skyFps],
-  ['Travadas da interface no dia', (data) => data.perf?.longTasks],
-  ['Vídeo com o Nexo na frente, Completo (%)', (data) => data.perf?.gpuCompleto],
-  ['Vídeo com o Nexo na frente, Leve (%)', (data) => data.perf?.gpuLeve],
-  ['Vídeo com o Nexo em segundo plano (%)', (data) => data.perf?.gpuFundo],
-  ['Processador do PC, média do dia (%)', (data) => data.health?.cpu],
-  ['Memória do PC, média do dia (%)', (data) => data.health?.mem],
-  ['Vídeo do PC, média do dia (%)', (data) => data.health?.gpu],
-  ['Maior temperatura do dia (°C)', (data) => data.health?.tempMax],
-  // O que limita os PCs: números da GPU e da CPU com carga e das sessões de jogo.
-  ['GPU com carga: uso típico (%)', (data) => data.bottleneck?.gpu?.busyP50],
-  ['GPU com carga: clock em % do máximo dela', (data) => pct(data.bottleneck?.gpu?.clockRatioP50)],
-  ['GPU com carga: energia em % do limite', (data) => data.bottleneck?.gpu?.powerPctP50],
-  ['GPU em 95%+ (% do tempo com carga)', (data) => pct(data.bottleneck?.gpu?.saturatedShare)],
-  ['Memória de vídeo, pico do dia (%)', (data) => data.bottleneck?.gpu?.vramPctMax],
-  ['Núcleo mais ocupado da CPU (p90, %)', (data) => data.bottleneck?.cpu?.maxCoreP90],
-  ['Minutos com carga no dia', (data) => data.bottleneck?.minutes],
-  ['FPS médio nas sessões', (data) => data.bottleneck?.fps?.avg],
-  ['1% baixo nas sessões (FPS)', (data) => data.bottleneck?.fps?.p1Low]
-];
 /** Listas que o painel mostra, na ordem da resposta. */
 const TOP_LISTS = ['limiter', 'sessionLimiter', 'updatedFrom', 'ageDays', 'ipcFails', 'events', 'featsEmpty', 'featsCrashed', 'sourceFails', 'versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
 
@@ -860,7 +821,7 @@ export function aggregateTelemetry(rows) {
   for (const { data } of parsed) {
     tallyUsage(tally, data);
     tallyHealth(count, data);
-    for (const [label, read] of DAY_METRICS) {
+    for (const [label, , read] of DAY_METRICS) {
       const value = num(read(data));
       if (value === null) continue;
       if (!metrics.has(label)) metrics.set(label, []);

@@ -381,3 +381,48 @@ test('nexo_telemetria: listas cortadas em 15 e escolha de partes', async () => {
   assert.deepEqual(Object.keys(only).sort(), ['cpus', 'dias', 'installs', 'reports']);
   assert.ok(JSON.stringify(full).length <= 60000);
 });
+
+/* ---------- nexo_cruzar ---------- */
+let cruzar;
+test.before(async () => { cruzar = await import('../server/src/cruzar.js'); });
+const fakeRow = (install, day, gpu, effects, fps, platform = 'win32') => ({ install_id: install, day, version: '0.11.3', platform, data: JSON.stringify({ hw: { gpuVendor: gpu }, settings: { effects }, perf: { skyFps: fps } }) });
+const FAKE = [fakeRow('i-1', '2026-11-10', 'AMD', 'lite', 50), fakeRow('i-1', '2026-11-11', 'AMD', 'lite', 54), fakeRow('i-2', '2026-11-11', 'AMD', 'lite', 30),
+  fakeRow('i-3', '2026-11-11', 'AMD', 'full', 60, 'linux'), fakeRow('i-4', '2026-11-11', 'NVIDIA', 'lite', 90)];
+
+test('crossTab: PCs por dois campos (resumo mais recente de cada PC), filtro e medida', () => {
+  const table = cruzar.crossTab(FAKE, { linha: 'gpu_marca', coluna: 'efeitos' });
+  const cell = (l, c) => table.celulas.find((item) => item.l === l && item.c === c)?.n;
+  assert.equal(cell('AMD', 'lite'), 2);
+  assert.equal(cell('AMD', 'full'), 1);
+  assert.equal(cell('NVIDIA', 'lite'), 1);
+  assert.equal(table.total, 4, 'cada PC conta uma vez');
+  const filtered = cruzar.crossTab(FAKE, { linha: 'gpu_marca', coluna: 'efeitos', filtro: { sistema: 'win32' } });
+  assert.equal(filtered.total, 3);
+  const alone = cruzar.crossTab(FAKE, { linha: 'efeitos' });
+  assert.deepEqual(alone.grupos.find((item) => item.l === 'lite'), { l: 'lite', n: 3 });
+  const fps = cruzar.crossTab(FAKE, { linha: 'gpu_marca', medida: 'fps_ceu' });
+  const amd = fps.grupos.find((item) => item.l === 'AMD');
+  assert.equal(amd.n, 4, 'a medida usa todos os resumos do período');
+  assert.equal(amd.mediana, 50);
+  assert.throws(() => cruzar.crossTab(FAKE, { linha: 'x' }), /Campo desconhecido: x\. Campos: .*gpu_marca/);
+  assert.throws(() => cruzar.crossTab(FAKE, { linha: 'gpu_marca', medida: 'y' }), /Medida desconhecida: y/);
+  assert.throws(() => cruzar.crossTab(FAKE, { linha: 'gpu_marca', filtro: { z: 1 } }), /Campo desconhecido: z/);
+  const many = Array.from({ length: 70 }, (_, i) => fakeRow(`m-${i}`, '2026-11-11', `GPU ${i}`, 'lite', 60));
+  const capped = cruzar.crossTab(many, { linha: 'gpu_marca', coluna: 'efeitos' });
+  assert.equal(new Set(capped.celulas.map((item) => item.l)).size, 50);
+  assert.equal(capped.outros, 20);
+});
+
+test('nexo_cruzar: limite de dias e catálogo na descrição', async () => {
+  const env = h.setup();
+  await seed(env);
+  const t = (await connect(env)).tokens.access_token;
+  const tool = (await rpc(env.call, t, 'tools/list')).data.result.tools.find((item) => item.name === 'nexo_cruzar');
+  for (const name of [...Object.keys(cruzar.CAMPOS), ...Object.keys(cruzar.MEDIDAS)]) assert.ok(tool.description.includes(name), name);
+  const result = (await callTool(env.call, t, 'nexo_cruzar', { linha: 'gpu_marca', coluna: 'efeitos', dias: 90 })).structuredContent;
+  assert.equal(result.dias, 60);
+  assert.equal(result.total, 2);
+  const bad = await callTool(env.call, t, 'nexo_cruzar', { linha: 'nada' });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /Campo desconhecido/);
+});
