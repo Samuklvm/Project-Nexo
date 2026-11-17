@@ -146,6 +146,8 @@ When telemetry or an error report arrives, the server records the PC's **random 
 
 Only the creator's email (configured as a server secret, outside the code) and the people the creator adds can enter the dashboard, through a single-use link that the app itself opens and an 8-hour cookie. Each person has a role: **collaborator** (sees errors, the emails of people who left their email in reports and aggregated telemetry; changes an error's state) or **read-only** (sees errors and telemetry, **without emails**). For the creator's coding assistant, there is a read key that only sees errors, **without emails**. Reports can be copied to a **private** GitHub repository of the creator, also without emails.
 
+The creator uses an AI assistant (**Claude, by Anthropic**), connected to the dashboard through a connector with its own revocable authorization, to analyze telemetry and error reports and to mark errors as fixed. The assistant only receives aggregated numbers, anonymous data and errors **without emails**; it never receives emails, account data, the team or the keys. Everything it changes is logged in the dashboard.
+
 ### Turn off, erase and revoke
 
 - **Turning off** telemetry, error reports or sync in **Settings** stops the sends right away. The email in reports is removed when you untick “Include my email in reports”.

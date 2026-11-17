@@ -16,6 +16,11 @@ import { verifyGoogleIdToken } from './google.js';
 import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTelemetry, compareVersions, dayOf, isCalendarDay, redact, text } from './validate.js';
 import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED, PANEL_WALLPAPER } from './panel.js';
 import { createSteam } from './steam.js';
+import { createOAuth } from './oauth.js';
+import { createMcp } from './mcp.js';
+import { createTools } from './tools.js';
+import { AGE_BANDS, DAY_METRICS, RAM_BANDS, SKY_FLAGS, SYSTEM_FLAGS, band, num } from './cruzar.js';
+import { CONNECT_CSS, CONNECT_JS } from './connect-page.js';
 
 const DAY = 24 * 3600 * 1000;
 const SESSION_DAYS = 365;
@@ -62,7 +67,7 @@ const CAN = {
 };
 
 /** Cria o servidor do Nexo (sincronização, relatórios de erro, telemetria, Steam e painel do criador). */
-export function createApp({ fetchImpl = (...args) => fetch(...args), now = () => Date.now() } = {}) {
+export function createApp({ fetchImpl = (...args) => fetch(...args), now = () => Date.now(), extraTools = [] } = {}) {
   /** Limite diário por chave (pessoa, PC ou IP com hash). */
   async function allow(env, key, max) {
     const day = dayOf(now());
@@ -79,6 +84,9 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const mixed = await sha256Hex(`${env.SESSION_SECRET}|${request.headers.get('cf-connecting-ip') || 'local'}`);
     return `ip:${mixed.slice(0, 20)}`;
   };
+  const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES, CAN });
+  // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
+  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -355,8 +363,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
 
   /* ----- API do painel: cada função recebe { request, env, url, admin, need } ----- */
 
-  /** Números da página inicial do painel: erros abertos, instalações ativas, versões e usuários novos. */
-  async function adminSummary({ env, admin }) {
+  /** Números da página inicial do painel (sem quem está olhando): erros abertos, instalações ativas, versões e usuários novos. */
+  async function summaryData(env) {
     const since7 = now() - 7 * DAY;
     const [open7, reporters, active7, active30, versions] = await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS n FROM error_groups WHERE status IN ('aberto','reaberto') AND level = 'erro'").first(),
@@ -376,27 +384,55 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       env.DB.prepare("SELECT strftime('%Y-%m-%d', first_seen / 1000, 'unixepoch') AS day, COUNT(*) AS n, GROUP_CONCAT(DISTINCT first_version) AS versions, GROUP_CONCAT(DISTINCT platform) AS platforms FROM installs WHERE first_seen >= ? GROUP BY day ORDER BY day").bind(now() - 30 * DAY).all()
     ]);
     const recent = await env.DB.prepare('SELECT first_seen, last_seen, first_version, last_version, platform, via FROM installs ORDER BY first_seen DESC LIMIT 15').all();
-    return json({ openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [], admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]],
-      newUsers: { today: new1?.n || 0, days7: new7?.n || 0, days30: new30?.n || 0, accounts7: newAccounts7?.n || 0, perDay: firstDays.results || [], recent: recent.results || [] } });
+    return { openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [],
+      newUsers: { today: new1?.n || 0, days7: new7?.n || 0, days30: new30?.n || 0, accounts7: newAccounts7?.n || 0, perDay: firstDays.results || [], recent: recent.results || [] } };
+  }
+  /** Números da página inicial do painel: erros abertos, instalações ativas, versões e usuários novos. */
+  async function adminSummary({ env, admin }) {
+    return json({ ...(await summaryData(env)), admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]] });
+  }
+
+  /** Usuários no período: instalações novas por dia, ativas por dia (telemetria), contas e as últimas instalações. */
+  async function usersData(env, days) {
+    const from = now() - days * DAY;
+    const [perDay, active, accounts, newAccounts, total, recent] = await Promise.all([
+      env.DB.prepare("SELECT strftime('%Y-%m-%d', first_seen / 1000, 'unixepoch') AS day, COUNT(*) AS n, GROUP_CONCAT(DISTINCT first_version) AS versions, GROUP_CONCAT(DISTINCT platform) AS platforms FROM installs WHERE first_seen >= ? GROUP BY day ORDER BY day").bind(from).all(),
+      env.DB.prepare('SELECT day, COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ? GROUP BY day ORDER BY day').bind(dayOf(from)).all(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM users').first(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?').bind(from).first(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM installs').first(),
+      env.DB.prepare('SELECT first_seen, last_seen, first_version, last_version, platform, via FROM installs ORDER BY first_seen DESC LIMIT 15').all()
+    ]);
+    return { instalacoesVistas: total?.n || 0, novosPorDia: perDay.results || [], ativosPorDia: active.results || [], contas: accounts?.n || 0, contasNovas: newAccounts?.n || 0, ultimas: recent.results || [] };
   }
 
   /** Lista dos erros agrupados (abertos e reabertos primeiro), com filtro de status e, se pedido, os avisos. */
-  async function adminErrorList({ env, url }) {
-    const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
-    const levelAll = url.searchParams.get('avisos') === '1';
+  async function errorListData(env, { status = null, avisos = false, limite = 300 } = {}) {
     const { results = [] } = await env.DB.prepare(`SELECT g.signature, g.source, g.level, g.message, g.context, g.first_at, g.last_at, g.status, g.fixed_in, g.note,
         COUNT(r.install_id) AS installs, COALESCE(SUM(r.count), 0) AS occurrences, COUNT(r.email) AS emails, GROUP_CONCAT(DISTINCT r.version) AS versions, GROUP_CONCAT(DISTINCT r.platform) AS platforms
       FROM error_groups g LEFT JOIN error_reports r ON r.signature = g.signature
       WHERE (? IS NULL OR g.status = ?) AND (? = 1 OR g.level = 'erro')
-      GROUP BY g.signature ORDER BY CASE g.status WHEN 'reaberto' THEN 0 WHEN 'aberto' THEN 1 ELSE 2 END, g.last_at DESC LIMIT 300`).bind(status, status, levelAll ? 1 : 0).all();
-    return json({ groups: results });
+      GROUP BY g.signature ORDER BY CASE g.status WHEN 'reaberto' THEN 0 WHEN 'aberto' THEN 1 ELSE 2 END, g.last_at DESC LIMIT ?`).bind(status, status, avisos ? 1 : 0, clampInt(limite, 1, 300, 300)).all();
+    return results;
+  }
+  async function adminErrorList({ env, url }) {
+    const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
+    return json({ groups: await errorListData(env, { status, avisos: url.searchParams.get('avisos') === '1' }) });
   }
 
   /** Um erro com os PCs que mandaram; os e-mails só aparecem para quem tem a permissão "emails". */
-  async function adminErrorDetail({ env, admin }, signature) {
-    const group = await env.DB.prepare('SELECT * FROM error_groups WHERE signature = ?').bind(signature).first();
-    if (!group) throw new HttpError(404, 'Erro não encontrado.');
+  /** Um erro e os relatórios dele (com e-mail: quem chama decide o que mostra). null se não existe. */
+  async function errorDetailRows(env, signature) {
+    // Colunas listadas uma a uma: coluna nova numa migração futura não sai sozinha pelo painel nem pelo conector.
+    const group = await env.DB.prepare('SELECT signature, source, level, message, stack, context, first_at, last_at, status, fixed_in, note FROM error_groups WHERE signature = ?').bind(signature).first();
+    if (!group) return null;
     const { results = [] } = await env.DB.prepare('SELECT email, email_verified, version, platform, count, first_at, last_at FROM error_reports WHERE signature = ? ORDER BY last_at DESC LIMIT 500').bind(signature).all();
+    return { group, results };
+  }
+  async function adminErrorDetail({ env, admin }, signature) {
+    const detail = await errorDetailRows(env, signature);
+    if (!detail) throw new HttpError(404, 'Erro não encontrado.');
+    const { group, results } = detail;
     const byEmail = new Map();
     if (admin.can('emails')) for (const row of results) if (row.email) byEmail.set(row.email, Boolean(byEmail.get(row.email)) || row.email_verified === 1);
     const emails = [...byEmail.keys()];
@@ -417,12 +453,56 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ ok: true });
   }
 
+  /** O Claude marca um erro (pelo conector): muda e registra antes/depois em claude_actions. null se o erro não existe. */
+  async function markErrorByClaude(env, grantId, signature, { status, fixedIn, note }) {
+    const pick = 'SELECT status, fixed_in, note FROM error_groups WHERE signature = ?';
+    const before = await env.DB.prepare(pick).bind(signature).first();
+    if (!before) return null;
+    const after = { status, fixed_in: status === 'corrigido' ? fixedIn : null, note: note === undefined ? before.note ?? null : note };
+    await env.DB.batch([
+      env.DB.prepare('UPDATE error_groups SET status = ?, fixed_in = ?, note = ? WHERE signature = ?').bind(after.status, after.fixed_in, after.note, signature),
+      env.DB.prepare('INSERT INTO claude_actions (at, grant_id, tool, target, before, after) VALUES (?, ?, ?, ?, ?, ?)').bind(now(), grantId, 'nexo_marcar_erro', signature, JSON.stringify({ ...before }), JSON.stringify(after))
+    ]);
+    return { antes: { ...before }, depois: after };
+  }
+
+  /** O que o Claude mudou, do mais novo ao mais velho (com a mensagem do erro, para ler fácil). */
+  async function claudeHistory(env, limite = 30) {
+    const { results = [] } = await env.DB.prepare(`SELECT a.at, a.grant_id, a.tool, a.target, a.before, a.after, g.message FROM claude_actions a
+      LEFT JOIN error_groups g ON g.signature = a.target ORDER BY a.id DESC LIMIT ?`).bind(clampInt(limite, 1, 200, 30)).all();
+    const parse = (value) => { try { return JSON.parse(value); } catch { return null; } };
+    return results.map((row) => ({ em: row.at, ferramenta: row.tool, alvo: row.target, mensagem: row.message || null, antes: parse(row.before), depois: parse(row.after), conexao: row.grant_id }));
+  }
+
+  /** Conexões do Claude e o que ele fez (só o dono). */
+  async function adminClaude({ env, need }) {
+    need('chaves');
+    const today = dayOf(now());
+    const { results = [] } = await env.DB.prepare(`SELECT g.grant_id, g.email, g.created_at, g.last_used, g.calls, g.revoked, c.name, r.count AS today,
+        EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.grant_id = g.grant_id AND t.kind = 'renovacao' AND t.used = 0 AND t.expires_at > ?) AS viva
+      FROM oauth_grants g LEFT JOIN oauth_clients c ON c.client_id = g.client_id LEFT JOIN rate r ON r.key = 'mcp:' || g.grant_id AND r.day = ?
+      ORDER BY g.revoked, g.created_at DESC LIMIT 50`).bind(now(), today).all();
+    return json({
+      conexoes: results.map((row) => ({ id: row.grant_id, cliente: row.name || 'Claude', autorizadoPor: row.email, criadoEm: row.created_at, ultimoUso: row.last_used, chamadas: row.calls, chamadasHoje: row.today || 0, revogada: row.revoked === 1, estado: row.revoked === 1 ? 'revogada' : row.viva ? 'ativa' : 'expirada' })),
+      acoes: await claudeHistory(env, 30)
+    });
+  }
+
+  /** Revoga uma conexão do Claude (os tokens dela param na hora). */
+  async function adminClaudeRevoke({ request, env, need }) {
+    need('chaves');
+    const body = await readJson(request);
+    await oauth.revokeGrant(env, String(body.id || '').slice(0, 40));
+    return json({ ok: true });
+  }
+
   /** Telemetria agregada dos últimos dias (padrão 30, até 120). */
+  async function telemetryRows(env, days) {
+    const { results = [] } = await env.DB.prepare('SELECT install_id, day, version, platform, data FROM telemetry WHERE day >= ? ORDER BY day').bind(dayOf(now() - days * DAY)).all();
+    return results;
+  }
   async function adminTelemetry({ env, url }) {
-    const days = clampInt(url.searchParams.get('dias'), 1, 120, 30);
-    const from = dayOf(now() - days * DAY);
-    const { results = [] } = await env.DB.prepare('SELECT install_id, day, version, platform, data FROM telemetry WHERE day >= ? ORDER BY day').bind(from).all();
-    return json(aggregateTelemetry(results));
+    return json(aggregateTelemetry(await telemetryRows(env, clampInt(url.searchParams.get('dias'), 1, 120, 30))));
   }
 
   /** Equipe do painel (só o dono). */
@@ -504,6 +584,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['GET chaves', adminKeyList],
     ['POST chaves', adminKeyCreate],
     ['POST chaves/revogar', adminKeyRevoke],
+    ['GET claude', adminClaude],
+    ['POST claude/revogar', adminClaudeRevoke],
     ['POST sair', adminLogout]
   ]);
   /** Rotas de um erro só (erros/<assinatura>). */
@@ -563,6 +645,21 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['POST /v1/telemetry', postTelemetry],
     ['POST /v1/admin/link', adminLink],
     ['GET /v1/tools/errors', toolErrors],
+    // Conector do Claude: descoberta e registro do OAuth (src/oauth.js).
+    ['GET /.well-known/oauth-protected-resource', (_request, _env, url) => oauth.protectedResource(url)],
+    ['GET /.well-known/oauth-protected-resource/mcp', (_request, _env, url) => oauth.protectedResource(url)],
+    ['GET /.well-known/oauth-authorization-server', (_request, _env, url) => oauth.serverMetadata(url)],
+    ['POST /oauth/register', (request, env) => oauth.register(request, env)],
+    ['POST /mcp', (request, env) => mcp.handle(request, env)],
+    ['GET /mcp', (request, env) => mcp.handle(request, env)],
+    ['POST /oauth/token', (request, env) => oauth.token(request, env)],
+    ['POST /oauth/revoke', (request, env) => oauth.revoke(request, env)],
+    // Autorização pelo painel (embaixo de /painel para o cookie do painel valer nos pedidos do próprio site).
+    ['GET /painel/conectar', (_request, env, url) => oauth.authorizePage(url, env)],
+    ['GET /painel/conectar.js', () => page(CONNECT_JS, 'text/javascript; charset=utf-8')],
+    ['GET /painel/conectar.css', () => page(CONNECT_CSS, 'text/css; charset=utf-8', 200, { 'cache-control': 'public, max-age=3600' })],
+    ['GET /painel/api/conectar/quem', (request, env, url) => oauth.who(request, env, url)],
+    ['POST /painel/api/conectar', (request, env, url) => oauth.approve(request, env, url)],
     ['GET /painel/entrar', (_request, env, url) => adminEnter(env, url)],
     ['GET /painel', panelPage],
     ['GET /painel/app.js', () => page(PANEL_JS, 'text/javascript; charset=utf-8')],
@@ -619,7 +716,15 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         env.DB.prepare('DELETE FROM rate WHERE day < ?').bind(dayOf(at - DAY)),
         // Cópia de PC sem atualizar há um ano some; conta sem sessão nem cópia (só nome e e-mail) some junto.
         env.DB.prepare('DELETE FROM snapshots WHERE updated_at < ?').bind(at - 365 * DAY),
-        env.DB.prepare('DELETE FROM users WHERE last_seen < ? AND uid NOT IN (SELECT uid FROM sessions) AND uid NOT IN (SELECT uid FROM snapshots)').bind(at - 30 * DAY)
+        env.DB.prepare('DELETE FROM users WHERE last_seen < ? AND uid NOT IN (SELECT uid FROM sessions) AND uid NOT IN (SELECT uid FROM snapshots)').bind(at - 30 * DAY),
+        // Conector do Claude: códigos e tokens vencidos, conexões revogadas há 30 dias, clientes sem conexão e ações velhas.
+        env.DB.prepare('DELETE FROM oauth_codes WHERE expires_at < ?').bind(at),
+        env.DB.prepare('DELETE FROM oauth_tokens WHERE expires_at < ? OR grant_id IN (SELECT grant_id FROM oauth_grants WHERE revoked = 1)').bind(at),
+        env.DB.prepare('DELETE FROM oauth_grants WHERE revoked = 1 AND revoked_at < ?').bind(at - 30 * DAY),
+        // Conexão parada até a renovação vencer (30 dias sem uso): sai também.
+        env.DB.prepare("DELETE FROM oauth_grants WHERE revoked = 0 AND created_at < ? AND grant_id NOT IN (SELECT grant_id FROM oauth_tokens WHERE kind = 'renovacao' AND expires_at >= ?)").bind(at - DAY, at),
+        env.DB.prepare('DELETE FROM oauth_clients WHERE created_at < ? AND client_id NOT IN (SELECT client_id FROM oauth_grants)').bind(at - 7 * DAY),
+        env.DB.prepare('DELETE FROM claude_actions WHERE at < ?').bind(at - 180 * DAY)
       ]);
     }
   };
@@ -627,48 +732,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
 
 /* ---------- Telemetria agregada para o painel ---------- */
 
-/** Número de verdade (finito) ou null. */
-const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
-/** Fração (0–1) em porcentagem, ou null. */
-const pct = (value) => (num(value) === null ? null : value * 100);
-/** Faixa de um valor (em vez de ternários encadeados): a primeira cujo limite é maior que ele. */
-const band = (value, limits) => limits.find(([max]) => value < max)?.[1] ?? limits.at(-1)[1];
-const RAM_BANDS = [[8.5, 'até 8 GB'], [16.5, '9–16 GB'], [32.5, '17–32 GB'], [Infinity, 'mais de 32 GB']];
-const AGE_BANDS = [[1, 'menos de 1 dia'], [7, '1 a 6 dias'], [30, '1 a 4 semanas'], [90, '1 a 3 meses'], [Infinity, 'mais de 3 meses']];
-const SYSTEM_FLAGS = ['autostart', 'tray', 'autoSession', 'onlineCovers'];
-const SKY_FLAGS = ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor', 'skyHour', 'wallpaper', 'autoClean', 'reducedMotion'];
 /** Ajustes contados como estão: campo do resumo → lista no painel. */
 const SETTING_LISTS = [['effects', 'effects'], ['accent', 'accents'], ['skyDensity', 'skyDensity'], ['profile', 'profiles'], ['liveRate', 'liveRates']];
-/** Números do dia (mediana e p90 entre os resumos): rótulo → valor de um resumo. */
-const DAY_METRICS = [
-  ['Minutos com o Nexo em foco', (data) => data.app?.focusMin],
-  ['Minutos com o Nexo aberto', (data) => data.app?.openMin],
-  ['Aberturas no dia', (data) => data.app?.launches],
-  ['Tempo de abertura (ms)', (data) => data.app?.startMs],
-  ['CPU do Nexo em foco (%)', (data) => data.perf?.cpuFocus],
-  ['CPU do Nexo em segundo plano (%)', (data) => data.perf?.cpuBack],
-  ['Memória do Nexo em foco (MB)', (data) => data.perf?.memFocusMB],
-  ['Pico de memória do Nexo (MB)', (data) => data.perf?.memMaxMB],
-  ['Quadros do céu por segundo', (data) => data.perf?.skyFps],
-  ['Travadas da interface no dia', (data) => data.perf?.longTasks],
-  ['Vídeo com o Nexo na frente, Completo (%)', (data) => data.perf?.gpuCompleto],
-  ['Vídeo com o Nexo na frente, Leve (%)', (data) => data.perf?.gpuLeve],
-  ['Vídeo com o Nexo em segundo plano (%)', (data) => data.perf?.gpuFundo],
-  ['Processador do PC, média do dia (%)', (data) => data.health?.cpu],
-  ['Memória do PC, média do dia (%)', (data) => data.health?.mem],
-  ['Vídeo do PC, média do dia (%)', (data) => data.health?.gpu],
-  ['Maior temperatura do dia (°C)', (data) => data.health?.tempMax],
-  // O que limita os PCs: números da GPU e da CPU com carga e das sessões de jogo.
-  ['GPU com carga: uso típico (%)', (data) => data.bottleneck?.gpu?.busyP50],
-  ['GPU com carga: clock em % do máximo dela', (data) => pct(data.bottleneck?.gpu?.clockRatioP50)],
-  ['GPU com carga: energia em % do limite', (data) => data.bottleneck?.gpu?.powerPctP50],
-  ['GPU em 95%+ (% do tempo com carga)', (data) => pct(data.bottleneck?.gpu?.saturatedShare)],
-  ['Memória de vídeo, pico do dia (%)', (data) => data.bottleneck?.gpu?.vramPctMax],
-  ['Núcleo mais ocupado da CPU (p90, %)', (data) => data.bottleneck?.cpu?.maxCoreP90],
-  ['Minutos com carga no dia', (data) => data.bottleneck?.minutes],
-  ['FPS médio nas sessões', (data) => data.bottleneck?.fps?.avg],
-  ['1% baixo nas sessões (FPS)', (data) => data.bottleneck?.fps?.p1Low]
-];
 /** Listas que o painel mostra, na ordem da resposta. */
 const TOP_LISTS = ['limiter', 'sessionLimiter', 'updatedFrom', 'ageDays', 'ipcFails', 'events', 'featsEmpty', 'featsCrashed', 'sourceFails', 'versions', 'platforms', 'cpus', 'cpuModels', 'ram', 'cores', 'gpus', 'gpuModels', 'monitors', 'resolutions', 'refresh', 'scales', 'locales', 'channels', 'appFlags', 'sensors', 'effects', 'accents', 'skyDensity', 'skyFlags', 'profiles', 'liveRates', 'stores', 'views', 'viewTime', 'actions', 'ui', 'features'];
 
@@ -810,7 +875,7 @@ export function aggregateTelemetry(rows) {
   for (const { data } of parsed) {
     tallyUsage(tally, data);
     tallyHealth(count, data);
-    for (const [label, read] of DAY_METRICS) {
+    for (const [label, , read] of DAY_METRICS) {
       const value = num(read(data));
       if (value === null) continue;
       if (!metrics.has(label)) metrics.set(label, []);

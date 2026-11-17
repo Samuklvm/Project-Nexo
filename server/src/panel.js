@@ -103,6 +103,13 @@ export const PANEL_HTML = `<!doctype html><html lang="pt-BR"><head><meta charset
       <div class="row"><label class="sr" for="key-label">Nome da chave</label><input type="text" id="key-label" placeholder="Nome (ex.: relatórios no GitHub)"><button type="button" id="key-add">Criar chave</button></div>
       <div id="key-new"></div></div>
   </div>
+  <div class="cols claude-cols">
+    <div class="card claude"><h3><span class="spark" aria-hidden="true">✦</span> Conexões do Claude</h3><p class="muted">O Claude lê métricas, telemetria e erros e marca erros, sem nunca ver e-mails. Para conectar: no Claude, Configurações &gt; Conectores &gt; Adicionar conector personalizado, com o endereço abaixo; depois, autorize com este painel aberto.</p>
+      <div class="row"><code id="mcp-url"></code><button type="button" class="ghost" id="mcp-copy">Copiar</button></div>
+      <ul class="list compact" id="claude-conns"></ul></div>
+    <div class="card claude"><h3><span class="spark" aria-hidden="true">✦</span> O que o Claude fez</h3><p class="muted">Cada mudança feita pelo Claude, da mais nova à mais velha.</p>
+      <ul class="list compact" id="claude-acts"></ul></div>
+  </div>
 </section>
 <footer class="foot muted small">Painel privado · dados anônimos de telemetria e relatórios de erro de quem aceitou mandar · nada aqui identifica PCs.</footer>
 <script src="/painel/app.js"></script>
@@ -173,6 +180,10 @@ select, input[type=search], input[type=text] { padding: 8px 11px; border-radius:
 .bar i { display: block; height: 10px; border-radius: 99px; background: linear-gradient(90deg, var(--violet), var(--star)); box-shadow: 0 0 10px rgba(90, 215, 255, 0.25); }
 .bar span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.claude-cols { margin-top: 14px; }
+.card.claude { border: 1px solid transparent; background: linear-gradient(var(--card-strong), var(--card-strong)) padding-box, linear-gradient(140deg, rgba(90, 215, 255, 0.6), rgba(155, 123, 255, 0.45) 50%, rgba(255, 184, 168, 0.4)) border-box; box-shadow: 0 0 40px -18px rgba(155, 123, 255, 0.6); }
+.card.claude .spark { background: linear-gradient(135deg, #ffc6b4, #9b7bff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.card.claude code { flex: 1; min-width: 0; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--hair); background: rgba(5, 8, 24, 0.55); font: 12.5px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; overflow-wrap: anywhere; color: var(--star); }
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
 .card { padding: 16px 18px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--card); backdrop-filter: blur(12px); }
 .card.wide { grid-column: 1 / -1; }
@@ -350,9 +361,22 @@ export const PANEL_JS = `
     const t = await api('equipe');
     $('team').innerHTML = t.owners.map((email) => '<li><strong>' + esc(email) + '</strong><div class="chips"><span class="chip corrigido">dono</span></div></li>').join('')
       + t.members.map((m) => '<li><strong>' + esc(m.email) + '</strong><div class="chips"><span class="chip">' + esc(m.role) + '</span><span class="chip">adicionado por ' + esc(m.added_by) + ' em ' + esc(when(m.added_at)) + '</span></div><div class="row"><button type="button" class="ghost" data-remove="' + esc(m.email) + '">Tirar da equipe</button></div></li>').join('');
+    await loadClaude();
     const k = await api('chaves');
     $('keys').innerHTML = k.keys.length ? k.keys.map((key) => '<li><strong>' + esc(key.label) + '</strong><div class="chips"><span class="chip ' + (key.revoked ? 'ignorado' : 'corrigido') + '">' + (key.revoked ? 'revogada' : 'ativa') + '</span><span class="chip">criada em ' + esc(when(key.created_at)) + '</span><span class="chip">último uso ' + esc(when(key.last_used)) + '</span></div>' + (key.revoked ? '' : '<div class="row"><button type="button" class="danger" data-revoke="' + esc(key.id) + '">Revogar</button></div>') + '</li>').join('') : '<li class="muted">Nenhuma chave criada.</li>';
   }
+  const ACTS = { corrigido: 'Marcou como corrigido', aberto: 'Reabriu', reaberto: 'Marcou como reaberto', ignorado: 'Ignorou' };
+  async function loadClaude() {
+    $('mcp-url').textContent = location.origin + '/mcp';
+    const c = await api('claude');
+    $('claude-conns').innerHTML = c.conexoes.length ? c.conexoes.map((x) => '<li><strong>' + esc(x.cliente) + ' · autorizado por ' + esc(x.autorizadoPor) + '</strong><div class="chips"><span class="chip ' + (x.estado === 'ativa' ? 'corrigido' : 'ignorado') + '">' + esc(x.estado || (x.revogada ? 'revogada' : 'ativa')) + '</span><span class="chip">desde ' + esc(when(x.criadoEm)) + '</span><span class="chip">último uso ' + esc(when(x.ultimoUso)) + '</span><span class="chip">' + esc(x.chamadasHoje) + ' chamada(s) hoje</span></div>' + (x.estado !== 'ativa' ? '' : '<div class="row"><button type="button" class="danger" data-claude-revoke="' + esc(x.id) + '">Revogar</button></div>') + '</li>').join('') : '<li class="muted">Nenhuma conexão ainda.</li>';
+    $('claude-acts').innerHTML = c.acoes.length ? c.acoes.map((a) => {
+      const after = a.depois || {};
+      const verb = (ACTS[after.status] || 'Mudou') + (after.status === 'corrigido' && after.fixed_in ? ' na ' + after.fixed_in : '');
+      return '<li><strong>' + esc(verb) + ': ' + esc(a.mensagem || a.alvo) + '</strong><div class="chips"><span class="chip">' + esc(when(a.em)) + '</span>' + (after.note ? '<span class="chip">nota: ' + esc(after.note) + '</span>' : '') + '<span class="chip">antes: ' + esc((a.antes && a.antes.status) || '--') + '</span></div></li>';
+    }).join('') : '<li class="muted">O Claude ainda não mudou nada.</li>';
+  }
+  $('mcp-copy').onclick = () => navigator.clipboard.writeText($('mcp-url').textContent).then(() => { $('mcp-copy').textContent = 'Copiado'; });
   $('team-add').onclick = async () => { try { await api('equipe', { method: 'POST', body: JSON.stringify({ email: $('team-email').value.trim(), role: $('team-role').value }) }); $('team-email').value = ''; await loadTeam(); } catch (error) { alert(error.message); } };
   $('key-add').onclick = async () => {
     try {
@@ -370,6 +394,8 @@ export const PANEL_JS = `
     try {
       if (remove && confirm('Tirar ' + remove.dataset.remove + ' da equipe?')) { await api('equipe/remover', { method: 'POST', body: JSON.stringify({ email: remove.dataset.remove }) }); await loadTeam(); }
       if (revoke && confirm('Revogar esta chave? A rotina que usa ela para de funcionar.')) { await api('chaves/revogar', { method: 'POST', body: JSON.stringify({ id: revoke.dataset.revoke }) }); await loadTeam(); }
+      const claudeRevoke = event.target.closest('[data-claude-revoke]');
+      if (claudeRevoke && confirm('Revogar esta conexão do Claude? Ele para de acessar o painel na hora.')) { await api('claude/revogar', { method: 'POST', body: JSON.stringify({ id: claudeRevoke.dataset.claudeRevoke }) }); await loadClaude(); }
     } catch (error) { alert(error.message); }
   };
 

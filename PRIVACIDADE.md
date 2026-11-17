@@ -144,6 +144,8 @@ Quando a telemetria ou um relatório de erro chega, o servidor anota o **código
 
 Só o e-mail do criador (configurado como segredo do servidor, fora do código) e as pessoas que ele adicionar entram no painel, por um link de uso único que o próprio app abre e um cookie de 8 horas. Cada pessoa tem um papel: **colaborador** (vê erros, e-mails de quem deixou o e-mail nos relatórios e telemetria somada; muda o estado de um erro) ou **leitura** (vê erros e telemetria, **sem e-mails**). Para o assistente de programação do criador, existe uma chave de leitura que só vê os erros, **sem e-mails**. Os relatórios podem ser copiados para um repositório **privado** do criador no GitHub, também sem e-mails.
 
+O criador usa um assistente de IA (**Claude, da Anthropic**), conectado ao painel por um conector com autorização própria e revogável, para analisar a telemetria e os relatórios de erro e marcar erros como corrigidos. O assistente só recebe números somados, dados anônimos e erros **sem e-mails**; ele nunca recebe e-mails, dados de conta, a equipe ou as chaves. Tudo que ele muda fica registrado no painel.
+
 ### Desligar, apagar e revogar
 
 - **Desligar** a telemetria, os relatórios de erro ou a sincronização em **Ajustes** para os envios na hora. O e-mail nos relatórios sai quando você desmarca “Incluir meu e-mail nos relatórios”.
