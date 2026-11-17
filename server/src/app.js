@@ -16,6 +16,7 @@ import { verifyGoogleIdToken } from './google.js';
 import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTelemetry, compareVersions, dayOf, isCalendarDay, redact, text } from './validate.js';
 import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED, PANEL_WALLPAPER } from './panel.js';
 import { createSteam } from './steam.js';
+import { createOAuth } from './oauth.js';
 
 const DAY = 24 * 3600 * 1000;
 const SESSION_DAYS = 365;
@@ -79,6 +80,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const mixed = await sha256Hex(`${env.SESSION_SECRET}|${request.headers.get('cf-connecting-ip') || 'local'}`);
     return `ip:${mixed.slice(0, 20)}`;
   };
+  const oauth = createOAuth({ now, limit, ipKey, json, readJson });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -563,6 +565,11 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['POST /v1/telemetry', postTelemetry],
     ['POST /v1/admin/link', adminLink],
     ['GET /v1/tools/errors', toolErrors],
+    // Conector do Claude: descoberta e registro do OAuth (src/oauth.js).
+    ['GET /.well-known/oauth-protected-resource', (_request, _env, url) => oauth.protectedResource(url)],
+    ['GET /.well-known/oauth-protected-resource/mcp', (_request, _env, url) => oauth.protectedResource(url)],
+    ['GET /.well-known/oauth-authorization-server', (_request, _env, url) => oauth.serverMetadata(url)],
+    ['POST /oauth/register', (request, env) => oauth.register(request, env)],
     ['GET /painel/entrar', (_request, env, url) => adminEnter(env, url)],
     ['GET /painel', panelPage],
     ['GET /painel/app.js', () => page(PANEL_JS, 'text/javascript; charset=utf-8')],
