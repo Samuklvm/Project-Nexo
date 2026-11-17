@@ -1,0 +1,47 @@
+name: Instalador visual 0.11.3 (temporário, não vai para a main)
+
+on:
+  push:
+    branches: [release-check]
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Baixar o Nexo-Setup publicado na v0.11.3 (o mesmo arquivo da release)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          gh release download v0.11.3 --pattern 'Nexo-Setup-0.11.3.exe' --dir release
+          Get-ChildItem release | Select-Object Name, Length
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Construir o instalador visual 0.11.3
+        shell: pwsh
+        run: |
+          $v = (Get-Content installer-launcher/package.json | ConvertFrom-Json).version
+          if ($v -ne '0.11.3') { throw "versão do instalador visual: $v" }
+          npm --prefix installer-launcher install --ignore-scripts
+          npm --prefix installer-launcher run dist
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - name: Trocar o arquivo na release (sai o que tinha o nome 0.11.2)
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem installer-launcher/dist/Nexo-Instalador-0.11.3.exe | Select-Object -First 1
+          if (-not $file) { throw 'Nexo-Instalador-0.11.3.exe não foi gerado' }
+          gh release upload v0.11.3 $file.FullName --clobber
+          gh release delete-asset v0.11.3 'Nexo-Instalador-0.11.2.exe' --yes
+          gh release view v0.11.3 --json assets --jq '.assets[].name'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
