@@ -17,6 +17,7 @@ import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTeleme
 import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED, PANEL_WALLPAPER } from './panel.js';
 import { createSteam } from './steam.js';
 import { createOAuth } from './oauth.js';
+import { createMcp } from './mcp.js';
 import { CONNECT_CSS, CONNECT_JS } from './connect-page.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -64,7 +65,7 @@ const CAN = {
 };
 
 /** Cria o servidor do Nexo (sincronização, relatórios de erro, telemetria, Steam e painel do criador). */
-export function createApp({ fetchImpl = (...args) => fetch(...args), now = () => Date.now() } = {}) {
+export function createApp({ fetchImpl = (...args) => fetch(...args), now = () => Date.now(), extraTools = [] } = {}) {
   /** Limite diário por chave (pessoa, PC ou IP com hash). */
   async function allow(env, key, max) {
     const day = dayOf(now());
@@ -81,7 +82,9 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const mixed = await sha256Hex(`${env.SESSION_SECRET}|${request.headers.get('cf-connecting-ip') || 'local'}`);
     return `ip:${mixed.slice(0, 20)}`;
   };
-  const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES });
+  const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES, CAN });
+  // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
+  const mcp = createMcp({ tools: [...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -571,6 +574,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['GET /.well-known/oauth-protected-resource/mcp', (_request, _env, url) => oauth.protectedResource(url)],
     ['GET /.well-known/oauth-authorization-server', (_request, _env, url) => oauth.serverMetadata(url)],
     ['POST /oauth/register', (request, env) => oauth.register(request, env)],
+    ['POST /mcp', (request, env) => mcp.handle(request, env)],
+    ['GET /mcp', (request, env) => mcp.handle(request, env)],
     ['POST /oauth/token', (request, env) => oauth.token(request, env)],
     ['POST /oauth/revoke', (request, env) => oauth.revoke(request, env)],
     // Autorização pelo painel (embaixo de /painel para o cookie do painel valer nos pedidos do próprio site).

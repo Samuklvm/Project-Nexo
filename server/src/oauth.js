@@ -35,7 +35,7 @@ export class OAuthError extends Error {
   constructor(status, error, description) { super(description); this.status = status; this.error = error; }
 }
 
-export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES = {} }) {
+export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES = {}, CAN = {} }) {
   const oauthJson = (data, status = 200) => json(data, status, { 'cache-control': 'no-store', pragma: 'no-cache' });
   const fail = (error) => oauthJson({ error: error.error, error_description: error.message }, error.status);
 
@@ -240,5 +240,22 @@ export function createOAuth({ now, limit, ipKey, json, readJson, page, adminSess
     return oauthJson({});
   }
 
-  return { protectedResource, serverMetadata, register, authorizePage, who, approve, token, revoke, revokeGrant, fail };
+  /**
+   * Quem está chamando o /mcp: token de acesso válido, conexão não revogada e quem autorizou ainda no painel (o papel é
+   * conferido a cada pedido). Lança { status: 401 } em qualquer outro caso.
+   */
+  async function bearer(request, env) {
+    const header = request.headers.get('authorization') || '';
+    const value = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    const unauthorized = (message) => Object.assign(new Error(message), { status: 401 });
+    if (!value.startsWith('nexo_at_') || !TOKEN.test(value)) throw unauthorized('Conecte o Claude ao painel do Nexo.');
+    const row = await env.DB.prepare(`SELECT t.expires_at, g.grant_id, g.email, g.revoked FROM oauth_tokens t JOIN oauth_grants g ON g.grant_id = t.grant_id
+      WHERE t.token_hash = ? AND t.kind = 'acesso'`).bind(await sha256Hex(value)).first();
+    if (!row || row.revoked || row.expires_at <= now()) throw unauthorized('Acesso vencido ou revogado.');
+    const role = await roleOf(env, row.email);
+    if (!role || !CAN[role]) throw unauthorized('Quem autorizou não está mais no painel.');
+    return { grantId: row.grant_id, email: row.email, role, can: (action) => CAN[role].has(action) };
+  }
+
+  return { protectedResource, serverMetadata, register, authorizePage, who, approve, token, revoke, revokeGrant, bearer, fail };
 }

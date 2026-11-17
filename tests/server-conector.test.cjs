@@ -182,3 +182,106 @@ test('token no formato do OAuth (x-www-form-urlencoded) e revogação', async ()
   assert.equal((await call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: ok.data.refresh_token, client_id: client.client_id } })).data.error, 'invalid_grant');
   assert.equal((await call('POST', '/oauth/revoke', { form: { token: 'qualquer-coisa' } })).status, 200, 'token desconhecido: 200 (RFC 7009)');
 });
+
+/* ---------- O endpoint /mcp ---------- */
+let mcpMod;
+test.before(async () => { mcpMod = await import('../server/src/mcp.js'); });
+const rpc = (call, token, method, params, { id = 1, headers = {} } = {}) => call('POST', '/mcp', { token, headers: { accept: 'application/json, text/event-stream', ...headers }, body: { jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) } });
+const callTool = async (call, token, name, args = {}) => (await rpc(call, token, 'tools/call', { name, arguments: args })).data.result;
+/** Ferramentas só dos testes: eco, uma que falha e uma que exige a permissão "status". */
+function testTools() {
+  return [
+    { name: 'eco', title: 'Eco', description: 'Devolve o texto.', inputSchema: { type: 'object', properties: { texto: { type: 'string' } } }, annotations: { readOnlyHint: true }, run: (args) => ({ eco: args.texto ?? null }) },
+    { name: 'falha', title: 'Falha', description: 'Sempre falha.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true }, run: () => { throw new mcpMod.ToolError('Falhou de propósito.'); } },
+    { name: 'muda', title: 'Muda', description: 'Precisa de status.', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: false }, needs: 'status', run: () => ({ ok: true }) }
+  ];
+}
+/** Põe alguém na equipe (pelo painel do dono) e conecta o Claude dessa pessoa. */
+async function connectAs(env, email, role) {
+  const owner = await env.panelCookie();
+  const added = await env.call('POST', '/painel/api/equipe', { cookie: owner, headers: { 'x-nexo-painel': '1' }, body: { email, role } });
+  assert.equal(added.status, 200);
+  return connect(env, { email });
+}
+
+test('mcp: só com token válido; 401 aponta para os metadados (inclusive token vencido e conexão revogada)', async () => {
+  const env = h.setup({ extraTools: testTools() });
+  const { call } = env;
+  assert.equal((await call('GET', '/mcp')).status, 405);
+  const none = await rpc(call, null, 'tools/list');
+  assert.equal(none.status, 401);
+  assert.equal(none.headers.get('www-authenticate'), `Bearer resource_metadata="${ORIGIN}/.well-known/oauth-protected-resource"`);
+  assert.equal((await rpc(call, 'nexo_at_' + 'x'.repeat(43), 'tools/list')).status, 401, 'token inventado');
+  const { tokens } = await connect(env);
+  assert.equal((await rpc(call, tokens.access_token, 'tools/list')).status, 200);
+  assert.equal((await rpc(call, tokens.refresh_token, 'tools/list')).status, 401, 'token de renovação não abre o /mcp');
+  h.tick(3601 * 1000);
+  const late = await rpc(call, tokens.access_token, 'tools/list');
+  assert.equal(late.status, 401, 'vencido: 401 para o Claude renovar sozinho, nunca isError');
+  assert.match(late.headers.get('www-authenticate'), /resource_metadata=/);
+  // Reuso de renovação revoga a conexão: o acesso novo cai também.
+  const { client, tokens: second } = await connect(env);
+  const next = (await call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: second.refresh_token, client_id: client.client_id } })).data;
+  assert.equal((await rpc(call, next.access_token, 'tools/list')).status, 200);
+  await call('POST', '/oauth/token', { form: { grant_type: 'refresh_token', refresh_token: second.refresh_token, client_id: client.client_id } });
+  assert.equal((await rpc(call, next.access_token, 'tools/list')).status, 401);
+});
+
+test('mcp: protocolo (initialize, versões, ping, lista, chamada, erros do JSON-RPC, Origin)', async () => {
+  const env = h.setup({ extraTools: testTools() });
+  const { call } = env;
+  const { tokens } = await connect(env);
+  const t = tokens.access_token;
+  const init = await rpc(call, t, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-ai', version: '1' } });
+  assert.equal(init.status, 200);
+  assert.match(init.headers.get('content-type'), /application\/json/);
+  assert.equal(init.data.jsonrpc, '2.0');
+  assert.equal(init.data.id, 1);
+  assert.equal(init.data.result.protocolVersion, '2025-06-18');
+  assert.ok(init.data.result.capabilities.tools);
+  assert.equal(init.data.result.serverInfo.name, 'nexo');
+  assert.match(init.data.result.instructions, /Nexo/);
+  assert.equal((await rpc(call, t, 'initialize', { protocolVersion: '1999-01-01' })).data.result.protocolVersion, '2025-11-25');
+  const note = await call('POST', '/mcp', { token: t, body: { jsonrpc: '2.0', method: 'notifications/initialized' } });
+  assert.equal(note.status, 202);
+  assert.equal(note.data, '');
+  assert.deepEqual((await rpc(call, t, 'ping')).data.result, {});
+  const list = (await rpc(call, t, 'tools/list')).data.result.tools;
+  const eco = list.find((tool) => tool.name === 'eco');
+  assert.equal(eco.inputSchema.type, 'object');
+  assert.equal(eco.annotations.readOnlyHint, true);
+  assert.equal(eco.run, undefined, 'a função não vaza na lista');
+  const result = await callTool(call, t, 'eco', { texto: 'oi' });
+  assert.equal(result.content[0].type, 'text');
+  assert.deepEqual(JSON.parse(result.content[0].text), { eco: 'oi' });
+  assert.deepEqual(result.structuredContent, { eco: 'oi' });
+  assert.ok(!result.isError);
+  const failed = await callTool(call, t, 'falha');
+  assert.equal(failed.isError, true);
+  assert.match(failed.content[0].text, /Falhou de propósito/);
+  assert.equal((await callTool(call, t, 'nao-existe')).isError, true);
+  assert.equal((await call('POST', '/mcp', { token: t, body: [{ jsonrpc: '2.0', id: 1, method: 'ping' }] })).data.error.code, -32600, 'lote');
+  assert.equal((await rpc(call, t, 'resources/list')).data.error.code, -32601);
+  assert.equal((await call('POST', '/mcp', { token: t, body: '{quebrado' })).data.error.code, -32700);
+  assert.equal((await rpc(call, t, 'ping', undefined, { headers: { origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await rpc(call, t, 'ping', undefined, { headers: { origin: 'https://claude.ai' } })).status, 200);
+});
+
+test('mcp: permissões do papel e limite diário por conexão', async () => {
+  const env = h.setup({ extraTools: testTools() });
+  const { call } = env;
+  const owner = await connect(env);
+  assert.deepEqual((await callTool(call, owner.tokens.access_token, 'muda')).structuredContent, { ok: true });
+  const reader = await connectAs(env, 'leitor@exemplo.com', 'leitura');
+  const denied = await callTool(call, reader.tokens.access_token, 'muda');
+  assert.equal(denied.isError, true);
+  assert.match(denied.content[0].text, /papel/);
+  assert.ok(!(await callTool(call, reader.tokens.access_token, 'eco', { texto: 'x' })).isError, 'leitura lê');
+  const grant = await env.env.DB.prepare("SELECT grant_id FROM oauth_grants WHERE email = 'leitor@exemplo.com'").first();
+  await env.env.DB.prepare('INSERT INTO rate (key, day, count) VALUES (?, ?, 2000) ON CONFLICT(key) DO UPDATE SET day = excluded.day, count = 2000').bind(`mcp:${grant.grant_id}`, new Date(h.clock.now).toISOString().slice(0, 10)).run();
+  const limited = await callTool(call, reader.tokens.access_token, 'eco', { texto: 'x' });
+  assert.equal(limited.isError, true);
+  assert.match(limited.content[0].text, /Limite de hoje/);
+  const used = await env.env.DB.prepare('SELECT calls, last_used FROM oauth_grants WHERE grant_id = ?').bind(grant.grant_id).first();
+  assert.ok(used.calls >= 1 && used.last_used > 0);
+});
