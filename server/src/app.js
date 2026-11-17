@@ -18,6 +18,7 @@ import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED, PANEL_WALLPAPER } from '
 import { createSteam } from './steam.js';
 import { createOAuth } from './oauth.js';
 import { createMcp } from './mcp.js';
+import { createTools } from './tools.js';
 import { CONNECT_CSS, CONNECT_JS } from './connect-page.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -84,7 +85,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   };
   const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES, CAN });
   // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
-  const mcp = createMcp({ tools: [...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now });
+  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -361,8 +362,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
 
   /* ----- API do painel: cada função recebe { request, env, url, admin, need } ----- */
 
-  /** Números da página inicial do painel: erros abertos, instalações ativas, versões e usuários novos. */
-  async function adminSummary({ env, admin }) {
+  /** Números da página inicial do painel (sem quem está olhando): erros abertos, instalações ativas, versões e usuários novos. */
+  async function summaryData(env) {
     const since7 = now() - 7 * DAY;
     const [open7, reporters, active7, active30, versions] = await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS n FROM error_groups WHERE status IN ('aberto','reaberto') AND level = 'erro'").first(),
@@ -382,27 +383,54 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       env.DB.prepare("SELECT strftime('%Y-%m-%d', first_seen / 1000, 'unixepoch') AS day, COUNT(*) AS n, GROUP_CONCAT(DISTINCT first_version) AS versions, GROUP_CONCAT(DISTINCT platform) AS platforms FROM installs WHERE first_seen >= ? GROUP BY day ORDER BY day").bind(now() - 30 * DAY).all()
     ]);
     const recent = await env.DB.prepare('SELECT first_seen, last_seen, first_version, last_version, platform, via FROM installs ORDER BY first_seen DESC LIMIT 15').all();
-    return json({ openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [], admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]],
-      newUsers: { today: new1?.n || 0, days7: new7?.n || 0, days30: new30?.n || 0, accounts7: newAccounts7?.n || 0, perDay: firstDays.results || [], recent: recent.results || [] } });
+    return { openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [],
+      newUsers: { today: new1?.n || 0, days7: new7?.n || 0, days30: new30?.n || 0, accounts7: newAccounts7?.n || 0, perDay: firstDays.results || [], recent: recent.results || [] } };
+  }
+  /** Números da página inicial do painel: erros abertos, instalações ativas, versões e usuários novos. */
+  async function adminSummary({ env, admin }) {
+    return json({ ...(await summaryData(env)), admin: admin.email, role: admin.role, permissions: [...CAN[admin.role]] });
+  }
+
+  /** Usuários no período: instalações novas por dia, ativas por dia (telemetria), contas e as últimas instalações. */
+  async function usersData(env, days) {
+    const from = now() - days * DAY;
+    const [perDay, active, accounts, newAccounts, total, recent] = await Promise.all([
+      env.DB.prepare("SELECT strftime('%Y-%m-%d', first_seen / 1000, 'unixepoch') AS day, COUNT(*) AS n, GROUP_CONCAT(DISTINCT first_version) AS versions, GROUP_CONCAT(DISTINCT platform) AS platforms FROM installs WHERE first_seen >= ? GROUP BY day ORDER BY day").bind(from).all(),
+      env.DB.prepare('SELECT day, COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ? GROUP BY day ORDER BY day').bind(dayOf(from)).all(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM users').first(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?').bind(from).first(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM installs').first(),
+      env.DB.prepare('SELECT first_seen, last_seen, first_version, last_version, platform, via FROM installs ORDER BY first_seen DESC LIMIT 15').all()
+    ]);
+    return { instalacoesVistas: total?.n || 0, novosPorDia: perDay.results || [], ativosPorDia: active.results || [], contas: accounts?.n || 0, contasNovas: newAccounts?.n || 0, ultimas: recent.results || [] };
   }
 
   /** Lista dos erros agrupados (abertos e reabertos primeiro), com filtro de status e, se pedido, os avisos. */
-  async function adminErrorList({ env, url }) {
-    const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
-    const levelAll = url.searchParams.get('avisos') === '1';
+  async function errorListData(env, { status = null, avisos = false, limite = 300 } = {}) {
     const { results = [] } = await env.DB.prepare(`SELECT g.signature, g.source, g.level, g.message, g.context, g.first_at, g.last_at, g.status, g.fixed_in, g.note,
         COUNT(r.install_id) AS installs, COALESCE(SUM(r.count), 0) AS occurrences, COUNT(r.email) AS emails, GROUP_CONCAT(DISTINCT r.version) AS versions, GROUP_CONCAT(DISTINCT r.platform) AS platforms
       FROM error_groups g LEFT JOIN error_reports r ON r.signature = g.signature
       WHERE (? IS NULL OR g.status = ?) AND (? = 1 OR g.level = 'erro')
-      GROUP BY g.signature ORDER BY CASE g.status WHEN 'reaberto' THEN 0 WHEN 'aberto' THEN 1 ELSE 2 END, g.last_at DESC LIMIT 300`).bind(status, status, levelAll ? 1 : 0).all();
-    return json({ groups: results });
+      GROUP BY g.signature ORDER BY CASE g.status WHEN 'reaberto' THEN 0 WHEN 'aberto' THEN 1 ELSE 2 END, g.last_at DESC LIMIT ?`).bind(status, status, avisos ? 1 : 0, clampInt(limite, 1, 300, 300)).all();
+    return results;
+  }
+  async function adminErrorList({ env, url }) {
+    const status = STATUSES.has(url.searchParams.get('status')) ? url.searchParams.get('status') : null;
+    return json({ groups: await errorListData(env, { status, avisos: url.searchParams.get('avisos') === '1' }) });
   }
 
   /** Um erro com os PCs que mandaram; os e-mails só aparecem para quem tem a permissão "emails". */
-  async function adminErrorDetail({ env, admin }, signature) {
+  /** Um erro e os relatórios dele (com e-mail: quem chama decide o que mostra). null se não existe. */
+  async function errorDetailRows(env, signature) {
     const group = await env.DB.prepare('SELECT * FROM error_groups WHERE signature = ?').bind(signature).first();
-    if (!group) throw new HttpError(404, 'Erro não encontrado.');
+    if (!group) return null;
     const { results = [] } = await env.DB.prepare('SELECT email, email_verified, version, platform, count, first_at, last_at FROM error_reports WHERE signature = ? ORDER BY last_at DESC LIMIT 500').bind(signature).all();
+    return { group, results };
+  }
+  async function adminErrorDetail({ env, admin }, signature) {
+    const detail = await errorDetailRows(env, signature);
+    if (!detail) throw new HttpError(404, 'Erro não encontrado.');
+    const { group, results } = detail;
     const byEmail = new Map();
     if (admin.can('emails')) for (const row of results) if (row.email) byEmail.set(row.email, Boolean(byEmail.get(row.email)) || row.email_verified === 1);
     const emails = [...byEmail.keys()];
@@ -424,11 +452,12 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   }
 
   /** Telemetria agregada dos últimos dias (padrão 30, até 120). */
+  async function telemetryRows(env, days) {
+    const { results = [] } = await env.DB.prepare('SELECT install_id, day, version, platform, data FROM telemetry WHERE day >= ? ORDER BY day').bind(dayOf(now() - days * DAY)).all();
+    return results;
+  }
   async function adminTelemetry({ env, url }) {
-    const days = clampInt(url.searchParams.get('dias'), 1, 120, 30);
-    const from = dayOf(now() - days * DAY);
-    const { results = [] } = await env.DB.prepare('SELECT install_id, day, version, platform, data FROM telemetry WHERE day >= ? ORDER BY day').bind(from).all();
-    return json(aggregateTelemetry(results));
+    return json(aggregateTelemetry(await telemetryRows(env, clampInt(url.searchParams.get('dias'), 1, 120, 30))));
   }
 
   /** Equipe do painel (só o dono). */

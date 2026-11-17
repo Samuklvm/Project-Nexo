@@ -285,3 +285,99 @@ test('mcp: permissões do papel e limite diário por conexão', async () => {
   const used = await env.env.DB.prepare('SELECT calls, last_used FROM oauth_grants WHERE grant_id = ?').bind(grant.grant_id).first();
   assert.ok(used.calls >= 1 && used.last_used > 0);
 });
+
+/* ---------- Ferramentas de leitura ---------- */
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+const SIGS = ['aaaaaaaaaaaaaaa1', 'bbbbbbbbbbbbbbb2', 'ccccccccccccccc3'];
+/** Dados de exemplo: 2 PCs com telemetria, 3 erros (um com o e-mail de quem aceitou). */
+async function seed(env) {
+  const { call, loginAs } = env;
+  const tel = (installId, gpuVendor, effects) => call('POST', '/v1/telemetry', { body: { installId, version: '0.11.3', platform: 'win32', data: { hw: { cpuVendor: 'AMD', gpuVendor, cores: 12, ramGB: 16 }, settings: { effects }, perf: { skyFps: 58 }, usage: { views: { home: 3 } } } } });
+  assert.equal((await tel('install-telem-000001', 'AMD', 'lite')).status, 200);
+  assert.equal((await tel('install-telem-000002', 'NVIDIA', 'full')).status, 200);
+  const person = await loginAs({ email: 'fulano@exemplo.com', sub: 'sub-fulano' });
+  const report = (signature, message) => ({ signature, source: 'interface', level: 'erro', message, stack: `TypeError: ${message}\n    at f (view.js:1:1)`, context: '{"tela":"home"}', count: 2, firstAt: h.clock.now - 1000, lastAt: h.clock.now });
+  await call('POST', '/v1/errors', { token: person.token, body: { installId: 'install-telem-000001', version: '0.11.3', platform: 'win32', includeEmail: true, reports: [report(SIGS[0], 'Falha ao ler sensores')] } });
+  await call('POST', '/v1/errors', { body: { installId: 'install-telem-000002', version: '0.11.3', platform: 'linux', reports: [report(SIGS[1], 'Tela vazia'), report(SIGS[2], 'Canal lento')] } });
+}
+const READ_TOOLS = [['nexo_resumo', {}], ['nexo_usuarios', { dias: 30 }], ['nexo_erros', {}], ['nexo_erro', { assinatura: SIGS[0] }], ['nexo_telemetria', { dias: 30 }]];
+
+test('ferramentas de leitura com dados de exemplo', async () => {
+  const env = h.setup();
+  await seed(env);
+  const t = (await connect(env)).tokens.access_token;
+  const list = (await rpc(env.call, t, 'tools/list')).data.result.tools.map((tool) => tool.name);
+  for (const [name] of READ_TOOLS) assert.ok(list.includes(name), name);
+  const resumo = (await callTool(env.call, t, 'nexo_resumo')).structuredContent;
+  assert.equal(resumo.openErrors, 3);
+  assert.ok(resumo.newUsers.days7 >= 2);
+  assert.ok(Number.isFinite(resumo.agora));
+  assert.equal(resumo.admin, undefined);
+  const erros = (await callTool(env.call, t, 'nexo_erros')).structuredContent;
+  assert.equal(erros.grupos.length, 3);
+  for (const grupo of erros.grupos) { assert.equal(typeof grupo.pcs_com_contato, 'number'); assert.equal(grupo.emails, undefined); }
+  assert.equal(erros.grupos.find((grupo) => grupo.signature === SIGS[0]).pcs_com_contato, 1);
+  const erro = (await callTool(env.call, t, 'nexo_erro', { assinatura: SIGS[0] })).structuredContent;
+  assert.match(erro.group.stack, /TypeError/);
+  assert.equal(erro.reports[0].temContato, true);
+  assert.equal(erro.reports[0].email, undefined);
+  const tele = (await callTool(env.call, t, 'nexo_telemetria', { dias: 30 })).structuredContent;
+  assert.equal(tele.installs, 2);
+  assert.ok(tele.activeByDay.length >= 1);
+  const usuarios = (await callTool(env.call, t, 'nexo_usuarios', { dias: '30' })).structuredContent;
+  assert.ok(!('isError' in usuarios));
+  assert.ok(usuarios.novosPorDia.length >= 1);
+  assert.ok(usuarios.ativosPorDia.length >= 1);
+});
+
+test('nenhuma ferramenta devolve e-mail', async () => {
+  const env = h.setup();
+  await seed(env);
+  const t = (await connect(env)).tokens.access_token;
+  for (const [name, args] of READ_TOOLS) {
+    const result = await callTool(env.call, t, name, args);
+    assert.ok(!result.isError, `${name}: ${result.content?.[0]?.text}`);
+    assert.doesNotMatch(JSON.stringify(result), EMAIL_RE, name);
+  }
+});
+
+test('banco vazio: tudo responde, com listas vazias e zeros', async () => {
+  const env = h.setup();
+  const t = (await connect(env)).tokens.access_token;
+  for (const [name, args] of READ_TOOLS.filter(([name]) => name !== 'nexo_erro')) {
+    const result = await callTool(env.call, t, name, args);
+    assert.ok(!result.isError, `${name}: ${result.content?.[0]?.text}`);
+  }
+  assert.deepEqual((await callTool(env.call, t, 'nexo_erros')).structuredContent.grupos, []);
+  assert.equal((await callTool(env.call, t, 'nexo_telemetria')).structuredContent.installs, 0);
+  const missing = await callTool(env.call, t, 'nexo_erro', { assinatura: 'ddddddddddddddd4' });
+  assert.equal(missing.isError, true);
+  assert.match(missing.content[0].text, /não encontrado/);
+});
+
+test('argumentos com tipo errado viram valores válidos ou um erro claro', async () => {
+  const env = h.setup();
+  await seed(env);
+  const t = (await connect(env)).tokens.access_token;
+  const bad = await callTool(env.call, t, 'nexo_erro', { assinatura: 123 });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /Assinatura inválida/);
+  assert.ok((await callTool(env.call, t, 'nexo_erros', { limite: -5 })).structuredContent.grupos.length <= 1);
+  assert.equal((await callTool(env.call, t, 'nexo_erros', { status: 'qualquer' })).isError, true);
+  assert.equal((await callTool(env.call, t, 'nexo_telemetria', { dias: 999 })).structuredContent.dias, 120);
+  assert.equal((await callTool(env.call, t, 'nexo_usuarios', { dias: 'abc' })).structuredContent.dias, 30);
+});
+
+test('nexo_telemetria: listas cortadas em 15 e escolha de partes', async () => {
+  const env = h.setup();
+  for (let i = 0; i < 20; i += 1) {
+    await env.call('POST', '/v1/telemetry', { body: { installId: `install-muitos-${String(i).padStart(6, '0')}`, version: `0.${i}.0`, platform: 'win32', data: { hw: { cpuVendor: 'AMD' } } } });
+  }
+  const t = (await connect(env)).tokens.access_token;
+  const full = (await callTool(env.call, t, 'nexo_telemetria')).structuredContent;
+  assert.equal(full.versions.length, 15);
+  assert.equal(full.cortado.versions, 20);
+  const only = (await callTool(env.call, t, 'nexo_telemetria', { partes: ['cpus'] })).structuredContent;
+  assert.deepEqual(Object.keys(only).sort(), ['cpus', 'dias', 'installs', 'reports']);
+  assert.ok(JSON.stringify(full).length <= 60000);
+});
