@@ -81,6 +81,45 @@ test('drivers: lê uma vez, consulta só as linhas da NVIDIA que existem e não 
   assert.deepEqual(linux.devices, []);
 });
 
+const dotnetRelease = (url, hash) => ({ releases: [{ 'release-version': '8.0.34', windowsdesktop: { version: '8.0.34', files: [
+  { name: 'windowsdesktop-runtime-win-arm64.exe', rid: 'win-arm64', url: 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.34/windowsdesktop-runtime-8.0.34-win-arm64.exe', hash: 'b'.repeat(128) },
+  { name: 'windowsdesktop-runtime-win-x64.zip', rid: 'win-x64', url: 'https://builds.dotnet.microsoft.com/x.zip', hash: 'c'.repeat(128) },
+  { name: 'windowsdesktop-runtime-win-x64.exe', rid: 'win-x64', url, hash }
+] } }] });
+const DN_URL = 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.34/windowsdesktop-runtime-8.0.34-win-x64.exe';
+
+test('drivers: arquivo oficial do .NET só com link da Microsoft e SHA-512 de verdade', () => {
+  assert.deepEqual(Main.parseDotnetRelease(dotnetRelease(DN_URL, 'a'.repeat(128))), { version: '8.0.34', url: DN_URL, sha512: 'a'.repeat(128) });
+  assert.equal(Main.parseDotnetRelease(dotnetRelease('https://evil.example/x.exe', 'a'.repeat(128))), null);
+  assert.equal(Main.parseDotnetRelease(dotnetRelease(DN_URL, 'a'.repeat(64))), null);
+  assert.equal(Main.parseDotnetRelease({ releases: [] }), null);
+  assert.equal(Main.parseDotnetRelease('lixo'), null);
+});
+
+test('drivers: notebook consulta o pacote de notebook da NVIDIA; .NET busca o arquivo de cada versão instalada', async () => {
+  assert.match(Main.nvidiaUrl('modern', { notebook: true }), /psid=129&pfid=1006/);
+  assert.match(Main.nvidiaUrl('legacy', { notebook: true }), /psid=102&pfid=821/);
+  assert.match(Main.nvidiaUrl('modern'), /psid=131&pfid=1092/, 'desktop continua igual');
+  const calls = [];
+  const notebookNv = { ...nvInfo, IDS: [{ downloadInfo: { ...nvInfo.IDS[0].downloadInfo, DownloadURL: 'https://us.download.nvidia.com/Windows/621.14/621.14-notebook-win10-win11-64bit-international-dch-whql.exe' } }] };
+  const svc = Main.createDrivers({
+    platform: 'win32', now: () => NOW,
+    runPowerShellCode: async (script) => ({ stdout: script.includes('Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $_.DeviceClass }') ? JSON.stringify({ devices: [dev('NVIDIA GeForce RTX 4060 Laptop GPU', 'DISPLAY', 'NVIDIA', '32.0.15.6614', '2025-10-30')], others: [], generic: 3 }) : JSON.stringify({ os: { build: 22631 }, board: { mobile: true }, desktop: ['8.0.11'] }) }),
+    fetchJson: async (url) => {
+      calls.push(url);
+      if (url.includes('geforce')) return url.includes('psid=129') ? notebookNv : nvInfo;
+      if (url.endsWith('releases-index.json')) return { 'releases-index': [{ 'channel-version': '8.0', 'latest-runtime': '8.0.34', 'support-phase': 'active', 'releases.json': 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json' }] };
+      if (url.endsWith('/8.0/releases.json')) return dotnetRelease(DN_URL, 'a'.repeat(128));
+      throw new Error('?');
+    }
+  });
+  const out = await svc.scan();
+  assert.match(out.latest.nvidiaNotebook.modern.download, /-notebook-/);
+  assert.equal(out.latest.nvidia.modern.version, '621.14', 'o desktop continua sendo lido (versão de referência)');
+  assert.deepEqual(out.latest.dotnetFiles['8.0'], { version: '8.0.34', url: DN_URL, sha512: 'a'.repeat(128) });
+  assert.ok(calls.includes('https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json'));
+});
+
 function sample() {
   return {
     at: NOW,
