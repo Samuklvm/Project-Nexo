@@ -30,7 +30,7 @@ Thank you for wanting to help Nexo! 💙
 ### The most useful way: report problems and ideas
 - **Found a bug?** Open an issue with the **Report a problem** template. Include the version (Updates, in the app), the system and the steps to reproduce.
 - **Send the error log:** in the app, **Settings > Error log > Copy** and paste it into the issue. The log already leaves out your user name and your folders.
-- **Even easier:** turn on **Error reports** in Settings. Errors arrive on their own, grouped and without personal data (see the [privacy policy](../PRIVACIDADE.md), in Portuguese).
+- **Even easier:** turn on **Error reports** in Settings. Errors arrive on their own, grouped and without personal data (see the [privacy policy](../PRIVACY.md)).
 - **Have an idea?** Use the **Suggest an idea** template. Describe the problem it solves, not just the solution.
 - **Security problem?** Do not open a public issue: follow the [security policy](SECURITY.md).
 

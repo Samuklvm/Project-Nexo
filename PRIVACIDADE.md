@@ -1,5 +1,7 @@
 # Privacidade do Nexo Device Care
 
+[English](PRIVACY.md)
+
 ## Resumo
 
 O Nexo é gratuito. O código é aberto, sob a licença GPL-3.0 (veja LICENSE). A coleta e o processamento locais são ativos para alimentar os recursos do app e ficam no computador.
@@ -96,7 +98,7 @@ Ao iniciar, a versão empacotada consulta as releases públicas do GitHub para v
 
 O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera um resumo por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. Os relatórios de erro vêm ligados, também sem nada pessoal, para os problemas serem corrigidos, e dá para desligar em Ajustes.
 
-O servidor roda na **Cloudflare** (Workers e banco D1), num endereço `*.workers.dev`, só por HTTPS. A Cloudflare recebe os dados normais de qualquer conexão (endereço IP, horário, identificação do app). O servidor não guarda o endereço IP: para limitar abusos, guarda por um dia só um resumo dele misturado com um segredo do servidor, que não permite voltar ao IP. A sincronização e a telemetria ligam e desligam separadas, em **Ajustes**; os relatórios de erro não desligam:
+O servidor roda na **Cloudflare** (Workers e banco D1), num endereço `*.workers.dev`, só por HTTPS. A Cloudflare recebe os dados normais de qualquer conexão (endereço IP, horário, identificação do app). O servidor não guarda o endereço IP: para limitar abusos, guarda por um dia só um resumo dele misturado com um segredo do servidor, que não permite voltar ao IP. A sincronização, a telemetria e os relatórios de erro ligam e desligam separados, em **Ajustes**:
 
 - **Na primeira abertura**, o app pergunta uma vez (com o texto acima) se você quer ligar a telemetria. “Agora não” deixa a telemetria desligada. Quem marcou **“Ajudar a melhorar o Nexo”** no instalador já respondeu: a telemetria fica ligada e o app não pergunta de novo.
 
@@ -144,7 +146,7 @@ Só o e-mail do criador (configurado como segredo do servidor, fora do código) 
 
 ### Desligar, apagar e revogar
 
-- **Desligar** a telemetria ou a sincronização em **Ajustes** para os envios na hora. Os relatórios de erro não desligam, mas o e-mail neles sai quando você desmarca “Incluir meu e-mail nos relatórios”.
+- **Desligar** a telemetria, os relatórios de erro ou a sincronização em **Ajustes** para os envios na hora. O e-mail nos relatórios sai quando você desmarca “Incluir meu e-mail nos relatórios”.
 - **Desligar a sincronização** encerra a sessão deste PC; as cópias ficam no servidor até você apagar.
 - **Apagar a cópia de um PC** ou **“Apagar meus dados do servidor”** (todas as cópias, a conta e o e-mail nos relatórios) acontece na hora, pelo app.
 - **Desinstalar** não apaga as cópias no servidor: use “Apagar meus dados do servidor” antes, se quiser.

@@ -126,7 +126,7 @@ The same screens on both systems. On Linux, Nexo uses `/proc` and kernel sensors
 - On Windows, the processor temperature needs a driver: with your permission, Nexo installs **PawnIO** (signed and open source, the same one LibreHardwareMonitor uses) and a service that only reads sensors. Both are removed when you uninstall.
 - Your data can be exported or deleted in **Ajustes** (Settings).
 
-Full inventory (in Portuguese): [PRIVACIDADE.md](PRIVACIDADE.md).
+Full inventory: [PRIVACY.md](PRIVACY.md) (the Portuguese [PRIVACIDADE.md](PRIVACIDADE.md) is the reference text).
 
 ## 📄 License
 
