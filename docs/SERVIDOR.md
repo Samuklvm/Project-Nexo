@@ -1,6 +1,6 @@
 # Servidor do Nexo
 
-Um Worker da Cloudflare (`server/`) com banco D1. Recebe os relatórios de erro do app (sempre enviados desde a 0.11.1, sem nada pessoal) e, se a pessoa ligar, a telemetria diária e a sincronização entre PCs; também serve o painel do criador:
+Um Worker da Cloudflare (`server/`) com banco D1. Recebe os relatórios de erro do app (ligados por padrão e opcionais, sem nada pessoal) e, se a pessoa ligar, a telemetria diária e a sincronização entre PCs; também serve o painel do criador:
 
 | Parte | Rota | Quem chama |
 |---|---|---|

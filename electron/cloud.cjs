@@ -17,7 +17,7 @@ const ROLE_CHECK_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 20000;
 const PARTIAL_EVERY_MS = 3 * 3600 * 1000;
 const ERROR_BATCHES = 5;
-/* `errors` fica sempre true: os relatórios de erro são obrigatórios desde a 0.11.1 (a chave continua por compatibilidade). */
+/* Relatórios de erro: ligados por padrão e opcionais (a pessoa desliga em Ajustes). Entre a 0.11.1 e a 0.11.2 eram obrigatórios. */
 const DEFAULTS = { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false };
 
 const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
@@ -48,14 +48,12 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     state = { ...DEFAULTS, ...stored };
     for (const key of Object.keys(DEFAULTS)) if (typeof state[key] !== 'boolean') state[key] = DEFAULTS[key];
     let fresh = false;
-    // Relatórios de erro obrigatórios. Quem tinha desligado (antes da 0.11.1) começa a mandar a partir de agora: nada
-    // do tempo em que estava desligado sai. Instalação nova (sem cloud.json) manda desde o começo.
-    if (stored.errors !== true) {
-      const firstRun = !stored.installId;
+    // Instalação nova (sem cloud.json): relatórios ligados, mandando desde o começo. Quem já escolheu fica com a escolha
+    // (quem desligou antes da 0.11.1 continua desligado).
+    if (typeof stored.errors !== 'boolean') {
       state.errors = true;
-      state.errorsWindowAt = firstRun ? 0 : now();
+      state.errorsWindowAt = stored.installId ? now() : 0;
       if (!Number.isFinite(state.errorsCursor)) state.errorsCursor = 0;
-      if (!firstRun) state.lastErrorsSentAt = now();
       fresh = true;
     }
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(state.installId || ''))) { state.installId = randomId(); fresh = true; }
@@ -133,12 +131,13 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
   async function setOptions(options = {}) {
     await load();
     const before = { ...state };
-    // `errors` não é mais uma escolha (relatórios de erro obrigatórios): um pedido para desligar é ignorado.
-    for (const key of ['telemetry', 'errorEmail', 'asked']) if (typeof options[key] === 'boolean') state[key] = options[key];
+    for (const key of ['telemetry', 'errors', 'errorEmail', 'asked']) if (typeof options[key] === 'boolean') state[key] = options[key];
+    // Religou os relatórios: só vai o que acontecer daqui em diante, nada do tempo em que estavam desligados.
+    if (!before.errors && state.errors) state.errorsWindowAt = now();
     if (typeof options.sync === 'boolean') state.sync = options.sync && Boolean(token());
     try { await save(); }
     catch (error) {
-      for (const key of ['telemetry', 'errorEmail', 'sync']) state[key] = Boolean(before[key] && state[key]);
+      for (const key of ['telemetry', 'errors', 'errorEmail', 'sync']) state[key] = Boolean(before[key] && state[key]);
       throw Object.assign(new Error(`Não consegui salvar a sua escolha no disco (${error?.code || 'erro'}). Nada foi ligado; tente de novo.`), { code: 'nao-salvou' });
     }
     // Desmarcou "incluir meu e-mail": o servidor tira o e-mail dos relatórios que este PC já mandou. Sem conexão agora,

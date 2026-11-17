@@ -7,6 +7,7 @@
   function applyWallpaper(url) {
     if (url) root.style.setProperty('--wallpaper-image', `url("${url}")`);
     else root.style.removeProperty('--wallpaper-image');
+    Nexo.emit?.('wallpaper', Boolean(url));
     resetButton.hidden = !url;
   }
 

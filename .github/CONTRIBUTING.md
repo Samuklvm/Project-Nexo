@@ -14,7 +14,9 @@ Obrigado por querer ajudar o Nexo! 💙
 - **Problema de segurança?** Não abra uma issue pública: siga a [política de segurança](SECURITY.md).
 
 ### Sobre código e pull requests
-O código do Nexo é **proprietário** (todos os direitos reservados; veja [LICENSE](../LICENSE)). Por isso, **pull requests de código não são aceitos** por enquanto. Correções de texto e tradução podem ser sugeridas numa issue.
+O código do Nexo é aberto, sob a **GPL-3.0** (veja [LICENSE](../LICENSE) e [NOTICE.md](../NOTICE.md)). Pull requests são bem-vindos: para mudanças grandes, abra uma issue antes para combinarmos.
+
+**Ao enviar uma contribuição**, você confirma que ela é sua, a licencia sob a GPL-3.0 e autoriza o Samuklvm, titular do Nexo, a distribuí-la também sob outras licenças no futuro, inclusive em versões de código fechado. Sem essa autorização, a contribuição não pode ser aceita.
 
 ### Antes de abrir uma issue
 - Atualize para a versão mais nova: o problema pode já estar resolvido.
@@ -33,7 +35,9 @@ Thank you for wanting to help Nexo! 💙
 - **Security problem?** Do not open a public issue: follow the [security policy](SECURITY.md).
 
 ### About code and pull requests
-Nexo's code is **proprietary** (all rights reserved; see [LICENSE](../LICENSE)). Because of that, **code pull requests are not accepted** for now. Text and translation fixes can be suggested in an issue.
+Nexo's code is open source, under the **GPL-3.0** (see [LICENSE](../LICENSE) and [NOTICE.md](../NOTICE.md)). Pull requests are welcome: for big changes, open an issue first so we can agree on the approach.
+
+**By submitting a contribution**, you confirm that it is your own work, license it under the GPL-3.0 and allow Samuklvm, Nexo's copyright holder, to also distribute it under other licenses in the future, including in closed-source versions. Without this permission, the contribution cannot be accepted.
 
 ### Before opening an issue
 - Update to the newest version: the problem may already be fixed.

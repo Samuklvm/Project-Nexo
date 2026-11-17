@@ -2,9 +2,9 @@
 
 ## Resumo
 
-O Nexo é gratuito. O código é proprietário (veja LICENSE). A coleta e o processamento locais são ativos para alimentar os recursos do app e ficam no computador.
+O Nexo é gratuito. O código é aberto, sob a licença GPL-3.0 (veja LICENSE). A coleta e o processamento locais são ativos para alimentar os recursos do app e ficam no computador.
 
-O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera um resumo por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. A sincronização e a telemetria ligam e desligam separadas. Os **relatórios de erro vão sempre** (desde a 0.11.1), sem nada pessoal, para os problemas do app serem corrigidos; o e-mail neles é opcional. O inventário completo está em [Servidor do Nexo](#servidor-do-nexo). Não há anúncios.
+O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera um resumo por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. A sincronização e a telemetria ligam e desligam separadas. Os **relatórios de erro vêm ligados** e dá para desligar em Ajustes; vão sem nada pessoal, para os problemas do app serem corrigidos, e o e-mail neles é opcional. O inventário completo está em [Servidor do Nexo](#servidor-do-nexo). Não há anúncios.
 
 ## Coleta local (ativa)
 
@@ -90,11 +90,11 @@ Para medir FPS, o Nexo pode executar o **PresentMon** (Intel, licença MIT) como
 
 ## Conexões de rede
 
-Ao iniciar, a versão empacotada consulta as releases públicas do GitHub para verificar se existe uma atualização. Como qualquer conexão HTTP, o GitHub pode receber metadados técnicos da solicitação, incluindo endereço IP, horário, URL consultada e identificação do cliente. O Nexo não anexa a essa consulta inventário do computador, nomes de processos, arquivos, histórico, papel de parede ou feedback. Nenhuma atualização é baixada até a pessoa escolher **Baixar e atualizar**. Os relatórios de erro vão sempre para o servidor do Nexo (veja abaixo). As outras conexões só acontecem se você usar os recursos opcionais acima: abrir um jogo pelo launcher dele, capas oficiais, entrar com a Steam, chave da Steam Web API, conta Xbox, login com o Google e a sincronização e a telemetria do servidor do Nexo (cada uma só se ligada).
+Ao iniciar, a versão empacotada consulta as releases públicas do GitHub para verificar se existe uma atualização. Como qualquer conexão HTTP, o GitHub pode receber metadados técnicos da solicitação, incluindo endereço IP, horário, URL consultada e identificação do cliente. O Nexo não anexa a essa consulta inventário do computador, nomes de processos, arquivos, histórico, papel de parede ou feedback. Nenhuma atualização é baixada até a pessoa escolher **Baixar e atualizar**. Os relatórios de erro vão para o servidor do Nexo enquanto estiverem ligados (vêm ligados; veja abaixo). As outras conexões só acontecem se você usar os recursos opcionais acima: abrir um jogo pelo launcher dele, capas oficiais, entrar com a Steam, chave da Steam Web API, conta Xbox, login com o Google e a sincronização e a telemetria do servidor do Nexo (cada uma só se ligada).
 
 ## Servidor do Nexo
 
-O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera um resumo por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. Os relatórios de erro vão sempre, também sem nada pessoal, para os problemas serem corrigidos.
+O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera um resumo por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. Os relatórios de erro vêm ligados, também sem nada pessoal, para os problemas serem corrigidos, e dá para desligar em Ajustes.
 
 O servidor roda na **Cloudflare** (Workers e banco D1), num endereço `*.workers.dev`, só por HTTPS. A Cloudflare recebe os dados normais de qualquer conexão (endereço IP, horário, identificação do app). O servidor não guarda o endereço IP: para limitar abusos, guarda por um dia só um resumo dele misturado com um segredo do servidor, que não permite voltar ao IP. A sincronização e a telemetria ligam e desligam separadas, em **Ajustes**; os relatórios de erro não desligam:
 
@@ -121,9 +121,9 @@ O servidor roda na **Cloudflare** (Workers e banco D1), num endereço `*.workers
 
 Quando a telemetria ou um relatório de erro chega, o servidor anota o **código aleatório** do PC, a data em que ele apareceu pela primeira e pela última vez, a primeira e a última versão do app, o sistema (Windows ou Linux) e por onde ele apareceu (telemetria ou erros). É isso que mostra ao criador quantos PCs **novos** começaram a usar o Nexo, sem inflar com atualizações (o código fica nos dados do app). Nada pessoal; some depois de 400 dias sem aparecer, e “Apagar meus dados do servidor” não tem como achar esse código, porque ele não fica ligado à conta.
 
-### Relatórios de erro (sempre enviados)
+### Relatórios de erro (ligados por padrão)
 
-- **Desde a 0.11.1, sempre:** não há interruptor. Quem tinha desligado numa versão anterior passa a mandar só os erros que acontecerem depois da atualização; nada do tempo em que estava desligado sai.
+- **Ligados por padrão, opcionais:** o interruptor **Relatórios de erro** fica em **Ajustes > Privacidade e dados**. Desligados, nada sai. Ao religar, só vão os erros que acontecerem dali em diante; nada do tempo em que estavam desligados sai. (Entre a 0.11.1 e a 0.11.2 eles eram obrigatórios; a escolha de quem desligou antes disso foi mantida.)
 - **O que vai:** os erros do registro local (não os avisos), agrupados: a mensagem, a pilha de chamadas, o contexto curto, a origem, quantas vezes e quando aconteceu, a versão do app e o sistema. O app já tira a sua pasta pessoal e o seu nome de usuário antes de gravar, e o servidor limpa de novo ao receber.
 - **O que mais vai:** a **trilha** de cada erro (os últimos passos do app antes dele, só nomes fixos; veja Registro de erros, acima). Avisos (o que não chega a ser erro) ficam só no PC.
 - **E-mail (opcional):** se você estiver com a conta Google entrada no Nexo, o e-mail da conta vai junto, para o criador avisar você quando o erro for corrigido. A opção **“Incluir meu e-mail nos relatórios”** vem marcada e dá para desmarcar em **Ajustes**: desmarcar tira o e-mail também dos relatórios que este PC já mandou (o servidor apaga na hora; sem conexão, o app tenta de novo depois). Com a sincronização ligada, quem informa o e-mail é a sessão do servidor (confirmada pelo Google); sem ela, o app informa o e-mail da conta entrada nele e o servidor o guarda marcado como **não confirmado**. Nunca é um campo digitado.

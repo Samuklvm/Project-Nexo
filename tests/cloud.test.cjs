@@ -52,7 +52,7 @@ test.before(async () => {
 });
 test.beforeEach(() => google.resetGoogleKeys());
 
-test('nuvem: sincronização e telemetria desligadas por padrão; relatórios de erro sempre ligados', async () => {
+test('nuvem: sincronização e telemetria desligadas por padrão; relatórios de erro ligados por padrão e opcionais', async () => {
   assert.deepEqual(DEFAULTS, { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false });
   const { client, calls } = world();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
@@ -61,8 +61,7 @@ test('nuvem: sincronização e telemetria desligadas por padrão; relatórios de
   const status = await cloud.status();
   assert.equal(status.configured, true);
   for (const key of ['sync', 'telemetry', 'asked', 'connected', 'admin']) assert.equal(status[key], false, key);
-  assert.equal(status.errors, true, 'relatórios de erro são obrigatórios');
-  assert.equal((await cloud.setOptions({ errors: false })).errors, true, 'pedido para desligar os erros é ignorado');
+  assert.equal(status.errors, true, 'relatórios de erro ligados por padrão');
   assert.match(status.deviceId, /^pc-[A-Za-z0-9_-]{8,}$/);
   assert.deepEqual(await cloud.sendErrors(), { sent: 0 }, 'sem erro no registro, nada sai');
   assert.deepEqual(await cloud.sendTelemetry({ usage: { views: { home: 1 } } }), { skipped: true });
@@ -204,10 +203,16 @@ test('relatórios de erro: agrupados, sem pastas pessoais, e o e-mail só de que
   assert.equal(calls.at(-1).auth, false, 'sem o e-mail, nem a sessão vai junto');
   assert.equal(rows("SELECT email FROM error_reports WHERE email IS NOT NULL").length, 0, 'desmarcar tira o e-mail até dos relatórios já mandados');
 
-  await cloud.setOptions({ errors: false });
+  assert.equal((await cloud.setOptions({ errors: false })).errors, false);
   clock += 1000;
-  errorLog.record({ level: 'erro', source: 'principal', message: 'Depois de tentar desligar' });
-  assert.deepEqual(await cloud.sendErrors(), { sent: 1 }, 'os relatórios de erro não desligam');
+  errorLog.record({ level: 'erro', source: 'principal', message: 'Enquanto estava desligado' });
+  assert.deepEqual(await cloud.sendErrors(), { skipped: true }, 'desligados, nada sai');
+  clock += 1000;
+  await cloud.setOptions({ errors: true });
+  clock += 1000;
+  errorLog.record({ level: 'erro', source: 'principal', message: 'Depois de religar' });
+  assert.deepEqual(await cloud.sendErrors(), { sent: 1 }, 'religados, só vai o que veio depois');
+  assert.equal(rows("SELECT COUNT(*) AS n FROM error_groups WHERE message = 'Enquanto estava desligado'")[0].n, 0, 'nada do tempo desligado sai');
 });
 
 test('telemetria: no máximo uma vez por dia, anônima e só com o que a lista permite', async () => {
@@ -292,7 +297,7 @@ test('painel: quem entra ou sai da equipe depois do login vê (ou deixa de ver) 
   assert.equal(calls.length, asked);
 });
 
-test('A07: quem tinha desligado os erros (antes da 0.11.1) só manda o que acontecer depois da atualização', async () => {
+test('A07: a escolha de quem desligou os erros (antes da 0.11.1) é respeitada; ao religar, só vai o que vier depois', async () => {
   const { client, rows } = world();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
   const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), now: () => clock });
@@ -302,12 +307,15 @@ test('A07: quem tinha desligado os erros (antes da 0.11.1) só manda o que acont
   await errorLog.idle();
   clock += 1000;
   const cloud = client(dir, { errorLog });
-  assert.equal((await cloud.status()).errors, true);
+  assert.equal((await cloud.status()).errors, false, 'continua desligado');
+  assert.deepEqual(await cloud.sendErrors(), { skipped: true });
   clock += 1000;
-  errorLog.record({ message: 'T2, depois da atualização' });
+  await cloud.setOptions({ errors: true });
+  clock += 1000;
+  errorLog.record({ message: 'T2, depois de religar' });
   assert.deepEqual(await cloud.sendErrors(), { sent: 1 });
   const messages = rows('SELECT message FROM error_groups ORDER BY first_at').map((row) => row.message);
-  assert.deepEqual(messages, ['T2, depois da atualização']);
+  assert.deepEqual(messages, ['T2, depois de religar']);
   assert.equal(rows('SELECT install_id FROM error_reports')[0].install_id, 'instalacao-antiga-0001', 'a instalação continua a mesma');
 });
 
@@ -338,7 +346,7 @@ test('A08: se não der para gravar a escolha, o que liga é desfeito e a tela fi
   await assert.rejects(cloud.setOptions({ telemetry: true }), (error) => error.code === 'nao-salvou' && /ENOSPC/.test(error.message));
   const status = await cloud.status();
   assert.equal(status.telemetry, false);
-  assert.equal(status.errors, true, 'os relatórios de erro não dependem da escolha');
+  assert.equal(status.errors, true, 'os relatórios de erro continuam como estavam (ligados por padrão)');
   assert.equal(status.saveProblem.code, 'ENOSPC');
   // Desligar continua desligado mesmo sem gravar (o lado seguro).
   const ok = client(dir);

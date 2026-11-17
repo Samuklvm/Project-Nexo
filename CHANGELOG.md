@@ -6,6 +6,12 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.4: flores, código aberto e assinatura
+- Novo: o Nexo, o instalador e o desinstalador vêm assinados digitalmente; o Controle Inteligente de Aplicativos do Windows 11 deixa de bloquear o app.
+- Novo: o Nexo é código aberto, sob a GPL-3.0 (LICENSE e NOTICE.md); nome e ícone reservados à versão oficial; pull requests aceitos com os termos de contribuição.
+- Novo: fundo animado do app, um campo de flores azuis que brilham sob o céu do Nexo (capim, pétalas no vento e vaga-lumes), tocado pela placa de vídeo; pausa fora de foco e fica parado no Modo Leve, com movimento reduzido ou com papel de parede próprio. Os instaladores ganharam a mesma arte, original do projeto.
+- Melhoria: relatórios de erro opcionais, ligados por padrão (Ajustes > Privacidade e dados); ao religar, só vai o que acontecer depois.
+
 ### 0.11.3: análise e otimização
 - Novo: Análise e otimização numa tela só. Cada achado que pede ação tem um botão (ajuste automático, BIOS guiada com reinício direto nela, driver oficial, correções de rede, Gerenciador de Tarefas ou passo a passo).
 - Novo: verificação completa de no mínimo 10 minutos: teste de estabilidade da memória, placa de vídeo sob carga, gravação real no disco, drivers por função, 30 dias de eventos com o código de cada tela azul e o tipo de cada desligamento, um minuto de rede, observação estendida, carga no processador e os erros registrados durante os próprios testes.
@@ -122,6 +128,12 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.4: flowers, open source and signing
+- New: Nexo, its installer and its uninstaller are digitally signed; Windows 11 Smart App Control no longer blocks the app.
+- New: Nexo is open source, under the GPL-3.0 (LICENSE and NOTICE.md); name and icon reserved for the official version; pull requests accepted under the contribution terms.
+- New: animated app background, a field of glowing blue flowers under Nexo's sky (grass, petals in the wind and fireflies), played by the graphics card; it pauses out of focus and stays still in Lite mode, with reduced motion or with your own wallpaper. The installers got the same art, original to the project.
+- Improvement: optional error reports, on by default (Settings > Privacy and data); when turned back on, only what happens afterwards is sent.
 
 ### 0.11.3: analysis and optimization
 - New: Analysis and optimization on one screen. Every finding that needs action has a button (automatic tweak, guided BIOS steps with a restart straight into it, official driver, network fixes, Task Manager or step by step).

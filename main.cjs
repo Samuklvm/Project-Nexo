@@ -2633,7 +2633,7 @@ let cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: nul
 const cloudReady = serverUrl().then(async (url) => {
   cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog, accountEmail });
   // Quem marcou "Ajudar a melhorar o Nexo" no instalador já respondeu: liga a telemetria e o app não pergunta de novo.
-  // (Os relatórios de erro são sempre enviados desde a 0.11.1; não dependem dessa caixa.)
+  // (Os relatórios de erro vêm ligados por padrão e têm o próprio interruptor em Ajustes; não dependem dessa caixa.)
   const status = await cloud.status();
   if (status.configured && !status.asked && (await readSharePreference()).shareWithCreator) await cloud.setOptions({ telemetry: true, asked: true });
   return cloud;
@@ -2688,7 +2688,7 @@ registerIpcHandler('cloud:status', async () => {
   return target.status();
 });
 registerIpcHandler('cloud:set', async (_event, options) => {
-  const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
+  const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
   // O Registro acompanha a escolha, para o instalador mostrar a caixa certa numa reinstalação.
   if (typeof options?.telemetry === 'boolean') writeSharePreference(status.telemetry).catch(() => {});
   return status;

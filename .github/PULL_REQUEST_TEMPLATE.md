@@ -1,9 +1,11 @@
 <!--
-PT: O código do Nexo é proprietário e pull requests de código não são aceitos por enquanto (veja CONTRIBUTING.md).
+PT: O Nexo é código aberto (GPL-3.0). Ao abrir este pull request, você aceita os termos de contribuição do CONTRIBUTING.md.
     Para relatar um problema ou sugerir uma ideia, abra uma issue.
-EN: Nexo's code is proprietary and code pull requests are not accepted for now (see CONTRIBUTING.md).
+EN: Nexo is open source (GPL-3.0). By opening this pull request, you accept the contribution terms in CONTRIBUTING.md.
     To report a problem or suggest an idea, open an issue.
 -->
+
+- [ ] Esta contribuição é minha e aceito os termos do CONTRIBUTING.md · This contribution is my own and I accept the terms in CONTRIBUTING.md
 
 ## O que muda · What changes
 

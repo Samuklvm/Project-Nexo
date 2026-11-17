@@ -77,7 +77,7 @@
           <li>Nada roda como root. O TRIM e a remoção do pacote .deb pedem a sua senha pela janela do próprio sistema (pkexec).</li>
           <li>A Otimização extrema (beta) é arriscada: no Linux ela testa os perfis de energia do power-profiles-daemon e volta ao original no fim.</li>
           <li>Para medir FPS, o Nexo lê o log do MangoHud; para detectar o jogo em primeiro plano, usa o xprop (X11 e XWayland).</li>
-          <li>Os relatórios de erro vão sempre ao servidor do Nexo: os erros do app e os últimos passos antes de cada um, sem o seu nome de usuário, as suas pastas ou o que você digitou. Com a conta Google entrada, o e-mail vai junto para o criador avisar quando corrigir (dá para tirar em Ajustes). A telemetria (um resumo anônimo por dia) e a sincronização são opcionais e começam desligadas.</li></ul>`,
+          <li>Os relatórios de erro vêm ligados e vão ao servidor do Nexo (dá para desligar em Ajustes): os erros do app e os últimos passos antes de cada um, sem o seu nome de usuário, as suas pastas ou o que você digitou. Com a conta Google entrada, o e-mail vai junto para o criador avisar quando corrigir (dá para tirar em Ajustes). A telemetria (um resumo anônimo por dia) e a sincronização são opcionais e começam desligadas.</li></ul>`,
         actions: [{ id: 'policy', label: 'Política completa', keepOpen: true, onClick: () => desktopBridge.openLink?.('privacy') }, { id: 'ok', label: 'Entendi', tone: 'primary' }] });
       dialog.done.then(() => { try { localStorage.setItem('nexo-linux-notice', '1'); } catch { /* sem armazenamento */ } return true; }).catch(() => {});
     }, 900);

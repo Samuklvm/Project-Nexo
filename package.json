@@ -1,6 +1,6 @@
 {
   "name": "nexo-device-care",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "private": true,
   "description": "Nexo Device Care: cuidado e otimização do seu PC (Windows e Linux), com análise local que aprende a sua rotina",
   "main": "main.cjs",
@@ -157,5 +157,5 @@
   },
   "author": "Samuklvm",
   "homepage": "https://github.com/Samuklvm/Project-Nexo",
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "GPL-3.0-only"
 }
