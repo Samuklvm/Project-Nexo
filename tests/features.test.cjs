@@ -164,3 +164,9 @@ test('novidades: a versão do package.json tem notas, com emojis, seções e ite
     for (const text of [v.title, v.tagline, ...v.sections.flatMap((s) => s.items.flatMap((item) => [item.title, item.text]))]) assert.doesNotMatch(String(text || ''), BACKSTAGE, `${v.version}: "${text}" é coisa de bastidor`);
   }
 });
+
+test('instalador visual: mesma versão do app (o nome do arquivo e a tela do instalador usam essa versão)', () => {
+  const app = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  const launcher = JSON.parse(fs.readFileSync(path.join(root, 'installer-launcher', 'package.json'), 'utf8')).version;
+  assert.equal(launcher, app, 'atualize installer-launcher/package.json junto com a versão do app');
+});
