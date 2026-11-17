@@ -52,8 +52,8 @@ test('registro: só os callbacks do Claude', async () => {
 const nodeCrypto = require('node:crypto');
 const VERIFIER_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
 function pkce(length = 64) {
-  const bytes = nodeCrypto.randomBytes(length);
-  const verifier = [...bytes].map((byte) => VERIFIER_CHARS[byte % VERIFIER_CHARS.length]).join('');
+  // randomInt é uniforme (sem o viés do módulo sobre bytes aleatórios).
+  const verifier = Array.from({ length }, () => VERIFIER_CHARS[nodeCrypto.randomInt(VERIFIER_CHARS.length)]).join('');
   return { verifier, challenge: nodeCrypto.createHash('sha256').update(verifier).digest('base64url') };
 }
 const authParams = (clientId, challenge, extra = {}) => ({ response_type: 'code', client_id: clientId, redirect_uri: CLAUDE_CB, code_challenge: challenge, code_challenge_method: 'S256', state: 'estado-123', scope: 'painel', resource: `${ORIGIN}/mcp`, ...extra });
