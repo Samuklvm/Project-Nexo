@@ -189,6 +189,48 @@ test('drivers: cartões, estados e botões sempre para o site oficial', () => {
   }
 });
 
+test('drivers: cada cartão sabe qual arquivo oficial baixar (e só o certo para aquele PC)', () => {
+  const find = (model, re) => model.groups.flatMap((g) => g.items).find((item) => re.test(item.id));
+  const data = sample();
+  data.latest.dotnetFiles = { '8.0': { version: '8.0.34', url: DN_URL, sha512: 'a'.repeat(128) } };
+  const desk = D.build(data, NOW);
+  const gpu = find(desk, /^video-NVIDIA/);
+  assert.equal(gpu.state, 'update');
+  assert.deepEqual(gpu.download, { url: 'https://us.download.nvidia.com/Windows/621.14/x.exe', domains: ['nvidia.com'], fileName: 'nvidia-621.14.exe', signer: 'NVIDIA Corporation', size: '1.04 GB', label: 'Baixar · 1.04 GB' });
+  assert.equal(find(desk, /^video-Intel/).download, null, 'Intel ainda abre o site (projeto 2)');
+  const vc86 = find(desk, /^vc-x86$/);
+  assert.equal(vc86.state, 'missing');
+  assert.equal(vc86.download.fileName, 'vc_redist.x86.exe');
+  assert.equal(vc86.download.signer, 'Microsoft Corporation');
+  assert.equal(find(desk, /^vc-x64$/).download, null, 'Visual C++ em dia não ganha download');
+  const dx = find(desk, /^directx9$/);
+  assert.equal(dx.download.fileName, 'dxwebsetup.exe');
+  assert.match(dx.download.url, /^https:\/\/download\.microsoft\.com\//);
+  const net = find(desk, /^dotnet-8\.0$/);
+  assert.equal(net.download.sha512, 'a'.repeat(128));
+  assert.equal(net.download.url, DN_URL);
+  assert.equal(D.downloadFor(desk, gpu.id).fileName, 'nvidia-621.14.exe');
+  assert.equal(D.downloadFor(desk, 'id-que-nao-existe'), null);
+  assert.equal(D.downloadFor(null, gpu.id), null);
+
+  // Notebook: só o pacote de notebook; sem ele, nada de download (nunca o de desktop num notebook).
+  const nb = sample();
+  nb.runtimes.board = { ...nb.runtimes.board, mobile: true };
+  const noNotebook = find(D.build(nb, NOW), /^video-NVIDIA/);
+  assert.equal(noNotebook.download, null);
+  nb.latest.nvidiaNotebook = { modern: { ...Main.parseNvidia(nvInfo), download: 'https://us.download.nvidia.com/Windows/621.14/621.14-notebook-win10-win11-64bit-international-dch-whql.exe' } };
+  assert.match(find(D.build(nb, NOW), /^video-NVIDIA/).download.url, /-notebook-/);
+
+  // Placa que a NVIDIA não atualiza mais: sem download.
+  const old = sample();
+  old.devices[0] = dev('NVIDIA GeForce GTX 760', 'DISPLAY', 'NVIDIA', '30.0.14.7514', '2021-01-01');
+  assert.equal(find(D.build(old, NOW), /^video-NVIDIA/).download, null);
+  // Link fora do domínio oficial nunca vira download.
+  const evil = sample();
+  evil.latest.nvidia.modern = { ...evil.latest.nvidia.modern, download: 'https://evil.example/x.exe' };
+  assert.equal(find(D.build(evil, NOW), /^video-NVIDIA/).download, null);
+});
+
 test('drivers: notebook usa a página do fabricante do notebook e a busca da NVIDIA', () => {
   const data = sample();
   data.runtimes.board = { maker: 'Dell Inc.', product: '0X8DXD', systemMaker: 'Dell Inc.', model: 'G15 5520', mobile: true };

@@ -47,7 +47,11 @@
     vcOld: 'https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist',
     directx: 'https://www.microsoft.com/download/details.aspx?id=35',
     netfx: 'https://dotnet.microsoft.com/download/dotnet-framework',
-    dotnet: (channel) => `https://dotnet.microsoft.com/download/dotnet/${channel}`
+    dotnet: (channel) => `https://dotnet.microsoft.com/download/dotnet/${channel}`,
+    // Arquivos oficiais para o download direto (Visual C++ pelo permalink da Microsoft; DirectX pelo instalador web).
+    vc64File: 'https://aka.ms/vc14/vc_redist.x64.exe',
+    vc86File: 'https://aka.ms/vc14/vc_redist.x86.exe',
+    directxFile: 'https://download.microsoft.com/download/1/7/1/1718CCC4-6315-4D8E-9543-8E28A4E18C4C/dxwebsetup.exe'
   };
   /** Página de suporte do notebook ou da placa-mãe (drivers de chipset, áudio, rede e Bluetooth feitos para ela). */
   const SUPPORT = [
@@ -299,6 +303,52 @@
     return out;
   }
 
+  /* ---------------- Download direto (o arquivo oficial certo para este PC) ---------------- */
+  const MS_DOMAINS = ['aka.ms', 'microsoft.com', 'visualstudio.microsoft.com'];
+  const SIGNER = { nvidia: 'NVIDIA Corporation', microsoft: 'Microsoft Corporation' };
+  /** Só https e só o domínio do fabricante (o que vem da internet não é confiável, mesmo já filtrado no processo principal). */
+  function official(value, domains) {
+    try {
+      const url = new URL(String(value || ''));
+      const host = url.hostname.toLowerCase();
+      return url.protocol === 'https:' && !url.username && !url.password && !url.port && domains.some((d) => host === d || host.endsWith(`.${d}`)) ? url.href : null;
+    } catch { return null; }
+  }
+  const dl = (url, domains, fileName, signer, extra = {}) => {
+    const safe = official(url, domains);
+    if (!safe) return null;
+    const size = extra.size || null;
+    return { url: safe, domains, fileName, signer, ...(extra.sha512 ? { sha512: extra.sha512 } : {}), ...(size ? { size } : {}), label: size ? `Baixar · ${size}` : 'Baixar' };
+  };
+  function downloadOf(item, latest, runtimes) {
+    if (item.id.startsWith('video-') && item.maker === 'NVIDIA' && (item.state === 'update' || item.state === 'ok')) {
+      const line = nvidiaLine(item.name);
+      if (line !== 'modern' && line !== 'legacy') return null;
+      // Notebook: só o pacote de notebook. Sem ele, nada (o de desktop não serve).
+      const top = runtimes?.board?.mobile === true ? latest?.nvidiaNotebook?.[line] : latest?.nvidia?.[line];
+      if (!top?.download || !/^\d{3}\.\d{2}$/.test(String(top.version || ''))) return null;
+      return dl(top.download, ['nvidia.com'], `nvidia-${top.version}.exe`, SIGNER.nvidia, { size: top.size });
+    }
+    if ((item.id === 'vc-x64' || item.id === 'vc-x86') && (item.state === 'missing' || item.state === 'old')) {
+      const arch = item.id.slice(3);
+      return dl(arch === 'x64' ? PAGES.vc64File : PAGES.vc86File, MS_DOMAINS, `vc_redist.${arch}.exe`, SIGNER.microsoft);
+    }
+    if (item.id === 'directx9' && item.state === 'missing') return dl(PAGES.directxFile, MS_DOMAINS, 'dxwebsetup.exe', SIGNER.microsoft);
+    const net = /^dotnet-(\d+\.\d+)$/.exec(item.id);
+    if (net && item.state === 'update') {
+      const file = latest?.dotnetFiles?.[net[1]];
+      if (!file?.sha512 || !/^[0-9a-f]{128}$/i.test(file.sha512)) return null;
+      return dl(file.url, ['microsoft.com', 'dot.net'], `windowsdesktop-runtime-${file.version}-win-x64.exe`, SIGNER.microsoft, { sha512: file.sha512 });
+    }
+    return null;
+  }
+  /** O download de um cartão pelo id (o processo principal usa a própria leitura; o id vem da tela). */
+  function downloadFor(model, id) {
+    if (!model || typeof id !== 'string') return null;
+    for (const group of model.groups || []) for (const item of group.items) if (item.id === id) return item.download || null;
+    return null;
+  }
+
   /** O modelo inteiro da página. */
   function build(data = {}, now = Date.now()) {
     const devices = Array.isArray(data.devices) ? data.devices : [];
@@ -315,6 +365,7 @@
     const used = new Set(Object.values(items).flat().flatMap((item) => [item.sourceName, ...(item.extra || [])]).filter(Boolean));
     const leftovers = devices.filter((item) => !/^microsoft/i.test(item.provider || '') && !used.has(item.name) && !/high definition audio|display audio|hdmi audio/i.test(item.name));
     items.outros = otherCards([...leftovers, ...(Array.isArray(data.others) ? data.others : [])], data.generic, now, support);
+    for (const list of Object.values(items)) for (const item of list) item.download = downloadOf(item, latest, runtimes);
     const groups = GROUPS.map((group) => ({ ...group, items: items[group.id] || [] })).filter((group) => group.items.length);
     const all = groups.flatMap((group) => group.items);
     const count = (...states) => all.filter((item) => states.includes(item.state)).length;
@@ -333,5 +384,5 @@
   const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Antigo', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova' };
   /** As chaves de ícone que a página vai mostrar (para pedir só essas). */
   const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.flatMap((item) => [item.brand, item.brandAlt]))].filter(Boolean))];
-  return { build, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  return { build, downloadFor, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });
