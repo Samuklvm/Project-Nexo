@@ -9,7 +9,7 @@
  * não liga um registro a um PC nem a outro app. Nada daqui sai pelo painel ou pelo conector, só contagens.
  */
 import { utf8 } from './crypto.js';
-import { PLATFORMS, RE, dayOf } from './validate.js';
+import { PLATFORMS, RE, compareVersions, dayOf } from './validate.js';
 
 const PC = /^[0-9a-f]{64}$/;
 export const EVENTS = new Set(['instalou', 'atualizou', 'desinstalou']);
@@ -90,4 +90,109 @@ export function createContagem({ now, limit, ipKey, json, readJson, HttpError })
   }
 
   return { pulse, install, optout };
+}
+
+/* ---------- Números (só contagens: nada daqui leva código de PC) ---------- */
+
+const DAY_MS = 24 * 3600 * 1000;
+const pct1 = (part, whole) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : null);
+const n = (row) => Number(row?.n) || 0;
+
+/** Consultas da contagem: funil, retenção, séries por dia e saúde por versão. */
+export function createQueries({ now }) {
+  const today = () => dayOf(now());
+  const daysAgo = (days) => dayOf(now() - days * DAY_MS);
+
+  /** Funil por PC. "Instalaram" = todo PC conhecido (quem atualizou de uma versão antiga nunca mandou "instalou"). */
+  async function funil(env) {
+    const one = (sql, ...args) => env.DB.prepare(sql).bind(...args).first();
+    const [all, opened, real, tried, act1, act7, act30, reinst, uninst, inicio, opt] = await Promise.all([
+      one('SELECT COUNT(*) AS n FROM pcs'),
+      one('SELECT COUNT(*) AS n FROM pcs WHERE days_active >= 1'),
+      one('SELECT COUNT(*) AS n FROM pcs WHERE days_active >= 2'),
+      one('SELECT COUNT(*) AS n FROM pcs WHERE days_active = 1 AND first_pulse_day < ?', daysAgo(7)),
+      one('SELECT COUNT(DISTINCT pc) AS n FROM pulses WHERE day = ?', today()),
+      one('SELECT COUNT(DISTINCT pc) AS n FROM pulses WHERE day >= ?', daysAgo(6)),
+      one('SELECT COUNT(DISTINCT pc) AS n FROM pulses WHERE day >= ?', daysAgo(29)),
+      one('SELECT COUNT(*) AS n FROM pcs WHERE installs >= 2'),
+      one('SELECT COUNT(*) AS n FROM pcs WHERE uninstalled_at IS NOT NULL'),
+      one('SELECT MIN(day) AS day FROM pulses'),
+      env.DB.prepare('SELECT origem, SUM(n) AS n FROM optouts GROUP BY origem').all()
+    ]);
+    const byOrigin = Object.fromEntries((opt.results || []).map((row) => [row.origem, Number(row.n) || 0]));
+    const app = byOrigin.app || 0;
+    const instalador = byOrigin.instalador || 0;
+    return { instalaram: n(all), abriram: n(opened), reais: n(real), experimentaram: n(tried), ativosHoje: n(act1), ativos7: n(act7), ativos30: n(act30),
+      reinstalaram: n(reinst), desinstalaram: n(uninst), desligaram: { app, instalador, total: app + instalador }, inicio: inicio?.day || null };
+  }
+
+  /** Dos PCs com o primeiro dia há pelo menos N dias, quantos % voltaram em algum dia >= primeiro dia + N. */
+  async function retencao(env) {
+    const out = {};
+    for (const [name, days] of [['d1', 1], ['d7', 7], ['d30', 30]]) {
+      // eslint-disable-next-line no-await-in-loop -- três consultas pequenas, em ordem
+      const row = await env.DB.prepare(`SELECT COUNT(*) AS de, SUM(CASE WHEN EXISTS (SELECT 1 FROM pulses u WHERE u.pc = p.pc AND u.day >= date(p.first_pulse_day, ?)) THEN 1 ELSE 0 END) AS voltou
+        FROM pcs p WHERE p.first_pulse_day IS NOT NULL AND p.first_pulse_day <= ?`).bind(`+${days} days`, daysAgo(days)).first();
+      const de = Number(row?.de) || 0;
+      out[name] = { pct: pct1(Number(row?.voltou) || 0, de), de };
+    }
+    return out;
+  }
+
+  /** Séries diárias do período: PCs ativos, PCs novos (primeiro dia) e avisos do instalador. */
+  async function porDia(env, dias) {
+    const from = daysAgo(dias - 1);
+    const [ativos, novos, eventos] = await Promise.all([
+      env.DB.prepare('SELECT day, COUNT(*) AS n FROM pulses WHERE day >= ? GROUP BY day ORDER BY day').bind(from).all(),
+      env.DB.prepare('SELECT first_pulse_day AS day, COUNT(*) AS n FROM pcs WHERE first_pulse_day >= ? GROUP BY first_pulse_day ORDER BY first_pulse_day').bind(from).all(),
+      env.DB.prepare(`SELECT strftime('%Y-%m-%d', at / 1000, 'unixepoch') AS day, SUM(event = 'instalou') AS instalou, SUM(event = 'atualizou') AS atualizou, SUM(event = 'desinstalou') AS desinstalou
+        FROM pc_events WHERE at >= ? GROUP BY day ORDER BY day`).bind(Date.parse(`${from}T00:00:00Z`)).all()
+    ]);
+    const list = (result) => (result.results || []).map((row) => ({ ...row }));
+    return { ativos: list(ativos), novos: list(novos), eventos: list(eventos).map((row) => ({ day: row.day, instalou: Number(row.instalou) || 0, atualizou: Number(row.atualizou) || 0, desinstalou: Number(row.desinstalou) || 0 })) };
+  }
+
+  /**
+   * Saúde por versão (7 dias): PCs ativos, ≈ % sem erro (instalações com erro ÷ PCs ativos: aproximado de propósito,
+   * PC e instalação não se ligam no servidor), erros abertos e, na mais nova, as regressões (erros só dela).
+   */
+  async function versoes(env) {
+    const since = daysAgo(6);
+    const sinceMs = Date.parse(`${since}T00:00:00Z`);
+    const [active, ever, errored, open] = await Promise.all([
+      env.DB.prepare('SELECT version, COUNT(DISTINCT pc) AS n FROM pulses WHERE day >= ? GROUP BY version').bind(since).all(),
+      env.DB.prepare('SELECT version, COUNT(DISTINCT pc) AS n, MIN(day) AS first FROM pulses GROUP BY version').all(),
+      env.DB.prepare(`SELECT r.version, COUNT(DISTINCT r.install_id) AS n FROM error_reports r JOIN error_groups g ON g.signature = r.signature
+        WHERE g.level = 'erro' AND r.last_at >= ? GROUP BY r.version`).bind(sinceMs).all(),
+      env.DB.prepare(`SELECT r.version, COUNT(DISTINCT g.signature) AS n FROM error_groups g JOIN error_reports r ON r.signature = g.signature
+        WHERE g.status IN ('aberto', 'reaberto') AND g.level = 'erro' GROUP BY r.version`).all()
+    ]);
+    const map = (result, field = 'n') => new Map((result.results || []).map((row) => [row.version, row[field]]));
+    const act = map(active);
+    const all = map(ever);
+    const first = map(ever, 'first');
+    const err = map(errored);
+    const opened = map(open);
+    const names = [...new Set([...act.keys(), ...all.keys()])].sort((a, b) => compareVersions(b, a));
+    const maisNova = [...act.keys()].sort((a, b) => compareVersions(b, a))[0] || null;
+    let regressoes = [];
+    if (maisNova) {
+      const since0 = Date.parse(`${first.get(maisNova)}T00:00:00Z`);
+      const { results = [] } = await env.DB.prepare(`SELECT g.signature, g.message, COUNT(DISTINCT r.install_id) AS installs, COALESCE(SUM(r.count), 0) AS occurrences
+        FROM error_groups g JOIN error_reports r ON r.signature = g.signature
+        WHERE g.status IN ('aberto', 'reaberto') AND g.level = 'erro' AND g.first_at >= ?
+        GROUP BY g.signature HAVING COUNT(DISTINCT r.version) = 1 AND MAX(r.version) = ? ORDER BY occurrences DESC LIMIT 20`).bind(since0, maisNova).all();
+      regressoes = results.map((row) => ({ signature: row.signature, message: row.message, installs: Number(row.installs) || 0, occurrences: Number(row.occurrences) || 0 }));
+    }
+    return {
+      maisNova,
+      versoes: names.map((version) => {
+        const ativos7 = Number(act.get(version)) || 0;
+        const comErro = Math.min(ativos7, Number(err.get(version)) || 0);
+        return { version, ativos7, desde: Number(all.get(version)) || 0, pctSemErro: ativos7 ? pct1(ativos7 - comErro, ativos7) : null, errosAbertos: Number(opened.get(version)) || 0, regressoes: version === maisNova ? regressoes : [] };
+      })
+    };
+  }
+
+  return { funil, retencao, porDia, versoes };
 }

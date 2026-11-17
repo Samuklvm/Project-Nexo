@@ -88,3 +88,80 @@ test('limites diários por PC e por IP', async () => {
   for (let i = 0; i < 5; i += 1) assert.equal((await optout(call, 'app', ip)).status, 200);
   assert.equal((await optout(call, 'app', ip)).status, 429);
 });
+
+/* ---------- Funil, retenção, séries e versões ---------- */
+let contagemMod;
+test.before(async () => { contagemMod = await import('../server/src/contagem.js'); });
+/** As consultas, ligadas ao relógio do teste. */
+const queries = () => contagemMod.createQueries({ now: () => h.clock.now });
+const errors = (call, installId, version, signature) => call('POST', '/v1/errors', { body: { installId, version, platform: 'win32', reports: [{ signature, source: 'interface', level: 'erro', message: `Erro ${signature}`, count: 1, firstAt: h.clock.now, lastAt: h.clock.now }] } });
+
+test('funil com cada tipo de PC', async () => {
+  const { call, env } = h.setup();
+  const linux = { platform: 'linux' };
+  const [A, B, C, D, E, F] = ['A', 'B', 'C', 'D', 'E', 'F'].map(pcOf);
+  const t0 = h.clock.now;
+  await install(call, A, 'instalou');
+  await install(call, B, 'instalou'); await pulse(call, B);
+  await install(call, D, 'instalou'); await pulse(call, D);
+  h.tick(DAY); await pulse(call, D); await pulse(call, E, linux);
+  h.tick(DAY); await pulse(call, D); await pulse(call, E, linux);
+  h.clock.now = t0 + 10 * DAY;
+  await install(call, C, 'instalou'); await pulse(call, C);
+  await install(call, F, 'instalou'); await install(call, F, 'instalou'); await pulse(call, F); await install(call, F, 'desinstalou');
+  await optout(call, 'app');
+  const funil = await queries().funil(env);
+  assert.deepEqual({ ...funil, desligaram: undefined, inicio: undefined }, { instalaram: 6, abriram: 5, reais: 2, experimentaram: 1, ativosHoje: 2, ativos7: 2, ativos30: 5, reinstalaram: 1, desinstalaram: 1, desligaram: undefined, inicio: undefined });
+  assert.deepEqual(funil.desligaram, { app: 1, instalador: 0, total: 1 });
+  assert.equal(funil.inicio, new Date(t0).toISOString().slice(0, 10));
+});
+
+test('retenção: quem voltou depois de 1, 7 e 30 dias', async () => {
+  const { call, env } = h.setup();
+  const t0 = h.clock.now;
+  await pulse(call, pcOf('R1')); await pulse(call, pcOf('R2'));
+  h.clock.now = t0 + 8 * DAY; await pulse(call, pcOf('R1'));
+  h.clock.now = t0 + 40 * DAY;
+  const ret = await queries().retencao(env);
+  assert.deepEqual(ret, { d1: { pct: 50, de: 2 }, d7: { pct: 50, de: 2 }, d30: { pct: 0, de: 2 } });
+});
+
+test('banco vazio: zeros, listas vazias e nada de NaN ou Infinity', async () => {
+  const { env } = h.setup();
+  const q = queries();
+  const funil = await q.funil(env);
+  assert.deepEqual(funil, { instalaram: 0, abriram: 0, reais: 0, experimentaram: 0, ativosHoje: 0, ativos7: 0, ativos30: 0, reinstalaram: 0, desinstalaram: 0, desligaram: { app: 0, instalador: 0, total: 0 }, inicio: null });
+  assert.deepEqual(await q.retencao(env), { d1: { pct: null, de: 0 }, d7: { pct: null, de: 0 }, d30: { pct: null, de: 0 } });
+  assert.deepEqual(await q.porDia(env, 30), { ativos: [], novos: [], eventos: [] });
+  assert.deepEqual(await q.versoes(env), { maisNova: null, versoes: [] });
+});
+
+test('séries por dia: ativos, novos e eventos do instalador', async () => {
+  const { call, env } = h.setup();
+  await install(call, pcOf('S1'), 'instalou'); await pulse(call, pcOf('S1')); await pulse(call, pcOf('S2'));
+  h.tick(DAY); await pulse(call, pcOf('S1')); await install(call, pcOf('S2'), 'atualizou');
+  const series = await queries().porDia(env, 30);
+  assert.deepEqual(series.ativos.map((row) => row.n), [2, 1]);
+  assert.deepEqual(series.novos.map((row) => row.n), [2]);
+  assert.deepEqual(series.eventos.map(({ instalou, atualizou, desinstalou }) => [instalou, atualizou, desinstalou]), [[1, 0, 0], [0, 1, 0]]);
+});
+
+test('versões: % sem erro aproximado e regressão só na mais nova', async () => {
+  const { call, env } = h.setup();
+  for (const name of ['N1', 'N2', 'N3', 'N4']) await pulse(call, pcOf(name), { version: '0.12.0' });
+  for (const name of ['O1', 'O2']) await pulse(call, pcOf(name), { version: '0.11.3' });
+  h.tick(60 * 1000);
+  await errors(call, 'install-nova-000001', '0.12.0', 'aaaaaaaaaaaaaaa1');
+  await errors(call, 'install-nova-000001', '0.12.0', 'bbbbbbbbbbbbbbb2');
+  await errors(call, 'install-velha-00002', '0.11.3', 'bbbbbbbbbbbbbbb2');
+  const { maisNova, versoes } = await queries().versoes(env);
+  assert.equal(maisNova, '0.12.0');
+  assert.deepEqual(versoes.map((v) => v.version), ['0.12.0', '0.11.3']);
+  const nova = versoes[0];
+  assert.equal(nova.ativos7, 4);
+  assert.equal(nova.pctSemErro, 75);
+  assert.equal(nova.errosAbertos, 2);
+  assert.deepEqual(nova.regressoes.map((r) => r.signature), ['aaaaaaaaaaaaaaa1']);
+  assert.equal(versoes[1].pctSemErro, 50);
+  assert.deepEqual(versoes[1].regressoes, []);
+});
