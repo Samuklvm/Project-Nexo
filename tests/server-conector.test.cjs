@@ -328,8 +328,9 @@ test('ferramentas de leitura com dados de exemplo', async () => {
   assert.ok(tele.activeByDay.length >= 1);
   const usuarios = (await callTool(env.call, t, 'nexo_usuarios', { dias: '30' })).structuredContent;
   assert.ok(!('isError' in usuarios));
-  assert.ok(usuarios.novosPorDia.length >= 1);
-  assert.ok(usuarios.ativosPorDia.length >= 1);
+  assert.equal(usuarios.antigo.instalacoesVistas, 2, 'a contagem antiga (telemetria e erros) continua como referência');
+  assert.equal(usuarios.github.impreciso, true);
+  assert.ok(usuarios.funil && usuarios.retencao && usuarios.porDia);
 });
 
 test('nenhuma ferramenta devolve e-mail', async () => {
@@ -668,4 +669,32 @@ test('menores: "bearer" em minúsculas, PKCE errado gasta o código e nota vazia
   await callTool(env.call, t, 'nexo_marcar_erro', { assinatura: SIGS[0], status: 'ignorado', nota: 'algo' });
   await callTool(env.call, t, 'nexo_marcar_erro', { assinatura: SIGS[0], status: 'ignorado', nota: '   ' });
   assert.equal((await env.env.DB.prepare('SELECT note FROM error_groups WHERE signature = ?').bind(SIGS[0]).first()).note, null);
+});
+
+/* ---------- Contagem exata pelo conector ---------- */
+test('contagem pelo conector: resumo, usuários e versões, sem código de PC nem e-mail', async () => {
+  const env = h.setup();
+  await seed(env);
+  const codes = ['PC-1', 'PC-2', 'PC-3'].map((name) => require('node:crypto').createHash('sha256').update(`nexo-pc-v1|${name}`).digest('hex'));
+  for (const pc of codes) await env.call('POST', '/v1/pulse', { body: { pc, version: '0.12.0', platform: 'win32' } });
+  await env.call('POST', '/v1/install', { body: { pc: codes[0], event: 'instalou', version: '0.12.0', platform: 'win32' } });
+  const stored = (await env.env.DB.prepare('SELECT pc FROM pcs').all()).results.map((row) => row.pc);
+  const t = (await connect(env)).tokens.access_token;
+  const list = (await rpc(env.call, t, 'tools/list')).data.result.tools;
+  const versoesTool = list.find((tool) => tool.name === 'nexo_versoes');
+  assert.ok(versoesTool);
+  assert.equal(versoesTool.annotations.readOnlyHint, true);
+  const resumo = (await callTool(env.call, t, 'nexo_resumo')).structuredContent;
+  assert.equal(resumo.contagem.funil.abriram, 3);
+  assert.ok(resumo.contagem.retencao.d1);
+  const usuarios = (await callTool(env.call, t, 'nexo_usuarios', { dias: 30 })).structuredContent;
+  assert.equal(usuarios.funil.instalaram, 3);
+  assert.deepEqual(usuarios.porDia.ativos.map((row) => row.n), [3]);
+  const versoes = (await callTool(env.call, t, 'nexo_versoes')).structuredContent;
+  assert.equal(versoes.maisNova, '0.12.0');
+  for (const result of [resumo, usuarios, versoes]) {
+    const text = JSON.stringify(result);
+    for (const code of [...codes, ...stored]) assert.ok(!text.includes(code), 'nenhum código de PC sai pelo conector');
+    assert.doesNotMatch(text, EMAIL_RE);
+  }
 });

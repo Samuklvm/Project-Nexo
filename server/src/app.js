@@ -19,7 +19,7 @@ import { createSteam } from './steam.js';
 import { createOAuth } from './oauth.js';
 import { createMcp } from './mcp.js';
 import { createTools } from './tools.js';
-import { createContagem } from './contagem.js';
+import { createContagem, createCron, createQueries } from './contagem.js';
 import { AGE_BANDS, DAY_METRICS, RAM_BANDS, SKY_FLAGS, SYSTEM_FLAGS, band, num } from './cruzar.js';
 import { CONNECT_CSS, CONNECT_JS } from './connect-page.js';
 
@@ -87,8 +87,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   };
   const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES, CAN });
   const contagem = createContagem({ now, limit, ipKey, json, readJson, HttpError });
+  const queries = createQueries({ now });
+  const cron = createCron({ now, fetchImpl, queries });
   // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
-  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
+  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory, queries, githubTotal: cron.githubTotal, dailyStats }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -455,6 +457,12 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ ok: true });
   }
 
+  /** Fotos diárias da contagem no período (as mais velhas primeiro). */
+  async function dailyStats(env, days) {
+    const { results = [] } = await env.DB.prepare('SELECT day, data FROM daily_stats WHERE day >= ? ORDER BY day').bind(dayOf(now() - days * DAY)).all();
+    return results.map((row) => { let data = null; try { data = JSON.parse(row.data); } catch { data = null; } return { day: row.day, data }; });
+  }
+
   /** O Claude marca um erro (pelo conector): muda e registra antes/depois em claude_actions. null se o erro não existe. */
   async function markErrorByClaude(env, grantId, signature, { status, fixedIn, note }) {
     const pick = 'SELECT status, fixed_in, note FROM error_groups WHERE signature = ?';
@@ -711,6 +719,9 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     /** Limpeza diária (cron). */
     async scheduled(_event, env) {
       const at = now();
+      // Contagem: cada parte por si (uma falha não impede as outras nem as limpezas).
+      try { await cron.fotoDiaria(env); } catch (error) { console.error('nexo-cron foto', error?.name || 'Error'); }
+      try { await cron.downloadsGithub(env); } catch (error) { console.error('nexo-cron github', error?.name || 'Error'); }
       await env.DB.batch([
         env.DB.prepare('DELETE FROM error_reports WHERE last_at < ?').bind(at - 180 * DAY),
         env.DB.prepare("DELETE FROM error_groups WHERE last_at < ? AND status != 'aberto' AND signature NOT IN (SELECT signature FROM error_reports)").bind(at - 180 * DAY),
@@ -730,7 +741,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         // Conexão parada até a renovação vencer (30 dias sem uso): sai também.
         env.DB.prepare("DELETE FROM oauth_grants WHERE revoked = 0 AND created_at < ? AND grant_id NOT IN (SELECT grant_id FROM oauth_tokens WHERE kind = 'renovacao' AND expires_at >= ?)").bind(at - DAY, at),
         env.DB.prepare('DELETE FROM oauth_clients WHERE created_at < ? AND client_id NOT IN (SELECT client_id FROM oauth_grants)').bind(at - 7 * DAY),
-        env.DB.prepare('DELETE FROM claude_actions WHERE at < ?').bind(at - 180 * DAY)
+        env.DB.prepare('DELETE FROM claude_actions WHERE at < ?').bind(at - 180 * DAY),
+        ...cron.limpeza(env)
       ]);
     }
   };

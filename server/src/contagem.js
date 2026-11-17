@@ -196,3 +196,66 @@ export function createQueries({ now }) {
 
   return { funil, retencao, porDia, versoes };
 }
+
+/* ---------- Cron: foto diária, downloads do GitHub (referência imprecisa) e limpeza ---------- */
+
+const RELEASES_URL = 'https://api.github.com/repos/Samuklvm/Project-Nexo/releases?per_page=100';
+/** Arquivos que contam como download do app (o resto, como latest.yml e .blockmap, é do atualizador). */
+const DOWNLOADABLE = /\.(exe|appimage|deb)$/i;
+const KEEP_DAYS = 400;
+
+export function createCron({ now, fetchImpl, queries }) {
+  const yesterday = () => dayOf(now() - DAY_MS);
+
+  /** Foto do dia de ontem: funil e retenção de agora, ativos e novos de ontem e os ativos por versão. */
+  async function fotoDiaria(env) {
+    const day = yesterday();
+    const [funil, retencao, ativos, novos, porVersao] = await Promise.all([
+      queries.funil(env), queries.retencao(env),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM pulses WHERE day = ?').bind(day).first(),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM pcs WHERE first_pulse_day = ?').bind(day).first(),
+      env.DB.prepare('SELECT version, COUNT(*) AS n FROM pulses WHERE day = ? GROUP BY version ORDER BY n DESC').bind(day).all()
+    ]);
+    const data = { funil, retencao, ativosDia: n(ativos), novosDia: n(novos), porVersao: (porVersao.results || []).map((row) => ({ version: row.version, n: n(row) })) };
+    await env.DB.prepare('INSERT OR REPLACE INTO daily_stats (day, data) VALUES (?, ?)').bind(day, JSON.stringify(data)).run();
+  }
+
+  /** Downloads por release no GitHub (só .exe, .AppImage e .deb). Falha de rede ou resposta estranha: fica para amanhã. */
+  async function downloadsGithub(env) {
+    const headers = { 'user-agent': 'nexo-api', accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' };
+    if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`;
+    let list;
+    try {
+      const response = await fetchImpl(RELEASES_URL, { headers });
+      if (!response.ok) return;
+      list = await response.json();
+    } catch { return; }
+    if (!Array.isArray(list)) return;
+    const day = dayOf(now());
+    const statements = list.filter((release) => release && typeof release.tag_name === 'string').slice(0, 100).map((release) => {
+      const total = (Array.isArray(release.assets) ? release.assets : []).filter((asset) => DOWNLOADABLE.test(String(asset?.name || ''))).reduce((sum, asset) => sum + (Number(asset.download_count) || 0), 0);
+      return env.DB.prepare('INSERT OR REPLACE INTO gh_downloads (day, tag, total) VALUES (?, ?, ?)').bind(day, release.tag_name.slice(0, 40), total);
+    });
+    if (statements.length) await env.DB.batch(statements);
+  }
+
+  /** Último retrato dos downloads do GitHub, ou null. */
+  async function githubTotal(env) {
+    const last = await env.DB.prepare('SELECT MAX(day) AS day FROM gh_downloads').first();
+    if (!last?.day) return null;
+    const { results = [] } = await env.DB.prepare('SELECT tag, total FROM gh_downloads WHERE day = ? ORDER BY total DESC').bind(last.day).all();
+    return { dia: last.day, total: results.reduce((sum, row) => sum + (Number(row.total) || 0), 0), porTag: results.map((row) => ({ tag: row.tag, total: Number(row.total) || 0 })) };
+  }
+
+  /** Limpeza de retenção (400 dias), para entrar no batch do cron. */
+  function limpeza(env) {
+    const at = now();
+    return [
+      env.DB.prepare('DELETE FROM pulses WHERE day < ?').bind(dayOf(at - KEEP_DAYS * DAY_MS)),
+      env.DB.prepare('DELETE FROM pc_events WHERE at < ?').bind(at - KEEP_DAYS * DAY_MS),
+      env.DB.prepare('DELETE FROM pcs WHERE last_seen < ?').bind(at - KEEP_DAYS * DAY_MS)
+    ];
+  }
+
+  return { fotoDiaria, downloadsGithub, githubTotal, limpeza };
+}

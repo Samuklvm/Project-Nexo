@@ -165,3 +165,52 @@ test('versões: % sem erro aproximado e regressão só na mais nova', async () =
   assert.equal(versoes[1].pctSemErro, 50);
   assert.deepEqual(versoes[1].regressoes, []);
 });
+
+/* ---------- Cron: foto diária, downloads do GitHub e limpeza ---------- */
+const RELEASES = [
+  { tag_name: 'v0.11.3', assets: [{ name: 'Nexo-Setup-0.11.3.exe', download_count: 10 }, { name: 'Nexo-0.11.3.AppImage', download_count: 3 }, { name: 'latest.yml', download_count: 99 }] },
+  { tag_name: 'v0.11.2', assets: [{ name: 'nexo_0.11.2_amd64.deb', download_count: 4 }, { name: 'Nexo-Setup-0.11.2.exe.blockmap', download_count: 50 }] }
+];
+
+test('cron grava a foto de ontem e os downloads do GitHub', async () => {
+  const seen = [];
+  const fetchImpl = async (url, init = {}) => { seen.push({ url: String(url), ua: init.headers?.['user-agent'] }); return new Response(JSON.stringify(RELEASES), { headers: { 'content-type': 'application/json' } }); };
+  const { call, env, app } = h.setup({ fetchImpl });
+  await pulse(call, pcOf('Y1'));
+  h.tick(DAY);
+  await app.scheduled({}, env);
+  const github = seen.find((item) => item.url.startsWith('https://api.github.com/repos/Samuklvm/Project-Nexo/releases'));
+  assert.ok(github, 'leu as releases');
+  assert.equal(github.ua, 'nexo-api');
+  const downloads = Object.fromEntries((await rows(env, 'SELECT tag, total FROM gh_downloads')).map((row) => [row.tag, row.total]));
+  assert.deepEqual(downloads, { 'v0.11.3': 13, 'v0.11.2': 4 });
+  const photo = await rows(env, 'SELECT day, data FROM daily_stats');
+  assert.equal(photo.length, 1);
+  assert.equal(photo[0].day, new Date(h.clock.now - DAY).toISOString().slice(0, 10));
+  const data = JSON.parse(photo[0].data);
+  assert.equal(data.ativosDia, 1);
+  assert.equal(data.novosDia, 1);
+  assert.equal(data.funil.abriram, 1);
+  assert.deepEqual(data.porVersao, [{ version: '0.12.0', n: 1 }]);
+});
+
+test('GitHub fora do ar não quebra o cron', async () => {
+  const fetchImpl = async () => { throw new Error('sem rede'); };
+  const { env, app } = h.setup({ fetchImpl });
+  await env.DB.prepare("INSERT INTO oauth_codes (code_hash, client_id, redirect_uri, challenge, email, scope, expires_at) VALUES ('velho', 'x', 'y', 'z', 'e', 'painel', 1)").run();
+  await app.scheduled({}, env);
+  assert.equal((await rows(env, 'SELECT * FROM gh_downloads')).length, 0);
+  assert.equal((await rows(env, 'SELECT * FROM oauth_codes')).length, 0, 'as outras limpezas rodaram');
+  assert.equal((await rows(env, 'SELECT * FROM daily_stats')).length, 1, 'a foto diária também');
+});
+
+test('limpeza: sinais de vida, eventos e PCs com mais de 400 dias somem', async () => {
+  const { call, env, app } = h.setup();
+  await install(call, pcOf('V1'), 'instalou'); await pulse(call, pcOf('V1'));
+  h.tick(401 * DAY);
+  await pulse(call, pcOf('V2'));
+  await app.scheduled({}, env);
+  assert.equal((await rows(env, 'SELECT * FROM pcs')).length, 1);
+  assert.equal((await rows(env, 'SELECT * FROM pulses')).length, 1);
+  assert.equal((await rows(env, 'SELECT * FROM pc_events')).length, 0);
+});
