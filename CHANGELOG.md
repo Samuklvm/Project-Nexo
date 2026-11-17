@@ -6,9 +6,6 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
-### Próxima versão (em desenvolvimento)
-- Novo: drivers com um clique. A página de Drivers baixa o arquivo oficial certo para a sua peça (NVIDIA, Visual C++, DirectX e .NET), com barra de progresso e fila, confere a assinatura do fabricante e instala com um ponto de restauração opcional, ligado numa chave no topo da página.
-
 ### 0.11.4: flores, código aberto e assinatura
 - Novo: o Nexo, o instalador e o desinstalador vêm assinados digitalmente; o Controle Inteligente de Aplicativos do Windows 11 deixa de bloquear o app.
 - Novo: o Nexo é código aberto, sob a GPL-3.0 (LICENSE e NOTICE.md); nome e ícone reservados à versão oficial; pull requests aceitos com os termos de contribuição.
@@ -131,9 +128,6 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
-
-### Next version (in development)
-- New: one-click drivers. The Drivers page downloads the right official file for your part (NVIDIA, Visual C++, DirectX and .NET), with a progress bar and a queue, checks the maker's signature and installs with an optional restore point, set by a switch at the top of the page.
 
 ### 0.11.4: flowers, open source and signing
 - New: Nexo, its installer and its uninstaller are digitally signed; Windows 11 Smart App Control no longer blocks the app.
