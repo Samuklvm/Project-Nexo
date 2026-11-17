@@ -7,11 +7,13 @@
 # O ID do cliente Google (público) vem de config/google-client.json, o mesmo que as builds usam.
 # Os segredos do próprio servidor (SESSION_SECRET e DATA_KEY) são criados aqui na primeira vez e nunca aparecem no log.
 # NUNCA apague o DATA_KEY na Cloudflare: sem ele, os dados sincronizados não abrem mais.
+# NUNCA troque o PC_PEPPER: a contagem de usuários perde a continuidade (todo PC vira PC novo).
+#   NEXO_GITHUB_TOKEN      (opcional) token só de leitura para o servidor ler os downloads das releases sem limite apertado
 name: Publicar servidor
 on:
   push:
     branches: [main]
-    paths: ['server/**', 'tests/server.test.cjs', 'tests/server-conector.test.cjs', 'tests/helpers/**', '.github/workflows/server.yml', 'config/google-client.json']
+    paths: ['server/**', 'tests/server.test.cjs', 'tests/server-conector.test.cjs', 'tests/server-contagem.test.cjs', 'tests/helpers/**', '.github/workflows/server.yml', 'config/google-client.json']
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,7 +31,7 @@ jobs:
         with:
           node-version: 24
       - name: Testes do servidor
-        run: node --test tests/server.test.cjs tests/server-conector.test.cjs
+        run: node --test tests/server.test.cjs tests/server-conector.test.cjs tests/server-contagem.test.cjs
       # Colar o token às vezes traz espaço, quebra de linha ou texto junto: fica só o token (e o ID da conta).
       - name: Conferir os segredos
         id: check
@@ -83,7 +85,7 @@ jobs:
           set -euo pipefail
           LIST="$($WRANGLER secret list --format json 2>/dev/null)" || { echo "Não consegui listar os segredos do Worker; nada foi criado."; exit 1; }
           NAMES="$(printf '%s' "$LIST" | node -e "let s='';process.stdin.on('data',(d)=>s+=d).on('end',()=>{let l;try{l=JSON.parse(s)}catch{process.exit(2)}if(!Array.isArray(l))process.exit(2);process.stdout.write(l.map((x)=>x.name).join(' '))})")" || { echo "Lista de segredos ilegível; nada foi criado."; exit 1; }
-          for NAME in SESSION_SECRET DATA_KEY; do
+          for NAME in SESSION_SECRET DATA_KEY PC_PEPPER; do
             if printf ' %s ' "$NAMES" | grep -q " $NAME "; then echo "$NAME já existe."; continue; fi
             openssl rand -base64 48 | tr -d '\n' | $WRANGLER secret put "$NAME" > /dev/null
             echo "$NAME criado."
@@ -101,6 +103,18 @@ jobs:
           echo "::add-mask::$KEY"
           printf '%s' "$KEY" | $WRANGLER secret put STEAM_API_KEY > /dev/null
           echo "STEAM_API_KEY atualizada no Worker."
+      - name: Token do GitHub (opcional, copia para o Worker)
+        if: steps.check.outputs.ready == 'true'
+        working-directory: server
+        env:
+          NEXO_GITHUB_TOKEN: ${{ secrets.NEXO_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TOKEN="$(printf '%s' "${NEXO_GITHUB_TOKEN:-}" | tr -d '\r\n ' )"
+          if [ -z "$TOKEN" ]; then echo "Sem NEXO_GITHUB_TOKEN: os downloads do GitHub são lidos sem token (limite menor, uma vez por dia basta)."; exit 0; fi
+          echo "::add-mask::$TOKEN"
+          printf '%s' "$TOKEN" | $WRANGLER secret put GITHUB_TOKEN > /dev/null
+          echo "GITHUB_TOKEN atualizado no Worker."
       - name: Conferir no ar
         if: steps.check.outputs.ready == 'true' && steps.deploy.outputs.url != ''
         run: |

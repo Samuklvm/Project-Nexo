@@ -27,7 +27,7 @@ async function createHarness() {
   /** Um servidor novo (banco vazio). `options` vai para o createApp (ex.: extraTools nos testes do MCP). */
   function setup(options = {}) {
     google.resetGoogleKeys();
-    const env = { DB: createD1(), SESSION_SECRET: 's'.repeat(48), DATA_KEY: 'd'.repeat(48), GOOGLE_CLIENT_IDS: CLIENT_ID, ADMIN_EMAILS: ADMIN };
+    const env = { DB: createD1(), SESSION_SECRET: 's'.repeat(48), DATA_KEY: 'd'.repeat(48), PC_PEPPER: 'p'.repeat(48), GOOGLE_CLIENT_IDS: CLIENT_ID, ADMIN_EMAILS: ADMIN };
     const fetchImpl = async () => new Response(JSON.stringify({ keys: [jwk] }), { headers: { 'cache-control': 'public, max-age=20000', 'content-type': 'application/json' } });
     const app = mod.createApp({ fetchImpl, now: () => clock.now, ...options });
     /** Pedido ao Worker: body (JSON), form (x-www-form-urlencoded), token (Bearer), cookie, headers, raw (Response). */

@@ -19,6 +19,7 @@ import { createSteam } from './steam.js';
 import { createOAuth } from './oauth.js';
 import { createMcp } from './mcp.js';
 import { createTools } from './tools.js';
+import { createContagem } from './contagem.js';
 import { AGE_BANDS, DAY_METRICS, RAM_BANDS, SKY_FLAGS, SYSTEM_FLAGS, band, num } from './cruzar.js';
 import { CONNECT_CSS, CONNECT_JS } from './connect-page.js';
 
@@ -85,6 +86,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return `ip:${mixed.slice(0, 20)}`;
   };
   const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES, CAN });
+  const contagem = createContagem({ now, limit, ipKey, json, readJson, HttpError });
   // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
   const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
 
@@ -643,6 +645,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['POST /v1/errors', postErrors],
     ['POST /v1/errors/forget-email', forgetErrorEmail],
     ['POST /v1/telemetry', postTelemetry],
+    // Contagem exata de usuários (src/contagem.js).
+    ['POST /v1/pulse', (request, env) => contagem.pulse(request, env)],
+    ['POST /v1/install', (request, env) => contagem.install(request, env)],
+    ['POST /v1/optout', (request, env) => contagem.optout(request, env)],
     ['POST /v1/admin/link', adminLink],
     ['GET /v1/tools/errors', toolErrors],
     // Conector do Claude: descoberta e registro do OAuth (src/oauth.js).
