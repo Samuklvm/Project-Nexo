@@ -75,3 +75,302 @@ test('elevate: driver-install usa o tempo-limite longo; as outras o de sempre', 
   await elevate('net-flush', {});
   assert.deepEqual(used, [45 * 60 * 1000, 240000]);
 });
+
+/* ---------------- Motor de download e fila de instalação ---------------- */
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const DL = require('../electron/driver-download.cjs');
+
+const sha512 = (buf) => crypto.createHash('sha512').update(buf).digest('hex');
+const NV = 'https://us.download.nvidia.com/Windows/621.14/x.exe';
+const plan = (extra = {}) => ({ url: NV, domains: ['nvidia.com'], fileName: 'nvidia-621.14.exe', signer: 'NVIDIA Corporation', ...extra });
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+const settle = async (engine, id, phases = ['ready', 'error', 'canceled', 'installed']) => {
+  for (let i = 0; i < 2500; i += 1) { const item = engine.list().find((x) => x.id === id); if (item && phases.includes(item.phase)) return item; await new Promise((resolve) => setTimeout(resolve, 2)); }
+  throw new Error(`não terminou: ${JSON.stringify(engine.list().find((x) => x.id === id))}`);
+};
+
+/** Servidor falso: url → { status, headers, location, chunks, cut, gate }. Guarda cada pedido (url e cabeçalhos). */
+function server(routes) {
+  const calls = [];
+  const request = async (url, { headers = {} } = {}) => {
+    calls.push({ url, headers });
+    const route = typeof routes[url] === 'function' ? routes[url]({ url, headers, calls }) : routes[url];
+    if (!route) throw Object.assign(new Error('offline'), { code: 'ENOTFOUND' });
+    let aborted = false;
+    return {
+      status: route.status || 200, headers: route.headers || {}, location: route.location || null,
+      abort: () => { aborted = true; },
+      body: (async function* body() {
+        for (const chunk of route.chunks || []) {
+          if (route.gate) await route.gate();
+          if (aborted) throw Object.assign(new Error('aborted'), { code: 'ABORTED' });
+          yield chunk;
+        }
+        if (route.cut) throw Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+      })()
+    };
+  };
+  return { request, calls };
+}
+
+function engineWith({ routes, signer = 'NVIDIA Corporation', fsApi = fs.promises, elevate = async () => ({ result: { ok: true, code: 0 } }), now = () => Date.now(), max } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-dl-'));
+  const srv = server(routes);
+  const events = [];
+  const engine = DL.createDriverDownloads({
+    request: srv.request, fs: fsApi, path, crypto, dir, now, max,
+    runPowerShell: async () => ({ stdout: JSON.stringify({ status: 'Valid', org: signer }) }),
+    elevate, emit: (channel, item) => events.push({ channel, ...item })
+  });
+  return { engine, dir, calls: srv.calls, events };
+}
+
+const BODY = Buffer.alloc(3000, 7);
+const chunks = (buf, size = 1000) => { const out = []; for (let i = 0; i < buf.length; i += size) out.push(buf.subarray(i, i + size)); return out; };
+
+test('download: baixa, confere e fica ready', async () => {
+  const { engine, dir, events } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } } });
+  engine.start('video-rtx', plan());
+  const item = await settle(engine, 'video-rtx');
+  assert.equal(item.phase, 'ready');
+  assert.equal(item.signer, 'NVIDIA Corporation');
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => !f.endsWith('.json')), ['nvidia-621.14.exe']);
+  assert.equal(fs.readFileSync(path.join(dir, 'nvidia-621.14.exe')).length, 3000);
+  assert.equal(engine.fileOf('video-rtx'), path.join(dir, 'nvidia-621.14.exe'));
+  assert.ok(events.every((e) => e.channel === 'drivers:download'));
+  assert.deepEqual([...new Set(events.map((e) => e.phase))], ['queued', 'downloading', 'verifying', 'ready']);
+});
+
+test('download: recusa cartão sem plano', () => {
+  const { engine } = engineWith({ routes: {} });
+  assert.throws(() => engine.start('video-intel', null), /não tem download direto/);
+  assert.throws(() => engine.start('x', plan({ fileName: '..\\evil.exe' })), /Arquivo inválido/);
+  assert.throws(() => engine.start('x', plan({ url: 'http://us.download.nvidia.com/x.exe' })), /fora do site oficial/);
+});
+
+test('download: fila com 6 pedidos, 4 baixando e 2 esperando com a posição', async () => {
+  let open = null;
+  const wait = new Promise((resolve) => { open = resolve; });
+  const routes = {};
+  for (let i = 0; i < 6; i += 1) routes[`https://us.download.nvidia.com/${i}.exe`] = { headers: { 'content-length': '3' }, chunks: [Buffer.from('abc')], gate: () => wait };
+  const { engine } = engineWith({ routes });
+  for (let i = 0; i < 6; i += 1) engine.start(`id${i}`, plan({ url: `https://us.download.nvidia.com/${i}.exe`, fileName: `f${i}.exe` }));
+  await tick();
+  const list = engine.list();
+  assert.equal(list.filter((x) => x.phase === 'downloading').length, 4);
+  assert.deepEqual(list.filter((x) => x.phase === 'queued').map((x) => [x.id, x.position]), [['id4', 1], ['id5', 2]]);
+  open();
+  for (let i = 0; i < 6; i += 1) assert.equal((await settle(engine, `id${i}`)).phase, 'ready');
+});
+
+test('download: redirecionamento para fora do domínio aborta; mais de 5 viram redirects', async () => {
+  const a = engineWith({ routes: { [NV]: { status: 302, location: 'https://evil.example/x.exe' } } });
+  a.engine.start('v', plan());
+  assert.equal((await settle(a.engine, 'v')).error, 'domain');
+  assert.equal(a.calls.some((c) => c.url.includes('evil')), false, 'nem chega a pedir o domínio de fora');
+  const routes = { [NV]: { status: 302, location: 'https://us.download.nvidia.com/r1' } };
+  for (let i = 1; i <= 6; i += 1) routes[`https://us.download.nvidia.com/r${i}`] = { status: 301, location: `/r${i + 1}` };
+  const b = engineWith({ routes });
+  b.engine.start('v', plan());
+  assert.equal((await settle(b.engine, 'v')).error, 'redirects');
+  const ok = engineWith({ routes: { [NV]: { status: 302, location: '/final.exe' }, 'https://us.download.nvidia.com/final.exe': { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } } });
+  ok.engine.start('v', plan());
+  assert.equal((await settle(ok.engine, 'v')).phase, 'ready', 'redirecionamento dentro do domínio oficial segue');
+});
+
+test('download: mais bytes que o Content-Length ou acima de 1,5 GB viram too-big', async () => {
+  const a = engineWith({ routes: { [NV]: { headers: { 'content-length': '1000' }, chunks: chunks(BODY) } } });
+  a.engine.start('v', plan());
+  assert.equal((await settle(a.engine, 'v')).error, 'too-big');
+  assert.deepEqual(fs.readdirSync(a.dir).filter((f) => f.endsWith('.part')), [], 'apaga o pedaço');
+  const b = engineWith({ routes: { [NV]: { headers: { 'content-length': String(DL.MAX_BYTES + 1) }, chunks: [] } } });
+  b.engine.start('v', plan());
+  assert.equal((await settle(b.engine, 'v')).error, 'too-big');
+  assert.equal(DL.MAX_BYTES, 1536 * 1024 * 1024);
+});
+
+test('download: continua com Range quando há Accept-Ranges e recomeça sem', async () => {
+  let first = true;
+  const routes = { [NV]: ({ headers }) => {
+    if (first) { first = false; return { headers: { 'content-length': '3000', 'accept-ranges': 'bytes' }, chunks: chunks(BODY).slice(0, 2), cut: true }; }
+    assert.equal(headers.Range, 'bytes=2000-');
+    return { status: 206, headers: { 'content-length': '1000', 'content-range': 'bytes 2000-2999/3000' }, chunks: [BODY.subarray(2000)] };
+  } };
+  const a = engineWith({ routes });
+  a.engine.start('v', plan({ sha512: sha512(BODY) }));
+  assert.equal((await settle(a.engine, 'v')).error, 'offline', 'a internet caiu: guarda o pedaço');
+  assert.equal(fs.readdirSync(a.dir).filter((f) => f.endsWith('.part')).length, 1);
+  a.engine.start('v', plan({ sha512: sha512(BODY) }));
+  const done = await settle(a.engine, 'v');
+  assert.equal(done.phase, 'ready', 'hash confere com o arquivo inteiro (pedaço antigo + resto)');
+  assert.equal(fs.readFileSync(path.join(a.dir, 'nvidia-621.14.exe')).length, 3000);
+
+  let again = true;
+  const noRange = { [NV]: () => {
+    if (again) { again = false; return { headers: { 'content-length': '3000' }, chunks: chunks(BODY).slice(0, 1), cut: true }; }
+    return { status: 200, headers: { 'content-length': '3000' }, chunks: chunks(BODY) };
+  } };
+  const b = engineWith({ routes: noRange });
+  b.engine.start('v', plan());
+  await settle(b.engine, 'v');
+  b.engine.start('v', plan());
+  assert.equal((await settle(b.engine, 'v')).phase, 'ready');
+  assert.equal(fs.readFileSync(path.join(b.dir, 'nvidia-621.14.exe')).length, 3000, 'servidor ignorou o Range: recomeçou do zero');
+});
+
+test('download: pedaço de outra versão não é retomado', async () => {
+  const { engine, dir, calls } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } } });
+  fs.writeFileSync(path.join(dir, 'nvidia-621.14.exe.velhaversao0.part'), Buffer.alloc(500));
+  engine.start('v', plan());
+  assert.equal((await settle(engine, 'v')).phase, 'ready');
+  assert.equal(calls[0].headers.Range, undefined);
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.part')), []);
+});
+
+test('download: hash errado e assinatura inválida apagam o arquivo', async () => {
+  const a = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } } });
+  a.engine.start('v', plan({ sha512: 'f'.repeat(128) }));
+  assert.equal((await settle(a.engine, 'v')).error, 'hash');
+  assert.deepEqual(fs.readdirSync(a.dir).filter((f) => f.endsWith('.exe') || f.endsWith('.part')), []);
+  const b = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, signer: 'Outra Empresa' });
+  b.engine.start('v', plan());
+  assert.equal((await settle(b.engine, 'v')).error, 'signature');
+  assert.deepEqual(fs.readdirSync(b.dir).filter((f) => f.endsWith('.exe') || f.endsWith('.part')), []);
+});
+
+test('download: ENOSPC vira erro disk e limpa', async () => {
+  const full = { ...fs.promises, open: async (file, flags) => {
+    const fh = await fs.promises.open(file, flags);
+    let writes = 0;
+    return { write: async (buf) => { writes += 1; if (writes > 1) throw Object.assign(new Error('no space'), { code: 'ENOSPC' }); return fh.write(buf); }, read: (...a) => fh.read(...a), close: () => fh.close() };
+  } };
+  const { engine, dir } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, fsApi: full });
+  engine.start('v', plan());
+  assert.equal((await settle(engine, 'v')).error, 'disk');
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith('.part')), []);
+});
+
+test('download: cancelar apaga o pedaço e libera a vaga', async () => {
+  let open = null;
+  const wait = new Promise((resolve) => { open = resolve; });
+  const routes = { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY), gate: () => wait } };
+  for (let i = 0; i < 4; i += 1) routes[`https://us.download.nvidia.com/${i}.exe`] = { headers: { 'content-length': '3' }, chunks: [Buffer.from('abc')], gate: () => wait };
+  const { engine, dir } = engineWith({ routes });
+  engine.start('v', plan());
+  for (let i = 0; i < 4; i += 1) engine.start(`o${i}`, plan({ url: `https://us.download.nvidia.com/${i}.exe`, fileName: `o${i}.exe` }));
+  await tick();
+  assert.equal(engine.list().find((x) => x.id === 'o3').phase, 'queued');
+  engine.cancel('v');
+  open();
+  assert.equal((await settle(engine, 'v')).phase, 'canceled');
+  assert.equal((await settle(engine, 'o3')).phase, 'ready', 'a vaga liberada vai para o próximo da fila');
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.startsWith('nvidia')), []);
+});
+
+test('download: cancelar quem está na fila tira da fila', async () => {
+  const wait = new Promise(() => {});
+  const { engine } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3' }, chunks: [Buffer.from('abc')], gate: () => wait } }, max: 1 });
+  engine.start('a', plan());
+  engine.start('q', plan({ url: 'https://us.download.nvidia.com/q.exe', fileName: 'q.exe' }));
+  assert.equal(engine.list().find((x) => x.id === 'q').phase, 'queued');
+  engine.cancel('q');
+  assert.equal(engine.list().find((x) => x.id === 'q').phase, 'canceled');
+  engine.cancel('a');
+});
+
+test('download: o motor não depende da leitura depois de começar', async () => {
+  const p = plan();
+  const { engine } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } } });
+  engine.start('v', p);
+  p.url = 'https://evil.example/x.exe';
+  p.signer = 'Evil';
+  assert.equal((await settle(engine, 'v')).phase, 'ready');
+  assert.deepEqual(engine.start('v', plan()).phase, 'ready', 'pedir de novo algo pronto não baixa de novo');
+});
+
+test('download: progresso limitado a 10 por segundo, mas a mudança de fase sempre sai', async () => {
+  let t = 1000;
+  const many = Array.from({ length: 50 }, () => Buffer.alloc(10, 1));
+  const { engine, events } = engineWith({ routes: { [NV]: { headers: { 'content-length': '500' }, chunks: many } }, now: () => t });
+  engine.start('v', plan());
+  await settle(engine, 'v');
+  const progress = events.filter((e) => e.phase === 'downloading');
+  assert.ok(progress.length <= 2, `relógio parado: no máximo a entrada e 1 atualização (veio ${progress.length})`);
+  assert.equal(events.at(-1).phase, 'ready');
+  t += 0;
+});
+
+test('download: texto de velocidade e tempo restante', async () => {
+  let t = 0;
+  const gateTimes = [0, 500, 1000, 1500];
+  let i = 0;
+  const { engine, events } = engineWith({ routes: { [NV]: { headers: { 'content-length': '4000' }, chunks: chunks(Buffer.alloc(4000), 1000), gate: async () => { t = gateTimes[i++] ?? t; } } }, now: () => t });
+  engine.start('v', plan());
+  await settle(engine, 'v');
+  const last = events.filter((e) => e.phase === 'downloading').at(-1);
+  assert.ok(last.speed > 0);
+  assert.equal(last.total, 4000);
+});
+
+test('instalar: uma de cada vez, recusa do administrador, reinício e ponto que falhou', async () => {
+  const order = [];
+  let release = null;
+  const answers = [
+    () => new Promise((resolve) => { release = () => resolve({ result: { ok: true, code: 0, restore: { ok: true, created: true, at: '2026-11-17T17:32:00Z' } } }); }),
+    async () => ({ declined: true, code: 1223, result: null }),
+    async () => ({ result: { ok: true, code: 3010 } }),
+    async () => ({ result: { ok: false, code: null, restore: { ok: false, note: 'a Proteção do Sistema está desligada nesta unidade' }, note: 'ponto de restauração não criado' } })
+  ];
+  let n = 0;
+  const elevate = async (task, args) => { order.push([task, args.restorePoint]); return answers[n++](); };
+  const routes = {};
+  for (let i = 0; i < 4; i += 1) routes[`https://us.download.nvidia.com/${i}.exe`] = { headers: { 'content-length': '3' }, chunks: [Buffer.from('abc')] };
+  const { engine, dir } = engineWith({ routes, elevate });
+  for (let i = 0; i < 4; i += 1) { engine.start(`i${i}`, plan({ url: `https://us.download.nvidia.com/${i}.exe`, fileName: `i${i}.exe` })); await settle(engine, `i${i}`); }
+  const first = engine.install('i0', { restorePoint: true });
+  const second = engine.install('i1', { restorePoint: false });
+  await tick(); await tick();
+  assert.equal(order.length, 1, 'o segundo espera o primeiro terminar');
+  assert.equal(engine.list().find((x) => x.id === 'i1').phase, 'install-queued');
+  release();
+  const r0 = await first;
+  assert.deepEqual([r0.ok, r0.restart, r0.restore.at], [true, false, '2026-11-17T17:32:00Z']);
+  assert.equal(engine.list().find((x) => x.id === 'i0').phase, 'installed');
+  const r1 = await second;
+  assert.deepEqual([r1.ok, r1.declined], [false, true]);
+  assert.match(r1.note, /recusou a permissão de administrador/);
+  assert.equal(engine.list().find((x) => x.id === 'i1').phase, 'ready');
+  const r2 = await engine.install('i2', { restorePoint: true });
+  assert.deepEqual([r2.ok, r2.restart], [true, true]);
+  const r3 = await engine.install('i3', { restorePoint: true });
+  assert.equal(r3.ok, false);
+  assert.equal(r3.restore.ok, false);
+  assert.match(r3.note, /Proteção do Sistema/);
+  assert.equal(engine.list().find((x) => x.id === 'i3').phase, 'ready');
+  assert.deepEqual(order.map((o) => o[0]), ['driver-install', 'driver-install', 'driver-install', 'driver-install']);
+  assert.deepEqual(order.map((o) => o[1]), [true, false, true, true]);
+  assert.equal(order.length, 4);
+  await assert.rejects(engine.install('nao-baixado', { restorePoint: true }), /ainda não foi baixado/);
+  assert.ok(fs.existsSync(dir));
+});
+
+test('limpeza: apaga instalados há mais de 14 dias e pedaços há mais de 7', async () => {
+  const DAY = 24 * 3600 * 1000;
+  let t = Date.parse('2026-11-17T12:00:00Z');
+  const { engine, dir } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3' }, chunks: [Buffer.from('abc')] } }, now: () => t });
+  engine.start('v', plan());
+  await settle(engine, 'v');
+  await engine.install('v', { restorePoint: false });
+  const old = path.join(dir, 'x.exe.abc123abc123.part');
+  const fresh = path.join(dir, 'y.exe.abc123abc123.part');
+  fs.writeFileSync(old, 'x'); fs.writeFileSync(fresh, 'y');
+  fs.utimesSync(old, new Date(t - 8 * DAY), new Date(t - 8 * DAY));
+  t += 15 * DAY;
+  fs.utimesSync(fresh, new Date(t - 2 * DAY), new Date(t - 2 * DAY));
+  await engine.cleanup();
+  const left = fs.readdirSync(dir).filter((f) => !f.endsWith('.json'));
+  assert.deepEqual(left, ['y.exe.abc123abc123.part']);
+});
