@@ -13,7 +13,7 @@ name: Publicar servidor
 on:
   push:
     branches: [main]
-    paths: ['server/**', 'tests/server.test.cjs', 'tests/server-conector.test.cjs', 'tests/server-contagem.test.cjs', 'tests/helpers/**', '.github/workflows/server.yml', 'config/google-client.json']
+    paths: ['server/**', 'tests/server.test.cjs', 'tests/server-conector.test.cjs', 'tests/server-contagem.test.cjs', 'tests/server-vigias.test.cjs', 'tests/helpers/**', '.github/workflows/server.yml', 'config/google-client.json']
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: 24
       - name: Testes do servidor
-        run: node --test tests/server.test.cjs tests/server-conector.test.cjs tests/server-contagem.test.cjs
+        run: node --test tests/server.test.cjs tests/server-conector.test.cjs tests/server-contagem.test.cjs tests/server-vigias.test.cjs
       # Colar o token às vezes traz espaço, quebra de linha ou texto junto: fica só o token (e o ID da conta).
       - name: Conferir os segredos
         id: check

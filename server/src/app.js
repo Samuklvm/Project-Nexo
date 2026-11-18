@@ -14,6 +14,7 @@
 import { open, randomId, seal, sha256Hex, signToken, verifyToken } from './crypto.js';
 import { verifyGoogleIdToken } from './google.js';
 import { LEVELS, LIMITS, PLATFORMS, RE, SOURCES, STATUSES, clampInt, cleanTelemetry, compareVersions, dayOf, isCalendarDay, redact, text } from './validate.js';
+import { vigias } from './vigias.js';
 import { PANEL_CSS, PANEL_HTML, PANEL_JS, PANEL_LOCKED, PANEL_WALLPAPER } from './panel.js';
 import { createSteam } from './steam.js';
 import { createOAuth } from './oauth.js';
@@ -90,7 +91,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
   const queries = createQueries({ now });
   const cron = createCron({ now, fetchImpl, queries });
   // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
-  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory, queries, githubTotal: cron.githubTotal, dailyStats }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
+  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory, queries, githubTotal: cron.githubTotal, dailyStats, vigias: (env, dias) => vigias(env, { dias, agora: now() }) }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -376,12 +377,14 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const since7 = now() - 7 * DAY;
     const [open7, reporters, active7, active30, versions] = await Promise.all([
       env.DB.prepare("SELECT COUNT(*) AS n FROM error_groups WHERE status IN ('aberto','reaberto') AND level = 'erro'").first(),
-      env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM error_reports WHERE last_at >= ?').bind(since7).first(),
+      // Só quem teve ERRO: os avisos dos vigias (desde a 0.11.4) não contam como "PC com erro".
+      env.DB.prepare("SELECT COUNT(DISTINCT r.install_id) AS n FROM error_reports r JOIN error_groups g ON g.signature = r.signature WHERE r.last_at >= ? AND g.level = 'erro'").bind(since7).first(),
       env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ?').bind(dayOf(since7)).first(),
       env.DB.prepare('SELECT COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ?').bind(dayOf(now() - 30 * DAY)).first(),
       env.DB.prepare('SELECT version, COUNT(DISTINCT install_id) AS n FROM telemetry WHERE day >= ? GROUP BY version ORDER BY n DESC LIMIT 10').bind(dayOf(since7)).all()
     ]);
     const accounts = await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first();
+    const warnings = await env.DB.prepare("SELECT COUNT(*) AS n FROM error_groups WHERE status IN ('aberto','reaberto') AND level = 'aviso'").first();
     // Usuários novos = instalações vistas pela primeira vez (um código aleatório por instalação; atualizar não conta).
     const startOfToday = Date.parse(`${dayOf(now())}T00:00:00Z`);
     const [new1, new7, new30, newAccounts7, firstDays] = await Promise.all([
@@ -392,7 +395,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       env.DB.prepare("SELECT strftime('%Y-%m-%d', first_seen / 1000, 'unixepoch') AS day, COUNT(*) AS n, GROUP_CONCAT(DISTINCT first_version) AS versions, GROUP_CONCAT(DISTINCT platform) AS platforms FROM installs WHERE first_seen >= ? GROUP BY day ORDER BY day").bind(now() - 30 * DAY).all()
     ]);
     const recent = await env.DB.prepare('SELECT first_seen, last_seen, first_version, last_version, platform, via FROM installs ORDER BY first_seen DESC LIMIT 15').all();
-    return { openErrors: open7?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [],
+    return { openErrors: open7?.n || 0, avisosAbertos: warnings?.n || 0, reportingInstalls7: reporters?.n || 0, activeInstalls7: active7?.n || 0, activeInstalls30: active30?.n || 0, accounts: accounts?.n || 0, versions: versions.results || [],
       newUsers: { today: new1?.n || 0, days7: new7?.n || 0, days30: new30?.n || 0, accounts7: newAccounts7?.n || 0, perDay: firstDays.results || [], recent: recent.results || [] } };
   }
   /** Números da página inicial do painel: erros abertos, instalações ativas, versões e usuários novos. */
@@ -616,6 +619,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['GET claude', adminClaude],
     ['GET contagem', adminContagem],
     ['GET versoes', async ({ env }) => json(await queries.versoes(env))],
+    ['GET vigias', async ({ env, url }) => json(await vigias(env, { dias: clampInt(url.searchParams.get('dias'), 1, 120, 7), agora: now() }))],
     ['POST claude/revogar', adminClaudeRevoke],
     ['POST sair', adminLogout]
   ]);

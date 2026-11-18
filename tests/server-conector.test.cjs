@@ -698,3 +698,24 @@ test('contagem pelo conector: resumo, usuários e versões, sem código de PC ne
     assert.doesNotMatch(text, EMAIL_RE);
   }
 });
+
+/* ---------- Vigias de erro pelo conector ---------- */
+test('vigias pelo conector: nexo_vigias por tipo e avisosAbertos no resumo, sem e-mail', async () => {
+  const env = h.setup();
+  await seed(env);
+  const s1 = 'f1f1f1f1f1f1f1f1';
+  const s2 = 'f2f2f2f2f2f2f2f2';
+  await env.call('POST', '/v1/errors', { body: { installId: 'install-vigia-00000001', version: '0.11.4', platform: 'win32', includeEmail: true, contactEmail: 'alguem@exemplo.com', reports: [
+    { signature: s1, source: 'interface', level: 'aviso', message: 'Os sensores de temperatura pararam de responder', context: JSON.stringify({ tela: 'home', vigia: 'sensores-sumiram', minutos: 5 }), count: 2, firstAt: h.clock.now, lastAt: h.clock.now },
+    { signature: s2, source: 'principal', level: 'aviso', message: 'O servidor recusou a contagem de uso deste PC', context: JSON.stringify({ status: 400, vigia: 'contagem-recusada' }), count: 1, firstAt: h.clock.now, lastAt: h.clock.now }
+  ] } });
+  const t = (await connect(env)).tokens.access_token;
+  const tool = (await rpc(env.call, t, 'tools/list')).data.result.tools.find((item) => item.name === 'nexo_vigias');
+  assert.ok(tool);
+  assert.equal(tool.annotations.readOnlyHint, true);
+  const out = (await callTool(env.call, t, 'nexo_vigias', { dias: 7 })).structuredContent;
+  assert.deepEqual(out.vigias.map((v) => v.vigia).sort(), ['contagem-recusada', 'sensores-sumiram']);
+  const resumo = (await callTool(env.call, t, 'nexo_resumo')).structuredContent;
+  assert.equal(resumo.avisosAbertos, 2);
+  assert.doesNotMatch(JSON.stringify(out), EMAIL_RE);
+});

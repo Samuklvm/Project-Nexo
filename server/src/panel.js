@@ -79,6 +79,7 @@ export const PANEL_HTML = `<!doctype html><html lang="pt-BR"><head><meta charset
   </div>
 </section>
 <section id="tab-erros" role="tabpanel" hidden>
+  <div class="card vigias-card"><h3>Vigias <span class="muted small">avisos de coisas funcionando de forma estranha, por tipo · últimos 7 dias</span></h3><div class="vigias" id="vigias" role="list"></div><p class="muted small" id="vigias-hint" hidden>Filtrando a lista pelo vigia escolhido. <button type="button" class="lnk" id="vigias-clear">Mostrar tudo</button></p></div>
   <div class="filters"><label class="sr" for="status">Situação</label><select id="status"><option value="">Abertos e reabertos primeiro (todos)</option><option value="aberto">Só abertos</option><option value="reaberto">Só reabertos</option><option value="corrigido">Corrigidos</option><option value="ignorado">Ignorados</option></select>
   <label class="check"><input type="checkbox" id="avisos"> Incluir avisos</label><label class="sr" for="busca">Filtrar</label><input id="busca" type="search" placeholder="Filtrar pela mensagem"></div>
   <div class="split"><ul class="list" id="errors"></ul><aside class="detail" id="detail"><p class="muted">Escolha um erro para ver os detalhes, a trilha do que aconteceu antes, quem avisar e marcar como corrigido.</p></aside></div>
@@ -244,6 +245,21 @@ table.versions tr.newest td:first-child { box-shadow: inset 3px 0 0 var(--star);
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
 .card { padding: 16px 18px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--card); backdrop-filter: blur(12px); }
 .card.wide { grid-column: 1 / -1; }
+.vigias-card { margin-bottom: 16px; }
+.vigias { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 10px; margin-top: 10px; }
+.vigia { position: relative; text-align: left; padding: 12px 14px 11px; border-radius: 14px; border: 1px solid var(--hair); color: var(--ink); cursor: pointer; overflow: hidden;
+  background: radial-gradient(120% 140% at 0% 0%, rgba(90, 215, 255, 0.10), transparent 55%), rgba(5, 8, 24, 0.45); transition: border-color .2s, transform .2s, box-shadow .2s; }
+.vigia::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: linear-gradient(180deg, var(--star), var(--violet)); opacity: .75; }
+.vigia.hot::before { background: linear-gradient(180deg, var(--warn), var(--rose)); }
+.vigia:hover, .vigia:focus-visible { border-color: var(--hair-strong); transform: translateY(-1px); box-shadow: 0 10px 30px -18px rgba(90, 215, 255, 0.7); outline: none; }
+.vigia.sel { border-color: rgba(90, 215, 255, 0.6); box-shadow: 0 0 0 1px rgba(90, 215, 255, 0.35) inset; }
+.vigia .nome { display: block; font-size: 12.5px; color: var(--mist); letter-spacing: .01em; }
+.vigia .pcs { display: block; margin: 4px 0 2px; font-size: 26px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.vigia .pcs small { font-size: 12px; font-weight: 500; color: var(--mist); margin-left: 4px; }
+.vigia .meta { display: block; font-size: 11.5px; color: var(--mist); }
+.vigia .meta b { color: var(--warn); font-weight: 600; }
+.vigias .vazio { grid-column: 1 / -1; color: var(--mist); font-size: 13px; padding: 6px 2px; }
+.lnk { background: none; border: 0; padding: 0; color: var(--star); cursor: pointer; text-decoration: underline; font: inherit; }
 @media (min-width: 980px) { .card.span2 { grid-column: span 2; } }
 .days { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
 .days.tall { height: 150px; }
@@ -398,6 +414,22 @@ export const PANEL_JS = `
   }
   const sizes = (root) => { root.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; }); root.querySelectorAll('[data-h]').forEach((el) => { el.style.height = el.dataset.h + '%'; }); };
 
+  /* Vigias: avisos por tipo (o nome vem em context.vigia). Clicar num vigia filtra a lista por ele. */
+  const VIGIA = { 'leitura-impossivel': 'Leitura impossível', 'sensores-sumiram': 'Sensores sumiram', 'fonte-falhando': 'Fonte de dados falhando', 'abertura-lenta': 'Abertura lenta',
+    'ceu-lento': 'Céu lento', 'memoria-alta': 'Memória alta', 'contagem-recusada': 'Contagem recusada', 'tela-travada': 'Tela travada', 'acao-lenta': 'Ação lenta',
+    'processo-travado': 'Processo travado', 'janela-sem-resposta': 'Janela sem resposta', 'memoria-da-tela': 'Memória da tela', 'arquivo-nao-carregou': 'Arquivo não carregou',
+    'console-aviso': 'Aviso no console', outro: 'Outros avisos' };
+  const vigiaOf = (context) => ((/"vigia"\s*:\s*"([a-z0-9-]{1,40})"/i.exec(String(context || '')) || [])[1] || 'outro').toLowerCase();
+  let vigiaFilter = null;
+  async function loadVigias() {
+    const data = await api('vigias?dias=7');
+    $('vigias').innerHTML = data.vigias.length ? data.vigias.map((v) => '<button type="button" role="listitem" class="vigia' + (v.abertos ? ' hot' : '') + (v.vigia === vigiaFilter ? ' sel' : '') + '" data-vigia="' + esc(v.vigia) + '" title="' + esc(v.exemplo || '') + '">'
+      + '<span class="nome">' + esc(VIGIA[v.vigia] || v.vigia) + '</span><span class="pcs">' + esc(num(v.pcs)) + '<small>PC' + (v.pcs === 1 ? '' : 's') + '</small></span>'
+      + '<span class="meta">' + esc(num(v.ocorrencias)) + '× · ' + (v.abertos ? '<b>' + esc(v.abertos) + ' aberto' + (v.abertos === 1 ? '' : 's') + '</b>' : 'nada aberto') + ' · ' + esc((v.versoes || []).join(', ') || '--') + '</span></button>').join('')
+      : '<p class="vazio">Nenhum aviso nos últimos 7 dias. Os vigias chegam com a versão 0.11.4 do app. 🌙</p>';
+    document.querySelectorAll('[data-vigia]').forEach((button) => { button.onclick = () => { vigiaFilter = vigiaFilter === button.dataset.vigia ? null : button.dataset.vigia; if (vigiaFilter) $('avisos').checked = true; loadErrors().then(loadVigias).catch(() => {}); }; });
+    $('vigias-hint').hidden = !vigiaFilter;
+  }
   async function loadErrors() {
     const params = new URLSearchParams();
     if ($('status').value) params.set('status', $('status').value);
@@ -407,7 +439,7 @@ export const PANEL_JS = `
   }
   function renderErrors() {
     const q = $('busca').value.trim().toLowerCase();
-    const list = groups.filter((g) => !q || String(g.message).toLowerCase().includes(q));
+    const list = groups.filter((g) => (!q || String(g.message).toLowerCase().includes(q)) && (!vigiaFilter || (g.level === 'aviso' && vigiaOf(g.context) === vigiaFilter)));
     $('errors').innerHTML = list.length ? list.map((g) => '<li tabindex="0" data-sig="' + esc(g.signature) + '" class="' + (g.signature === selected ? 'sel' : '') + '"><strong>' + esc(g.message) + '</strong><div class="chips"><span class="chip ' + esc(g.status) + '">' + esc(STATUS[g.status] || g.status) + (g.fixed_in ? ' na ' + esc(g.fixed_in) : '') + '</span><span class="chip ' + esc(g.level) + '">' + esc(g.level) + '</span><span class="chip">' + esc(g.installs) + ' PC(s)</span><span class="chip">' + esc(g.occurrences) + '×</span><span class="chip">' + esc(g.emails) + ' e-mail(s)</span><span class="chip">versões ' + esc(g.versions || '--') + '</span><span class="chip">' + esc(when(g.last_at)) + '</span></div></li>').join('') : '<li class="muted">Nenhum erro aqui. 🎉</li>';
   }
 
@@ -539,10 +571,12 @@ export const PANEL_JS = `
   $('regressions').onclick = (event) => goToError(event.target.closest('li[data-go]'));
   $('refresh').onclick = () => { summary().then(loadErrors).then(loadOverviewExtras).catch(() => {}); };
   $('status').onchange = loadErrors;
-  $('avisos').onchange = loadErrors;
+  $('avisos').onchange = () => { if (!$('avisos').checked) vigiaFilter = null; loadErrors().then(loadVigias).catch(() => {}); };
+  $('vigias-clear').onclick = () => { vigiaFilter = null; loadErrors().then(loadVigias).catch(() => {}); };
   $('busca').oninput = renderErrors;
   $('dias').onchange = loadTelemetry;
   $('logout').onclick = async () => { await api('sair', { method: 'POST' }).catch(() => {}); location.reload(); };
   summary().then(loadErrors).then(loadOverviewExtras).catch(() => {});
+  loadVigias().catch(() => {});
 })();
 `;
