@@ -369,3 +369,19 @@ test('drivers: placa NVIDIA já em dia oferece reinstalar (botão discreto), nã
   assert.equal(upd.download.primary, true);
   assert.equal(D.phaseText({ phase: 'error', error: 'file' }), 'Não consegui gravar o arquivo no disco.');
 });
+
+test('drivers: guarda os códigos de hardware de cada peça e o modelo exato do PC', () => {
+  const row = { ...dev('Realtek Audio', 'MEDIA', 'Realtek', '6.0.9500.1', '2025-01-01', '10EC:0295'), hwids: ['HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295&SUBSYS_10280A6F&REV_1001', 'hdaudio\\func_01&ven_10ec&dev_0295', 'x'.repeat(201), 'PCI\\VEN<script>', 'A', 'B', 'C', 'D', 'E'], inf: 'oem42.inf' };
+  const ms = { ...dev('Leitor de cartão SD', 'SDHOST', 'Microsoft', '10.0.22621.1', '2006-06-21', ''), hwids: ['PCI\\VEN_8086&DEV_51C1'] };
+  const all = Main.parseAllDrivers(JSON.stringify({ devices: [row], others: [], genericDevices: [ms, { name: '', cls: 'X' }], generic: 87 }));
+  assert.deepEqual(all.devices[0].hwids, ['HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295&SUBSYS_10280A6F&REV_1001', 'HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295', 'A', 'B'], 'até 6 códigos lidos, só os válidos');
+  assert.equal(all.devices[0].inf, 'oem42.inf');
+  assert.equal(all.genericDevices.length, 1);
+  assert.deepEqual(all.genericDevices[0].hwids, ['PCI\\VEN_8086&DEV_51C1']);
+  assert.equal(all.generic, 87, 'a contagem continua');
+  const rt = Main.parseRuntimes(JSON.stringify({ board: { systemMaker: 'Dell Inc.', model: 'XPS 15 9530', sku: '0BEB', version: '\u0007Rev 1', bios: '1.12.0' }, missing: [{ name: 'Controlador', code: 28, cls: 'SYSTEM', ids: '8086:7AE8', hwids: ['PCI\\VEN_8086&DEV_7AE8&SUBSYS_0BEB1028'] }] }));
+  assert.equal(rt.board.sku, '0BEB');
+  assert.equal(rt.board.version, 'Rev 1');
+  assert.equal(rt.board.bios, '1.12.0');
+  assert.deepEqual(rt.missing[0].hwids, ['PCI\\VEN_8086&DEV_7AE8&SUBSYS_0BEB1028']);
+});

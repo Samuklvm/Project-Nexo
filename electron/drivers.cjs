@@ -15,6 +15,8 @@ const Vendors = require('../src/vendors.js');
 const RUNTIMES_SCRIPT = Scan.PS_HEAD + String.raw`
 $cs = Get-CimInstance Win32_ComputerSystem
 $bb = Get-CimInstance Win32_BaseBoard
+$csp = Get-CimInstance Win32_ComputerSystemProduct
+$bios = Get-CimInstance Win32_BIOS
 $os = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
 function VC($arch) {
   foreach ($base in @('HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes', 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes')) {
@@ -47,11 +49,11 @@ $bad = @(Get-CimInstance Win32_PnPEntity -Filter 'ConfigManagerErrorCode <> 0' |
   $hw = [string](@($_.HardwareID)[0])
   $ids = ''
   if ($hw -match '(VEN|VID)_([0-9A-Fa-f]{4}).*?(DEV|PID)_([0-9A-Fa-f]{4})') { $ids = ($Matches[2] + ':' + $Matches[4]).ToUpper() }
-  @{ name = [string]$_.Name; code = [int]$_.ConfigManagerErrorCode; cls = [string]$_.PNPClass; ids = $ids }
+  @{ name = [string]$_.Name; code = [int]$_.ConfigManagerErrorCode; cls = [string]$_.PNPClass; ids = $ids; hwids = @($_.HardwareID | Select-Object -First 6 | ForEach-Object { [string]$_ }) }
 })
 $out = @{
   os = @{ build = [int]$os.CurrentBuild; name = [string]$os.ProductName; display = [string]$os.DisplayVersion }
-  board = @{ maker = [string]$bb.Manufacturer; product = [string]$bb.Product; systemMaker = [string]$cs.Manufacturer; model = [string]$cs.Model; mobile = ([int]$cs.PCSystemType -eq 2) }
+  board = @{ maker = [string]$bb.Manufacturer; product = [string]$bb.Product; systemMaker = [string]$cs.Manufacturer; model = [string]$cs.Model; mobile = ([int]$cs.PCSystemType -eq 2); sku = [string]$cs.SystemSKUNumber; version = [string]$csp.Version; bios = [string]$bios.SMBIOSBIOSVersion }
   vc = @{ x64 = (VC 'X64'); x86 = (VC 'X86'); arm64 = (VC 'ARM64') }
   uninstall = $un
   dx = $dx
@@ -77,14 +79,20 @@ function Row($d) {
   $hw = [string](@($d.HardWareID)[0])
   $ids = ''
   if ($hw -match '(VEN|VID)_([0-9A-Fa-f]{4}).*?(DEV|PID)_([0-9A-Fa-f]{4})') { $ids = ($Matches[2] + ':' + $Matches[4]).ToUpper() }
-  @{ name = [string]$d.DeviceName; cls = ([string]$d.DeviceClass).ToUpper(); provider = [string]$d.DriverProviderName; maker = [string]$d.Manufacturer; version = [string]$d.DriverVersion; date = (D $d.DriverDate); ids = $ids; signed = [bool]$d.IsSigned }
+  @{ name = [string]$d.DeviceName; cls = ([string]$d.DeviceClass).ToUpper(); provider = [string]$d.DriverProviderName; maker = [string]$d.Manufacturer; version = [string]$d.DriverVersion; date = (D $d.DriverDate); ids = $ids; signed = [bool]$d.IsSigned; hwids = @(@($(if ($ent.ContainsKey([string]$d.DeviceID)) { $ent[[string]$d.DeviceID] } else { $d.HardWareID })) | Select-Object -First 6 | ForEach-Object { [string]$_ }); inf = [string]$d.InfName }
 }
+# Win32_PnPSignedDriver só traz o primeiro código de hardware; a lista inteira vem do Win32_PnPEntity (pelo DeviceID).
+$ent = @{}
+Get-CimInstance Win32_PnPEntity | ForEach-Object { if ($_.PNPDeviceID) { $ent[[string]$_.PNPDeviceID] = @($_.HardwareID) } }
 $all = @(Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $_.DeviceClass })
 $devices = @($all | Where-Object { $c = ([string]$_.DeviceClass).ToUpper(); $main -contains $c -and ($c -ne 'SYSTEM' -or [string]$_.DriverProviderName -notmatch '^Microsoft') } | Select-Object -First 220 | ForEach-Object { Row $_ })
 $rest = @($all | Where-Object { $c = ([string]$_.DeviceClass).ToUpper(); $main -notcontains $c -and $skip -notcontains $c })
 $others = @($rest | Where-Object { [string]$_.DriverProviderName -notmatch '^Microsoft' } | Select-Object -First 160 | ForEach-Object { Row $_ })
-$generic = @($rest | Where-Object { [string]$_.DriverProviderName -match '^Microsoft' }).Count
-[Console]::Out.Write((ConvertTo-Json -InputObject @{ devices = $devices; others = $others; generic = $generic } -Depth 4 -Compress))`;
+$genericAll = @($rest | Where-Object { [string]$_.DriverProviderName -match '^Microsoft' })
+$generic = $genericAll.Count
+# Os de driver da Microsoft não ganham cartão próprio, mas entram no casamento com os pacotes do fabricante do PC.
+$genericDevices = @($genericAll | Select-Object -First 300 | ForEach-Object { Row $_ })
+[Console]::Out.Write((ConvertTo-Json -InputObject @{ devices = $devices; others = $others; generic = $generic; genericDevices = $genericDevices } -Depth 4 -Compress))`;
 
 function parseAllDrivers(stdout) {
   const body = String(stdout || '').trim();
@@ -92,13 +100,19 @@ function parseAllDrivers(stdout) {
   let raw = null;
   try { raw = start >= 0 ? JSON.parse(body.slice(start)) : null; } catch { raw = null; }
   if (!raw || typeof raw !== 'object') return null;
-  const rows = (list) => Scan.parseDrivers(JSON.stringify(asList(list)));
+  // Cada linha passa pela mesma limpeza da verificação completa, mais os códigos de hardware e o INF.
+  const rows = (list, max) => asList(list).slice(0, max).map((item) => {
+    const row = Scan.parseDrivers(JSON.stringify([item]))[0];
+    return row ? { ...row, hwids: hwidsOf(item?.hwids), inf: /^[\w.-]{1,40}\.inf$/i.test(String(item?.inf || '')) ? item.inf : '' } : null;
+  }).filter(Boolean);
   const generic = Number(raw.generic);
-  return { devices: rows(raw.devices), others: rows(raw.others).slice(0, 160), generic: Number.isInteger(generic) && generic >= 0 && generic < 100000 ? generic : null };
+  return { devices: rows(raw.devices, 220), others: rows(raw.others, 160), genericDevices: rows(raw.genericDevices, 300), generic: Number.isInteger(generic) && generic >= 0 && generic < 100000 ? generic : null };
 }
 
 const text = (value, max = 120) => (typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max) : '');
 const asList = (value) => (Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : []);
+/** Até 6 códigos de hardware do Windows, maiúsculos, só os caracteres que eles usam (o resto é descartado). */
+const hwidsOf = (value) => asList(typeof value === 'string' ? [value] : value).slice(0, 6).map((id) => String(id ?? '').trim().toUpperCase()).filter((id) => id.length > 0 && id.length <= 200 && /^[A-Z0-9_&\\.-]+$/.test(id));
 /* Cortes sem expressão regular (o SonarCloud acusa retrocesso nas versões com regex). */
 const trimEndChar = (v, ch) => { let end = v.length; while (end > 0 && v[end - 1] === ch) end -= 1; return v.slice(0, end); };
 const trimChar = (v, ch) => { let start = 0; while (start < v.length && v[start] === ch) start += 1; return trimEndChar(v.slice(start), ch); };
@@ -132,7 +146,7 @@ function parseRuntimes(stdout) {
   const build = Number(raw.os?.build);
   return {
     os: { build: Number.isInteger(build) && build > 0 ? build : null, name: text(raw.os?.name, 60), display: text(raw.os?.display, 12) },
-    board: { maker: text(raw.board?.maker, 60), product: text(raw.board?.product, 60), systemMaker: text(raw.board?.systemMaker, 60), model: text(raw.board?.model, 80), mobile: raw.board?.mobile === true },
+    board: { maker: text(raw.board?.maker, 60), product: text(raw.board?.product, 60), systemMaker: text(raw.board?.systemMaker, 60), model: text(raw.board?.model, 80), mobile: raw.board?.mobile === true, sku: text(raw.board?.sku, 20), version: text(raw.board?.version, 80), bios: text(raw.board?.bios, 40) },
     vc: { x64: version(raw.vc?.x64), x86: version(raw.vc?.x86), arm64: version(raw.vc?.arm64) },
     uninstall: asList(raw.uninstall).slice(0, 40).map((item) => ({ name: text(item?.name, 120), version: version(item?.version) })).filter((item) => item.name),
     dx: { d3dx9: raw.dx?.d3dx9 === true, xinput13: raw.dx?.xinput13 === true, x3daudio: raw.dx?.x3daudio === true },
@@ -142,7 +156,7 @@ function parseRuntimes(stdout) {
     amd: version(raw.amd),
     apps: asList(raw.apps).slice(0, 400).map((item) => ({ name: text(item?.name, 120), publisher: text(item?.publisher, 80), icon: iconPath(item?.icon) })).filter((item) => item.name && item.icon),
     systemRoot: localDir(raw.systemRoot), programFiles: localDir(raw.programFiles),
-    missing: asList(raw.missing).slice(0, 12).map((item) => ({ name: text(item?.name, 90), code: Number.isInteger(item?.code) ? item.code : null, cls: text(item?.cls, 30), ids: /^[0-9A-F]{4}:[0-9A-F]{4}$/.test(String(item?.ids || '')) ? item.ids : null })).filter((item) => item.name)
+    missing: asList(raw.missing).slice(0, 12).map((item) => ({ name: text(item?.name, 90), code: Number.isInteger(item?.code) ? item.code : null, cls: text(item?.cls, 30), ids: /^[0-9A-F]{4}:[0-9A-F]{4}$/.test(String(item?.ids || '')) ? item.ids : null, hwids: hwidsOf(item?.hwids) })).filter((item) => item.name)
   };
 }
 
