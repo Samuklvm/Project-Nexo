@@ -538,14 +538,52 @@ test('primeira abertura com a caixinha do instalador desmarcada: começa desliga
   assert.equal(calls.length, 0, 'o instalador já mandou o "+1"');
 });
 
-test('sem identificador do sistema: código reserva aleatório, guardado entre aberturas', async () => {
+test('sem identificador do sistema (Linux sem machine-id): código reserva aleatório, guardado entre aberturas', async () => {
   const { client, calls } = world();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
-  await client(dir, { machineId: async () => null }).sendPulse();
+  await client(dir, { machineId: async () => null, platform: 'linux' }).sendPulse();
   clock += 25 * 3600 * 1000;
-  await client(dir, { machineId: async () => null }).sendPulse();
+  await client(dir, { machineId: async () => null, platform: 'linux' }).sendPulse();
   const codes = posts(calls, '/v1/pulse').map((call) => call.body.pc);
   assert.equal(codes.length, 2);
   assert.match(codes[0], /^[0-9a-f]{64}$/);
   assert.equal(codes[0], codes[1]);
+});
+
+test('desmarcou no instalador depois do app já ter rodado: o Registro manda, e o app para sem mandar outro "+1"', async () => {
+  const { client, calls } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  assert.equal((await client(dir, { machineId: async () => GUID }).sendPulse()).sent, true);
+  clock += 25 * 3600 * 1000;
+  const again = client(dir, { machineId: async () => GUID, readCountPreference: async () => false });
+  assert.deepEqual(await again.sendPulse(), { skipped: true, off: true });
+  assert.equal((await again.status()).count, false);
+  assert.equal(posts(calls, '/v1/pulse').length, 1, 'nada depois de desmarcar');
+  assert.equal(posts(calls, '/v1/optout').length, 0, 'o instalador já mandou o "+1"');
+});
+
+test('Windows sem conseguir ler o MachineGuid agora: pula o dia, não inventa um segundo PC', async () => {
+  const { client, calls } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  let id = null;
+  const cloud = client(dir, { machineId: async () => id });
+  assert.equal((await cloud.sendPulse()).skipped, true);
+  assert.equal(posts(calls, '/v1/pulse').length, 0);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'cloud.json'), 'utf8')).pcFallback, undefined, 'sem código reserva no Windows');
+  id = GUID;
+  assert.equal((await cloud.sendPulse()).sent, true, 'tenta de novo na próxima hora');
+  assert.equal(posts(calls, '/v1/pulse')[0].body.pc, VECTOR);
+});
+
+test('desligou sem internet e religou antes de voltar a rede: o "+1" pendente é cancelado', async () => {
+  const world0 = world();
+  let online = false;
+  const fetchImpl = async (url, init) => { if (!online) throw new Error('sem rede'); return world0.fetchImpl(url, init); };
+  const cloud = world0.client(undefined, { machineId: async () => GUID, fetchImpl });
+  await cloud.setOptions({ count: false });
+  await cloud.setOptions({ count: true });
+  online = true;
+  await cloud.sendPulse();
+  assert.equal(posts(world0.calls, '/v1/optout').length, 0);
+  assert.equal(posts(world0.calls, '/v1/pulse').length, 1);
 });

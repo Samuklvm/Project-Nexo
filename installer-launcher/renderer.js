@@ -119,6 +119,7 @@ addEventListener('keydown', (e) => {
 nexo.onProgress(set);
 nexo.info().then((i) => {
   $('#dir').textContent = i.defaultDir;
+  $('#o-count').checked = i.countOn !== false;
   return i;
 }).catch(() => {
   $('#dir').textContent = '—';

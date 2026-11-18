@@ -494,7 +494,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       funil, retencao, porDia,
       github: { ...(github || { dia: null, total: null, porTag: [] }), impreciso: true },
       antigo: { instalacoesVistas: old.instalacoesVistas, novos30: old.novosPorDia.reduce((sum, row) => sum + (Number(row.n) || 0), 0) },
-      ultimos: (recent.results || []).map((row) => ({ primeira: row.first_seen, ultima: row.last_seen, versao: row.last_version, sistema: row.platform, dias: row.days_active, reinstalou: row.installs >= 2 }))
+      // Só o dia (UTC): a hora exata deixaria cruzar um PC com a instalação vista pela telemetria.
+      ultimos: (recent.results || []).map((row) => ({ primeira: new Date(row.first_seen).toISOString().slice(0, 10), ultima: new Date(row.last_seen).toISOString().slice(0, 10), versao: row.last_version, sistema: row.platform, dias: row.days_active, reinstalou: row.installs >= 2 }))
     });
   }
 

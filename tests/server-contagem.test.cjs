@@ -236,6 +236,10 @@ test('painel: contagem e versões sem código de PC', async () => {
   assert.equal(contagem.data.ultimos.length, 2);
   assert.deepEqual(Object.keys(contagem.data.ultimos[0]).sort(), ['dias', 'primeira', 'reinstalou', 'sistema', 'ultima', 'versao']);
   assert.equal(contagem.data.ultimos.find((row) => row.sistema === 'win32').reinstalou, true);
+  for (const row of contagem.data.ultimos) {
+    assert.match(row.primeira, /^\d{4}-\d{2}-\d{2}$/, 'só o dia: hora exata deixaria cruzar com a instalação da telemetria');
+    assert.match(row.ultima, /^\d{4}-\d{2}-\d{2}$/);
+  }
   const versoes = await call('GET', '/painel/api/versoes', { cookie: reader });
   assert.equal(versoes.status, 200);
   assert.equal(versoes.data.maisNova, '0.12.0');

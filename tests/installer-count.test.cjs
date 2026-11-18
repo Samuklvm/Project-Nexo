@@ -22,7 +22,8 @@ test('count.ps1: mesma fórmula do app, prazo curto, silencioso e sempre sai com
   assert.match(ps, /'Registry64'/);
   assert.match(ps, /\/v1\/install/);
   assert.match(ps, /\/v1\/optout/);
-  assert.match(ps, /exit 0\s*$/);
+  assert.match(ps, /\[Environment\]::Exit\(0\)\s*$/, 'sai com 0 mesmo com o pedido ainda pendurado');
+  assert.match(ps, /WaitOne\(4000\)/, 'prazo duro de 4 s (o -TimeoutSec não cobre DNS nem proxy)');
   assert.doesNotMatch(ps, /Write-Host|Invoke-Expression|\biex\b|DownloadString|-EncodedCommand/i);
 });
 
@@ -51,4 +52,27 @@ test('o build leva o count.ps1 para resources e o instalador visual tem a opçã
 test('o servidor do instalador é o mesmo de config/server.json', () => {
   const server = JSON.parse(read('config/server.json')).url;
   assert.match(read('installer/installer.nsh'), new RegExp(`!define NEXO_SERVER "${server.replace(/[.]/g, '\\.')}"`));
+});
+
+test('installer.nsh: atualização manual (Setup novo por cima) conta como "atualizou", não como reinstalação', () => {
+  const nsh = read('installer/installer.nsh');
+  const init = nsh.slice(nsh.indexOf('!macro customInit'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInit')));
+  assert.match(init, /ReadRegStr \$\w+ HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation/, 'instalação existente por usuário');
+  assert.match(init, /ReadRegStr \$\w+ HKLM "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation/, 'instalação existente para todos');
+  const install = nsh.slice(nsh.indexOf('!macro customInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInstall')));
+  assert.match(install, /\$NexoWasInstalled == 1/);
+});
+
+test('installer.nsh: o "+1 desligou" só sai quando a caixinha passa de marcada para desmarcada', () => {
+  const nsh = read('installer/installer.nsh');
+  const install = nsh.slice(nsh.indexOf('!macro customInstall'), nsh.indexOf('!macroend', nsh.indexOf('!macro customInstall')));
+  assert.match(install, /\$CountBefore != 0/);
+  assert.doesNotMatch(install, /IfNot\} \$\{isUpdated\}[\s\S]*-Event optout/);
+});
+
+test('instalador visual: a caixinha da contagem começa como a escolha já gravada (quem desligou não é religado)', () => {
+  const main = read('installer-launcher/main.cjs');
+  assert.match(main, /reg\.exe'\),\s*\['query', 'HKCU\\\\Software\\\\NexoDeviceCare\\\\Privacy', '\/v', 'CountOptIn'/);
+  assert.match(main, /countOn/);
+  assert.match(read('installer-launcher/renderer.js'), /\$\('#o-count'\)\.checked = i\.countOn !== false/);
 });

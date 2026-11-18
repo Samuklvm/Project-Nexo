@@ -62,12 +62,11 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       if (!Number.isFinite(state.errorsCursor)) state.errorsCursor = 0;
       fresh = true;
     }
-    // Contagem de uso: na primeira vez, respeita a caixinha do instalador (desmarcada = começa desligada; o "+1" já saiu dele).
-    if (typeof stored.count !== 'boolean') {
-      const chosen = await Promise.resolve(readCountPreference()).catch(() => null);
-      state.count = chosen !== false;
-      fresh = true;
-    }
+    // Contagem de uso: a caixinha do instalador (ou a chave gravada no Registro / privacy.json) manda no "desligado" a
+    // cada abertura, não só na primeira: quem desmarcou ao reinstalar para de ser contado. O "+1" já saiu do instalador.
+    const chosen = await Promise.resolve(readCountPreference()).catch(() => null);
+    if (typeof stored.count !== 'boolean') { state.count = chosen !== false; fresh = true; }
+    else if (chosen === false && state.count) { state.count = false; state.optoutPending = false; fresh = true; }
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(state.installId || ''))) { state.installId = randomId(); fresh = true; }
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(state.deviceId || ''))) { state.deviceId = `pc-${randomId(12)}`; fresh = true; }
     // Códigos novos são gravados na hora: senão o PC ganharia outra identidade a cada abertura do app.
@@ -147,6 +146,8 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     for (const key of ['telemetry', 'errors', 'errorEmail', 'asked', 'count']) if (typeof options[key] === 'boolean') state[key] = options[key];
     // Desligou a contagem: um único "+1 desligou" por dia (sem rede, fica pendente até dar).
     if (before.count && !state.count && state.lastOptoutDay !== dayOf(now())) state.optoutPending = true;
+    // Religou antes do "+1" pendente sair: a pessoa mudou de ideia, não há o que avisar.
+    if (!before.count && state.count) state.optoutPending = false;
     // Religou os relatórios: só vai o que acontecer daqui em diante, nada do tempo em que estavam desligados.
     if (!before.errors && state.errors) state.errorsWindowAt = now();
     if (typeof options.sync === 'boolean') state.sync = options.sync && Boolean(token());
@@ -326,13 +327,18 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     return { sent: true };
   }
 
-  /** Código do PC: do identificador do sistema; sem ele, um código reserva aleatório guardado nos dados do app. */
+  /**
+   * Código do PC: do identificador do sistema. Sem ele, só no Linux (sem machine-id) usa um código reserva aleatório
+   * guardado nos dados do app; no Windows o MachineGuid sempre existe, então uma falha de leitura (reg.exe lento na
+   * hora do login) devolve null e o dia é tentado de novo depois, sem inventar um segundo PC.
+   */
   let pcCache = null;
   async function pcCode() {
     if (pcCache) return pcCache;
     await load();
     const id = await Promise.resolve(machineId()).catch(() => null);
     if (typeof id === 'string' && id.trim()) pcCache = pcCodeFrom(id);
+    else if (platform === 'win32') return null;
     else {
       if (!/^[0-9a-f]{64}$/.test(String(state.pcFallback || ''))) { state.pcFallback = crypto.randomBytes(32).toString('hex'); await save().catch(() => {}); }
       pcCache = state.pcFallback;
@@ -353,7 +359,9 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       if (!base) return { skipped: true };
       const day = dayOf(now());
       if (state.lastPulseDay === day) return { skipped: true, already: true };
-      try { await request('POST', '/v1/pulse', { auth: false, body: { pc: await pcCode(), version, platform } }); }
+      const pc = await pcCode();
+      if (!pc) return { skipped: true, failed: true };
+      try { await request('POST', '/v1/pulse', { auth: false, body: { pc, version, platform } }); }
       catch (error) { state.countProblem = { at: now(), message: String(error?.message || error).slice(0, 160) }; await save().catch(() => {}); return { skipped: true, failed: true }; }
       state.lastPulseDay = day;
       state.countProblem = null;

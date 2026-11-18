@@ -373,7 +373,7 @@ export const PANEL_JS = `
         return '<div class="ring"><div class="dial"><svg viewBox="0 0 92 92" aria-hidden="true"><circle class="track" cx="46" cy="46" r="38"/><circle class="arc" cx="46" cy="46" r="38" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct / 100)).toFixed(1) + '"/></svg><strong>' + (r.pct === null ? '--' : esc(String(Math.round(r.pct))) + '%') + '</strong></div><span>' + esc(label) + '</span><small>' + esc(base) + '</small></div>';
       }).join('');
     const rows = contagem.ultimos || [];
-    $('pcs-recent').querySelector('tbody').innerHTML = rows.length ? rows.map((r) => '<tr><td>' + esc(when(r.primeira)) + '</td><td>' + esc(r.versao) + '</td><td>' + esc(OS(r.sistema)) + '</td><td>' + esc(r.dias) + '</td><td>' + (r.reinstalou ? 'sim' : 'não') + '</td><td>' + esc(when(r.ultima)) + '</td></tr>').join('') : '<tr><td colspan="6" class="muted">Ainda nenhum PC na contagem exata.</td></tr>';
+    $('pcs-recent').querySelector('tbody').innerHTML = rows.length ? rows.map((r) => '<tr><td>' + esc(shortDay(r.primeira)) + '</td><td>' + esc(r.versao) + '</td><td>' + esc(OS(r.sistema)) + '</td><td>' + esc(r.dias) + '</td><td>' + (r.reinstalou ? 'sim' : 'não') + '</td><td>' + esc(shortDay(r.ultima)) + '</td></tr>').join('') : '<tr><td colspan="6" class="muted">Ainda nenhum PC na contagem exata.</td></tr>';
   }
 
   /** Aba Versões: saúde de cada versão e as regressões da mais nova. */

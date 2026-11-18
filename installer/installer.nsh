@@ -22,6 +22,9 @@ LangString PRIVACY_CREATOR 1033 "Creator profile"
 !ifndef BUILD_UNINSTALLER
 Var DeveloperTelemetryConsent
 Var CountConsent
+Var CountBefore
+Var NexoWasInstalled
+Var NexoOldLocation
 
 !macro customInit
   ReadRegDWORD $DeveloperTelemetryConsent HKCU "Software\NexoDeviceCare\Privacy" "DeveloperTelemetryOptIn"
@@ -32,6 +35,21 @@ Var CountConsent
   ReadRegDWORD $CountConsent HKCU "Software\NexoDeviceCare\Privacy" "CountOptIn"
   IfErrors 0 +2
     StrCpy $CountConsent 1
+  StrCpy $CountBefore $CountConsent
+  ; Já havia um Nexo instalado (atualização automática, Setup novo por cima ou pelo instalador visual)? Lido aqui,
+  ; antes do desinstalador antigo rodar: assim só uma instalação de verdade conta como "instalou".
+  StrCpy $NexoWasInstalled 0
+  ${If} ${isUpdated}
+    StrCpy $NexoWasInstalled 1
+  ${EndIf}
+  ReadRegStr $NexoOldLocation HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${If} $NexoOldLocation != ""
+    StrCpy $NexoWasInstalled 1
+  ${EndIf}
+  ReadRegStr $NexoOldLocation HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${If} $NexoOldLocation != ""
+    StrCpy $NexoWasInstalled 1
+  ${EndIf}
   ; Quando o instalador substitui uma versão existente, o desinstalador antigo herda esta variável
   ; e NÃO apaga os dados do usuário (a limpeza total só vale para uma desinstalação de verdade).
   System::Call 'Kernel32::SetEnvironmentVariable(t "NEXO_KEEP", t "1")i'
@@ -118,20 +136,19 @@ FunctionEnd
 !macro customInstall
   WriteRegDWORD HKCU "Software\NexoDeviceCare\Privacy" "DeveloperTelemetryOptIn" $DeveloperTelemetryConsent
   WriteRegDWORD HKCU "Software\NexoDeviceCare\Privacy" "CountOptIn" $CountConsent
-  ; Contagem de uso: atualização (inclusive a automática) conta como "atualizou", nunca como instalação nova.
-  ; Desmarcado numa instalação nova: só um "+1 desligou", sem código. Nada disso trava nem falha a instalação.
+  ; Contagem de uso: por cima de um Nexo que já existia (atualização automática ou manual) conta como "atualizou",
+  ; nunca como instalação nova. Desmarcar a caixinha que estava marcada manda um único "+1 desligou", sem código;
+  ; quem já estava desligado não manda de novo. Nada disso trava nem falha a instalação.
   ${If} $CountConsent == 1
-    ${If} ${isUpdated}
+    ${If} $NexoWasInstalled == 1
       nsExec::Exec `${NEXO_COUNT} -Version ${VERSION} -Event atualizou`
     ${Else}
       nsExec::Exec `${NEXO_COUNT} -Version ${VERSION} -Event instalou`
     ${EndIf}
     Pop $0
-  ${Else}
-    ${IfNot} ${isUpdated}
-      nsExec::Exec `${NEXO_COUNT} -Version ${VERSION} -Event optout`
-      Pop $0
-    ${EndIf}
+  ${ElseIf} $CountBefore != 0
+    nsExec::Exec `${NEXO_COUNT} -Version ${VERSION} -Event optout`
+    Pop $0
   ${EndIf}
 !macroend
 !endif

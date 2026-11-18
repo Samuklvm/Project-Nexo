@@ -41,7 +41,16 @@ try {
     $route = '/v1/install'
     $body = @{ pc = (Get-NexoPcCode $guid); event = $Kind; version = $Version; platform = 'win32' }
   } else { exit 0 }
-  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-  $null = Invoke-RestMethod -Method Post -Uri ($Server + $route) -ContentType 'application/json' -Body ($body | ConvertTo-Json -Compress) -TimeoutSec 4 -UseBasicParsing
+  # O -TimeoutSec não cobre a busca do DNS nem a descoberta de proxy (podem levar 15 s ou mais no PowerShell 5.1).
+  # O pedido roda num runspace à parte e o script espera no máximo 4 s por ele; depois sai de qualquer jeito.
+  $send = [PowerShell]::Create()
+  $null = $send.AddScript({
+    param($Uri, $Json)
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $null = Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json' -Body $Json -TimeoutSec 4 -UseBasicParsing
+  }).AddArgument($Server + $route).AddArgument(($body | ConvertTo-Json -Compress))
+  $pending = $send.BeginInvoke()
+  $null = $pending.AsyncWaitHandle.WaitOne(4000)
 } catch { }
-exit 0
+# Encerra o processo na hora, mesmo com o pedido ainda pendurado no runspace.
+[Environment]::Exit(0)
