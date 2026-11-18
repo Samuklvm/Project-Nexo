@@ -50,7 +50,7 @@ Os testes rodam o Worker de verdade no Node, com o D1 simulado em SQLite (`serve
 
 ## Contagem de usuários
 
-O app e os instaladores contam **PCs**, não downloads (o número do GitHub conta até quem só abriu a página, então aparece só como referência, marcado como impreciso). Rotas anônimas, sem login:
+O app e os instaladores contam **PCs**, não downloads (o número do GitHub soma toda baixada do instalador, inclusive as atualizações automáticas e quem baixa duas vezes, então aparece só como referência, marcado como impreciso). Rotas anônimas, sem login:
 
 | Rota | Corpo | Para quê | Limite por dia |
 |---|---|---|---|

@@ -246,3 +246,76 @@ test('painel: contagem e versões sem código de PC', async () => {
   for (const text of [JSON.stringify(contagem.data), JSON.stringify(versoes.data)]) for (const code of [...codes, ...stored]) assert.ok(!text.includes(code));
   assert.equal((await call('GET', '/painel/api/contagem')).status, 401);
 });
+
+/* ---------- Pontos menores da revisão final ---------- */
+
+test('pulse atômico: um dia novo sempre soma, mesmo se a linha do dia já tinha entrado antes de uma falha', async () => {
+  const { call, env } = h.setup();
+  const pc = pcOf('atomico');
+  await pulse(call, pc);
+  h.tick(DAY);
+  const key = (await rows(env, 'SELECT pc FROM pcs'))[0].pc;
+  // Simula a falha de antes: a linha de hoje entrou em pulses, mas o pcs não foi atualizado.
+  await env.DB.prepare('INSERT INTO pulses (pc, day, version, platform) VALUES (?, ?, ?, ?)').bind(key, today(), '0.12.0', 'win32').run();
+  await pulse(call, pc);
+  assert.equal((await rows(env, 'SELECT days_active FROM pcs'))[0].days_active, 2);
+});
+
+test('foto diária: os números são do fim de ontem, não do meio da manhã de hoje', async () => {
+  const fetchImpl = async () => { throw new Error('sem rede'); };
+  const { call, env, app } = h.setup({ fetchImpl });
+  await install(call, pcOf('F1'), 'instalou');
+  await pulse(call, pcOf('F1'));
+  h.tick(DAY);
+  await pulse(call, pcOf('F1'));
+  await install(call, pcOf('F2'), 'instalou');
+  await pulse(call, pcOf('F2'));
+  await optout(call, 'app');
+  await app.scheduled({}, env);
+  const data = JSON.parse((await rows(env, 'SELECT data FROM daily_stats'))[0].data);
+  assert.equal(data.funil.instalaram, 1, 'F2 chegou hoje');
+  assert.equal(data.funil.abriram, 1);
+  assert.equal(data.funil.reais, 0, 'F1 tinha 1 dia até ontem');
+  assert.equal(data.funil.ativosHoje, 1, '"hoje" da foto = ontem');
+  assert.equal(data.funil.desligaram.total, 0);
+  assert.equal(data.dia, new Date(h.clock.now - DAY).toISOString().slice(0, 10));
+});
+
+test('versões: a versão de cada erro fica guardada, mesmo depois da instalação atualizar', async () => {
+  const { call, env } = h.setup();
+  for (const name of ['M1', 'M2']) await pulse(call, pcOf(name), { version: '0.12.0' });
+  await pulse(call, pcOf('M3'), { version: '0.12.1' });
+  h.tick(60 * 1000);
+  // Erro visto na 0.12.0; depois a mesma instalação atualizou e o erro continuou na 0.12.1: não é regressão da 0.12.1.
+  await errors(call, 'install-muda-000001', '0.12.0', 'ccccccccccccccc3');
+  await errors(call, 'install-muda-000001', '0.12.1', 'ccccccccccccccc3');
+  const { maisNova, versoes } = await queries().versoes(env);
+  assert.equal(maisNova, '0.12.1');
+  const byVersion = Object.fromEntries(versoes.map((v) => [v.version, v]));
+  assert.deepEqual(byVersion['0.12.1'].regressoes, []);
+  assert.equal(byVersion['0.12.0'].errosAbertos, 1, 'a 0.12.0 continua com o erro');
+  assert.equal(byVersion['0.12.0'].pctSemErro, 50);
+});
+
+test('optout sem PC_PEPPER: 503, como as outras rotas da contagem', async () => {
+  const { call, env } = h.setup();
+  delete env.PC_PEPPER;
+  assert.equal((await optout(call, 'app')).status, 503);
+  assert.equal((await rows(env, 'SELECT * FROM optouts')).length, 0);
+});
+
+test('o banco guarda só o dia dos PCs e dos avisos (sem hora para cruzar com a telemetria)', async () => {
+  const { call, env } = h.setup();
+  h.tick(5 * 3600 * 1000 + 1234);
+  await install(call, pcOf('H1'), 'instalou');
+  await pulse(call, pcOf('H1'));
+  await install(call, pcOf('H1'), 'desinstalou');
+  const [pc] = await rows(env, 'SELECT first_seen, last_seen, installed_at, uninstalled_at FROM pcs');
+  for (const value of Object.values(pc)) assert.equal(value % DAY, 0, `só o dia: ${value}`);
+  for (const event of await rows(env, 'SELECT at FROM pc_events')) assert.equal(event.at % DAY, 0);
+});
+
+test('o aviso do GitHub explica que as atualizações automáticas também contam', async () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'server', 'src', 'tools.js'), 'utf8');
+  assert.match(src, /porque: '[^']*atualiza[^']*'/);
+});

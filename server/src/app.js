@@ -263,7 +263,11 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
           email = CASE WHEN excluded.email IS NULL THEN error_reports.email WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN error_reports.email ELSE excluded.email END,
           email_verified = CASE WHEN excluded.email IS NULL THEN error_reports.email_verified WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN 1 ELSE excluded.email_verified END,
           version = excluded.version, platform = excluded.platform,
-          count = error_reports.count + excluded.count, first_at = MIN(error_reports.first_at, excluded.first_at), last_at = MAX(error_reports.last_at, excluded.last_at)`).bind(report.signature, installId, email, verified, version, platform, count, firstAt, lastAt)
+          count = error_reports.count + excluded.count, first_at = MIN(error_reports.first_at, excluded.first_at), last_at = MAX(error_reports.last_at, excluded.last_at)`).bind(report.signature, installId, email, verified, version, platform, count, firstAt, lastAt),
+      // Histórico por versão (o error_reports só guarda a última): é o que a saúde por versão e a regressão usam.
+      env.DB.prepare(`INSERT INTO error_seen (signature, install_id, version, count, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(signature, install_id, version) DO UPDATE SET count = error_seen.count + excluded.count,
+          first_at = MIN(error_seen.first_at, excluded.first_at), last_at = MAX(error_seen.last_at, excluded.last_at)`).bind(report.signature, installId, version, count, firstAt, lastAt)
     ];
   }
 
@@ -741,6 +745,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       try { await cron.downloadsGithub(env); } catch (error) { console.error('nexo-cron github', error?.name || 'Error'); }
       await env.DB.batch([
         env.DB.prepare('DELETE FROM error_reports WHERE last_at < ?').bind(at - 180 * DAY),
+        env.DB.prepare('DELETE FROM error_seen WHERE last_at < ?').bind(at - 180 * DAY),
         env.DB.prepare("DELETE FROM error_groups WHERE last_at < ? AND status != 'aberto' AND signature NOT IN (SELECT signature FROM error_reports)").bind(at - 180 * DAY),
         env.DB.prepare('DELETE FROM telemetry WHERE day < ?').bind(dayOf(at - 120 * DAY)),
         env.DB.prepare('DELETE FROM installs WHERE last_seen < ?').bind(at - 400 * DAY),

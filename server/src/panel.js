@@ -354,7 +354,7 @@ export const PANEL_JS = `
     const gh = contagem.github || {};
     $('funnel-side').innerHTML = [['Experimentaram', f.experimentaram, 'abriram 1 dia só e não voltaram em 7 dias'], ['Reinstalaram', f.reinstalaram, 'instalaram de novo no mesmo PC'], ['Desinstalaram', f.desinstalaram, ''], ['Desligaram a contagem', f.desligaram.total, 'no app: ' + f.desligaram.app + ' · no instalador: ' + f.desligaram.instalador]]
       .map(([label, n, tip]) => '<span title="' + esc(tip) + '">' + esc(label) + ' <b>' + esc(num(n)) + '</b></span>').join('')
-      + '<span class="gh" title="O GitHub conta qualquer download, inclusive revisões e robôs. Use a contagem por PC.">⚠ Downloads no GitHub ≈ <b>' + esc(num(gh.total)) + '</b> (impreciso)</span>';
+      + '<span class="gh" title="O GitHub conta qualquer download do instalador: as atualizações automáticas do app, quem baixa duas vezes, revisões e robôs. Use a contagem por PC.">⚠ Downloads no GitHub ≈ <b>' + esc(num(gh.total)) + '</b> (impreciso)</span>';
     // Ativos por dia, com os novos do dia por dentro.
     const act = new Map((contagem.porDia.ativos || []).map((d) => [d.day, d.n]));
     const neu = new Map((contagem.porDia.novos || []).map((d) => [d.day, d.n]));

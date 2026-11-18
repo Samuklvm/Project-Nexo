@@ -47,7 +47,7 @@ export function trimTelemetry(aggregate, { partes, days }) {
 }
 
 export function createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory, queries, githubTotal, dailyStats }) {
-  const github = async (env) => ({ ...((await githubTotal(env)) || { dia: null, total: null, porTag: [] }), impreciso: true, porque: 'O GitHub conta qualquer download, inclusive revisões e robôs; use a contagem por PC.' });
+  const github = async (env) => ({ ...((await githubTotal(env)) || { dia: null, total: null, porTag: [] }), impreciso: true, porque: 'O GitHub conta qualquer download do instalador: as atualizações automáticas do app (que baixam o instalador inteiro de novo), quem baixa duas vezes, revisões e robôs. Use a contagem por PC.' });
   return [
     {
       name: 'nexo_resumo',

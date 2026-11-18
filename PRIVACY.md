@@ -123,7 +123,7 @@ The server runs on **Cloudflare** (Workers and the D1 database), at a `*.workers
 
 ### Usage count (on by default)
 
-So the creator knows **exactly** how many people installed and use Nexo (GitHub's download number is way off: it even counts people who only opened the page), the app and the installer tell the server that **this PC** exists. The **“Count this PC in Nexo's statistics”** switch is in **Settings > Privacy and data**, and the installer has the **“Count this install in Nexo's statistics (anonymous)”** box, already ticked.
+So the creator knows **exactly** how many people installed and use Nexo (GitHub's download number is way off: it even adds automatic updates and people who download twice), the app and the installer tell the server that **this PC** exists. The **“Count this PC in Nexo's statistics”** switch is in **Settings > Privacy and data**, and the installer has the **“Count this install in Nexo's statistics (anonymous)”** box, already ticked.
 
 - **What is sent:** a **scrambled PC code**, the app version and the system (Windows or Linux). The app sends it **once a day** (“this PC opened today”); the installer sends a notice when it **installs**, **updates** or **uninstalls**.
 - **How the code is made:** Nexo reads the identifier the system itself gives the computer (on Windows, the `MachineGuid`; on Linux, the `machine-id`) and runs it through a one-way scramble (SHA-256 with a Nexo prefix). **The original identifier never leaves the PC.** The server scrambles the code again with a secret of its own (HMAC) before storing it, so not even the code that left the PC stays in the database, and it cannot be matched with any other app or site. Because it comes from the system, reinstalling Nexo counts as the **same PC**.
