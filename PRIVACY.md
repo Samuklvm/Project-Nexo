@@ -8,7 +8,7 @@ The Portuguese version ([PRIVACIDADE.md](PRIVACIDADE.md)) is the reference text;
 
 Nexo is free. The code is open source, under the GPL-3.0 license (see LICENSE). Local collection and processing are active to power the app's features and stay on the computer.
 
-Nexo has a server for account sync, error reports and telemetry. Telemetry is optional and off by default. So the app can keep getting better, I ask you to turn it on. It produces one summary per day, so it is harmless, and it takes nothing personal: only what helps us understand how the app behaves on other machines, so we can improve Nexo. Sync and telemetry are turned on and off separately. **Error reports start on** and can be turned off in Settings; they carry nothing personal, they exist so the app's problems get fixed, and the email in them is optional. The full inventory is under [Nexo server](#nexo-server). There are no ads.
+Nexo has a server for account sync, error reports and telemetry. Telemetry is optional and off by default. So the app can keep getting better, I ask you to turn it on. It produces one summary per day, so it is harmless, and it takes nothing personal: only what helps us understand how the app behaves on other machines, so we can improve Nexo. Sync and telemetry are turned on and off separately. The **usage count** (only “this PC opened today”, with a scrambled PC code) and **error reports start on** and can be turned off in Settings; they carry nothing personal, they exist so the app's problems get fixed, and the email in them is optional. The full inventory is under [Nexo server](#nexo-server). There are no ads.
 
 ## Local collection (active)
 
@@ -121,6 +121,17 @@ The server runs on **Cloudflare** (Workers and the D1 database), at a `*.workers
 - **With what:** a random code created on this PC. **No email, no account, no computer name**, even with sync on (telemetry never carries the session).
 - **Retention:** 120 days. The creator's dashboard only shows sums and medians across PCs.
 
+### Usage count (on by default)
+
+So the creator knows **exactly** how many people installed and use Nexo (GitHub's download number is way off: it even counts people who only opened the page), the app and the installer tell the server that **this PC** exists. The **“Count this PC in Nexo's statistics”** switch is in **Settings > Privacy and data**, and the installer has the **“Count this install in Nexo's statistics (anonymous)”** box, already ticked.
+
+- **What is sent:** a **scrambled PC code**, the app version and the system (Windows or Linux). The app sends it **once a day** (“this PC opened today”); the installer sends a notice when it **installs**, **updates** or **uninstalls**.
+- **How the code is made:** Nexo reads the identifier the system itself gives the computer (on Windows, the `MachineGuid`; on Linux, the `machine-id`) and runs it through a one-way scramble (SHA-256 with a Nexo prefix). **The original identifier never leaves the PC.** The server scrambles the code again with a secret of its own (HMAC) before storing it, so not even the code that left the PC stays in the database, and it cannot be matched with any other app or site. Because it comes from the system, reinstalling Nexo counts as the **same PC**.
+- **What is not sent:** computer or user name, email, account, folders, programs and network address. The PC code is **not** tied to telemetry, error reports or the account: each uses its own identification. The creator's dashboard and assistant only see **summed numbers** (how many PCs opened, came back, updated), never the codes.
+- **Turning it off:** untick the switch in Settings (or the box in the installer). At the moment you turn it off, **a single “+1 turned off”** is sent, with no code at all, only so the creator knows how many people prefer not to be counted; after that, nothing else is sent. Turned off in the installer, uninstalling sends no notice either.
+- **Retention:** days of use and installer notices disappear after 400 days, and the PC disappears after 400 days without being seen. Since the code is not tied to the account, “Erase my server data” has no way to find it; turning the count off stops the sends.
+- **Known limit:** PCs cloned from the same Windows image (without sysprep) share the identifier and count as one. On Linux without `machine-id`, the app uses a random code kept in its data, and reinstalling counts as a new PC.
+
 ### Installs seen (to count new users)
 
 When telemetry or an error report arrives, the server records the PC's **random code**, the dates it was first and last seen, the first and last app version, the system (Windows or Linux) and how it showed up (telemetry or errors). That is what shows the creator how many **new** PCs started using Nexo, without counting updates (the code lives in the app data). Nothing personal; it disappears after 400 days without being seen, and “Erase my server data” has no way to find that code, because it is not tied to the account.
@@ -150,7 +161,7 @@ The creator uses an AI assistant (**Claude, by Anthropic**), connected to the da
 
 ### Turn off, erase and revoke
 
-- **Turning off** telemetry, error reports or sync in **Settings** stops the sends right away. The email in reports is removed when you untick “Include my email in reports”.
+- **Turning off** telemetry, error reports, sync or the usage count in **Settings** stops the sends right away. The email in reports is removed when you untick “Include my email in reports”.
 - **Turning off sync** ends this PC's session; the copies stay on the server until you erase them.
 - **Erasing a PC's copy** or **“Erase my server data”** (all copies, the account and the email in reports) happens right away, from the app.
 - **Uninstalling** does not erase the copies on the server: use “Erase my server data” first, if you want.

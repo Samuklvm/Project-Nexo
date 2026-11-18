@@ -6,7 +6,7 @@
 
 O Nexo é gratuito. O código é aberto, sob a licença GPL-3.0 (veja LICENSE). A coleta e o processamento locais são ativos para alimentar os recursos do app e ficam no computador.
 
-O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera um resumo por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. A sincronização e a telemetria ligam e desligam separadas. Os **relatórios de erro vêm ligados** e dá para desligar em Ajustes; vão sem nada pessoal, para os problemas do app serem corrigidos, e o e-mail neles é opcional. O inventário completo está em [Servidor do Nexo](#servidor-do-nexo). Não há anúncios.
+O Nexo tem um servidor que serve para a sincronização de contas, a coleta de erros e a telemetria, que é opcional e vem desativada por padrão. Para que o app possa melhorar cada vez mais, eu peço que você deixe a opção ligada. Ela gera um resumo por dia, então é inofensiva, e não puxa nada pessoal: só o que ajuda a entender como o app se comporta em outras máquinas, para podermos melhorar o Nexo. A sincronização e a telemetria ligam e desligam separadas. A **contagem de uso** (só “este PC abriu hoje”, com um código do PC embaralhado) e os **relatórios de erro vêm ligados** e dá para desligar em Ajustes; vão sem nada pessoal, para os problemas do app serem corrigidos, e o e-mail neles é opcional. O inventário completo está em [Servidor do Nexo](#servidor-do-nexo). Não há anúncios.
 
 ## Coleta local (ativa)
 
@@ -119,6 +119,17 @@ O servidor roda na **Cloudflare** (Workers e banco D1), num endereço `*.workers
 - **Com o quê:** um código aleatório criado neste PC. **Sem e-mail, sem conta, sem nome do computador**, mesmo se você estiver com a sincronização ligada (a telemetria nunca leva a sessão).
 - **Retenção:** 120 dias. O painel do criador mostra só somas e medianas entre os PCs.
 
+### Contagem de uso (ligada por padrão)
+
+Para o criador saber **exatamente** quantas pessoas instalaram e usam o Nexo (o número de downloads do GitHub erra muito: conta até quem só abriu a página), o app e o instalador avisam o servidor que **este PC** existe. A chave **“Contar este PC nas estatísticas do Nexo”** fica em **Ajustes > Privacidade e dados**, e o instalador tem a caixinha **“Contar esta instalação nas estatísticas do Nexo (anônimo)”**, já marcada.
+
+- **O que vai:** um **código do PC embaralhado**, a versão do app e o sistema (Windows ou Linux). O app manda **uma vez por dia** (“este PC abriu hoje”); o instalador manda um aviso quando **instala**, **atualiza** ou **desinstala**.
+- **Como o código é feito:** o Nexo lê o identificador que o próprio sistema dá ao computador (no Windows, o `MachineGuid`; no Linux, o `machine-id`) e o passa por um embaralhamento de mão única (SHA-256 com um prefixo do Nexo). **O identificador original nunca sai do PC.** O servidor ainda embaralha o código de novo com um segredo só dele (HMAC) antes de guardar, então nem o código que saiu do PC fica no banco, e ele não serve para cruzar com nenhum outro app ou site. É por ser do sistema que reinstalar o Nexo conta como o **mesmo PC**.
+- **O que não vai:** nome do computador ou do usuário, e-mail, conta, pastas, programas e endereço de rede. O código do PC **não** é amarrado à telemetria, aos relatórios de erro nem à conta: cada um usa a sua própria identificação. O painel e o assistente do criador só veem **números somados** (quantos PCs abriram, voltaram, atualizaram), nunca os códigos.
+- **Desligar:** desmarque a chave em Ajustes (ou a caixinha no instalador). Na hora em que você desliga, vai **um único “+1 desligou”**, sem código nenhum, só para o criador saber quantas pessoas preferem não ser contadas; depois disso, nada mais sai. Desligada no instalador, a desinstalação também não avisa.
+- **Retenção:** os dias de uso e os avisos do instalador somem depois de 400 dias, e o PC some depois de 400 dias sem aparecer. Como o código não fica ligado à conta, “Apagar meus dados do servidor” não tem como achá-lo; desligar a contagem para os envios.
+- **Limite conhecido:** PCs clonados de uma mesma imagem do Windows (sem sysprep) têm o mesmo identificador e contam como um só. No Linux sem `machine-id`, o app usa um código aleatório guardado nos dados dele, e reinstalar conta como PC novo.
+
 ### Instalações vistas (para contar usuários novos)
 
 Quando a telemetria ou um relatório de erro chega, o servidor anota o **código aleatório** do PC, a data em que ele apareceu pela primeira e pela última vez, a primeira e a última versão do app, o sistema (Windows ou Linux) e por onde ele apareceu (telemetria ou erros). É isso que mostra ao criador quantos PCs **novos** começaram a usar o Nexo, sem inflar com atualizações (o código fica nos dados do app). Nada pessoal; some depois de 400 dias sem aparecer, e “Apagar meus dados do servidor” não tem como achar esse código, porque ele não fica ligado à conta.
@@ -148,7 +159,7 @@ O criador usa um assistente de IA (**Claude, da Anthropic**), conectado ao paine
 
 ### Desligar, apagar e revogar
 
-- **Desligar** a telemetria, os relatórios de erro ou a sincronização em **Ajustes** para os envios na hora. O e-mail nos relatórios sai quando você desmarca “Incluir meu e-mail nos relatórios”.
+- **Desligar** a telemetria, os relatórios de erro, a sincronização ou a contagem de uso em **Ajustes** para os envios na hora. O e-mail nos relatórios sai quando você desmarca “Incluir meu e-mail nos relatórios”.
 - **Desligar a sincronização** encerra a sessão deste PC; as cópias ficam no servidor até você apagar.
 - **Apagar a cópia de um PC** ou **“Apagar meus dados do servidor”** (todas as cópias, a conta e o e-mail nos relatórios) acontece na hora, pelo app.
 - **Desinstalar** não apaga as cópias no servidor: use “Apagar meus dados do servidor” antes, se quiser.
