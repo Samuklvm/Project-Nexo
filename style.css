@@ -1753,6 +1753,14 @@ body.lite .opt-nova, body.lite .opt-comet { display: none; }
 .drivers-bios span { display: block; margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--dv-ink); }
 @media (prefers-reduced-motion: reduce) { .driver.is-oem.flash { animation: none; } }
 
+/* ---- Projeto 3: Game Ready para os seus jogos e o histórico de versões ---- */
+.driver-games, .driver-history { display: inline-flex; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 12.5px; line-height: 1.45; color: var(--dv-ink); }
+.driver-games svg, .driver-history svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.driver-games svg { color: #8fe3b4; }
+.driver-games.is-yours { color: #c7f5da; font-weight: 560; }
+.driver-history { color: var(--mist); font-variant-numeric: tabular-nums; }
+.driver-history svg { color: var(--mist); }
+
 /* ---- Atualizar tudo e backup dos drivers (faixa de ferramentas do topo) ---- */
 .drivers-tools { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; margin-top: 12px; }
 .dt-all { display: inline-flex; align-items: center; gap: 8px; padding-inline: 16px 10px; }

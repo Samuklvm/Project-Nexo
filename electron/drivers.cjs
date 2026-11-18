@@ -187,6 +187,21 @@ const officialLink = (value, domains) => {
     return url.protocol === 'https:' && !url.username && !url.password && !url.port && domains.some((domain) => host === domain || host.endsWith(`.${domain}`)) ? url.href : null;
   } catch { return null; }
 };
+/*
+ * Para quais jogos o driver é "Game Ready": a NVIDIA escreve no começo das notas ("<b>Game Ready for A & B</b>").
+ * Só o trecho em destaque, sem as tags, no máximo 8 nomes.
+ */
+function gameReadyOf(raw) {
+  const html = safeDecode(raw).slice(0, 4000);
+  const key = 'game ready for ';
+  const at = html.toLowerCase().indexOf(key);
+  if (at < 0) return [];
+  let rest = html.slice(at + key.length);
+  const stops = ['</b>', '<br', '</p>', '. '].map((s) => rest.toLowerCase().indexOf(s)).filter((i) => i >= 0);
+  if (stops.length) rest = rest.slice(0, Math.min(...stops));
+  const clean = rest.replace(/<[^>]{0,200}>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').slice(0, 400);
+  return clean.split(/\s+&\s+|,\s+|\s+and\s+/).map((name) => text(name, 60)).filter((name) => name.length > 1).slice(0, 8);
+}
 function parseNvidia(json) {
   const info = json?.IDS?.[0]?.downloadInfo;
   if (!info || String(json?.Success) !== '1') return null;
@@ -196,7 +211,8 @@ function parseNvidia(json) {
   const date = m && MONTHS[m[1]] ? `${m[3]}-${String(MONTHS[m[1]]).padStart(2, '0')}-${m[2].padStart(2, '0')}` : null;
   return {
     version: v, date, name: text(safeDecode(info.Name), 60) || 'GeForce Game Ready Driver',
-    details: officialLink(info.DetailsURL, ['nvidia.com']), download: officialLink(info.DownloadURL, ['nvidia.com']), size: text(String(info.DownloadURLFileSize || ''), 12) || null
+    details: officialLink(info.DetailsURL, ['nvidia.com']), download: officialLink(info.DownloadURL, ['nvidia.com']), size: text(String(info.DownloadURLFileSize || ''), 12) || null,
+    gameReady: gameReadyOf(info.ReleaseNotes)
   };
 }
 

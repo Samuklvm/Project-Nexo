@@ -36,7 +36,7 @@ test('drivers: versão NVIDIA, comparação e linha de cada placa', () => {
 });
 
 test('drivers: só confia no que a NVIDIA e a Microsoft mandam no formato certo', () => {
-  assert.deepEqual(Main.parseNvidia(nvInfo), { version: '621.14', date: '2026-11-04', name: 'GeForce Game Ready Driver', details: 'https://www.nvidia.com/en-us/drivers/details/283968/', download: 'https://us.download.nvidia.com/Windows/621.14/x.exe', size: '1.04 GB' });
+  assert.deepEqual(Main.parseNvidia(nvInfo), { version: '621.14', date: '2026-11-04', name: 'GeForce Game Ready Driver', details: 'https://www.nvidia.com/en-us/drivers/details/283968/', download: 'https://us.download.nvidia.com/Windows/621.14/x.exe', size: '1.04 GB', gameReady: [] });
   const evil = JSON.parse(JSON.stringify(nvInfo));
   evil.IDS[0].downloadInfo.DetailsURL = 'https://nvidia.com.evil.example/x';
   evil.IDS[0].downloadInfo.DownloadURL = 'http://us.download.nvidia.com/x.exe';
@@ -797,4 +797,45 @@ test('parte 4: atualizar tudo segue a ordem certa (placa → … → vídeo por 
   assert.deepEqual(rank, [...rank].sort((a, b) => a - b), 'na ordem dos grupos');
   assert.equal(new Set(ids.map((id) => byId[id].download.url)).size, ids.length, 'sem arquivo repetido');
   assert.deepEqual(D.updatePlan(null), []);
+});
+
+/* ---------------- Projeto 3: inteligência ---------------- */
+test('projeto 3: lê nas notas da NVIDIA para quais jogos o driver é Game Ready', () => {
+  const notes = encodeURIComponent('<b>Game Ready for Warhammer 40,000: Dawn of War IV &amp; Where Winds Meet</b><br/>This new Game Ready Driver provides the best gaming experience for the latest new games including Assetto Corsa Rally.');
+  const info = { Success: '1', IDS: [{ downloadInfo: { ...nvInfo.IDS[0].downloadInfo, ReleaseNotes: notes } }] };
+  assert.deepEqual(Main.parseNvidia(info).gameReady, ['Warhammer 40,000: Dawn of War IV', 'Where Winds Meet']);
+  assert.deepEqual(Main.parseNvidia(nvInfo).gameReady, []);
+  const many = encodeURIComponent('<b>Game Ready for Alpha, Beta, Gamma and Delta</b>');
+  assert.deepEqual(Main.parseNvidia({ Success: '1', IDS: [{ downloadInfo: { ...nvInfo.IDS[0].downloadInfo, ReleaseNotes: many } }] }).gameReady, ['Alpha', 'Beta', 'Gamma', 'Delta']);
+});
+
+test('projeto 3: o cartão de vídeo diz quais jogos Game Ready você tem instalados', () => {
+  const data = sample();
+  data.latest.nvidia.modern.gameReady = ['Warhammer 40,000: Dawn of War IV', 'Where Winds Meet', 'Cyberpunk 2077'];
+  const model = D.build(data, NOW, { games: ['Where Winds Meet™', 'Counter-Strike 2', 'CYBERPUNK 2077'] });
+  const gpu = model.groups.find((g) => g.id === 'video').items.find((i) => i.maker === 'NVIDIA');
+  assert.deepEqual(gpu.gameReady, { all: ['Warhammer 40,000: Dawn of War IV', 'Where Winds Meet', 'Cyberpunk 2077'], yours: ['Where Winds Meet', 'Cyberpunk 2077'] });
+  assert.equal(D.gameReadyText(gpu.gameReady), 'Game Ready para Where Winds Meet e Cyberpunk 2077, que você tem instalados.');
+  assert.equal(D.gameReadyText({ all: ['A', 'B'], yours: [] }), 'Game Ready para A e B.');
+  assert.equal(D.gameReadyText({ all: ['X'], yours: ['X'] }), 'Game Ready para X, que você tem instalado.');
+  assert.equal(D.gameReadyText(null), '');
+  const none = D.build(sample(), NOW);
+  assert.equal(none.groups.find((g) => g.id === 'video').items.find((i) => i.maker === 'NVIDIA').gameReady, null);
+});
+
+test('projeto 3: histórico de versões guarda as mudanças e diz quais drivers subiram agora', () => {
+  const m1 = { groups: [{ id: 'video', items: [{ id: 'video-a', installed: { version: '566.14' } }, { id: 'x', installed: null }] }] };
+  const first = D.trackHistory({}, m1, NOW);
+  assert.deepEqual(first.history, { 'video-a': [{ v: '566.14', at: NOW }] });
+  assert.deepEqual(first.changed, [], 'primeira vez não comemora');
+  const m2 = { groups: [{ id: 'video', items: [{ id: 'video-a', installed: { version: '621.14' } }] }] };
+  const second = D.trackHistory(first.history, m2, NOW + 1000);
+  assert.deepEqual(second.changed, ['video-a']);
+  assert.deepEqual(second.history['video-a'].map((h) => h.v), ['566.14', '621.14']);
+  assert.deepEqual(D.trackHistory(second.history, m2, NOW + 2000).changed, [], 'mesma versão não comemora de novo');
+  let h = second.history;
+  for (let i = 0; i < 10; i += 1) h = D.trackHistory(h, { groups: [{ items: [{ id: 'video-a', installed: { version: `700.${i}` } }] }] }, NOW + i).history;
+  assert.equal(h['video-a'].length, 6, 'guarda só as 6 últimas');
+  assert.match(D.historyText(second.history['video-a']), /^Antes: 566\.14 \(\d{2}\/\d{2}\)$/);
+  assert.equal(D.historyText([{ v: '1', at: NOW }]), '');
 });
