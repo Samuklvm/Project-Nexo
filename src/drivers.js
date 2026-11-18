@@ -625,5 +625,25 @@
   const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Desatualizado', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova', oem: 'Pacote do fabricante disponível' };
   /** As chaves de ícone que a página vai mostrar (para pedir só essas). */
   const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.flatMap((item) => [item.brand, item.brandAlt]))].filter(Boolean))];
-  return { build, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  /*
+   * "Atualizar tudo": as atualizações que o Nexo SABE que existem (botão Baixar destacado), na ordem que não quebra
+   * nada: placa/chipset → armazenamento → rede → áudio → Bluetooth → sem driver → outros → runtimes → vídeo por último.
+   * O mesmo arquivo (ex.: o assistente da Intel em vários cartões) entra uma vez só.
+   */
+  const UPDATE_ORDER = ['placa', 'disco', 'rede', 'audio', 'bluetooth', 'semdriver', 'outros', 'jogos', 'video'];
+  function updatePlan(model) {
+    const seen = new Set();
+    const out = [];
+    for (const groupId of UPDATE_ORDER) {
+      const group = (model?.groups || []).find((g) => g.id === groupId);
+      for (const item of group?.items || []) {
+        const plan = item.download;
+        if (!plan?.primary || item.coveredBy || seen.has(plan.url)) continue;
+        seen.add(plan.url);
+        out.push(item.id);
+      }
+    }
+    return out;
+  }
+  return { build, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });

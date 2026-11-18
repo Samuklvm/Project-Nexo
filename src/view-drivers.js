@@ -25,6 +25,11 @@
   const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } } };
   let restoreOn = store.get(RESTORE_KEY) !== '0';
   let restoreAt = store.get(RESTORE_AT_KEY);
+  // "Atualizar tudo" (parte 4): { ids, index, current, done, failed, stop } enquanto roda.
+  let bulk = null;
+  // Backups dos drivers: a lista vem do processo principal; busy enquanto faz ou restaura.
+  let backups = null;
+  let backupBusy = '';
   const LIVE = new Set(['queued', 'downloading', 'verifying']);
   // Componente: o ícone do próprio programa instalado é o certo; fabricante: o do site oficial, e o do PC na falta dele.
   const COMPONENTS = new Set(['vs', 'dotnet', 'physx', 'directx', 'vulkan']);
@@ -145,7 +150,72 @@
     const oemBox = line ? `<p class="drivers-oem" data-tone="${model.oem.error ? 'warn' : 'good'}">${tile(model.oem.oem, 'i-board', 'do-logo')}<span>${escapeHtml(line)}</span></p>` : '';
     const bios = model.oem?.bios?.newer ? `<div class="drivers-bios"><span class="db-ico">${ico('i-alert')}</span><div><strong>BIOS ${escapeHtml(model.oem.bios.version)} disponível</strong><span>Você tem a ${escapeHtml(model.oem.bios.installed || 'anterior')}. A BIOS não entra no Baixar: atualize pela página de suporte${support?.kind === 'notebook' ? ', com o notebook na tomada' : ''}, sem desligar no meio.</span></div></div>` : '';
     const supportBox = support ? `<div class="drivers-support">${support.brand ? tile(support.brand, 'i-board', 'ds-logo') : ''}<span class="ds-label">${support.kind === 'notebook' ? 'Seu notebook' : support.kind === 'computador' ? 'Seu computador' : 'Sua placa-mãe'}</span><strong>${escapeHtml(`${support.maker}${support.model ? ` ${support.model}` : ''}`)}</strong><span class="ds-hint">Chipset, áudio e rede feitos para ela estão na página de suporte.</span>${bios}<div class="ds-actions"><button class="btn sm" type="button" data-driver-url="${escapeHtml(support.url)}">Página de suporte da ${escapeHtml(support.maker)}</button>${support.model ? `<button class="btn sm ghost" type="button" data-driver-copy="${escapeHtml(support.model)}">Copiar o modelo</button>` : ''}</div></div>` : '';
-    box.innerHTML = `<div class="drivers-status"><h3 class="drivers-headline" data-tone="${tone}">${escapeHtml(D.headline(s))}</h3><p class="drivers-sub">${escapeHtml(`Conferido às ${timeText(model.at)}. ${online}`)}</p>${oemBox}${support ? '' : bios}<p class="drivers-rule">O Nexo baixa só do site oficial de cada fabricante, confere a assinatura de cada arquivo e nunca usa o Windows Update.</p>${restoreToggle()}</div>${supportBox}`;
+    box.innerHTML = `<div class="drivers-status"><h3 class="drivers-headline" data-tone="${tone}">${escapeHtml(D.headline(s))}</h3><p class="drivers-sub">${escapeHtml(`Conferido às ${timeText(model.at)}. ${online}`)}</p>${oemBox}${support ? '' : bios}<p class="drivers-rule">O Nexo baixa só do site oficial de cada fabricante, confere a assinatura de cada arquivo e nunca usa o Windows Update.</p>${restoreToggle()}${toolsRow()}</div>${supportBox}`;
+  }
+  const nameOf = (id) => model?.groups.flatMap((g) => g.items).find((i) => i.id === id)?.name || 'driver';
+  /** Atualizar tudo + backup: a faixa de ferramentas do topo. */
+  function toolsRow() {
+    const plan = D.updatePlan(model);
+    let update = '';
+    if (bulk) {
+      const total = bulk.ids.length;
+      const step = Math.min(bulk.index + 1, total);
+      const what = bulk.current ? `${bulk.phase === 'install' ? 'instalando' : 'baixando'} ${nameOf(bulk.current)}` : 'terminando';
+      update = `<div class="dt-bulk" role="status"><span class="dt-bulk-ico">${ico('i-refresh')}</span><div><strong>Atualizando tudo · ${step} de ${total}</strong><span>${escapeHtml(what)}${bulk.failed.length ? ` · ${bulk.failed.length} não ${bulk.failed.length === 1 ? 'foi' : 'foram'}` : ''}</span><i class="dt-bar"><b data-css="width:${Math.round((bulk.done.length / Math.max(1, total)) * 100)}%"></b></i></div><button class="btn sm ghost" type="button" data-driver-bulk-stop${bulk.stop ? ' disabled' : ''}>${bulk.stop ? 'Parando…' : 'Parar depois deste'}</button></div>`;
+    } else if (plan.length) {
+      update = `<button class="btn primary dt-all" type="button" data-driver-bulk>${ico('i-down')}Atualizar tudo <span class="dt-count">${plan.length}</span></button>`;
+    }
+    const last = backups?.[0];
+    const lastLine = backupBusy === 'backup' ? 'Fazendo o backup… (o Windows copia cada driver)' : backupBusy === 'restore' ? 'Restaurando…' : last ? `Último backup: ${new Date(last.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}, ${timeText(last.at)}${Number.isInteger(last.count) ? ` · ${last.count} drivers` : ''}` : 'Nenhum backup ainda';
+    const backup = `<div class="dt-backup"><span class="dt-backup-ico">${ico('i-box')}</span><div class="dt-backup-text"><strong>Backup dos drivers</strong><small>${escapeHtml(lastLine)}</small></div><div class="dt-backup-actions"><button class="btn sm" type="button" data-driver-backup${backupBusy ? ' disabled' : ''}>Fazer backup</button>${last ? `<button class="btn sm ghost" type="button" data-driver-backup-open="${escapeHtml(last.name)}">Abrir</button><button class="btn sm ghost" type="button" data-driver-backup-restore="${escapeHtml(last.name)}"${backupBusy ? ' disabled' : ''}>Restaurar</button>` : ''}</div></div>`;
+    return `<div class="drivers-tools">${update}${backup}</div>`;
+  }
+  async function loadBackups() {
+    try { backups = await bridge.driverBackups(); } catch { backups = []; }
+    renderHero();
+  }
+  const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+  /** Baixa tudo (a fila do motor faz 4 por vez) e instala um por vez, na ordem; ponto de restauração só no primeiro. */
+  async function runBulk() {
+    const ids = D.updatePlan(model);
+    if (!ids.length || bulk) return;
+    bulk = { ids, index: 0, current: null, phase: 'download', done: [], failed: [], stop: false };
+    renderHero();
+    for (const id of ids) {
+      const now = downloads.get(id);
+      if (!now || now.phase === 'error' || now.phase === 'canceled') {
+        try { const item = await bridge.downloadDriver(id); if (item?.id) { downloads.set(item.id, { ...downloads.get(item.id), ...item }); updateCard(item.id); } } catch { bulk.failed.push(id); }
+      }
+    }
+    let first = true;
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i];
+      if (bulk.stop) break;
+      bulk.index = i;
+      bulk.current = id;
+      if (bulk.failed.includes(id)) continue;
+      bulk.phase = 'download';
+      renderHero();
+      // Espera este ficar pronto (ou falhar), sem prender a página.
+      for (let wait = 0; wait < 7200; wait += 1) {
+        const ph = downloads.get(id)?.phase;
+        if (ph === 'ready' || ph === 'installed' || ph === 'error' || ph === 'canceled') break;
+        await sleep(500);
+      }
+      if (downloads.get(id)?.phase !== 'ready') { bulk.failed.push(id); continue; }
+      bulk.phase = 'install';
+      renderHero();
+      let result = null;
+      try { result = await bridge.installDriver(id, { restorePoint: restoreOn && first }); } catch (error) { result = { ok: false, note: error?.message }; }
+      first = false;
+      if (result?.restore?.created && result.restore.at) { restoreAt = result.restore.at; store.set(RESTORE_AT_KEY, restoreAt); }
+      if (result?.ok) { bulk.done.push(id); if (result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' }); } else { bulk.failed.push(id); if (result?.note) notes.set(id, { tone: 'warn', text: result.note }); }
+      if (result?.restore && result.restore.ok === false) break; // sem o ponto pedido, não segue instalando
+    }
+    const summary = bulk;
+    bulk = null;
+    await load(true);
+    showToast(summary.failed.length ? `Atualizei ${summary.done.length} de ${summary.ids.length}. Os outros ficaram com o aviso no cartão.` : `Pronto: ${summary.done.length} ${summary.done.length === 1 ? 'driver atualizado' : 'drivers atualizados'}.`);
   }
   function restoreLine() {
     if (!restoreOn) return 'Instala direto, sem ponto de restauração';
@@ -224,6 +294,7 @@
       if (button) button.disabled = false;
       render();
       watchOem(true);
+      if (backups === null && Nexo.platform !== 'linux') loadBackups();
     }
   }
   /*
@@ -297,6 +368,39 @@
         notes.set(id, { tone: result?.declined ? 'warn' : 'bad', text: result?.note || 'O instalador fechou sem terminar.' });
         updateCard(id);
       }
+      return;
+    }
+    if (event.target.closest?.('[data-driver-bulk]') && event.target.closest('.drivers-view')) {
+      const ids = D.updatePlan(model);
+      const ok = await Nexo.confirm({ title: `Atualizar ${ids.length} ${ids.length === 1 ? 'driver' : 'drivers'}?`, body: `O Nexo baixa tudo do site oficial e abre um instalador por vez, na ordem certa (placa primeiro, vídeo por último).${restoreOn ? ' Antes do primeiro, cria um ponto de restauração.' : ''} Cada instalador abre na sua frente.`, items: ids.map(nameOf).slice(0, 8), confirmLabel: 'Atualizar tudo' });
+      if (ok) runBulk().catch(() => { bulk = null; renderHero(); });
+      return;
+    }
+    if (event.target.closest?.('[data-driver-bulk-stop]') && bulk) { bulk.stop = true; renderHero(); return; }
+    if (event.target.closest?.('[data-driver-backup]') && event.target.closest('.drivers-view')) {
+      backupBusy = 'backup';
+      renderHero();
+      let r = null;
+      try { r = await bridge.backupDrivers(); } catch (error) { r = { ok: false, note: error?.message }; }
+      backupBusy = '';
+      showToast(r?.ok ? `Backup feito: ${r.count} drivers guardados em Documentos\\Nexo\\Backup de drivers.` : r?.note || 'O backup não terminou.');
+      await loadBackups();
+      return;
+    }
+    const bOpen = event.target.closest?.('[data-driver-backup-open]');
+    if (bOpen && bOpen.closest('.drivers-view')) { try { await bridge.openDriverBackup(bOpen.dataset.driverBackupOpen); } catch (error) { showToast(error?.message || 'Não consegui abrir a pasta.'); } return; }
+    const bRestore = event.target.closest?.('[data-driver-backup-restore]');
+    if (bRestore && bRestore.closest('.drivers-view')) {
+      const name = bRestore.dataset.driverBackupRestore;
+      const ok = await Nexo.confirm({ title: 'Restaurar os drivers deste backup?', body: `O Windows reinstala os drivers guardados em ${name}. Ele só usa os que servem nas peças deste PC; nada é apagado.`, confirmLabel: 'Restaurar' });
+      if (!ok) return;
+      backupBusy = 'restore';
+      renderHero();
+      let r = null;
+      try { r = await bridge.restoreDriverBackup(name); } catch (error) { r = { ok: false, note: error?.message }; }
+      backupBusy = '';
+      showToast(r?.ok ? (r.restart ? 'Drivers restaurados. Reinicie o PC para terminar.' : 'Drivers restaurados.') : r?.note || 'A restauração não terminou.');
+      await load(true);
       return;
     }
     const jump = event.target.closest?.('[data-driver-jump]');

@@ -1540,6 +1540,15 @@ registerIpcHandler('drivers:show-file', async (_event, id) => {
   return { ok: true };
 });
 if (process.platform === 'win32') setTimeout(() => { driverDownloads.cleanup().catch(() => {}); }, 30000).unref?.();
+// Backup dos drivers (parte 4): Documentos\Nexo\Backup de drivers, pelo pnputil, com administrador.
+const driverBackups = require('./electron/driver-backup.cjs').createDriverBackups({
+  fs: require('node:fs/promises'), path, root: () => path.join(app.getPath('documents'), 'Nexo', 'Backup de drivers'),
+  elevate: (task, args) => elevate(task, args), openPath: (dir) => shell.openPath(dir)
+});
+registerIpcHandler('drivers:backup', async () => (process.platform === 'win32' ? driverBackups.create() : { ...ONLY_WINDOWS }));
+registerIpcHandler('drivers:backups', async () => (process.platform === 'win32' ? driverBackups.list() : []));
+registerIpcHandler('drivers:restore-backup', async (_event, name) => (process.platform === 'win32' ? driverBackups.restore(String(name || '')) : { ...ONLY_WINDOWS }));
+registerIpcHandler('drivers:open-backup', async (_event, name) => (process.platform === 'win32' ? driverBackups.open(String(name || '')) : { ...ONLY_WINDOWS }));
 // Ícones oficiais dos fabricantes (buscados no site de cada um, guardados por 30 dias). Só domínios da lista oficial.
 const vendorIcons = require('./electron/vendor-icons.cjs').createVendorIcons({ dir: path.join(app.getPath('userData'), 'vendor-icons'), fetchRaw: async (url, max) => {
   const response = await net.fetch(url, { signal: withTimeout(9000), headers: { Accept: 'text/html,image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5' } });

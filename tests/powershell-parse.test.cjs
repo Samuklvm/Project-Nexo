@@ -28,6 +28,9 @@ function scripts() {
   out['elevate.driverInstallBody.zip'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ ...pk, file: `${dl}\\Realtek_Audio.zip`, kind: 'zip', restorePoint: true })}`;
   out['elevate.driverInstallBody.cab'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ ...pk, file: `${dl}\\sp150001.cab`, kind: 'cab' })}`;
   out['elevate.driverInstallBody.exe-hash'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ ...pk, signers: ['Dell Inc', 'Dell Inc.'], file: `${dl}\\Realtek-Audio_R1VKP.exe` })}`;
+  const broot = 'C:\\Users\\a\\Documents\\Nexo\\Backup de drivers';
+  out['driver-backup.backup'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/driver-backup.cjs').driverBackupBody({ dest: `${broot}\\2026-11-18 09h05`, root: broot })}`;
+  out['driver-backup.restore'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/driver-backup.cjs').driverRestoreBody({ dir: `${broot}\\2026-11-18 09h05`, root: broot })}`;
   out['elevate.optimizerBatchBody'] = require('../electron/elevate.cjs').optimizerBatchBody({
     restorePoint: true,
     registry: [{ id: 'hags', values: [2] }, { id: 'lastaccess', values: [0x80000001] }],

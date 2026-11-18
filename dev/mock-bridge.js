@@ -575,8 +575,13 @@ if (window.__nexoPlatform === 'linux') {
         }, 100);
       };
       let chain = Promise.resolve();
+      const mockBackups = [{ name: '2026-11-02 21h40', at: Date.now() - 16 * 86400000, count: 298 }];
       return {
         onDriverDownload: (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
+        driverBackups: async () => mockBackups.slice(),
+        backupDrivers: async () => { await new Promise((r) => setTimeout(r, 1200)); const d = new Date(); const name = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`; mockBackups.unshift({ name, at: Date.now(), count: 312 }); return { ok: true, name, count: 312, note: '' }; },
+        openDriverBackup: async () => ({ ok: true }),
+        restoreDriverBackup: async () => { await new Promise((r) => setTimeout(r, 1500)); return { ok: true, restart: true, note: '' }; },
         driverDownloads: async () => [...items.values()].map((item) => ({ ...item, timer: undefined })),
         downloadDriver: async (id) => { const item = { id, phase: 'queued', received: 0, total: null, speed: null, eta: null }; items.set(id, item); queue.push(id); send(item); pump(); return item; },
         cancelDriverDownload: async (id) => { const item = items.get(id); if (!item) return null; clearInterval(item.timer); const at = queue.indexOf(id); if (at >= 0) queue.splice(at, 1); else if (item.phase === 'downloading') { active -= 1; pump(); } item.phase = 'canceled'; send(item); return item; },
