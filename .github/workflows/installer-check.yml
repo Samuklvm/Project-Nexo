@@ -50,7 +50,7 @@ jobs:
           $extra = $watch.Elapsed.TotalSeconds - $base.Elapsed.TotalSeconds
           Write-Output ("Saiu com $code em {0:N1} s (abrir o PowerShell: {1:N1} s; o aviso: {2:N1} s)" -f $watch.Elapsed.TotalSeconds, $base.Elapsed.TotalSeconds, $extra)
           if ($code -ne 0) { throw 'O count.ps1 tem que sair sempre com 0.' }
-          if ($extra -gt 5) { throw 'O aviso do count.ps1 passou do prazo de 4 s (com folga de 1 s).' }
+          if ($extra -gt 5) { throw 'O aviso do count.ps1 passou do prazo de 4 s (com folga de 1 s para encerrar o processo).' }
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

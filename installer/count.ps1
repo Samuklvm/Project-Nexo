@@ -16,6 +16,9 @@ param(
   [switch]$SelfTest
 )
 
+# O prazo de 4 s vale para o script inteiro, contado daqui (carregar módulos e montar o pedido também gastam tempo).
+$clock = [Diagnostics.Stopwatch]::StartNew()
+
 function Get-NexoPcCode([string]$Id) {
   $text = 'nexo-pc-v1|' + $Id.Trim().ToLowerInvariant()
   $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -42,7 +45,7 @@ try {
     $body = @{ pc = (Get-NexoPcCode $guid); event = $Kind; version = $Version; platform = 'win32' }
   } else { exit 0 }
   # O -TimeoutSec não cobre a busca do DNS nem a descoberta de proxy (podem levar 15 s ou mais no PowerShell 5.1).
-  # O pedido roda num runspace à parte e o script espera no máximo 4 s por ele; depois sai de qualquer jeito.
+  # O pedido roda num runspace à parte e o script espera só o que sobra dos 4 s; depois sai de qualquer jeito.
   $send = [PowerShell]::Create()
   $null = $send.AddScript({
     param($Uri, $Json)
@@ -50,7 +53,7 @@ try {
     $null = Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json' -Body $Json -TimeoutSec 4 -UseBasicParsing
   }).AddArgument($Server + $route).AddArgument(($body | ConvertTo-Json -Compress))
   $pending = $send.BeginInvoke()
-  $null = $pending.AsyncWaitHandle.WaitOne(4000)
+  $null = $pending.AsyncWaitHandle.WaitOne([Math]::Max(0, 4000 - $clock.ElapsedMilliseconds))
 } catch { }
 # Encerra o processo na hora, mesmo com o pedido ainda pendurado no runspace.
 [Environment]::Exit(0)

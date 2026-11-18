@@ -23,7 +23,8 @@ test('count.ps1: mesma fórmula do app, prazo curto, silencioso e sempre sai com
   assert.match(ps, /\/v1\/install/);
   assert.match(ps, /\/v1\/optout/);
   assert.match(ps, /\[Environment\]::Exit\(0\)\s*$/, 'sai com 0 mesmo com o pedido ainda pendurado');
-  assert.match(ps, /WaitOne\(4000\)/, 'prazo duro de 4 s (o -TimeoutSec não cobre DNS nem proxy)');
+  assert.match(ps, /\$clock = \[Diagnostics\.Stopwatch\]::StartNew\(\)/, 'o prazo conta desde o começo do script');
+  assert.match(ps, /WaitOne\(\[Math\]::Max\(0, 4000 - \$clock\.ElapsedMilliseconds\)\)/, 'prazo duro de 4 s no total (o -TimeoutSec não cobre DNS nem proxy)');
   assert.doesNotMatch(ps, /Write-Host|Invoke-Expression|\biex\b|DownloadString|-EncodedCommand/i);
 });
 
