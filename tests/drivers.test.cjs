@@ -482,3 +482,86 @@ test('oem: script do .cab só aceita caminhos dentro da pasta de catálogos', ()
   assert.throws(() => Main.expandCabScript('C:\\Windows\\a.cab', 'C:\\Nexo\\driver-catalogs\\x', 'C:\\Nexo\\driver-catalogs'));
   assert.throws(() => Main.expandCabScript('C:\\Nexo\\driver-catalogs\\..\\a.cab', 'C:\\Nexo\\driver-catalogs\\x', 'C:\\Nexo\\driver-catalogs'));
 });
+
+/* ---------------- Projeto 2: cartões dos pacotes do fabricante do PC ---------------- */
+const S = require('../electron/oem-sources.cjs');
+const DELL_PKGS = S.parseDellCatalog(fixtureOem('dell-catalog.xml').toString('utf8'));
+function oemData({ installed = '6.0.9500.1', packages = DELL_PKGS, missing = [], extra = [] } = {}) {
+  return {
+    platform: 'win32', at: NOW,
+    devices: [
+      { ...dev('Realtek Audio', 'MEDIA', 'Realtek', installed, '2025-01-10'), hwids: [AUDIO_ID] },
+      { ...dev('NVIDIA GeForce RTX 4060 Laptop GPU', 'DISPLAY', 'NVIDIA', '32.0.15.6614', '2025-10-30'), hwids: ['PCI\\VEN_10DE&DEV_28E0&SUBSYS_0BEB1028'] },
+      ...extra
+    ],
+    others: [], genericDevices: [], generic: 0,
+    runtimes: { os: { build: 22631 }, board: DELL_BOARD, missing },
+    latest: { oem: { oem: 'dell', label: 'Dell XPS 15 9530', key: '0BEB', at: NOW, packages: [...packages, { id: 'dell-VID', source: 'dell', title: 'NVIDIA Graphics Driver', category: 'Video', version: 'A01', driverVersion: '32.0.15.9999', date: '2026-10-01', url: 'https://downloads.dell.com/F/1/nv.exe', fileName: 'nv.exe', kind: 'exe', hardwareIds: ['PCI\\VEN_10DE&DEV_28E0&SUBSYS_0BEB1028'], signers: ['Dell Inc.'] }], bios: { version: '1.14.0', date: '2026-09-15' } } }
+  };
+}
+const cardsOf = (model) => model.groups.flatMap((g) => g.items.map((item) => ({ ...item, group: g.id })));
+
+test('oem: áudio Realtek casado vira cartão do pacote Dell no grupo Áudio, com Baixar', () => {
+  const model = D.build(oemData(), NOW);
+  const pkg = cardsOf(model).find((c) => c.id === 'oem-dell-R1VKP');
+  assert.ok(pkg, 'tem o cartão do pacote');
+  assert.equal(pkg.group, 'audio');
+  assert.equal(pkg.kind, 'oem');
+  assert.equal(pkg.state, 'update');
+  assert.equal(pkg.brand, 'dell');
+  assert.equal(pkg.installed.version, '6.0.9500.1');
+  assert.equal(pkg.latest.version, '6.0.9600.1');
+  assert.deepEqual(pkg.covers, ['Realtek Audio']);
+  assert.equal(pkg.download.primary, true);
+  assert.match(pkg.download.label, /^Baixar · Dell/);
+  assert.equal(model.summary.update, 1);
+  assert.equal(D.STATES.oem, 'Pacote do fabricante disponível');
+});
+
+test('oem: a peça coberta perde o botão do site e aponta para o pacote', () => {
+  const model = D.build(oemData(), NOW);
+  const audio = cardsOf(model).find((c) => c.id === 'audio-Realtek Audio');
+  assert.equal(audio.coveredBy, 'oem-dell-R1VKP');
+  assert.equal(audio.action, null);
+});
+
+test('oem: versão em outro formato vira "pacote do fabricante disponível" e não conta no topo; igual não vira cartão', () => {
+  const odd = D.build(oemData({ installed: '6.0.1.9500.1' }), NOW);
+  const pkg = cardsOf(odd).find((c) => c.id === 'oem-dell-R1VKP');
+  assert.equal(pkg.state, 'oem');
+  assert.equal(pkg.download.primary, false);
+  assert.equal(odd.summary.update, 0);
+  assert.equal(odd.summary.oem, 1);
+  const same = D.build(oemData({ installed: '6.0.9600.1' }), NOW);
+  assert.equal(cardsOf(same).some((c) => c.kind === 'oem'), false);
+  assert.equal(cardsOf(same).find((c) => c.id === 'audio-Realtek Audio').coveredBy, undefined);
+});
+
+test('oem: vídeo continua com a NVIDIA mesmo com pacote da Dell; BIOS só no aviso', () => {
+  const model = D.build(oemData(), NOW);
+  assert.equal(cardsOf(model).some((c) => c.id === 'oem-dell-VID'), false);
+  assert.equal(cardsOf(model).some((c) => c.id === 'oem-dell-BIOS1'), false);
+  assert.equal(model.oem.label, 'Dell XPS 15 9530');
+  assert.deepEqual(model.oem.bios, { version: '1.14.0', date: '2026-09-15', installed: '1.10.0', newer: true });
+  assert.equal(model.oem.error, null);
+});
+
+test('oem: dispositivo sem driver que casa com um pacote vira atualização no grupo "Sem driver"', () => {
+  const model = D.build(oemData({ missing: [{ name: 'PCI Serial IO', code: 28, ids: 'PCI:VEN_8086&DEV_7A4C', hwids: ['PCI\\VEN_8086&DEV_7A4C&SUBSYS_0BEB1028&REV_01'] }] }), NOW);
+  const pkg = cardsOf(model).find((c) => c.id === 'oem-dell-7CHKN');
+  assert.equal(pkg.group, 'semdriver');
+  assert.equal(pkg.state, 'update');
+  assert.equal(cardsOf(model).find((c) => c.id.startsWith('pnp-PCI Serial IO')).coveredBy, 'oem-dell-7CHKN');
+});
+
+test('oem: downloadFor devolve o plano com assinantes da Dell e das peças, md5 e tipo', () => {
+  const model = D.build(oemData(), NOW);
+  const plan = D.downloadFor(model, 'oem-dell-R1VKP');
+  assert.equal(plan.url, DELL_PKGS.find((p) => p.id === 'dell-R1VKP').url);
+  assert.deepEqual(plan.domains, ['dell.com']);
+  assert.equal(plan.kind, 'exe');
+  assert.equal(plan.source, 'dell');
+  assert.ok(plan.signers.includes('Dell Inc.') && plan.signers.includes('Realtek Semiconductor Corp.'));
+  assert.equal(plan.fileName, DELL_PKGS.find((p) => p.id === 'dell-R1VKP').fileName);
+  assert.equal(D.downloadFor(model, 'oem-nada'), null);
+});

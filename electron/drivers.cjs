@@ -321,7 +321,7 @@ function createDrivers({ runPowerShellCode, fetchJson, fetchBytes = null, fs = n
       }
       if (oemCatalogs) {
         let oem = null;
-        try { oem = await oemCatalogs.lookup({ runtimes, devices: [...(devices || []), ...(genericDevices || [])] }); } catch { oem = null; }
+        try { oem = await oemCatalogs.lookup({ runtimes, devices: [...(devices || []), ...(genericDevices || []), ...(runtimes?.missing || [])] }); } catch { oem = null; }
         if (oem) latest.oem = oem;
       }
     }

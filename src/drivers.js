@@ -4,11 +4,13 @@
  * nome, para que serve, versão instalada e a mais recente, o estado e o botão para o site oficial certo.
  *  - Nunca Windows Update: o botão sempre abre o site do fabricante (ou o permalink oficial da Microsoft).
  *  - Sem a versão mais recente (fabricante sem consulta pública, ou sem internet), o estado vem da idade do driver.
+ *  - Pacote do fabricante do PC (Dell, HP, Lenovo, ASUS): cartão próprio no grupo da peça, com Baixar; a peça coberta
+ *    aponta para ele. Vídeo fica sempre com NVIDIA/AMD/Intel; BIOS só vira aviso.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./vendors.js'));
-  else root.NexoDrivers = factory(root.NexoVendors);
-})(typeof self !== 'undefined' ? self : this, function (Vendors) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./vendors.js'), require('./oem.js'));
+  else root.NexoDrivers = factory(root.NexoVendors, root.NexoOem);
+})(typeof self !== 'undefined' ? self : this, function (Vendors, Oem) {
   const DAY = 24 * 3600 * 1000;
   const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const monthText = (iso) => { const m = /^(\d{4})-(\d{2})/.exec(String(iso || '')); return m ? `${MONTHS[Number(m[2]) - 1]}/${m[1]}` : null; };
@@ -303,6 +305,56 @@
     return out;
   }
 
+  /* ---------------- Pacotes do fabricante do PC ---------------- */
+  const OEM_TYPE = { dell: 'dell-catalog', hp: 'hpia-ref', lenovo: 'lenovo-catalog', asus: 'asus-api' };
+  const OEM_NAME = { dell: 'Dell', hp: 'HP', lenovo: 'Lenovo', asus: 'ASUS' };
+  const GROUP_OF = { MEDIA: 'audio', NET: 'rede', BLUETOOTH: 'bluetooth', HDC: 'disco', SCSIADAPTER: 'disco', SYSTEM: 'placa' };
+  const GROUP_ICON = { audio: 'i-sound', rede: 'i-net', bluetooth: 'i-bt', disco: 'i-disk', placa: 'i-board', semdriver: 'i-alert', outros: 'i-driver' };
+  /** O maior entre os drivers instalados das peças (as que estão sem driver não têm versão). */
+  function newestInstalled(devices) {
+    let best = null;
+    for (const item of devices) if (item.version && (!best || (Oem.compareVersions(item.version, best.version) ?? -1) > 0)) best = item;
+    return best;
+  }
+  function oemPlan(oem, pkg, primary) {
+    const type = OEM_TYPE[oem];
+    const size = Number(pkg.size) > 0 ? sizeText(Number(pkg.size)) : null;
+    const base = dl(pkg.url, type ? [...Oem.DOMAINS[type]] : [], pkg.fileName, null, { reinstall: !primary });
+    if (!base || !/^(exe|msi|zip|cab)$/.test(String(pkg.kind || ''))) return null;
+    const { signer, ...rest } = base;
+    return { ...rest, signers: Oem.signersFor(oem), kind: pkg.kind, source: oem,
+      ...(pkg.sha256 ? { sha256: pkg.sha256 } : {}), ...(oem === 'dell' && pkg.md5 ? { md5: pkg.md5 } : {}), ...(size ? { size } : {}),
+      label: [primary ? 'Baixar' : 'Baixar mesmo assim', OEM_NAME[oem], size].filter(Boolean).join(' · ') };
+  }
+  /** { cards: { grupo: [cartão] }, covered: Map(nome da peça → id do cartão) }. */
+  function oemCards(oem, devices, missing) {
+    const out = { cards: {}, covered: new Map() };
+    if (!Oem || !oem || !Array.isArray(oem.packages) || !oem.packages.length || !OEM_TYPE[oem.oem]) return out;
+    const parts = [...devices, ...missing.map((item) => ({ ...item, cls: item.cls || 'MISSING', missing: true }))];
+    for (const { pkg, devices: hits } of Oem.matchPackages(parts, oem.packages)) {
+      const top = newestInstalled(hits);
+      const allMissing = hits.every((item) => item.missing);
+      const verdict = allMissing ? 'newer' : Oem.compareToInstalled(top?.version, pkg);
+      if (verdict === 'same' || verdict === 'older') continue;
+      const state = verdict === 'newer' ? 'update' : 'oem';
+      const group = allMissing ? 'semdriver' : GROUP_OF[String(hits[0].cls || '').toUpperCase()] || 'outros';
+      const id = `oem-${pkg.id}`;
+      const covers = [...new Set(hits.map((item) => item.name))];
+      const who = OEM_NAME[oem.oem];
+      const item = card({
+        id, icon: GROUP_ICON[group], brand: oem.oem, name: pkg.title, maker: who, purpose: `Pacote oficial da ${who} para o ${oem.label}. Atende: ${covers.join(', ')}.`,
+        installed: top ? installedOf(top) : null, latest: { version: pkg.driverVersion || pkg.version || null, date: pkg.date || null, month: monthText(pkg.date) },
+        state, note: state === 'oem' ? `A ${who} numera este pacote de outro jeito (${pkg.version || 'sem versão'}), então não dá para comparar. Saiu em ${monthText(pkg.date) || 'data desconhecida'}.` : null
+      });
+      item.kind = 'oem';
+      item.covers = covers;
+      item.download = oemPlan(oem.oem, pkg, state === 'update');
+      (out.cards[group] = out.cards[group] || []).push(item);
+      for (const name of covers) out.covered.set(name, id);
+    }
+    return out;
+  }
+
   /* ---------------- Download direto (o arquivo oficial certo para este PC) ---------------- */
   const MS_DOMAINS = ['aka.ms', 'microsoft.com', 'visualstudio.microsoft.com'];
   const SIGNER = { nvidia: 'NVIDIA Corporation', microsoft: 'Microsoft Corporation' };
@@ -396,6 +448,14 @@
     return null;
   }
 
+  /** O resumo do fabricante do PC para a tela (linha do topo e aviso de BIOS). */
+  function oemInfo(oem, runtimes) {
+    if (!oem || typeof oem !== 'object') return null;
+    const installed = runtimes?.board?.bios || null;
+    const bios = oem.bios?.version ? { version: oem.bios.version, date: oem.bios.date || null, installed, newer: Oem ? Oem.compareToInstalled(installed, { driverVersion: oem.bios.version }) === 'newer' : false } : null;
+    return { oem: oem.oem, label: oem.label || null, at: oem.at || null, error: oem.error || null, bios, disabled: oem.disabled === true, support: oem.support || null, packages: Array.isArray(oem.packages) ? oem.packages.length : 0 };
+  }
+
   /** O modelo inteiro da página. */
   function build(data = {}, now = Date.now()) {
     const devices = Array.isArray(data.devices) ? data.devices : [];
@@ -413,11 +473,18 @@
     const leftovers = devices.filter((item) => !/^microsoft/i.test(item.provider || '') && !used.has(item.name) && !/high definition audio|display audio|hdmi audio/i.test(item.name));
     items.outros = otherCards([...leftovers, ...(Array.isArray(data.others) ? data.others : [])], data.generic, now, support);
     for (const list of Object.values(items)) for (const item of list) item.download = downloadOf(item, latest, runtimes);
+    // Pacotes do fabricante do PC: primeiro no grupo da peça; a peça coberta deixa o botão do site para o pacote.
+    const oem = oemCards(latest.oem, [...devices, ...(Array.isArray(data.genericDevices) ? data.genericDevices : [])], Array.isArray(runtimes?.missing) ? runtimes.missing : []);
+    for (const list of Object.values(items)) for (const item of list) {
+      const by = item.sourceName && oem.covered.get(item.sourceName);
+      if (by && !item.id.startsWith('video-')) { item.coveredBy = by; item.action = null; }
+    }
+    for (const [group, list] of Object.entries(oem.cards)) items[group] = [...list, ...(items[group] || [])];
     const groups = GROUPS.map((group) => ({ ...group, items: items[group.id] || [] })).filter((group) => group.items.length);
     const all = groups.flatMap((group) => group.items);
     const count = (...states) => all.filter((item) => states.includes(item.state)).length;
-    const summary = { total: all.length, update: count('update'), missing: count('missing', 'problem'), old: count('old', 'generic'), ok: count('ok'), check: count('check', 'ended') };
-    return { groups, summary, support, online: Boolean(latest?.nvidia || latest?.dotnet), at: data.at || now };
+    const summary = { total: all.length, update: count('update'), missing: count('missing', 'problem'), old: count('old', 'generic'), ok: count('ok'), check: count('check', 'ended'), oem: count('oem') };
+    return { groups, summary, support, oem: oemInfo(latest.oem, runtimes), online: Boolean(latest?.nvidia || latest?.dotnet || (latest?.oem && !latest.oem.error)), at: data.at || now };
   }
   /** A frase do topo da página. */
   function headline(summary) {
@@ -428,7 +495,7 @@
     if (!parts.length) return summary.total ? 'Tudo em dia' : 'Nenhum driver lido ainda';
     return parts.length === 1 ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : `${parts.slice(0, -1).join(', ').replace(/^./, (c) => c.toUpperCase())} e ${parts[parts.length - 1]}`;
   }
-  const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Antigo', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova' };
+  const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Antigo', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova', oem: 'Pacote do fabricante disponível' };
   /** As chaves de ícone que a página vai mostrar (para pedir só essas). */
   const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.flatMap((item) => [item.brand, item.brandAlt]))].filter(Boolean))];
   return { build, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
