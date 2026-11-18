@@ -78,7 +78,7 @@ async function start() {
 document.querySelectorAll('[data-go]').forEach((b) => {
   b.onclick = () => {
     const n = Number(b.dataset.go);
-    if (n === 2) start();
+    if (n === 2) void start(); // start trata os próprios erros
     else go(n);
   };
 });

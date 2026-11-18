@@ -19,7 +19,13 @@
           ] },
           { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
             { emoji: '🐞', title: 'Relatórios de erro opcionais', text: 'Continuam ligados por padrão, mas agora dá para desligar em Ajustes > Privacidade e dados.' },
+            { emoji: '🛰️', title: 'Vigias de erro', text: 'O Nexo agora avisa o criador também quando algo funciona de um jeito estranho, sem nada pessoal, para corrigir antes que vire erro. Vai junto dos relatórios de erro, que dá para desligar em Ajustes.' },
             { emoji: '🔏', title: 'Assinatura digital a caminho', text: 'A assinatura do Nexo já foi pedida e chega numa atualização futura. Até lá, o Windows pode avisar ao instalar; as notas da versão explicam como abrir.' }
+          ] },
+          { emoji: '🛠️', title: 'Correções', tone: 'fix', items: [
+            { emoji: '🗺️', title: 'Mapa do sistema', text: 'Não dá mais erro ao trocar de tela.' },
+            { emoji: '🎮', title: 'Segundo plano durante os jogos', text: 'O cartão em Sessões voltou a funcionar.' },
+            { emoji: '🐧', title: 'Ver processos no Linux', text: 'Abre o monitor do sistema da sua área de trabalho; sem nenhum instalado, avisa em vez de dar erro.' }
           ] }
         ]
       },

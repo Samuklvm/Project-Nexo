@@ -1397,7 +1397,7 @@ const STORE_HOSTS = ['store.steampowered.com', 'steamcommunity.com', 'steamstore
 registerIpcHandler('app:open-doc', async (_event, url) => {
   const safe = safeExternalUrl(url, DOC_HOSTS);
   if (!safe) throw new Error('Link não permitido.');
-  await shell.openExternal(safe);
+  await shell.openExternal(safe); // NOSONAR: abre no navegador um link https já conferido contra DOC_HOSTS; o app não faz o pedido
   return { ok: true };
 });
 
@@ -1414,7 +1414,7 @@ registerIpcHandler('app:open-vendor', async (_event, url) => {
   let parsed;
   try { parsed = new URL(url); } catch { throw new Error('Link não permitido.'); }
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || !vendorHost(parsed.hostname.toLowerCase())) throw new Error('Só sites oficiais de fabricantes.');
-  await shell.openExternal(parsed.href);
+  await shell.openExternal(parsed.href); // NOSONAR: abre no navegador um link https de fabricante já conferido; o app não faz o pedido
   return { ok: true };
 });
 /* Página de Drivers: o que está instalado e a versão mais recente nas fontes oficiais (só leitura; o botão abre o site). */
@@ -2131,7 +2131,7 @@ async function deepNetQuality({ signal, onProgress } = {}) {
     return Deep.summarizePings(values, lost);
   };
   const internetHost = await (async () => {
-    for (const [host, port] of [['1.1.1.1', 443], ['8.8.8.8', 443]]) {
+    for (const [host, port] of [['1.1.1.1', 443], ['8.8.8.8', 443]]) { // NOSONAR: DNS públicos (Cloudflare e Google) só para medir o ping até a internet
       // eslint-disable-next-line no-await-in-loop -- tenta o segundo só se o primeiro não respondeu
       for (let attempt = 0; attempt < 3; attempt += 1) if (Number.isFinite(await connectTime(host, port))) return [host, port];
     }

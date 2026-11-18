@@ -2,7 +2,7 @@
 'use strict';
 const { parentPort, workerData } = require('worker_threads');
 const pause = new Int32Array(new SharedArrayBuffer(4));
-let x = 0x9e3779b9 | 0;
+let x = -1640531527; // 0x9e3779b9 como inteiro de 32 bits com sinal (semente do xorshift)
 let iterations = 0;
 let busy = 0;
 const end = performance.now() + workerData.ms;

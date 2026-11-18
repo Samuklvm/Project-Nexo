@@ -8,7 +8,7 @@ const { createD1 } = require('../../server/test/d1-sqlite.cjs');
 const ORIGIN = 'https://nexo-api.exemplo.workers.dev';
 const CLIENT_ID = '123-teste.apps.googleusercontent.com';
 const ADMIN = 'criador@exemplo.com';
-const b64url = (bytes) => Buffer.from(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64url = (bytes) => Buffer.from(bytes).toString('base64url');
 
 async function createHarness() {
   const mod = await import('../../server/src/app.js');

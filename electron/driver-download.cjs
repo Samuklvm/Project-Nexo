@@ -85,7 +85,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     while (active < max && queue.length) {
       const id = queue.shift();
       moved = true;
-      run(items.get(id));
+      void run(items.get(id)); // run trata os próprios erros (try/catch)
     }
     if (moved) announceQueue();
   }

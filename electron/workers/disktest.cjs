@@ -50,7 +50,7 @@ function run() {
       const span = (64 * 1024 * 1024) / 4096;
       fs.ftruncateSync(fd, 64 * 1024 * 1024);
       for (let i = 0; i < smallCount && Date.now() < deadline; i += 1) {
-        const offset = Math.floor(Math.random() * span) * 4096;
+        const offset = Math.floor(Math.random() * span) * 4096; // NOSONAR: posição aleatória do teste de disco, sem uso de segurança
         page.writeUInt32LE(i, 0);
         const t0 = now();
         fs.writeSync(fd, page, 0, 4096, offset);

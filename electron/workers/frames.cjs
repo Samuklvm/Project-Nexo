@@ -2,7 +2,7 @@
 'use strict';
 const { parentPort, workerData } = require('worker_threads');
 const pause = new Int32Array(new SharedArrayBuffer(4));
-let x = 0x2545f491 | 0;
+let x = 0x2545f491; // semente do xorshift (já cabe em 32 bits com sinal)
 const spin = (n) => { for (let i = 0; i < n; i += 1) { x = Math.imul(x ^ (x >>> 15), 0x2c1b3c6d); x ^= x >>> 12; } };
 if (workerData.calibrate) {
   const start = performance.now(); let n = 0;

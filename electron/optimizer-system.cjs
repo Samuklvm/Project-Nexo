@@ -431,7 +431,7 @@ function createOptimizerSystem({ runPowerShell, run, elevate, systemScan, fs, pa
   }
 
   /* ---------- Rede: ping até o roteador e até a internet ---------- */
-  const INTERNET = [['1.1.1.1', 443], ['8.8.8.8', 443]];
+  const INTERNET = [['1.1.1.1', 443], ['8.8.8.8', 443]]; // NOSONAR: DNS públicos (Cloudflare e Google) só para medir o ping até a internet
   async function series(host, port, count = 16, gapMs = 60) {
     const values = [];
     let lost = 0;

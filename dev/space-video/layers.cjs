@@ -9,7 +9,9 @@ const { chromium } = require('playwright');
 const Space = require('../../src/space.js');
 
 async function main() {
-  const out = path.resolve(process.argv[2] || 'space-layers');
+  // Só grava dentro da pasta atual (evita sair dela com ../ ou um caminho absoluto).
+  const base = process.cwd();
+  const out = path.resolve(base, path.basename(process.argv[2] || 'space-layers'));
   const W = Number(process.argv[3]) || 1968;
   const H = Number(process.argv[4]) || 1128;
   fs.mkdirSync(out, { recursive: true });

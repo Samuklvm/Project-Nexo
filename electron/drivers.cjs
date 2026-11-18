@@ -99,19 +99,29 @@ function parseAllDrivers(stdout) {
 
 const text = (value, max = 120) => (typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max) : '');
 const asList = (value) => (Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : []);
-const version = (value) => { const v = text(value, 40).replace(/^v(?=\d)/i, ''); return /^\d+(\.\d+){1,3}[a-z0-9.-]*$/i.test(v) ? v : null; };
+/* Cortes sem expressão regular (o SonarCloud acusa retrocesso nas versões com regex). */
+const trimEndChar = (v, ch) => { let end = v.length; while (end > 0 && v[end - 1] === ch) end -= 1; return v.slice(0, end); };
+const trimChar = (v, ch) => { let start = 0; while (start < v.length && v[start] === ch) start += 1; return trimEndChar(v.slice(start), ch); };
+// "C:\pasta\app.exe",0  ->  "C:\pasta\app.exe (tira o índice do ícone do fim, com a aspa e os espaços antes da vírgula)
+const withoutIconIndex = (v) => {
+  const comma = v.lastIndexOf(',');
+  if (comma < 0 || !/^\s*-?\d+\s*$/.test(v.slice(comma + 1))) return v;
+  const head = v.slice(0, comma).trimEnd();
+  return head.endsWith('"') ? head.slice(0, -1) : head;
+};
+const version = (value) => { const v = text(value, 40).replace(/^v(?=\d)/i, ''); const head = /^\d+(?:\.\d+){1,3}/.exec(v); return head && /^[a-z0-9.-]*$/i.test(v.slice(head[0].length)) ? v : null; };
 
 /*
  * Caminho de ícone vindo do registro (DisplayIcon: "C:\\...\\x.exe",0): só arquivo local de verdade (letra de unidade,
  * nunca \\servidor — abrir caminho de rede mandaria as credenciais do Windows para fora), só .exe/.dll/.ico.
  */
 function iconPath(value) {
-  let v = text(String(value || ''), 400).replace(/^"+|"+$/g, '');
-  v = v.replace(/"?\s*,\s*-?\d+\s*$/, '').replace(/^"+|"+$/g, '').trim();
+  let v = trimChar(text(String(value || ''), 400), '"');
+  v = trimChar(withoutIconIndex(v), '"').trim();
   if (!/^[A-Za-z]:\\[^<>"|?*\u0000-\u001f]+\.(exe|dll|ico)$/i.test(v) || v.includes('..')) return null;
   return v;
 }
-const localDir = (value) => { const v = text(String(value || ''), 200); return /^[A-Za-z]:\\[^<>"|?*\u0000-\u001f]*$/.test(v) && !v.includes('..') ? v.replace(/\\+$/, '') : null; };
+const localDir = (value) => { const v = text(String(value || ''), 200); return /^[A-Za-z]:\\[^<>"|?*\u0000-\u001f]*$/.test(v) && !v.includes('..') ? trimEndChar(v, '\\') : null; };
 
 function parseRuntimes(stdout) {
   const body = String(stdout || '').trim();
@@ -206,7 +216,7 @@ function nvidiaLine(name) {
   const n = String(name || '');
   if (!/nvidia|geforce|quadro|rtx|gtx|titan|tesla/i.test(n)) return null;
   if (/quadro|tesla|\bRTX\s?A\d{3,4}\b|\bRTX\s?\d{4}\s?Ada\b|\bRTX PRO\b|NVIDIA T\d{3,4}\b|NVIDIA A\d{2,3}\b/i.test(n)) return 'pro';
-  if (/\bGT\s?6\d\d\b|\bGT\s?7[1-4]0\b|\bGTX\s?(6\d\d|7[6-9]0)\b|GTX TITAN( Black| Z)?$/i.test(n)) return 'ended';
+  if (/(?:\bGT\s?6\d\d\b)|(?:\bGT\s?7[1-4]0\b)|(?:\bGTX\s?(?:6\d\d|7[6-9]0)\b)|(?:GTX TITAN(?: Black| Z)?$)/i.test(n)) return 'ended';
   if (/\bGTX\s?(9\d\d|10[5-8]0)\b|\bGTX\s?(745|750)\b|TITAN Xp?\b|\bGT\s?1030\b|\bMX\s?[1-3]\d0\b/i.test(n)) return 'legacy';
   return 'modern';
 }

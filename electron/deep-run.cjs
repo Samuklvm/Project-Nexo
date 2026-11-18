@@ -242,7 +242,7 @@ function createDeepAnalysis(deps) {
     } finally {
       freq.on = false;
       stream?.stop();
-      if (freqLoop) await until(state, freqLoop);
+      if (freqLoop !== null) await until(state, freqLoop);
       if (cancelled(state)) cancelBench();
     }
     // A placa de vídeo já foi medida acordada na etapa de vídeo (link PCIe, clock e motivo do clock baixo).
@@ -592,7 +592,7 @@ function createLinuxSystemReader({ fs }) {
     let majorFaults = null;
     if (previousFaults && Number.isFinite(faults)) majorFaults = Math.max(0, (faults - previousFaults.value) / Math.max(0.5, (at - previousFaults.at) / 1000));
     if (Number.isFinite(faults)) previousFaults = { value: faults, at };
-    const rootDev = String((mounts.split('\n').find((line) => line.split(' ')[1] === '/') || '').split(' ')[0] || '').replace('/dev/', '').replace(/p?\d+$/, '');
+    const rootDev = String((mounts.split('\n').find((line) => line.split(' ')[1] === '/') || '').split(' ')[0] || '').replace('/dev/', '').replace(/p?\d{1,4}$/, '');
     const diskLine = diskstats.split('\n').map((line) => line.trim().split(/\s+/)).find((parts) => parts[2] === rootDev);
     let diskBusy = null;
     if (diskLine) {

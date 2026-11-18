@@ -559,7 +559,7 @@ function parseEdid(buffer) {
   for (let offset = 54; offset <= 108; offset += 18) {
     if (buffer[offset] !== 0 || buffer[offset + 1] !== 0) continue;
     const tag = buffer[offset + 3];
-    if (tag === 0xfc) name = Buffer.from(buffer.subarray(offset + 5, offset + 18)).toString('latin1').replace(/[\n\r]+.*$/s, '').trim().slice(0, 40) || null;
+    if (tag === 0xfc) name = Buffer.from(buffer.subarray(offset + 5, offset + 18)).toString('latin1').split(/[\n\r]/)[0].trim().slice(0, 40) || null;
     if (tag === 0xfd) maxHz = buffer[offset + 6] + ((buffer[offset + 4] & 0x02) ? 255 : 0);
   }
   const code = String.fromCharCode(((buffer[8] >> 2) & 0x1f) + 64, (((buffer[8] & 0x03) << 3) | (buffer[9] >> 5)) + 64, (buffer[9] & 0x1f) + 64);
@@ -567,7 +567,7 @@ function parseEdid(buffer) {
 }
 
 const LINK_GT = { '2.5': 1, '5.0': 2, '5': 2, '8.0': 3, '8': 3, '16.0': 4, '16': 4, '32.0': 5, '32': 5, '64.0': 6, '64': 6 };
-const linuxGen = (value) => { const m = String(value || '').match(/([\d.]+)\s*GT\/s/); return m ? LINK_GT[m[1]] || null : null; };
+const linuxGen = (value) => { const m = String(value || '').match(/(\d{1,3}(?:\.\d{1,2})?) ?GT\/s/); return m ? LINK_GT[m[1]] || null : null; };
 
 function createLinuxCollector({ fs, path, os, run = async () => ({ code: 1, stdout: '' }) }) {
   const read = (file) => fs.readFile(file, 'utf8').then((value) => value.trim()).catch(() => null);
@@ -602,7 +602,7 @@ function createLinuxCollector({ fs, path, os, run = async () => ({ code: 1, stdo
         if ((await read(path.join(dir, 'status'))) !== 'connected') continue;
         const edid = parseEdid(await fs.readFile(path.join(dir, 'edid')).catch(() => null));
         const modes = String((await read(path.join(dir, 'modes'))) || '').split('\n').filter(Boolean);
-        const [w, h] = (modes[0] || '').split('x').map((value) => parseInt(value, 10));
+        const [w, h] = (modes[0] || '').split('x').map((value) => Number.parseInt(value, 10));
         const internal = /eDP|LVDS|DSI/i.test(entry);
         // A faixa do EDID (0xFD) vale para qualquer resolução: não é a taxa máxima na resolução nativa, por isso não vira maxHz.
         displays.push({ name: edid?.name || null, output: internal ? 'interno' : (entry.match(/-(HDMI|DP|DVI|VGA)/i) || [])[1] || null, internal, maxWidth: num(w, 1, 16000), maxHeight: num(h, 1, 16000), rangeHz: edid?.maxHz || null });

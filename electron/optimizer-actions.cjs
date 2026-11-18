@@ -37,7 +37,7 @@ const ENABLED_BYTES = '020000000000000000000000';
 /** Ligado? StartupApproved: sem valor = ligado; primeiro byte par (02, 06) = ligado, ímpar (03, 07) = desligado. */
 function approvedEnabled(hex) {
   if (hex === null || hex === undefined || hex === '') return true;
-  const first = parseInt(String(hex).slice(0, 2), 16);
+  const first = Number.parseInt(String(hex).slice(0, 2), 16);
   return Number.isInteger(first) ? (first & 1) === 0 : true;
 }
 /** Apps da Loja (StartupTask State): 2 ligado, 4 ligado por política; 0, 1 e 3 desligado. */

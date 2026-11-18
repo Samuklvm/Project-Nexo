@@ -176,7 +176,7 @@ function createErrorLog({ fs, path, dir, version = '0.0.0', platform = process.p
       if (!slot.pending) continue;
       const entry = { ...slot.last, repeat: slot.pending };
       slot.pending = 0;
-      enqueue(() => write(entry));
+      void enqueue(() => write(entry)); // a fila já conta e avisa as falhas
     }
   }
 
@@ -195,7 +195,7 @@ function createErrorLog({ fs, path, dir, version = '0.0.0', platform = process.p
     for (const listener of listeners) { try { listener(entry); } catch { /* ignora */ } }
     if (slot.written < PER_HOUR) {
       slot.written += 1;
-      enqueue(() => write(entry));
+      void enqueue(() => write(entry)); // a fila já conta e avisa as falhas
     } else {
       // Em loop: não grava cada uma, mas a contagem vai para o disco logo depois (uma linha com repeat).
       slot.pending += 1;
