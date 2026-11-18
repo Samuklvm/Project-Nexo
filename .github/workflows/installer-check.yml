@@ -35,6 +35,20 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { throw 'O código do PC do instalador não bate com o do app.' }
 
+      - name: Diagnóstico temporário do tempo do count.ps1
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $src = Get-Content installer/count.ps1 -Raw
+          $src = $src.Replace('  $pending = $send.BeginInvoke()', '  [Console]::Error.WriteLine("antes do pedido: " + $clock.ElapsedMilliseconds); $pending = $send.BeginInvoke()')
+          $src = $src.Replace('# Encerra o processo', '[Console]::Error.WriteLine("antes de sair: " + $clock.ElapsedMilliseconds)' + "`n# Encerra o processo")
+          Set-Content -Path "$env:RUNNER_TEMP\count-diag.ps1" -Value $src -Encoding UTF8
+          foreach ($server in @('https://nexo-api.nexo-device-care.workers.dev', 'https://10.255.255.1')) {
+            $w = [Diagnostics.Stopwatch]::StartNew()
+            powershell -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\count-diag.ps1" -Event atualizou -Version 0.0.0 -Server $server
+            Write-Output ("{0}: total {1} ms, código {2}" -f $server, $w.ElapsedMilliseconds, $LASTEXITCODE)
+          }
+
       - name: count.ps1 — sem servidor, desiste rápido e sai com 0
         shell: powershell
         run: |
