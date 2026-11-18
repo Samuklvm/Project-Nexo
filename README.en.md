@@ -28,9 +28,9 @@
   <a href="https://github.com/Samuklvm/Project-Nexo/releases/latest"><b>⬇️ Download the latest version</b></a>
 </p>
 
-<!-- aviso-assinatura: tirar quando a 0.11.4 assinada sair -->
+<!-- aviso-assinatura: tirar quando a versão assinada sair -->
 > [!WARNING]
-> **Temporary notice: Windows may block Nexo.** Nexo does not have a digital signature yet. Because of that, Windows 11 may show **"Smart App Control has blocked part of this app"** or the blue **"Windows protected your PC"** screen. The signature has been requested and arrives in **0.11.4**; until then, see below how to use Nexo, if you want to.
+> **Temporary notice: Windows may block Nexo.** Nexo does not have a digital signature yet. Because of that, Windows 11 may show **"Smart App Control has blocked part of this app"** or the blue **"Windows protected your PC"** screen. The signature has been requested and arrives **in a future update**; until then, see below how to use Nexo, if you want to.
 
 <details>
 <summary><b>How to open Nexo until the signed version is out</b></summary>
@@ -39,7 +39,7 @@
 
 **"Smart App Control has blocked…":** this control does not accept an exception for a single app. Your options are:
 
-- **Wait for 0.11.4**, which is signed and is not blocked.
+- **Wait for the signed version**, which arrives in a future update and is not blocked.
 - **Or turn off Smart App Control**, if you decide it is worth it:
   1. Open the Start menu and search for **Windows Security**.
   2. Go to **App & browser control**.

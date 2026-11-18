@@ -28,9 +28,9 @@
   <a href="https://github.com/Samuklvm/Project-Nexo/releases/latest"><b>⬇️ Baixar a última versão</b></a>
 </p>
 
-<!-- aviso-assinatura: tirar quando a 0.11.4 assinada sair -->
+<!-- aviso-assinatura: tirar quando a versão assinada sair -->
 > [!WARNING]
-> **Aviso temporário: o Windows pode bloquear o Nexo.** O Nexo ainda não tem assinatura digital. Por isso o Windows 11 pode mostrar **"O Controle Inteligente de Aplicativos bloqueou parte deste aplicativo"** ou a tela azul **"O Windows protegeu o computador"**. A assinatura já foi pedida e chega na **0.11.4**; até lá, veja abaixo como usar o Nexo, se quiser.
+> **Aviso temporário: o Windows pode bloquear o Nexo.** O Nexo ainda não tem assinatura digital. Por isso o Windows 11 pode mostrar **"O Controle Inteligente de Aplicativos bloqueou parte deste aplicativo"** ou a tela azul **"O Windows protegeu o computador"**. A assinatura já foi pedida e chega **numa atualização futura**; até lá, veja abaixo como usar o Nexo, se quiser.
 
 <details>
 <summary><b>Como abrir o Nexo até a versão assinada sair</b></summary>
@@ -39,7 +39,7 @@
 
 **"O Controle Inteligente de Aplicativos bloqueou…":** esse controle não aceita exceção para um app só. As opções são:
 
-- **Esperar a 0.11.4**, que vem assinada e não é bloqueada.
+- **Esperar a versão assinada**, que chega numa atualização futura e não é bloqueada.
 - **Ou desligar o Controle Inteligente de Aplicativos**, se você decidir que vale a pena:
   1. Abra o menu Iniciar e procure **Segurança do Windows**.
   2. Entre em **Controle de aplicativos e do navegador**.

@@ -8,16 +8,17 @@
   root.NexoNovidades = {
     versions: [
       {
-        version: '0.11.4', date: '2026-11-17', emoji: '🌸', title: 'Flores, código aberto e assinatura',
-        tagline: 'O Nexo agora é código aberto e vem assinado digitalmente, então o Windows para de bloquear o app. E o fundo virou um campo de flores azuis sob o céu do Nexo.',
+        version: '0.11.4', date: '2026-11-18', emoji: '🌸', title: 'Flores, código aberto e drivers com um clique',
+        tagline: 'O Nexo agora é código aberto e baixa o driver oficial certo para o seu PC com um clique. E o fundo virou um campo de flores azuis sob o céu do Nexo.',
         sections: [
           { emoji: '✨', title: 'Novidades', tone: 'new', items: [
+            { emoji: '⬇️', title: 'Drivers com um clique', text: 'O Nexo baixa o driver oficial certo para o seu PC (NVIDIA, Visual C++, DirectX e .NET), com barra de progresso e fila, confere a assinatura do fabricante e abre o instalador oficial, com ponto de restauração opcional numa chave no topo da página.' },
             { emoji: '🌸', title: 'Fundo novo, animado', text: 'Um campo de flores azuis que brilham sob o céu do Nexo, com capim balançando, pétalas no vento e vaga-lumes. Pausa com o app fora de foco e fica parado no Modo Leve, com movimento reduzido ou com um papel de parede seu.' },
-            { emoji: '🔏', title: 'Assinado digitalmente', text: 'O Nexo, o instalador e o desinstalador vêm assinados. O Controle Inteligente de Aplicativos do Windows 11 deixa de bloquear o app.' },
             { emoji: '💙', title: 'O Nexo agora é código aberto', text: 'O código do Nexo é livre, sob a licença GPL-3.0: qualquer pessoa pode ler, estudar e ajudar a melhorar.' }
           ] },
           { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
-            { emoji: '🐞', title: 'Relatórios de erro opcionais', text: 'Continuam ligados por padrão, mas agora dá para desligar em Ajustes > Privacidade e dados.' }
+            { emoji: '🐞', title: 'Relatórios de erro opcionais', text: 'Continuam ligados por padrão, mas agora dá para desligar em Ajustes > Privacidade e dados.' },
+            { emoji: '🔏', title: 'Assinatura digital a caminho', text: 'A assinatura do Nexo já foi pedida e chega numa atualização futura. Até lá, o Windows pode avisar ao instalar; as notas da versão explicam como abrir.' }
           ] }
         ]
       },
