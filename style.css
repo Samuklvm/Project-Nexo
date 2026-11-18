@@ -1753,6 +1753,27 @@ body.lite .opt-nova, body.lite .opt-comet { display: none; }
 .drivers-bios span { display: block; margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--dv-ink); }
 @media (prefers-reduced-motion: reduce) { .driver.is-oem.flash { animation: none; } }
 
+/* ---- Projeto 4: chips dos grupos, busca e o filtro de atenção ---- */
+.drivers-bar { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 14px 0 4px; padding: 10px 12px; border-radius: 16px; background: rgba(9, 13, 30, 0.82); backdrop-filter: blur(14px); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 10px 30px -18px rgba(0, 0, 0, 0.8); }
+.drivers-bar[hidden] { display: none; }
+.db-chips { flex: 1 1 420px; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.db-chip { appearance: none; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px 0 9px; border: 0; border-radius: 99px; font: inherit; font-size: 12.5px; font-weight: 560; color: var(--dv-ink); background: rgba(255, 255, 255, 0.045); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07); cursor: pointer; transition: background 0.18s, color 0.18s; }
+.db-chip svg { width: 14px; height: 14px; color: var(--mist); }
+.db-chip b { min-width: 20px; height: 20px; padding: 0 6px; display: inline-grid; place-items: center; border-radius: 99px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--mist); background: rgba(255, 255, 255, 0.06); }
+.db-chip b.db-chip-alert { color: #1b1405; background: #ffc46b; }
+.db-chip:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.db-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.db-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.db-search { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 11px; background: rgba(255, 255, 255, 0.045); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.db-search:focus-within { box-shadow: inset 0 0 0 1px rgba(var(--neon-rgb), 0.55), 0 0 0 3px rgba(var(--neon-rgb), 0.12); }
+.db-search svg { width: 15px; height: 15px; color: var(--mist); flex: none; }
+.db-search input { width: 230px; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 13px; color: #eef2ff; }
+.db-search input::placeholder { color: var(--mist); }
+.db-attention { font-size: 12.5px; }
+.drivers-empty { display: grid; gap: 4px; place-items: center; padding: 36px 20px; text-align: center; }
+.drivers-empty strong { font-size: 15px; color: #e6edff; }
+.drivers-empty span { font-size: 13px; color: var(--dv-ink); }
+
 /* ---- Projeto 3: Game Ready para os seus jogos e o histórico de versões ---- */
 .driver-games, .driver-history { display: inline-flex; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 12.5px; line-height: 1.45; color: var(--dv-ink); }
 .driver-games svg, .driver-history svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }

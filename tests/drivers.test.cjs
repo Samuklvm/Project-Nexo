@@ -839,3 +839,35 @@ test('projeto 3: histórico de versões guarda as mudanças e diz quais drivers 
   assert.match(D.historyText(second.history['video-a']), /^Antes: 566\.14 \(\d{2}\/\d{2}\)$/);
   assert.equal(D.historyText([{ v: '1', at: NOW }]), '');
 });
+
+/* ---------------- Projeto 4: usabilidade ---------------- */
+test('projeto 4: ordem guiada dentro do grupo (o que precisa de ação primeiro), filtro de atenção, busca e chips', () => {
+  const model = D.build(sample(), NOW);
+  const order = ['update', 'missing', 'problem', 'generic', 'old', 'oem', 'check', 'ended', 'ok'];
+  for (const g of model.groups) {
+    const ranks = g.items.filter((i) => !i.plain).map((i) => order.indexOf(i.state));
+    assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b), `grupo ${g.id} em ordem`);
+  }
+  const att = D.filterModel(model, { attention: true });
+  assert.ok(att.groups.length > 0);
+  for (const g of att.groups) for (const i of g.items) assert.ok(D.needsAttention(i), `${i.id} precisa de atenção`);
+  assert.ok(!att.groups.some((g) => g.items.length === 0), 'sem grupo vazio');
+  const found = D.filterModel(model, { query: 'realtek' });
+  assert.ok(found.groups.flatMap((g) => g.items).every((i) => /realtek/i.test(`${i.name} ${i.maker || ''} ${i.purpose}`)));
+  assert.ok(found.groups.flatMap((g) => g.items).length >= 1);
+  assert.deepEqual(D.filterModel(model, { query: 'xyzxyz' }).groups, []);
+  assert.equal(D.filterModel(model, {}).groups.length, model.groups.length);
+  const chips = D.chips(model);
+  assert.deepEqual(chips.map((c) => c.id), model.groups.map((g) => g.id));
+  const video = chips.find((c) => c.id === 'video');
+  assert.equal(video.title, 'Vídeo');
+  assert.equal(video.count, model.groups.find((g) => g.id === 'video').items.length);
+  assert.equal(video.attention, model.groups.find((g) => g.id === 'video').items.filter(D.needsAttention).length);
+  assert.equal(D.needsAttention({ state: 'update' }), true);
+  assert.equal(D.needsAttention({ state: 'update', coveredBy: 'oem-x' }), false);
+  assert.equal(D.needsAttention({ state: 'check' }), false);
+  assert.equal(D.needsAttention({ state: 'ok' }), false);
+  assert.equal(D.navDot({ summary: { update: 0, missing: 0 } }), false);
+  assert.equal(D.navDot({ summary: { update: 1, missing: 0 } }), true);
+  assert.equal(D.navDot(null), false);
+});

@@ -54,7 +54,7 @@
         <button class="rail-item" type="button" data-view="analysis"><svg><use href="#i-spark"/></svg><span class="rail-label">Análise e otimização</span></button>
         <button class="rail-item" type="button" data-view="sessions"><svg><use href="#i-record"/></svg><span class="rail-label">Sessões</span></button>
         <button class="rail-item" type="button" data-view="library"><svg><use href="#i-game"/></svg><span class="rail-label">Jogos</span></button>
-        <button class="rail-item" type="button" data-view="drivers"><svg><use href="#i-driver"/></svg><span class="rail-label">Drivers</span></button>
+        <button class="rail-item" type="button" data-view="drivers"><svg><use href="#i-driver"/></svg><span class="rail-label">Drivers</span><i class="rail-dot" id="drivers-nav-indicator" hidden></i></button>
         <button class="rail-item rail-risk" type="button" data-view="lab"><svg><use href="#i-flask"/></svg><span class="rail-label">Extremo <em>beta</em></span></button>
         <button class="rail-item" type="button" data-view="atlas"><svg><use href="#i-map"/></svg><span class="rail-label">Atlas</span></button>
         <button class="rail-item" type="button" data-view="hardware"><svg><use href="#i-chip"/></svg><span class="rail-label">Hardware</span></button>
@@ -288,6 +288,13 @@
       <section class="view drivers-view" data-view-panel="drivers">
         <header class="page-head"><div><h2>Drivers</h2><p>O driver de cada peça do PC, para que ele serve e se existe versão mais nova no site oficial do fabricante.</p></div><button class="btn sm" id="drivers-refresh" type="button" data-only="win32"><svg aria-hidden="true"><use href="#i-refresh"/></svg>Conferir de novo</button></header>
         <section class="sheet drivers-hero" id="drivers-hero" aria-live="polite"></section>
+        <div class="drivers-bar" id="drivers-bar" data-only="win32" hidden>
+          <div class="db-chips" id="drivers-chips" role="navigation" aria-label="Grupos de drivers"></div>
+          <div class="db-tools">
+            <label class="db-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="drivers-search" type="search" placeholder="Buscar driver, peça ou fabricante" autocomplete="off" spellcheck="false" aria-label="Buscar nos drivers" /></label>
+            <label class="switch compact db-attention"><span>Só o que precisa de atenção</span><input id="drivers-attention" type="checkbox" /><i></i></label>
+          </div>
+        </div>
         <div class="drivers-groups" id="drivers-groups"></div>
       </section>
 

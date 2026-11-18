@@ -653,7 +653,8 @@
       if (by && !item.id.startsWith('video-')) { item.coveredBy = by; item.action = null; item.download = null; }
     }
     for (const [group, list] of Object.entries(oem.cards)) items[group] = [...list, ...(items[group] || [])];
-    const groups = GROUPS.map((group) => ({ ...group, items: items[group.id] || [] })).filter((group) => group.items.length);
+    // Ordem guiada: em cada grupo, o que precisa de ação primeiro (a ordem de antes vale no empate).
+    const groups = GROUPS.map((group) => ({ ...group, items: sortItems(items[group.id] || []) })).filter((group) => group.items.length);
     const all = groups.flatMap((group) => group.items);
     // Cada peça conta uma vez: a que o pacote do fabricante cobre aparece pelo cartão do pacote.
     const count = (...states) => all.filter((item) => !item.coveredBy && states.includes(item.state)).length;
@@ -693,5 +694,24 @@
     }
     return out;
   }
-  return { build, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  /* ---------------- Projeto 4: ordem guiada, filtro, busca, chips e a bolinha da barra lateral ---------------- */
+  const PRIORITY = { update: 0, missing: 1, problem: 1, generic: 2, old: 2, oem: 3, check: 4, ended: 5, ok: 6 };
+  const rankOf = (item) => (item.plain ? 99 : item.coveredBy ? 7 : PRIORITY[item.state] ?? 8);
+  function sortItems(list) {
+    return list.map((item, i) => ({ item, i })).sort((a, b) => rankOf(a.item) - rankOf(b.item) || a.i - b.i).map((x) => x.item);
+  }
+  /** Precisa de atenção = o Nexo SABE que há algo a fazer (e a peça não está coberta por um pacote). */
+  const needsAttention = (item) => Boolean(item) && !item.coveredBy && ['update', 'missing', 'problem', 'generic', 'old'].includes(item.state);
+  const searchText = (item) => `${item.name || ''} ${item.maker || ''} ${item.purpose || ''} ${item.installed?.version || ''}`.toLowerCase();
+  /** O modelo só com o que precisa de atenção e/ou o que bate com a busca (grupos vazios somem). */
+  function filterModel(model, { attention = false, query = '' } = {}) {
+    const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+    const groups = (model?.groups || []).map((group) => ({ ...group, items: group.items.filter((item) => (!attention || needsAttention(item)) && words.every((w) => searchText(item).includes(w))) })).filter((group) => group.items.length);
+    return { ...model, groups };
+  }
+  /** Os chips do topo: um por grupo, com quantos cartões e quantos pedem atenção. */
+  const chips = (model) => (model?.groups || []).map((group) => ({ id: group.id, title: group.title, icon: group.icon, count: group.items.length, attention: group.items.filter(needsAttention).length }));
+  /** A bolinha no "Drivers" da barra lateral: atualização ou peça faltando que o Nexo conhece. */
+  const navDot = (model) => Boolean(model?.summary && (model.summary.update > 0 || model.summary.missing > 0));
+  return { build, sortItems, needsAttention, filterModel, chips, navDot, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });
