@@ -7,7 +7,7 @@
  */
 const SID_PERF_LOG_USERS = 'S-1-5-32-559';
 const USER_SID = /^S-1-(5-21|12-1)(-\d+){4}$/;
-const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
+const psQuote = (value) => `'${String(value).replace(/['\u2018\u2019\u201A\u201B]/g, (q) => q + q)}'`;
 
 const WRITE_RESULT = '$r | ConvertTo-Json -Compress | Set-Content -LiteralPath $NexoOut -Encoding UTF8';
 
@@ -38,6 +38,62 @@ try {
 }
 function restorePointBody(description) {
   return `${restorePointCore(description)}\n${WRITE_RESULT}`;
+}
+
+/*
+ * Drivers com um clique: numa janela de administrador só:
+ *  1. confere a assinatura do arquivo baixado (para não criar ponto à toa);
+ *  2. se a chave estiver ligada, cria o ponto de restauração (sem ponto, não instala);
+ *  3. copia o instalador para uma pasta nova em %SystemRoot%\Temp que JÁ NASCE só de administrador e do SYSTEM
+ *     (sem herdar a permissão de escrita dos usuários), confere de novo a assinatura DA CÓPIA e roda a cópia na hora:
+ *     nenhum programa sem administrador consegue trocar o arquivo nem plantar DLL do lado dele entre a conferência e a
+ *     execução (a pasta de downloads é gravável pelo usuário);
+ *  4. espera só o processo do instalador (WaitForExit; Start-Process -Wait esperava a árvore toda, inclusive o app que
+ *     o instalador abre no fim) e apaga a pasta.
+ */
+function driverInstallBody({ file, dir, signer, restorePoint = false, description = 'Nexo - antes de instalar um driver' } = {}) {
+  const Sig = require('./driver-signature.cjs');
+  if (!Sig.insideDir(file, dir)) throw new Error('Arquivo não permitido.');
+  if (!Sig.allowedSigner(signer)) throw new Error('Assinante não permitido.');
+  const name = require('node:path').win32.basename(file);
+  const restore = restorePoint === true ? String.raw`
+$r.restore = & { ${restorePointCore(String(description).slice(0, 64))}
+$r }
+if (-not $r.restore.ok) { $r.note = 'ponto de restauração não criado'; ${WRITE_RESULT}; return }` : '';
+  return String.raw`
+$r = @{ ok = $false; code = $null; signature = $null; restore = $null; note = '' }
+& {
+${Sig.signatureCore(file, signer)}
+$r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
+if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
+${restore}
+$work = Join-Path (Join-Path $env:SystemRoot 'Temp') ('Nexo-driver-' + [guid]::NewGuid().ToString('N'))
+try {
+  $acl = New-Object System.Security.AccessControl.DirectorySecurity
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($sidText in @('S-1-5-18', 'S-1-5-32-544')) {
+    $sid = New-Object System.Security.Principal.SecurityIdentifier($sidText)
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+  }
+  [System.IO.Directory]::CreateDirectory($work, $acl) | Out-Null
+  $dst = Join-Path $work ${psQuote(name)}
+  [System.IO.File]::Copy(${psQuote(file)}, $dst, $false)
+${Sig.signatureCoreFor('$dst', signer)}
+  $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
+  if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $dst
+  $psi.WorkingDirectory = $work
+  $psi.UseShellExecute = $true
+  $p = [System.Diagnostics.Process]::Start($psi)
+  if (-not $p) { $r.note = 'o instalador não abriu'; ${WRITE_RESULT}; return }
+  $p.WaitForExit()
+  $r.code = [int]$p.ExitCode
+  $r.ok = ($r.code -eq 0) -or ($r.code -eq 3010)
+  if (-not $r.ok) { $r.note = "o instalador terminou com o código $($r.code)" }
+} catch { $r.note = $_.Exception.Message } finally { if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue } }
+${WRITE_RESULT}
+}`;
 }
 
 /** Adiciona ou remove o usuário (por SID, nunca por nome localizado) do grupo "Performance Log Users". */
@@ -263,6 +319,7 @@ const TASKS = {
   'sensor-service': (args) => sensorServiceBody(args),
   'registry-tweaks': (args) => registryTweaksBody(args),
   'optimizer-batch': (args) => optimizerBatchBody(args),
+  'driver-install': (args) => driverInstallBody(args),
   // Reiniciar direto na tela da BIOS/UEFI (shutdown /fw só funciona como administrador e em PCs com UEFI).
   'restart-firmware': () => String.raw`
 $r = @{ ok = $false; note = '' }
@@ -304,17 +361,20 @@ function linuxPrivileged(name, arg) {
   return build(arg);
 }
 
+/** Tarefas que podem demorar mais que o padrão de 4 minutos (o instalador da NVIDIA leva vários). */
+const TIMEOUTS = { 'driver-install': 3 * 60 * 60 * 1000 };
+
 const encode = (script) => Buffer.from(script, 'utf16le').toString('base64');
 
 function createElevator({ runPowerShell, fs, path, dir, now = Date.now }) {
-  return async function elevate(task, args = {}) {
+  return async function elevate(task, args = {}, { timeout } = {}) {
     const build = TASKS[task];
     if (!build) throw new Error('Tarefa de elevação não permitida.');
     await fs.mkdir(dir, { recursive: true });
     const outPath = path.join(dir, `${task}-${now()}.json`);
     const body = `$ErrorActionPreference = 'Stop'\n$NexoOut = ${psQuote(outPath)}\n${build(args)}`;
     const launcher = `try { $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand','${encode(body)}'); exit $p.ExitCode } catch { exit 1223 }`;
-    const response = await runPowerShell(launcher, 240000);
+    const response = await runPowerShell(launcher, Number.isFinite(timeout) && timeout > 0 ? timeout : TIMEOUTS[task] || 240000);
     let result = null;
     try { result = JSON.parse(String(await fs.readFile(outPath, 'utf8')).replace(/^﻿/, '')); } catch { /* sem resposta */ }
     await fs.rm(outPath, { force: true }).catch(() => {});
@@ -322,4 +382,4 @@ function createElevator({ runPowerShell, fs, path, dir, now = Date.now }) {
   };
 }
 
-module.exports = { optimizerBatchBody, OPTIMIZER_LIMIT, restorePointCore, netDnsBody, netIpv6Body, netResetBody, PAWNIO, SENSOR_SERVICE, sensorServiceBody, createElevator, toolLauncher, TOOLS, linuxPrivileged, LINUX_TOOLS, restorePointBody, perfLogUsersBody, TASKS, SID_PERF_LOG_USERS, USER_SID, psQuote, encode };
+module.exports = { driverInstallBody, TIMEOUTS, optimizerBatchBody, OPTIMIZER_LIMIT, restorePointCore, netDnsBody, netIpv6Body, netResetBody, PAWNIO, SENSOR_SERVICE, sensorServiceBody, createElevator, toolLauncher, TOOLS, linuxPrivileged, LINUX_TOOLS, restorePointBody, perfLogUsersBody, TASKS, SID_PERF_LOG_USERS, USER_SID, psQuote, encode };

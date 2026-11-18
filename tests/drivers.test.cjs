@@ -81,6 +81,45 @@ test('drivers: lê uma vez, consulta só as linhas da NVIDIA que existem e não 
   assert.deepEqual(linux.devices, []);
 });
 
+const dotnetRelease = (url, hash) => ({ releases: [{ 'release-version': '8.0.34', windowsdesktop: { version: '8.0.34', files: [
+  { name: 'windowsdesktop-runtime-win-arm64.exe', rid: 'win-arm64', url: 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.34/windowsdesktop-runtime-8.0.34-win-arm64.exe', hash: 'b'.repeat(128) },
+  { name: 'windowsdesktop-runtime-win-x64.zip', rid: 'win-x64', url: 'https://builds.dotnet.microsoft.com/x.zip', hash: 'c'.repeat(128) },
+  { name: 'windowsdesktop-runtime-win-x64.exe', rid: 'win-x64', url, hash }
+] } }] });
+const DN_URL = 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.34/windowsdesktop-runtime-8.0.34-win-x64.exe';
+
+test('drivers: arquivo oficial do .NET só com link da Microsoft e SHA-512 de verdade', () => {
+  assert.deepEqual(Main.parseDotnetRelease(dotnetRelease(DN_URL, 'a'.repeat(128))), { version: '8.0.34', url: DN_URL, sha512: 'a'.repeat(128) });
+  assert.equal(Main.parseDotnetRelease(dotnetRelease('https://evil.example/x.exe', 'a'.repeat(128))), null);
+  assert.equal(Main.parseDotnetRelease(dotnetRelease(DN_URL, 'a'.repeat(64))), null);
+  assert.equal(Main.parseDotnetRelease({ releases: [] }), null);
+  assert.equal(Main.parseDotnetRelease('lixo'), null);
+});
+
+test('drivers: notebook consulta o pacote de notebook da NVIDIA; .NET busca o arquivo de cada versão instalada', async () => {
+  assert.match(Main.nvidiaUrl('modern', { notebook: true }), /psid=129&pfid=1006/);
+  assert.match(Main.nvidiaUrl('legacy', { notebook: true }), /psid=102&pfid=821/);
+  assert.match(Main.nvidiaUrl('modern'), /psid=131&pfid=1092/, 'desktop continua igual');
+  const calls = [];
+  const notebookNv = { ...nvInfo, IDS: [{ downloadInfo: { ...nvInfo.IDS[0].downloadInfo, DownloadURL: 'https://us.download.nvidia.com/Windows/621.14/621.14-notebook-win10-win11-64bit-international-dch-whql.exe' } }] };
+  const svc = Main.createDrivers({
+    platform: 'win32', now: () => NOW,
+    runPowerShellCode: async (script) => ({ stdout: script.includes('Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $_.DeviceClass }') ? JSON.stringify({ devices: [dev('NVIDIA GeForce RTX 4060 Laptop GPU', 'DISPLAY', 'NVIDIA', '32.0.15.6614', '2025-10-30')], others: [], generic: 3 }) : JSON.stringify({ os: { build: 22631 }, board: { mobile: true }, desktop: ['8.0.11'] }) }),
+    fetchJson: async (url) => {
+      calls.push(url);
+      if (url.includes('geforce')) return url.includes('psid=129') ? notebookNv : nvInfo;
+      if (url.endsWith('releases-index.json')) return { 'releases-index': [{ 'channel-version': '8.0', 'latest-runtime': '8.0.34', 'support-phase': 'active', 'releases.json': 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json' }] };
+      if (url.endsWith('/8.0/releases.json')) return dotnetRelease(DN_URL, 'a'.repeat(128));
+      throw new Error('?');
+    }
+  });
+  const out = await svc.scan();
+  assert.match(out.latest.nvidiaNotebook.modern.download, /-notebook-/);
+  assert.equal(out.latest.nvidia.modern.version, '621.14', 'o desktop continua sendo lido (versão de referência)');
+  assert.deepEqual(out.latest.dotnetFiles['8.0'], { version: '8.0.34', url: DN_URL, sha512: 'a'.repeat(128) });
+  assert.ok(calls.includes('https://builds.dotnet.microsoft.com/dotnet/release-metadata/8.0/releases.json'));
+});
+
 function sample() {
   return {
     at: NOW,
@@ -148,6 +187,48 @@ test('drivers: cartões, estados e botões sempre para o site oficial', () => {
     assert.equal(url.protocol, 'https:', item.action.url);
     assert.ok(domains.some((domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`)), `domínio não liberado: ${url.hostname}`);
   }
+});
+
+test('drivers: cada cartão sabe qual arquivo oficial baixar (e só o certo para aquele PC)', () => {
+  const find = (model, re) => model.groups.flatMap((g) => g.items).find((item) => re.test(item.id));
+  const data = sample();
+  data.latest.dotnetFiles = { '8.0': { version: '8.0.34', url: DN_URL, sha512: 'a'.repeat(128) } };
+  const desk = D.build(data, NOW);
+  const gpu = find(desk, /^video-NVIDIA/);
+  assert.equal(gpu.state, 'update');
+  assert.deepEqual(gpu.download, { url: 'https://us.download.nvidia.com/Windows/621.14/x.exe', domains: ['nvidia.com'], fileName: 'nvidia-621.14.exe', signer: 'NVIDIA Corporation', size: '1.04 GB', primary: true, label: 'Baixar · 1.04 GB' });
+  assert.equal(find(desk, /^video-Intel/).download, null, 'Intel ainda abre o site (projeto 2)');
+  const vc86 = find(desk, /^vc-x86$/);
+  assert.equal(vc86.state, 'missing');
+  assert.equal(vc86.download.fileName, 'vc_redist.x86.exe');
+  assert.equal(vc86.download.signer, 'Microsoft Corporation');
+  assert.equal(find(desk, /^vc-x64$/).download, null, 'Visual C++ em dia não ganha download');
+  const dx = find(desk, /^directx9$/);
+  assert.equal(dx.download.fileName, 'dxwebsetup.exe');
+  assert.match(dx.download.url, /^https:\/\/download\.microsoft\.com\//);
+  const net = find(desk, /^dotnet-8\.0$/);
+  assert.equal(net.download.sha512, 'a'.repeat(128));
+  assert.equal(net.download.url, DN_URL);
+  assert.equal(D.downloadFor(desk, gpu.id).fileName, 'nvidia-621.14.exe');
+  assert.equal(D.downloadFor(desk, 'id-que-nao-existe'), null);
+  assert.equal(D.downloadFor(null, gpu.id), null);
+
+  // Notebook: só o pacote de notebook; sem ele, nada de download (nunca o de desktop num notebook).
+  const nb = sample();
+  nb.runtimes.board = { ...nb.runtimes.board, mobile: true };
+  const noNotebook = find(D.build(nb, NOW), /^video-NVIDIA/);
+  assert.equal(noNotebook.download, null);
+  nb.latest.nvidiaNotebook = { modern: { ...Main.parseNvidia(nvInfo), download: 'https://us.download.nvidia.com/Windows/621.14/621.14-notebook-win10-win11-64bit-international-dch-whql.exe' } };
+  assert.match(find(D.build(nb, NOW), /^video-NVIDIA/).download.url, /-notebook-/);
+
+  // Placa que a NVIDIA não atualiza mais: sem download.
+  const old = sample();
+  old.devices[0] = dev('NVIDIA GeForce GTX 760', 'DISPLAY', 'NVIDIA', '30.0.14.7514', '2021-01-01');
+  assert.equal(find(D.build(old, NOW), /^video-NVIDIA/).download, null);
+  // Link fora do domínio oficial nunca vira download.
+  const evil = sample();
+  evil.latest.nvidia.modern = { ...evil.latest.nvidia.modern, download: 'https://evil.example/x.exe' };
+  assert.equal(find(D.build(evil, NOW), /^video-NVIDIA/).download, null);
 });
 
 test('drivers: notebook usa a página do fabricante do notebook e a busca da NVIDIA', () => {
@@ -237,4 +318,54 @@ test('ícones do PC: cada componente com o ícone do próprio programa, nunca ca
   const vc = model.groups.find((group) => group.id === 'jogos').items.find((item) => item.id === 'vc-x64');
   assert.deepEqual([vc.brand, vc.brandAlt], ['vs', 'microsoft']);
   assert.ok(D.brands(model).includes('physx') && D.brands(model).includes('directx'));
+});
+
+test('drivers: textos da barra de download e de cada fase', () => {
+  assert.equal(D.progressText({ received: 471859200, total: 713031680, speed: 13002342, eta: 19 }), '66% · 12,4 MB/s · faltam 19 s');
+  assert.equal(D.progressText({ received: 471859200, total: 713031680, speed: 13002342, eta: 170 }), '66% · 12,4 MB/s · faltam 3 min');
+  assert.equal(D.progressText({ received: 471859200, total: null, speed: 13002342, eta: null }), '450 MB · 12,4 MB/s');
+  assert.equal(D.progressText({ received: 0, total: 1000, speed: null, eta: null }), '0%');
+  assert.equal(D.progressText({ received: 150000, total: 300000, speed: 51200, eta: 3 }), '50% · 50 KB/s · faltam 3 s', 'arquivo pequeno: KB/s, nunca 0,0 MB/s');
+  assert.equal(D.phaseText({ phase: 'queued', position: 2 }), 'Na fila (2º)');
+  assert.equal(D.phaseText({ phase: 'verifying' }), 'Conferindo a assinatura…');
+  assert.equal(D.phaseText({ phase: 'ready', signer: 'NVIDIA Corporation' }), '✓ Assinado pela NVIDIA');
+  assert.equal(D.phaseText({ phase: 'ready', signer: 'Microsoft Corporation' }), '✓ Assinado pela Microsoft');
+  assert.equal(D.phaseText({ phase: 'install-queued' }), 'Na fila para instalar');
+  assert.equal(D.phaseText({ phase: 'installing' }), 'Instalando… siga a janela do fabricante');
+  const errors = {
+    offline: 'Sem internet. Tente de novo.', domain: 'O link saiu do site oficial, então parei.', redirects: 'O site redirecionou demais, então parei.',
+    'too-big': 'O arquivo veio maior que o esperado, então parei.', hash: 'O arquivo não bateu com o oficial, então apaguei por segurança.',
+    signature: 'O arquivo não veio assinado pelo fabricante, então apaguei por segurança.', disk: 'Sem espaço no disco.', http: 'O site do fabricante não respondeu.'
+  };
+  for (const [error, text] of Object.entries(errors)) assert.equal(D.phaseText({ phase: 'error', error }), text);
+  assert.equal(D.phaseText({ phase: 'error', error: 'desconhecido' }), 'O download não terminou. Tente de novo.');
+  assert.equal(D.phaseText({ phase: 'canceled' }), 'Download cancelado.');
+});
+
+test('drivers: depois de instalar, o cartão mantém o aviso e sabe se a versão mudou', () => {
+  const item = { id: 'vc-x86', state: 'ok', download: null };
+  assert.equal(D.keepsZone(item, null, false), false);
+  assert.equal(D.keepsZone(item, null, true), true, 'aviso de reiniciar continua aparecendo mesmo sem download');
+  assert.equal(D.keepsZone(item, { phase: 'installed' }, false), true);
+  assert.equal(D.keepsZone(item, { phase: 'installing' }, false), true);
+  assert.equal(D.keepsZone(item, { phase: 'downloading' }, false), true, 'nova leitura sem internet não some com a barra');
+  assert.equal(D.keepsZone(item, { phase: 'ready' }, false), true);
+  assert.equal(D.keepsZone(item, { phase: 'canceled' }, false), false);
+  assert.equal(D.keepsZone({ ...item, download: { url: 'x' } }, null, false), true);
+  assert.equal(D.installOutcome('ok'), 'updated');
+  assert.equal(D.installOutcome('unknown'), 'updated');
+  for (const state of ['update', 'missing', 'old', 'error']) assert.equal(D.installOutcome(state), 'unchanged');
+  assert.equal(D.installOutcome(undefined), 'unchanged');
+});
+
+test('drivers: placa NVIDIA já em dia oferece reinstalar (botão discreto), não "Baixar" chamativo', () => {
+  const data = sample();
+  data.latest.nvidia.modern = { ...data.latest.nvidia.modern, version: '566.14' };
+  const gpu = D.build(data, NOW).groups.flatMap((g) => g.items).find((x) => /^video-NVIDIA/.test(x.id));
+  assert.equal(gpu.state, 'ok');
+  assert.equal(gpu.download.primary, false);
+  assert.match(gpu.download.label, /^Reinstalar/);
+  const upd = D.build(sample(), NOW).groups.flatMap((g) => g.items).find((x) => /^video-NVIDIA/.test(x.id));
+  assert.equal(upd.download.primary, true);
+  assert.equal(D.phaseText({ phase: 'error', error: 'file' }), 'Não consegui gravar o arquivo no disco.');
 });
