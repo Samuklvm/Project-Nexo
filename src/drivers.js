@@ -713,5 +713,50 @@
   const chips = (model) => (model?.groups || []).map((group) => ({ id: group.id, title: group.title, icon: group.icon, count: group.items.length, attention: group.items.filter(needsAttention).length }));
   /** A bolinha no "Drivers" da barra lateral: atualização ou peça faltando que o Nexo conhece. */
   const navDot = (model) => Boolean(model?.summary && (model.summary.update > 0 || model.summary.missing > 0));
-  return { build, sortItems, needsAttention, filterModel, chips, navDot, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  /* ---------------- Projeto 5: a constelação dos drivers ---------------- */
+  // Cor = o que o app SABE: atualização, falta, atenção, em dia; o que ele não sabe fica apagado.
+  const TONE = { update: 'update', missing: 'missing', problem: 'missing', generic: 'warn', old: 'warn', ok: 'ok', oem: 'unknown', check: 'unknown', ended: 'unknown' };
+  const SKY_LABEL = { video: 'Vídeo', rede: 'Rede', audio: 'Áudio', placa: 'Placa', disco: 'Discos', bluetooth: 'Bluetooth', semdriver: 'Sem driver', jogos: 'Jogos', outros: 'Outros' };
+  const SIZE = { update: 4.2, missing: 3.8, warn: 3.2, ok: 2.7, unknown: 2 };
+  const hashOf = (text) => { let h = 2166136261; for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 16777619); return h >>> 0; };
+  const unit = (seed) => { let t = (seed + 0x6d2b79f5) >>> 0; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const r1 = (n) => Math.round(n * 10) / 10;
+  /**
+   * Cada grupo vira uma constelação (da esquerda para a direita, na ordem da página) e cada driver uma estrela.
+   * O desenho depende só dos ids, então é sempre o mesmo para o mesmo PC.
+   */
+  function constellation(model, { width = 1000, height = 160 } = {}) {
+    const groups = (model?.groups || []).map((g) => ({ ...g, items: g.items.filter((i) => !i.plain) })).filter((g) => g.items.length);
+    if (!groups.length) return { groups: [], stars: [], lines: [] };
+    const top = 8;
+    const bottom = height - 28;
+    const cy = (top + bottom) / 2;
+    // Grupo com mais drivers ganha mais céu (a raiz quadrada evita que "outros" engula o resto).
+    const weights = groups.map((g) => 1 + Math.sqrt(g.items.length));
+    const total = weights.reduce((a, b) => a + b, 0);
+    const out = { groups: [], stars: [], lines: [] };
+    let left = 8;
+    groups.forEach((group, gi) => {
+      const slot = ((width - 16) * weights[gi]) / total;
+      const cx = left + slot / 2;
+      left += slot;
+      const reach = Math.min(slot * 0.44, (bottom - top) * 0.5);
+      const n = group.items.length;
+      const stars = group.items.map((item, j) => {
+        const seed = hashOf(item.id);
+        const angle = j * 2.39996 + unit(seed) * 0.9;
+        const dist = reach * Math.sqrt((j + 0.6) / n) * (0.75 + unit(seed + 1) * 0.25);
+        const x = Math.min(Math.max(cx + Math.cos(angle) * dist, cx - slot / 2 + 6, 8), cx + slot / 2 - 6, width - 8);
+        const y = Math.min(Math.max(cy + Math.sin(angle) * dist * 0.9, top), bottom);
+        const tone = TONE[item.coveredBy ? 'ok' : item.state] || 'unknown';
+        return { id: item.id, name: item.name, state: item.state, group: group.id, tone, x: r1(x), y: r1(y), r: r1(Math.min(5, SIZE[tone] + unit(seed + 2) * 0.6)) };
+      });
+      const path = [...stars].sort((a, b) => a.x - b.x);
+      for (let k = 1; k < path.length; k += 1) out.lines.push({ group: group.id, x1: path[k - 1].x, y1: path[k - 1].y, x2: path[k].x, y2: path[k].y });
+      out.stars.push(...stars);
+      out.groups.push({ id: group.id, title: SKY_LABEL[group.id] || group.title, x: r1(cx), y: height - 8 });
+    });
+    return out;
+  }
+  return { build, constellation, sortItems, needsAttention, filterModel, chips, navDot, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });
