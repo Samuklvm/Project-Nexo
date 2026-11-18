@@ -450,7 +450,8 @@ if (window.__nexoPlatform === 'linux') {
         missing: [{ name: 'Dispositivo PCI', code: 28, cls: '', ids: '8086:7AE8' }]
       },
       latest: {
-        nvidia: { modern: { version: '621.14', date: '2026-11-04', name: 'GeForce Game Ready Driver', details: 'https://www.nvidia.com/en-us/drivers/details/283968/', size: '1.04 GB' } },
+        nvidia: { modern: { version: '621.14', date: '2026-11-04', name: 'GeForce Game Ready Driver', details: 'https://www.nvidia.com/en-us/drivers/details/283968/', download: 'https://us.download.nvidia.com/Windows/621.14/621.14-desktop-win10-win11-64bit-international-dch-whql.exe', size: '1.04 GB' } },
+        dotnetFiles: { '9.0': { version: '9.0.23', url: 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.23/windowsdesktop-runtime-9.0.23-win-x64.exe', sha512: 'a'.repeat(128) } },
         dotnet: { '9.0': { latest: '9.0.23', phase: 'eol', eol: '2026-11-10' }, '8.0': { latest: '8.0.34', phase: 'eol', eol: '2026-11-10' } }
       }
     };
@@ -519,6 +520,49 @@ if (window.__nexoPlatform === 'linux') {
     scanDrivers: async () => { await wait(1200); return mockDrivers(); },
     // Na prévia não há internet: os ícones oficiais (que o app busca no site de cada fabricante) não aparecem.
     vendorIcons: async () => ({}),
+    // Drivers com um clique: download simulado (6 s, no máximo 4 juntos), conferência e instalação.
+    ...(() => {
+      const listeners = new Set();
+      const items = new Map();
+      const queue = [];
+      let active = 0;
+      const send = (item) => { const out = { ...item }; if (item.phase === 'queued') out.position = queue.indexOf(item.id) + 1; listeners.forEach((cb) => cb(out)); };
+      const SIZES = { 'video-': 1.04e9, 'vc-': 25e6, directx9: 3e5, 'dotnet-': 58e6 };
+      const sizeOf = (id) => Object.entries(SIZES).find(([k]) => id.startsWith(k))?.[1] || 5e7;
+      const pump = () => { while (active < 4 && queue.length) { const item = items.get(queue.shift()); run(item); } queue.forEach((id) => send(items.get(id))); };
+      const run = (item) => {
+        active += 1;
+        const started = Date.now();
+        const duration = 6000;
+        Object.assign(item, { phase: 'downloading', total: sizeOf(item.id), received: 0 });
+        item.timer = setInterval(() => {
+          const p = Math.min(1, (Date.now() - started) / duration);
+          Object.assign(item, { received: Math.round(item.total * p), speed: Math.round(item.total / (duration / 1000)), eta: Math.ceil((1 - p) * duration / 1000) });
+          send(item);
+          if (p >= 1) {
+            clearInterval(item.timer);
+            Object.assign(item, { phase: 'verifying', speed: null, eta: null });
+            send(item);
+            setTimeout(() => { Object.assign(item, { phase: 'ready', signer: item.id.startsWith('video-') ? 'NVIDIA Corporation' : 'Microsoft Corporation' }); send(item); active -= 1; pump(); }, 1200);
+          }
+        }, 100);
+      };
+      let chain = Promise.resolve();
+      return {
+        onDriverDownload: (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
+        driverDownloads: async () => [...items.values()].map((item) => ({ ...item, timer: undefined })),
+        downloadDriver: async (id) => { const item = { id, phase: 'queued', received: 0, total: null, speed: null, eta: null }; items.set(id, item); queue.push(id); send(item); pump(); return item; },
+        cancelDriverDownload: async (id) => { const item = items.get(id); if (!item) return null; clearInterval(item.timer); const at = queue.indexOf(id); if (at >= 0) queue.splice(at, 1); else if (item.phase === 'downloading') { active -= 1; pump(); } item.phase = 'canceled'; send(item); return item; },
+        installDriver: async (id, { restorePoint } = {}) => {
+          const item = items.get(id);
+          item.phase = 'install-queued'; send(item);
+          const job = chain.then(async () => { item.phase = 'installing'; send(item); await wait(2500); item.phase = 'installed'; send(item); return { ok: true, restart: id.startsWith('video-'), declined: false, restore: restorePoint ? { ok: true, created: true, at: new Date().toISOString() } : null, note: '' }; });
+          chain = job.catch(() => {});
+          return job;
+        },
+        showDriverFile: async () => ({ ok: true })
+      };
+    })(),
     afterBootStatus: async () => null,
     runAfterBoot: async () => ({ status: 'completed', comparison: {}, undone: [], rebootAgain: false, log: [] })
   });

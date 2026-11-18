@@ -141,8 +141,12 @@ const NV_ENDPOINT = 'https://gfwsl.geforce.com/services_toolkit/services/com/nvi
 // Série/produto de referência de cada linha: o Game Ready é o mesmo para todas as GeForce da linha (desktop e notebook).
 //  modern: RTX 20 em diante e GTX 16 (Turing+); legacy: GTX 900/10 (Maxwell/Pascal), que ficaram num ramo próprio.
 const NV_LINES = { modern: { psid: 131, pfid: 1092 }, legacy: { psid: 98, pfid: 778 } };
-function nvidiaUrl(line = 'modern', { win11 = true } = {}) {
-  const ref = NV_LINES[line] || NV_LINES.modern;
+// Notebook: o pacote é outro (mesmo número de versão, instalador "-notebook-"). Séries do serviço oficial
+// lookupValueSearch (TypeID=2/3): RTX 40 Series (Notebooks) 129 / RTX 4070 Laptop GPU 1006; GeForce 10 Series (Notebooks) 102 / GTX 1060 821.
+const NV_LINES_NOTEBOOK = { modern: { psid: 129, pfid: 1006 }, legacy: { psid: 102, pfid: 821 } };
+function nvidiaUrl(line = 'modern', { win11 = true, notebook = false } = {}) {
+  const lines = notebook ? NV_LINES_NOTEBOOK : NV_LINES;
+  const ref = lines[line] || lines.modern;
   const params = new URLSearchParams({ func: 'DriverManualLookup', psid: String(ref.psid), pfid: String(ref.pfid), osID: win11 ? '135' : '57', languageCode: '1033', isWHQL: '0', beta: '0', dltype: '-1', dch: '1', upCRD: '0', qnf: '0', sort1: '1', numberOfResults: '1' });
   return `${NV_ENDPOINT}?${params}`;
 }
@@ -180,6 +184,17 @@ function parseDotnet(json) {
     out[channel] = { latest, phase: text(row?.['support-phase'], 16) || null, eol: /^\d{4}-\d{2}-\d{2}$/.test(String(row?.['eol-date'] || '')) ? row['eol-date'] : null, type: text(row?.['release-type'], 8) || null };
   }
   return Object.keys(out).length ? out : null;
+}
+
+/** O arquivo do .NET Desktop Runtime (x64) da versão mais recente de um canal: só link da Microsoft e só com SHA-512. */
+const dotnetReleaseUrl = (channel) => `https://builds.dotnet.microsoft.com/dotnet/release-metadata/${channel}/releases.json`;
+function parseDotnetRelease(json) {
+  const desk = asList(json?.releases)[0]?.windowsdesktop;
+  const file = asList(desk?.files).find((item) => item?.rid === 'win-x64' && /\.exe$/i.test(String(item?.name || '')));
+  const url = officialLink(file?.url, ['microsoft.com', 'dot.net']);
+  const sha512 = /^[0-9a-f]{128}$/i.test(String(file?.hash || '')) ? String(file.hash).toLowerCase() : null;
+  const v = version(desk?.version);
+  return url && sha512 && v ? { version: v, url, sha512 } : null;
 }
 
 /**
@@ -267,7 +282,16 @@ function createDrivers({ runPowerShellCode, fetchJson, fileIcon = null, now = ()
       const lines = [...new Set((devices || []).filter((item) => item.cls === 'DISPLAY').map((item) => nvidiaLine(item.name)).filter((line) => line === 'modern' || line === 'legacy'))];
       const nv = await Promise.all(lines.map(async (line) => [line, await cachedFetch(nvidiaUrl(line, { win11 }), parseNvidia)]));
       if (nv.length) latest.nvidia = Object.fromEntries(nv);
-      if (runtimes?.desktop?.length) latest.dotnet = await cachedFetch(DOTNET_INDEX, parseDotnet);
+      if (nv.length && runtimes?.board?.mobile === true) {
+        latest.nvidiaNotebook = Object.fromEntries(await Promise.all(lines.map(async (line) => [line, await cachedFetch(nvidiaUrl(line, { win11, notebook: true }), parseNvidia)])));
+      }
+      if (runtimes?.desktop?.length) {
+        latest.dotnet = await cachedFetch(DOTNET_INDEX, parseDotnet);
+        // O arquivo oficial (com hash) só dos canais instalados, no máximo 3.
+        const channels = [...new Set(runtimes.desktop.map((v) => v.split('.').slice(0, 2).join('.')))].filter((c) => latest.dotnet?.[c]).slice(0, 3);
+        const files = await Promise.all(channels.map(async (c) => [c, await cachedFetch(dotnetReleaseUrl(c), parseDotnetRelease)]));
+        if (files.some(([, value]) => value)) latest.dotnetFiles = Object.fromEntries(files.filter(([, value]) => value));
+      }
     }
     const icons = await localIcons(runtimes);
     return { platform, devices: devices || [], others: others || [], generic, runtimes, latest, icons, at: now() };
@@ -275,4 +299,4 @@ function createDrivers({ runPowerShellCode, fetchJson, fileIcon = null, now = ()
   return { scan };
 }
 
-module.exports = { createDrivers, iconSources, iconPath, ALL_DRIVERS_SCRIPT, RUNTIMES_SCRIPT, parseRuntimes, parseAllDrivers, parseNvidia, parseDotnet, nvidiaUrl, nvidiaLine, officialLink, NV_ENDPOINT, DOTNET_INDEX };
+module.exports = { createDrivers, parseDotnetRelease, dotnetReleaseUrl, NV_LINES_NOTEBOOK, iconSources, iconPath, ALL_DRIVERS_SCRIPT, RUNTIMES_SCRIPT, parseRuntimes, parseAllDrivers, parseNvidia, parseDotnet, nvidiaUrl, nvidiaLine, officialLink, NV_ENDPOINT, DOTNET_INDEX };
