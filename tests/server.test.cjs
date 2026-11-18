@@ -258,7 +258,7 @@ test('limpeza diária e limites', async () => {
   assert.deepEqual(env.DB.raw.prepare('SELECT email FROM users').all().map((row) => row.email), ['fica@exemplo.com'], 'conta sem sessão nem cópia sai; quem ainda tem sessão fica');
   assert.equal((await call('GET', '/v1/sync', { token: active.token })).status, 200);
   assert.equal((await call('GET', '/v1/sync', { token: kept.token })).status, 401, 'a sessão de mais de um ano venceu');
-  for (let i = 0; i < 30; i += 1) await call('POST', '/v1/errors', { body: { installId: 'install-0000000008', version: '0.9.0', reports: [] } });
+  for (let i = 0; i < 60; i += 1) await call('POST', '/v1/errors', { body: { installId: 'install-0000000008', version: '0.9.0', reports: [] } });
   assert.equal((await call('POST', '/v1/errors', { body: { installId: 'install-0000000008', version: '0.9.0', reports: [] } })).status, 429);
   assert.equal((await call('POST', '/v1/telemetry', { body: 'x'.repeat(1_700_000) })).status, 413);
 });

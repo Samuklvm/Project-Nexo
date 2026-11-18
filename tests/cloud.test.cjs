@@ -178,10 +178,11 @@ test('relatórios de erro: agrupados, sem pastas pessoais, e o e-mail só de que
   errorLog.record({ level: 'erro', source: 'ipc', message: 'Falhou ao ler C:\\Users\\Samuel Antonio\\Desktop\\jogo.exe', stack: 'Error\n    at scan (C:\\Users\\Samuel Antonio\\AppData\\Local\\Programs\\nexo\\main.cjs:10:5)' });
   errorLog.record({ level: 'erro', source: 'ipc', message: 'Falhou ao ler C:\\Users\\Samuel Antonio\\Desktop\\outro.exe', stack: 'Error\n    at scan (C:\\Users\\Samuel Antonio\\AppData\\Local\\Programs\\nexo\\main.cjs:10:5)' });
   errorLog.record({ level: 'aviso', source: 'ipc', message: 'Você recusou a permissão do Windows.' });
-  assert.deepEqual(await cloud.sendErrors(), { sent: 1 }, 'dois iguais viram um grupo; aviso fica no PC');
-  let reports = rows('SELECT * FROM error_reports');
+  assert.deepEqual(await cloud.sendErrors(), { sent: 1 }, 'dois iguais viram um grupo; o aviso sem vigia (ação recusada pela pessoa) fica no PC');
+  let reports = rows('SELECT r.* FROM error_reports r JOIN error_groups g ON g.signature = r.signature WHERE g.level = \'erro\'');
   assert.equal(reports.length, 1);
   assert.equal(reports[0].count, 2);
+  assert.equal(rows("SELECT * FROM error_groups WHERE level = 'aviso'").length, 0);
   assert.equal(reports[0].email, null, 'sem conexão, sem e-mail');
   const group = rows('SELECT * FROM error_groups')[0];
   assert.ok(!/Samuel/.test(`${group.message} ${group.stack}`), 'nome de usuário e pastas pessoais não saem do PC');
@@ -192,7 +193,7 @@ test('relatórios de erro: agrupados, sem pastas pessoais, e o e-mail só de que
   clock += 1000;
   errorLog.record({ level: 'erro', source: 'principal', message: 'Outro erro, já conectado' });
   assert.deepEqual(await cloud.sendErrors(), { sent: 1 });
-  reports = rows('SELECT * FROM error_reports ORDER BY first_at');
+  reports = rows("SELECT r.* FROM error_reports r JOIN error_groups g ON g.signature = r.signature WHERE g.level = 'erro' ORDER BY r.first_at");
   assert.equal(reports[1].email, 'pessoa@exemplo.com', 'o e-mail vem da sessão');
   assert.ok(!('email' in calls.at(-1).body), 'o app não manda o e-mail no corpo');
 
@@ -586,4 +587,49 @@ test('desligou sem internet e religou antes de voltar a rede: o "+1" pendente é
   await cloud.sendPulse();
   assert.equal(posts(world0.calls, '/v1/optout').length, 0);
   assert.equal(posts(world0.calls, '/v1/pulse').length, 1);
+});
+
+/* ---------- Vigias de erro: os avisos também vão ---------- */
+test('avisos: os registrados antes da versão nova abrir ficam no PC; os novos vão junto dos erros', async () => {
+  const { client, rows } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), version: '0.11.3', platform: 'win32', now: () => clock });
+  // Como a 0.11.3 deixava: cloud.json com os relatórios ligados e o cursor dos erros, e avisos velhos no registro.
+  fs.writeFileSync(path.join(dir, 'cloud.json'), JSON.stringify({ errors: true, errorsWindowAt: clock - 60000, errorsCursor: 0, installId: 'abcdefghijklmnop1234', deviceId: 'pc-abcdefghijkl', count: true }));
+  for (let i = 0; i < 5; i += 1) errorLog.record({ level: 'aviso', source: 'interface', message: `aviso velho ${'abcde'[i]}`, context: { vigia: 'tela-travada' } });
+  clock += 1000;
+  const cloud = client(dir, { errorLog });
+  assert.deepEqual(await cloud.sendErrors(), { sent: 0 }, 'nenhum aviso velho sai');
+  clock += 1000;
+  errorLog.record({ level: 'aviso', source: 'interface', message: 'leitura impossível', context: { vigia: 'leitura-impossivel', campo: 'cpu' } });
+  errorLog.record({ level: 'erro', source: 'ipc', message: 'erro novo' });
+  assert.deepEqual(await cloud.sendErrors(), { sent: 2 });
+  const groups = rows('SELECT level, message, context FROM error_groups ORDER BY level');
+  assert.deepEqual(groups.map((g) => g.level), ['aviso', 'erro']);
+  assert.equal(JSON.parse(groups[0].context).vigia, 'leitura-impossivel');
+  assert.deepEqual(await cloud.sendErrors(), { sent: 0 }, 'não manda de novo');
+});
+
+test('avisos: religar os relatórios não manda os avisos do tempo em que estavam desligados', async () => {
+  const { client, rows } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const errorLog = createErrorLog({ fs: fs.promises, path, dir: path.join(dir, 'logs'), version: '0.11.4', platform: 'win32', now: () => clock });
+  const cloud = client(dir, { errorLog });
+  await cloud.sendErrors();
+  await cloud.setOptions({ errors: false });
+  clock += 1000;
+  errorLog.record({ level: 'aviso', source: 'interface', message: 'durante o desligado', context: { vigia: 'tela-travada' } });
+  clock += 1000;
+  await cloud.setOptions({ errors: true });
+  clock += 1000;
+  errorLog.record({ level: 'aviso', source: 'interface', message: 'depois de religar', context: { vigia: 'tela-travada' } });
+  await cloud.sendErrors();
+  assert.deepEqual(rows('SELECT message FROM error_groups').map((g) => g.message), ['depois de religar']);
+});
+
+test('contagem: servidor recusando o sinal de vida devolve o status (para o vigia "contagem-recusada")', async () => {
+  const world0 = world();
+  const fetchImpl = async (url, init) => (String(url).endsWith('/v1/pulse') ? new Response(JSON.stringify({ error: 'Código do PC inválido.' }), { status: 400, headers: { 'content-type': 'application/json' } }) : world0.fetchImpl(url, init));
+  const cloud = world0.client(undefined, { machineId: async () => GUID, fetchImpl });
+  assert.deepEqual(await cloud.sendPulse(), { skipped: true, failed: true, status: 400 });
 });

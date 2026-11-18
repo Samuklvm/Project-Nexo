@@ -253,8 +253,16 @@ function createErrorLog({ fs, path, dir, version = '0.0.0', platform = process.p
    * por inteiro: o próximo envio continua dali, então nenhum grupo fica para trás.
    * Linhas antigas, sem sequência, só entram se forem mais novas que `legacyAfter` (o cursor por data das versões antigas).
    */
-  async function groupsSince({ afterSeq = 0, notBefore = 0, legacyAfter = null, levels = ['erro'], limit = 50 } = {}) {
+  /** `since` por nível: { aviso: instante } deixa de fora os avisos de antes (ex.: os de antes de os avisos irem ao servidor). */
+  /**
+   * `tagged`: níveis que só entram com nome de vigia no contexto (os avisos livres, como uma falha esperada de uma ação
+   * com o caminho de um arquivo, ficam só no PC).
+   */
+  const hasVigia = (entry) => /"vigia"\s*:\s*"[a-z0-9-]{1,40}"/i.test(typeof entry.context === 'string' ? entry.context : JSON.stringify(entry.context ?? ''));
+  async function groupsSince({ afterSeq = 0, notBefore = 0, legacyAfter = null, levels = ['erro'], limit = 50, since = {}, tagged = [] } = {}) {
     const entries = (await readEntries()).filter((entry) => levels.includes(entry.level) && entry.at >= notBefore
+      && !(Number.isFinite(since?.[entry.level]) && entry.at < since[entry.level])
+      && !(tagged.includes(entry.level) && !hasVigia(entry))
       && (Number.isInteger(entry.seq) ? entry.seq > afterSeq : legacyAfter !== null && entry.at > legacyAfter));
     entries.sort((a, b) => (a.seq || 0) - (b.seq || 0) || a.at - b.at);
     const groups = new Map();

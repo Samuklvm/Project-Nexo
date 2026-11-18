@@ -69,3 +69,30 @@ test('workflows: token só de leitura no topo e instalação sem scripts', () =>
   assert.doesNotMatch(release, /run: npm ci\s*$/m);
   assert.match(read('.github/workflows/codeql.yml'), /^permissions:\n {2}contents: read/m);
 });
+
+test('monitor do sistema no Linux: o primeiro instalado, por caminho fixo (nunca pelo PATH); sem nenhum, null', () => {
+  // Erro real do painel (assinatura 35fc9ecaa5d00da0): "O Gerenciador de Tarefas está disponível somente no Windows."
+  const { systemMonitor } = require('../electron/system-path.cjs');
+  assert.equal(systemMonitor({ platform: 'linux', exists: (file) => file === '/usr/bin/plasma-systemmonitor' }), '/usr/bin/plasma-systemmonitor');
+  assert.equal(systemMonitor({ platform: 'linux', exists: (file) => file === '/usr/bin/gnome-system-monitor' || file === '/usr/bin/xfce4-taskmanager' }), '/usr/bin/gnome-system-monitor');
+  assert.equal(systemMonitor({ platform: 'linux', exists: () => false }), null);
+  const asked = [];
+  systemMonitor({ platform: 'linux', exists: (file) => { asked.push(file); return false; } });
+  assert.ok(asked.length > 0 && asked.every((file) => file.startsWith('/')), 'só caminhos absolutos');
+  assert.equal(systemMonitor({ platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, exists: () => true }), 'C:\\Windows\\System32\\Taskmgr.exe');
+});
+
+test('"Ver processos" na tela inicial mostra o motivo se não der para abrir (sem erro solto no console)', () => {
+  const home = fs.readFileSync(path.join(__dirname, '..', 'src', 'view-home.js'), 'utf8');
+  assert.match(home, /openTaskManager\?\.\(\)\?\.catch\(\(error\) => showToast\(/);
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8');
+  assert.match(main, /systemMonitor\(\)/, 'o main usa o monitor do sistema (Linux incluído)');
+  assert.doesNotMatch(main, /Gerenciador de Tarefas está disponível somente no Windows/);
+});
+
+test('vigias: a trilha dos últimos passos vai também nos avisos (o "estranho" precisa do contexto)', () => {
+  const main = read('main.cjs');
+  const hook = main.slice(main.indexOf('errorLog.record = (entry = {}) => {'), main.indexOf('return recordRaw(entry);'));
+  assert.ok(hook.includes('trilha: trail.slice(-12)'));
+  assert.doesNotMatch(hook, /entry\.level !== 'aviso'/);
+});

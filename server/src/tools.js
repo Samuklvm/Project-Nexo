@@ -46,13 +46,13 @@ export function trimTelemetry(aggregate, { partes, days }) {
   return { dias: days, installs: aggregate.installs, reports: aggregate.reports, aviso: 'Grande demais: peça partes específicas.', partes: names };
 }
 
-export function createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory, queries, githubTotal, dailyStats }) {
+export function createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory, queries, githubTotal, dailyStats, vigias }) {
   const github = async (env) => ({ ...((await githubTotal(env)) || { dia: null, total: null, porTag: [] }), impreciso: true, porque: 'O GitHub conta qualquer download do instalador: as atualizações automáticas do app (que baixam o instalador inteiro de novo), quem baixa duas vezes, revisões e robôs. Use a contagem por PC.' });
   return [
     {
       name: 'nexo_resumo',
       title: 'Resumo do Nexo',
-      description: 'Visão geral do Nexo agora: erros abertos, contas, versões em uso e, em "contagem", o funil exato por PC (instalaram, abriram, usuários reais = 2+ dias, ativos hoje/7/30, desinstalaram, desligaram a contagem) e a retenção (1, 7 e 30 dias). Os campos antigos (instalações ativas pela telemetria, usuários novos) contam só quem manda telemetria ou erro. Comece por aqui.',
+      description: 'Visão geral do Nexo agora: erros abertos, avisos abertos (avisosAbertos; detalhe por tipo em nexo_vigias), contas, versões em uso e, em "contagem", o funil exato por PC (instalaram, abriram, usuários reais = 2+ dias, ativos hoje/7/30, desinstalaram, desligaram a contagem) e a retenção (1, 7 e 30 dias). Os campos antigos (instalações ativas pela telemetria, usuários novos) contam só quem manda telemetria ou erro. Comece por aqui.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       annotations: READ,
       run: async (_args, { env, now }) => {
@@ -79,6 +79,14 @@ export function createTools({ summaryData, usersData, errorListData, errorDetail
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       annotations: READ,
       run: async (_args, { env }) => queries.versoes(env)
+    },
+    {
+      name: 'nexo_vigias',
+      title: 'Vigias de erro (avisos por tipo)',
+      description: 'Os AVISOS do app (coisas funcionando de forma estranha, sem chegar a erro) juntados pelo vigia que mandou: leitura-impossivel, sensores-sumiram, fonte-falhando, abertura-lenta, ceu-lento, memoria-alta, contagem-recusada, tela-travada, acao-lenta, processo-travado, janela-sem-resposta, memoria-da-tela, arquivo-nao-carregou, console-aviso (sem vigia = outro). Por vigia: grupos, abertos, PCs, ocorrências, versões e a mensagem mais comum. Para ver um grupo inteiro, use nexo_erros com incluir_avisos e depois nexo_erro.',
+      inputSchema: { type: 'object', properties: { dias: { type: 'integer', minimum: 1, maximum: 120, default: 7, description: 'Quantos dias para trás.' } }, additionalProperties: false },
+      annotations: READ,
+      run: async (args, { env }) => vigias(env, Number.isInteger(args?.dias) ? Math.min(120, Math.max(1, args.dias)) : 7)
     },
     {
       name: 'nexo_erros',

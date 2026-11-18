@@ -12,7 +12,8 @@ const { createProbe } = require('./electron/probe.cjs');
 const { createFpsRunner } = require('./electron/fps-runner.cjs');
 const { createElevator, toolLauncher, PAWNIO } = require('./electron/elevate.cjs');
 const { decodeConsole } = require('./electron/console-text.cjs');
-const { systemTool, nvidiaSmi } = require('./electron/system-path.cjs');
+const { systemTool, nvidiaSmi, systemMonitor } = require('./electron/system-path.cjs');
+const { memoryAlarm, pulseRefused } = require('./electron/watch-main.cjs');
 const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
 const { createSystemScan, validateChange: validateScanChange } = require('./electron/system-scan.cjs');
@@ -79,7 +80,8 @@ function crumb(kind, name, extra = '') {
 }
 errorLog.record = (entry = {}) => {
   diag.count(`erro.${String(entry.source || 'outro').replace(/[^a-z]/gi, '') || 'outro'}`);
-  if (entry.level !== 'aviso' && (entry.context === undefined || (entry.context && typeof entry.context === 'object' && !Array.isArray(entry.context)))) {
+  // Erros e avisos levam a trilha dos últimos passos (o aviso que já tem a sua, como o do laço travado, fica com ela).
+  if ((entry.context === undefined || (entry.context && typeof entry.context === 'object' && !Array.isArray(entry.context))) && !entry.context?.trilha) {
     entry = { ...entry, context: { ...(entry.context || {}), trilha: trail.slice(-12) } };
   }
   return recordRaw(entry);
@@ -110,7 +112,7 @@ function noteSlowIpc(channel, ms) {
   if (slowSeen.get(channel) === hour) return; // uma vez por canal por hora
   slowSeen.set(channel, hour);
   diag.count(`lento.${channel}`);
-  errorLog.record({ source: 'ipc', level: 'aviso', message: `Ação lenta: ${channel} levou ${(ms / 1000).toFixed(1)} s`, context: { acao: channel, ms: Math.round(ms), limite: SLOW_IPC_MS[channel] ?? 30000 } });
+  errorLog.record({ source: 'ipc', level: 'aviso', message: `Ação lenta: ${channel} levou ${(ms / 1000).toFixed(1)} s`, context: { acao: channel, ms: Math.round(ms), limite: SLOW_IPC_MS[channel] ?? 30000, vigia: 'acao-lenta' } });
 }
 /* Processo principal travado (laço de eventos parado): mede o atraso e registra trechos acima de 1,5 s. */
 try {
@@ -121,7 +123,7 @@ try {
     const maxMs = loop.max / 1e6;
     if (maxMs >= 1500) {
       diag.count('principalTravou');
-      errorLog.record({ source: 'principal', level: 'aviso', message: `O processo principal ficou travado por ${(maxMs / 1000).toFixed(1)} s`, context: { p99ms: Math.round(loop.percentile(99) / 1e6), trilha: trail.slice(-8) } });
+      errorLog.record({ source: 'principal', level: 'aviso', message: `O processo principal ficou travado por ${(maxMs / 1000).toFixed(1)} s`, context: { p99ms: Math.round(loop.percentile(99) / 1e6), trilha: trail.slice(-8), vigia: 'processo-travado' } });
     }
     loop.reset();
   }, 60000).unref?.();
@@ -798,7 +800,7 @@ function createWindow() {
     if (!frozenAt) return;
     const seconds = Math.round((Date.now() - frozenAt) / 1000);
     frozenAt = 0;
-    errorLog.record({ source: 'interface', level: seconds >= 10 ? 'erro' : 'aviso', message: `A janela do Nexo parou de responder por ${seconds} s`, context: { tela: 'janela', segundos: seconds, trilha: trail.slice(-10) } });
+    errorLog.record({ source: 'interface', level: seconds >= 10 ? 'erro' : 'aviso', message: seconds >= 10 ? `A janela do Nexo parou de responder por ${seconds} s` : 'A janela do Nexo demorou para responder', context: { tela: 'janela', segundos: seconds, trilha: trail.slice(-10), ...(seconds >= 10 ? {} : { vigia: 'janela-sem-resposta' }) } });
   });
   mainWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => { if (isMainFrame) errorLog.record({ source: 'interface', message: `A tela não carregou (${code} ${description})`, context: { codigo: code, principal: Boolean(isMainFrame), alvo: String(url || '').startsWith('file:') ? 'arquivo do app' : 'outro' } }); });
   mainWindow.webContents.on('preload-error', (_event, _path, error) => errorLog.record({ source: 'interface', message: `Falha no preload: ${error?.message || error}`, stack: error?.stack }));
@@ -854,12 +856,12 @@ registerIpcHandler('sensors:snapshot', getHardwareSensors);
 registerIpcHandler('system:top-processes', getTopProcesses);
 
 registerIpcHandler('system:task-manager', async () => {
-  if (process.platform !== 'win32') {
-    throw new Error('O Gerenciador de Tarefas está disponível somente no Windows.');
-  }
+  // Windows: o Gerenciador de Tarefas. Linux: o monitor de sistema da área de trabalho (GNOME, KDE, Xfce…).
+  const monitor = systemMonitor();
+  if (!monitor) throw new Error('Não achei um monitor do sistema instalado (como o Monitor do Sistema do GNOME ou do KDE).');
 
   await new Promise((resolve, reject) => {
-    const taskManager = spawn(systemTool('taskmgr'), [], { detached: true, stdio: 'ignore' });
+    const taskManager = spawn(monitor, [], { detached: true, stdio: 'ignore' });
     taskManager.once('spawn', () => {
       taskManager.unref();
       resolve();
@@ -2741,7 +2743,25 @@ const cloudReady = serverUrl().then(async (url) => {
 }).catch(() => {});
 const withCloud = async () => { await cloudReady; return cloud; };
 // Contagem de uso: o sinal de vida do dia 1 min depois de abrir e a cada hora (o próprio cloud decide se já mandou hoje).
-const pulseSoon = () => withCloud().then((target) => target.sendPulse()).catch(() => {});
+// Vigia "contagem-recusada": o servidor recusou o sinal de vida (4xx, não falta de rede); um aviso por abertura.
+let pulseRefusedNoted = false;
+const pulseSoon = () => withCloud().then((target) => target.sendPulse()).then((result) => {
+  if (pulseRefused(result) && !pulseRefusedNoted) {
+    pulseRefusedNoted = true;
+    errorLog.record({ source: 'principal', level: 'aviso', message: 'O servidor recusou a contagem de uso deste PC', context: { status: result.status, vigia: 'contagem-recusada' } });
+  }
+}).catch(() => {});
+// Vigia "memoria-alta": todos os processos do Nexo somados passando de 1,5 GB (conferido a cada 10 min, um aviso por abertura).
+let memoryNoted = false;
+setInterval(() => {
+  if (memoryNoted) return;
+  try {
+    const alarm = memoryAlarm(app.getAppMetrics());
+    if (!alarm) return;
+    memoryNoted = true;
+    errorLog.record({ source: 'principal', level: 'aviso', message: 'O Nexo está usando muita memória', context: { ...alarm, minutosAberto: Math.round((Date.now() - APP_LAUNCHED_AT) / 60000), vigia: 'memoria-alta' } });
+  } catch { /* sem métricas */ }
+}, 10 * 60 * 1000).unref?.();
 setTimeout(() => { void pulseSoon(); setInterval(() => { void pulseSoon(); }, 60 * 60 * 1000).unref?.(); }, 60 * 1000).unref?.();
 /**
  * Telemetria: o que dá para saber do PC sem nada pessoal. Hardware (fabricante e modelo do processador e da placa

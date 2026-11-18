@@ -48,6 +48,14 @@ Os testes rodam o Worker de verdade no Node, com o D1 simulado em SQLite (`serve
 
 > **Nunca apague nem troque o `DATA_KEY`** na Cloudflare: as cópias da sincronização são cifradas com chaves derivadas dele e ficariam ilegíveis. **Nunca troque o `PC_PEPPER`** também: a contagem de PCs guarda o código de cada PC embaralhado com ele, e trocar zera a continuidade (todo PC vira novo). Sem ele, as rotas da contagem respondem 503 e não guardam nada. Trocar o `SESSION_SECRET` só desconecta todo mundo (cada um liga a sincronização de novo).
 
+## Vigias de erro
+
+Desde a 0.11.4, os relatórios de erro levam também os **avisos** (coisas funcionando de um jeito estranho, sem chegar a erro). Cada aviso traz o nome do vigia que o mandou em `context.vigia` (por exemplo `leitura-impossivel`, `sensores-sumiram`, `fonte-falhando`, `abertura-lenta`, `ceu-lento`, `memoria-alta`, `contagem-recusada`, `tela-travada`, `acao-lenta`).
+
+- No painel, aba **Erros**, o cartão **Vigias** mostra os avisos dos últimos 7 dias por tipo (PCs, ocorrências, abertos e versões). Clicar num vigia filtra a lista por ele.
+- No conector, `nexo_vigias` dá a mesma tabela, e `nexo_resumo` traz `avisosAbertos`.
+- Os avisos **não** entram no alarme de regressão, no "% sem erro" das versões nem em "PCs com erro".
+
 ## Contagem de usuários
 
 O app e os instaladores contam **PCs**, não downloads (o número do GitHub soma toda baixada do instalador, inclusive as atualizações automáticas e quem baixa duas vezes, então aparece só como referência, marcado como impreciso). Rotas anônimas, sem login:
@@ -80,7 +88,7 @@ O servidor também é um **conector remoto (MCP)** do Claude: com ele, o Claude 
    - URL: `https://nexo-api.<subdomínio>.workers.dev/mcp` (o endereço aparece em **Equipe e acessos**, no cartão "Conexões do Claude", com botão de copiar).
    - Configurações avançadas: **em branco**. O Claude se registra sozinho, e o servidor só aceita os endereços de volta do próprio Claude.
 2. Abre a página **Conectar o Claude ao painel do Nexo**. Com o painel aberto **no mesmo navegador**, ela mostra o que o Claude pode e não pode fazer. Clique em **Autorizar**.
-3. Pronto: em qualquer conversa o Claude tem as ferramentas `nexo_resumo`, `nexo_usuarios`, `nexo_erros`, `nexo_erro`, `nexo_marcar_erro`, `nexo_telemetria`, `nexo_cruzar`, `nexo_historico` e `nexo_versoes`.
+3. Pronto: em qualquer conversa o Claude tem as ferramentas `nexo_resumo`, `nexo_usuarios`, `nexo_erros`, `nexo_erro`, `nexo_marcar_erro`, `nexo_telemetria`, `nexo_cruzar`, `nexo_historico`, `nexo_versoes` e `nexo_vigias`.
 
 O Claude herda o papel de quem autorizou: com **leitura**, ele só lê. Tirar a pessoa da equipe corta o Claude dela no próximo pedido. Em **Equipe e acessos**, o dono vê as conexões (com **Revogar**) e o cartão **O que o Claude fez**, com cada mudança. O acesso vale 1 hora e é renovado sozinho por até 30 dias; reusar um token de renovação já trocado revoga a conexão inteira.
 

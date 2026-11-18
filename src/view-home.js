@@ -162,7 +162,7 @@
   document.addEventListener('click', (event) => {
     const action = event.target.closest('[data-insight-action]');
     if (action) {
-      if (action.dataset.insightAction === 'task-manager') desktopBridge?.openTaskManager?.();
+      if (action.dataset.insightAction === 'task-manager') desktopBridge?.openTaskManager?.()?.catch((error) => showToast(error.message));
       if (action.dataset.insightAction === 'goto-optimize') Nexo.go('maintenance');
     }
     const feedback = event.target.closest('[data-feedback]');

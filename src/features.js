@@ -128,12 +128,14 @@
       Promise.resolve().then(() => spec.load()).then((value) => {
         stat[0] += 1;
         stat[2] += Math.round(performance.now() - started);
+        Nexo.watchers?.sourceResult(name, true, performance.now() - started);
         cache[name] = { value, at: Date.now(), loading: false };
         schedule(true);
         return value;
       }).catch((error) => {
         stat[1] += 1;
         stat[2] += Math.round(performance.now() - started);
+        Nexo.watchers?.sourceResult(name, false, performance.now() - started, error?.message || error);
         cache[name] = { value: entry?.value, error: String(error?.message || error), at: Date.now(), loading: false };
       });
     }

@@ -161,3 +161,28 @@ test('A03: cursor por sequência — 51 grupos no mesmo instante não perdem o �
   assert.deepEqual(third.groups.map((group) => group.message), ['novo depois de reabrir']);
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test('groupsSince: "since" por nível deixa de fora os avisos antigos e o cursor passa dos dois níveis', async () => {
+  const dir = await tempDir();
+  let clock = 1000;
+  const log = createErrorLog({ fs, path, dir, now: () => clock });
+  log.record({ level: 'aviso', message: 'aviso antigo' });
+  clock = 2000;
+  log.record({ level: 'erro', message: 'erro novo' });
+  log.record({ level: 'aviso', message: 'aviso novo' });
+  const out = await log.groupsSince({ afterSeq: 0, levels: ['erro', 'aviso'], since: { aviso: 2000 } });
+  assert.deepEqual(out.groups.map((g) => g.message).sort(), ['aviso novo', 'erro novo']);
+  assert.equal((await log.groupsSince({ afterSeq: out.cursor, levels: ['erro', 'aviso'], since: { aviso: 2000 } })).groups.length, 0);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('groupsSince: "tagged" manda só os avisos com nome de vigia (os avisos livres ficam no PC)', async () => {
+  const dir = await tempDir();
+  const log = createErrorLog({ fs, path, dir, now: () => 5000 });
+  log.record({ level: 'aviso', message: 'falha esperada com caminho D:/Fotos/eu.jpg', context: { acao: 'games:set-cover' } });
+  log.record({ level: 'aviso', message: 'Leitura impossível do PC: cpu', context: { vigia: 'leitura-impossivel', campo: 'cpu' } });
+  log.record({ level: 'erro', message: 'erro sem vigia' });
+  const out = await log.groupsSince({ levels: ['erro', 'aviso'], tagged: ['aviso'] });
+  assert.deepEqual(out.groups.map((g) => g.message).sort(), ['Leitura impossível do PC: cpu', 'erro sem vigia']);
+  await fs.rm(dir, { recursive: true, force: true });
+});

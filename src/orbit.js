@@ -75,6 +75,8 @@
     const cy = height / 2;
     const rx = width / 2 - 34;
     const ry = height / 2 - 18;
+    // Canvas ainda sem tamanho (tela escondida ou recém-trocada): o raio sairia negativo e o canvas lança erro.
+    if (rx < 24 || ry < 24) return false;
     const tone = accent();
 
     context.lineWidth = 1;
@@ -144,7 +146,7 @@
   /* Anda no relógio único (fx.js), no mesmo quadro do céu: 30 por segundo no máximo. O anel da nota gira junto. */
   function frame(now, elapsed) {
     if (!visible() || quiet()) { running = false; return false; }
-    draw(now, Math.min(elapsed, 100));
+    if (draw(now, Math.min(elapsed, 100)) === false) resize(); // a tela ganhou tamanho depois: o próximo quadro já usa
     if (ring) ring.style.transform = `rotate(${((now / 120000) * 360 % 360).toFixed(2)}deg)`;
     return true;
   }
