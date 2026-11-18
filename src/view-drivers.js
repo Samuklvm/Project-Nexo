@@ -171,6 +171,23 @@
     box.innerHTML = `<div class="drivers-status"><h3 class="drivers-headline" data-tone="${tone}">${escapeHtml(D.headline(s))}</h3><p class="drivers-sub">${escapeHtml(`Conferido às ${timeText(model.at)}. ${online}`)}</p>${oemBox}${support ? '' : bios}<p class="drivers-rule">O Nexo baixa só do site oficial de cada fabricante, confere a assinatura de cada arquivo e nunca usa o Windows Update.</p>${restoreToggle()}${toolsRow()}</div>${supportBox}`;
   }
   /** Chips dos grupos (com a contagem do que pede atenção), a busca e o filtro. */
+  /** Projeto 5: o céu do topo, uma estrela por driver (clicar leva ao cartão). */
+  const SKY_TONES = [['update', 'atualização'], ['missing', 'falta'], ['warn', 'driver básico ou antigo'], ['ok', 'em dia'], ['unknown', 'sem como saber daqui']];
+  const STATE_WORD = { update: 'atualização disponível', missing: 'falta', warn: 'pede atenção', ok: 'em dia', unknown: 'confira no site' };
+  function renderSky() {
+    const box = document.getElementById('drivers-sky');
+    if (!box) return;
+    const sky = model && Nexo.platform !== 'linux' ? D.constellation(model, { width: 1000, height: 150 }) : null;
+    box.hidden = !sky?.stars.length;
+    if (!sky?.stars.length) { box.innerHTML = ''; return; }
+    const count = (tone) => sky.stars.filter((s) => s.tone === tone).length;
+    const label = `Constelação dos drivers: ${sky.stars.length} drivers, ${count('update')} com atualização, ${count('missing')} faltando, ${count('ok')} em dia.`;
+    const lines = sky.lines.map((l) => `<line class="ds-line" x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}"/>`).join('');
+    const stars = sky.stars.map((st) => `<g class="ds-star" data-tone="${st.tone}" data-driver-jump="${escapeHtml(st.id)}" tabindex="0" role="button" aria-label="${escapeHtml(`${st.name}: ${STATE_WORD[st.tone]}`)}"><circle class="ds-halo" cx="${st.x}" cy="${st.y}" r="${Math.round(st.r * 3.2 * 10) / 10}"/><circle class="ds-core" cx="${st.x}" cy="${st.y}" r="${st.r}"/><title>${escapeHtml(`${st.name} · ${STATE_WORD[st.tone]}`)}</title></g>`).join('');
+    const labels = sky.groups.map((g) => `<text class="ds-label" x="${g.x}" y="${g.y}" text-anchor="middle">${escapeHtml(g.title)}</text>`).join('');
+    const legend = SKY_TONES.filter(([tone]) => count(tone)).map(([tone, text]) => `<span data-tone="${tone}"><i></i>${escapeHtml(text)} <b>${count(tone)}</b></span>`).join('');
+    box.innerHTML = `<svg class="ds-svg" viewBox="0 0 1000 150" preserveAspectRatio="xMidYMid meet" role="group" aria-label="${escapeHtml(label)}">${lines}${stars}${labels}</svg><div class="ds-legend">${legend}</div>`;
+  }
   function renderBar() {
     const bar = document.getElementById('drivers-bar');
     if (!bar) return;
@@ -269,6 +286,7 @@
       return;
     }
     renderBar();
+    renderSky();
     const view = D.filterModel(model, filter);
     box.innerHTML = view.groups.length ? view.groups.map(group).join('') : `<section class="drivers-group drivers-empty"><strong>${filter.query ? 'Nada com esse nome' : 'Nada pedindo atenção'}</strong><span>${filter.query ? 'Tente outro nome de peça ou de fabricante.' : 'Tudo o que o Nexo consegue saber está em dia. Desligue o filtro para ver todos os drivers.'}</span></section>`;
     if (celebrate.size) setTimeout(() => { celebrate.clear(); box.querySelectorAll('.driver.celebrate').forEach((li) => li.classList.remove('celebrate')); }, 1700);
@@ -450,7 +468,14 @@
     }
     const jump = event.target.closest?.('[data-driver-jump]');
     if (jump && jump.closest('.drivers-view')) {
-      const target = groupsBox()?.querySelector(`.driver[data-id="${CSS.escape(jump.dataset.driverJump)}"]`);
+      const find = () => groupsBox()?.querySelector(`.driver[data-id="${CSS.escape(jump.dataset.driverJump)}"]`);
+      // Escondido pelo filtro ou pela busca: limpa os dois para o cartão aparecer.
+      if (!find() && (filter.attention || filter.query)) {
+        filter.attention = false; filter.query = ''; store.set(ATTENTION_KEY, '0');
+        const input = document.getElementById('drivers-search'); if (input) input.value = '';
+        render();
+      }
+      const target = find();
       if (target) { target.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); target.classList.remove('flash'); void target.offsetWidth; target.classList.add('flash'); setTimeout(() => target.classList.remove('flash'), 1800); }
       return;
     }
@@ -476,6 +501,13 @@
   bridge.driverDownloads?.().then((list) => { for (const item of list || []) if (item?.id) downloads.set(item.id, item); if (model) render(); }).catch(() => {});
   document.getElementById('drivers-refresh')?.addEventListener('click', () => { asked = new Set(Object.keys(logos)); load(true); });
   Nexo.on('view', (view) => { if (view === 'drivers') load(false); });
+  // Estrela do céu pelo teclado: Enter ou espaço levam ao cartão, como o clique.
+  document.getElementById('drivers-sky')?.addEventListener('keydown', (event) => {
+    const star = event.target.closest?.('[data-driver-jump]');
+    if (!star || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    star.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
   // Filtro e busca (projeto 4): só redesenha a lista, o campo de busca não perde o foco.
   document.addEventListener('change', (event) => {
     if (event.target?.id !== 'drivers-attention') return;

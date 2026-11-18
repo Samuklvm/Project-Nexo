@@ -871,3 +871,27 @@ test('projeto 4: ordem guiada dentro do grupo (o que precisa de ação primeiro)
   assert.equal(D.navDot({ summary: { update: 1, missing: 0 } }), true);
   assert.equal(D.navDot(null), false);
 });
+
+/* ---------------- Projeto 5: constelação dos drivers ---------------- */
+test('projeto 5: constelação com uma estrela por driver, uma constelação por grupo, cores do que o app sabe', () => {
+  const model = D.build(sample(), NOW);
+  const sky = D.constellation(model, { width: 1000, height: 160 });
+  const items = model.groups.flatMap((g) => g.items).filter((i) => !i.plain);
+  assert.equal(sky.stars.length, items.length);
+  assert.deepEqual(sky.groups.map((g) => g.id), model.groups.map((g) => g.id));
+  assert.equal(sky.groups.find((g) => g.id === 'placa').title, 'Placa', 'rótulo curto no céu');
+  for (const s of sky.stars) {
+    assert.ok(s.x >= 8 && s.x <= 992 && s.y >= 8 && s.y <= 132, `${s.id} dentro do céu (${s.x},${s.y})`);
+    assert.ok(s.r >= 1.5 && s.r <= 5);
+  }
+  const tone = (state) => sky.stars.find((s) => s.state === state)?.tone;
+  assert.equal(tone('update'), 'update');
+  assert.equal(tone('missing'), 'missing');
+  assert.equal(tone('ok'), 'ok');
+  assert.equal(tone('check'), 'unknown', 'o que o app não sabe fica apagado');
+  assert.deepEqual(D.constellation(model, { width: 1000, height: 160 }), sky, 'sempre o mesmo desenho para o mesmo PC');
+  assert.ok(sky.lines.length >= sky.stars.length - sky.groups.length - 1);
+  const xs = sky.groups.map((g) => g.x);
+  assert.deepEqual(xs, [...xs].sort((a, b) => a - b), 'constelações da esquerda para a direita');
+  assert.deepEqual(D.constellation(null, { width: 1000, height: 160 }), { groups: [], stars: [], lines: [] });
+});
