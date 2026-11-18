@@ -8,6 +8,25 @@
   root.NexoNovidades = {
     versions: [
       {
+        version: '0.11.6', date: '2026-11-18', emoji: '🏮', title: 'Drivers sem janelas e o Santuário',
+        tagline: 'Os drivers agora baixam e instalam sozinhos, sem abrir janelas. E os Ajustes viraram o Santuário: um salão de lanternas desenhado a pena.',
+        sections: [
+          { emoji: '✨', title: 'Novidades', tone: 'new', items: [
+            { emoji: '⬇️', title: 'Baixar e instalar, sem janelas', text: 'Um clique baixa do site oficial, confere a assinatura e instala sozinho, recusando a telemetria onde dá. Na NVIDIA vai só o driver, sem o NVIDIA App. A chave "Instalar sem janelas" desliga.' },
+            { emoji: '🔴', title: 'AMD com um clique', text: 'O botão "Instalar o mais novo da AMD" usa o instalador oficial da AMD e instala sem janela. Placa de vídeo sem driver agora é reconhecida pelo código da peça.' },
+            { emoji: '🔄', title: 'Atualizar tudo e backup', text: 'Instala todas as atualizações na ordem certa, com ponto de restauração antes, e guarda um backup dos drivers para restaurar quando precisar.' },
+            { emoji: '🌌', title: 'Constelação dos drivers', text: 'O topo da página de Drivers virou um céu, com uma estrela por driver. Tem também busca, filtro do que precisa de atenção, histórico de versões e "Bom para os seus jogos" na NVIDIA.' },
+            { emoji: '🏮', title: 'Ajustes: o Santuário', text: 'Um salão de fantasia sombria desenhado a pena, com lanternas, sinos, runas e brasas. Arte própria do Nexo, inspirada na ambientação de Hollow Knight: Silksong.' }
+          ] },
+          { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
+            { emoji: '🔎', title: 'Achar qualquer ajuste', text: 'Barra fixa com as seções e uma busca de ajustes, também pelo Ctrl+K. Cada mudança tem "Desfazer" e cada seção, "Restaurar o padrão".' },
+            { emoji: '🪄', title: 'Encantos', text: 'Três jeitos prontos de deixar o Nexo, com um toque: Espetáculo, Modo jogo e Vela baixa. Na bateria ou jogando, o Nexo fica leve sozinho e volta depois.' },
+            { emoji: '🕯️', title: 'Mapa da privacidade e cópia dos ajustes', text: 'Uma lanterna com um fio para cada lugar que pode receber dados, e um arquivo para guardar e trazer de volta os seus ajustes.' },
+            { emoji: '🔏', title: 'Assinatura digital a caminho', text: 'A assinatura do Nexo chega numa atualização futura. Até lá, o Windows pode avisar ao instalar; as notas da versão explicam como abrir.' }
+          ] }
+        ]
+      },
+      {
         version: '0.11.5', date: '2026-11-18', emoji: '🏭', title: 'Drivers do fabricante do seu PC',
         tagline: 'A página de Drivers conhece o seu PC pelo modelo exato e baixa os pacotes oficiais do fabricante dele com um clique. E parou de chutar.',
         sections: [

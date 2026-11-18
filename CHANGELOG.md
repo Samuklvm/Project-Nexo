@@ -6,6 +6,17 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.6: drivers sem janelas e o Santuário
+- Aviso: esta versão ainda não tem assinatura digital; a assinatura chega numa atualização futura. O aviso e os passos para abrir o Nexo continuam nas notas e no README.
+- Novo: "Baixar e instalar" na página de Drivers: baixa do site oficial, confere a assinatura e instala sem janela; avisa na primeira vez que aceita a licença do fabricante; recusa a telemetria onde dá (NVIDIA só com o driver, sem o NVIDIA App); instalador sem modo silencioso conhecido abre a janela, e um que trava é encerrado no tempo-limite com "Instalar com janela"; chave "Instalar sem janelas" para desligar.
+- Novo: AMD com um clique pelo instalador oficial de detecção da página da AMD (aberta por trás); chipset AMD abre a página para escolher a placa-mãe e instala o que você baixar.
+- Novo: placa de vídeo no "Adaptador de Vídeo Básico" reconhecida pelo código da peça ("Vídeo AMD/NVIDIA/Intel sem driver"), mesmo com outro vídeo funcionando.
+- Novo: Atualizar tudo (uma por vez, placa primeiro e vídeo por último, ponto de restauração antes, dá para parar, confere no fim o que mudou de verdade) e backup e restauração dos drivers (pasta datada em Documentos ou na pasta do usuário quando Documentos está no OneDrive; restaurar não volta versão e confere a assinatura).
+- Novo: mais fontes (assistente da Intel, Logitech G HUB e SteelSeries GG direto, Razer e Corsair pelo site, Visual C++ 2005 a 2013) e o Catálogo da Microsoft como último recurso para peça sem driver e sem fabricante (nunca pelo Windows Update, só assinado).
+- Novo: "Bom para os seus jogos" no cartão da NVIDIA, histórico de versões com comemoração, busca, chips por grupo, filtro "só o que precisa de atenção", ordem guiada, bolinha na barra lateral e a constelação dos drivers no topo.
+- Novo: Ajustes viraram o Santuário (salão desenhado a pena com lanternas, sinos, runas, ruínas e brasas; arte própria inspirada na ambientação de Hollow Knight: Silksong), com logins repaginados (Google, Steam, Xbox, Discord), barra de seções e busca de ajustes (também pelo Ctrl+K), encantos (Espetáculo, Modo jogo, Vela baixa), desfazer e restaurar o padrão, modo leve automático na bateria e nas sessões de jogo, mapa da privacidade, cópia dos ajustes num arquivo e o papel de parede "Santuário".
+- Melhoria: revisão do SonarCloud (regex sem retrocesso nos catálogos da Lenovo, padrão do modo silencioso, canvas decorativo dos Ajustes e o exemplo do Catálogo da Microsoft nos testes).
+
 ### 0.11.5: drivers do fabricante do seu PC
 - Aviso: esta versão ainda não tem assinatura digital; a assinatura chega numa atualização futura. O aviso e os passos para abrir o Nexo continuam nas notas e no README.
 - Novo: drivers oficiais do fabricante do PC na página de Drivers (Windows): o Nexo identifica o modelo exato (Dell pelo código do sistema, HP pelo código da placa, Lenovo pelo tipo de máquina, ASUS pelo modelo) e lê a lista oficial da Dell, HP, Lenovo e ASUS/ROG; cada pacote que serve para uma peça vira um cartão "Pacote oficial" com Baixar, escolhido pelo código de hardware mais específico; peças sem driver ou com o driver básico do Windows viram atualização; vídeo continua sempre com NVIDIA/AMD/Intel; BIOS nova só vira aviso com a página de suporte; MSI, GIGABYTE, ASRock e Acer abrem a página de suporte; a lista é lida em segundo plano e o topo mostra o PC, quando a lista foi conferida e quando a fonte está fora do ar ou o modelo não tem lista.
@@ -142,6 +153,17 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.6: windowless drivers and the Sanctuary
+- Notice: this version is not digitally signed yet; the signature arrives in a future update. The notice and the steps to open Nexo stay in the notes and in the README.
+- New: "Download and install" on the Drivers page: downloads from the official site, checks the signature and installs without a window; explains the first time that this accepts the maker's license; declines telemetry where possible (NVIDIA driver only, without the NVIDIA App); an installer with no known silent mode opens its window, and one that hangs is stopped at the time limit with "Install with window"; an "Install without windows" switch turns it off.
+- New: one-click AMD through the official auto-detect installer on AMD's page (opened in the background); the AMD chipset opens the page to pick the motherboard and installs what you download.
+- New: a graphics card on the "Basic Display Adapter" is recognized by its part ID ("AMD/NVIDIA/Intel graphics without a driver"), even with another graphics chip working.
+- New: Update all (one at a time, motherboard first and graphics last, restore point first, can be stopped, checks at the end what really changed) and driver backup and restore (dated folder in Documents, or the user folder when Documents lives in OneDrive; restoring never downgrades and checks the signature).
+- New: more sources (Intel's assistant, Logitech G HUB and SteelSeries GG directly, Razer and Corsair through their sites, Visual C++ 2005 to 2013) and the Microsoft Catalog as a last resort for a part with no driver and no maker (never through Windows Update, signed only).
+- New: "Good for your games" on the NVIDIA card, version history with a celebration, search, group chips, an "only what needs attention" filter, guided order, a sidebar dot and the driver constellation at the top.
+- New: Settings became the Sanctuary (an ink-drawn hall with lanterns, bells, runes, ruins and embers; original art inspired by the atmosphere of Hollow Knight: Silksong), with refreshed sign-ins (Google, Steam, Xbox, Discord), a section bar and settings search (also through Ctrl+K), charms (Spectacle, Game mode, Low candle), undo and restore default, automatic lite mode on battery and during game sessions, a privacy map, a settings backup file and the "Sanctuary" wallpaper.
+- Improvement: SonarCloud review (Lenovo catalog regex without backtracking, silent-mode default, the decorative Settings canvas and the Microsoft Catalog sample in the tests).
 
 ### 0.11.5: drivers from your PC maker
 - Notice: this version is not digitally signed yet; the signature arrives in a future update. The notice and the steps to open Nexo stay in the notes and in the README.

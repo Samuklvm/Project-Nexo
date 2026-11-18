@@ -104,7 +104,7 @@ function launchCore(pathExpr, dirExpr, silent = null, ext = 'exe') {
   $r.ok = ($r.code -eq 0) -or ($r.code -eq 3010)
   if (-not $r.ok) { $r.note = "o instalador terminou com o código $($r.code)" }`;
 }
-function driverInstallBody({ file, dir, signer, signers, kind, sha256 = null, restorePoint = false, silent = false, description = 'Nexo - antes de instalar um driver' } = {}) {
+function driverInstallBody({ file, dir, signer, signers, kind, sha256 = null, restorePoint = false, silent = null, description = 'Nexo - antes de instalar um driver' } = {}) {
   const Sig = require('./driver-signature.cjs');
   const list = Array.isArray(signers) ? signers : [signer];
   if (!Sig.insideDir(file, dir)) throw new Error('Arquivo não permitido.');

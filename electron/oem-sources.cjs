@@ -15,6 +15,9 @@ const REMOTE_LIST = 'https://raw.githubusercontent.com/Samuklvm/Project-Nexo/mai
 const KNOWN = Object.freeze({ dell: 'dell-catalog', hp: 'hpia-ref', lenovo: 'lenovo-catalog', asus: 'asus-api', msi: 'site-only', gigabyte: 'site-only', asrock: 'site-only', acer: 'site-only' });
 const URL_FIELD = Object.freeze({ 'dell-catalog': 'index', 'hpia-ref': 'base', 'lenovo-catalog': 'base', 'asus-api': 'url' });
 
+// Tira os ^ e ~ do fim da versão da Lenovo ("1.2.3^") sem regex com retrocesso.
+const trimVersionMarks = (value) => { let end = value.length; while (end > 0 && (value[end - 1] === '^' || value[end - 1] === '~')) end -= 1; return value.slice(0, end); };
+
 function official(value, domains) {
   try {
     const url = new URL(String(value || ''));
@@ -206,7 +209,7 @@ function parseLenovoPackage(xml, descriptorUrl, category = '') {
   const file = url && fileNameOf(url);
   const id = String(root.attrs.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
   if (!file || !id) return null;
-  const driverVer = X.walk(root, '_Driver').map((d) => driverVersionOf(X.textOf(d, 'Version').replace(/[\^~]+$/, ''))).find(Boolean);
+  const driverVer = X.walk(root, '_Driver').map((d) => driverVersionOf(trimVersionMarks(X.textOf(d, 'Version')))).find(Boolean);
   // Códigos da regra de detecção, menos os que estão dentro de <Not> (esses dizem onde o pacote NÃO serve).
   const found = [];
   const collect = (node) => { for (const child of node.children || []) { if (/^not$/i.test(child.name)) continue; if (/^(_pnpid|hardwareid)$/i.test(child.name)) found.push(child); collect(child); } };

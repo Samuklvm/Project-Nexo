@@ -1,9 +1,10 @@
 <!-- Exemplo resumido da busca do Catálogo do Microsoft Update (catalog.update.microsoft.com/Search.aspx), no formato
      que ferramentas como o módulo MSCatalog leem: tabela ctl00_catalogBody_updateMatches, uma <tr id="GUID_R#"> por
      resultado e as colunas: seleção, título, produtos, classificação, data, versão, tamanho, botão (input id=GUID). -->
-<html><body>
+<!DOCTYPE html>
+<html lang="en"><head><title>Microsoft Update Catalog</title></head><body>
 <table class="resultsBorder resultsBackGround" id="ctl00_catalogBody_updateMatches">
-<tr id="headerRow"><td></td><td>Title</td><td>Products</td><td>Classification</td><td>Last Updated</td><td>Version</td><td>Size</td><td></td></tr>
+<tr id="headerRow"><th></th><th>Title</th><th>Products</th><th>Classification</th><th>Last Updated</th><th>Version</th><th>Size</th><th></th></tr>
 <tr id="0a1b2c3d-1111-2222-3333-444455556666_R1">
   <td class="resultspadding"></td>
   <td class="resultspadding" id="0a1b2c3d-1111-2222-3333-444455556666_C1_R1"><a id="0a1b2c3d-1111-2222-3333-444455556666_link" href="javascript:void(0);" onclick='goToDetails("0a1b2c3d-1111-2222-3333-444455556666");'>
