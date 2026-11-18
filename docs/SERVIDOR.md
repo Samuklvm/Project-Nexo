@@ -43,10 +43,25 @@ Os testes rodam o Worker de verdade no Node, com o D1 simulado em SQLite (`serve
 
    O ID do cliente Google (público) vem de `config/google-client.json`, o mesmo que as builds usam.
 
-4. Rode o fluxo **Publicar servidor** (*Actions → Publicar servidor → Run workflow*), ou mande algo de `server/` para a `main`. Ele roda os testes, cria o banco `nexo` se não existir, aplica as migrações, publica o Worker, cria os segredos `SESSION_SECRET` e `DATA_KEY` (só na primeira vez, sem aparecer no log) e confere `/health`. O endereço sai no fim do log: `https://nexo-api.<subdomínio>.workers.dev`.
+4. Rode o fluxo **Publicar servidor** (*Actions → Publicar servidor → Run workflow*), ou mande algo de `server/` para a `main`. Ele roda os testes, cria o banco `nexo` se não existir, aplica as migrações, publica o Worker, cria os segredos `SESSION_SECRET`, `DATA_KEY` e `PC_PEPPER` (só na primeira vez, sem aparecer no log) e confere `/health`. O endereço sai no fim do log: `https://nexo-api.<subdomínio>.workers.dev`.
 5. Coloque esse endereço em `config/server.json` (`{ "url": "https://nexo-api.<subdomínio>.workers.dev" }`) e gere uma versão do app. Sem endereço, o app mostra que o servidor não está ligado e não manda nada.
 
-> **Nunca apague nem troque o `DATA_KEY`** na Cloudflare: as cópias da sincronização são cifradas com chaves derivadas dele e ficariam ilegíveis. Trocar o `SESSION_SECRET` só desconecta todo mundo (cada um liga a sincronização de novo).
+> **Nunca apague nem troque o `DATA_KEY`** na Cloudflare: as cópias da sincronização são cifradas com chaves derivadas dele e ficariam ilegíveis. **Nunca troque o `PC_PEPPER`** também: a contagem de PCs guarda o código de cada PC embaralhado com ele, e trocar zera a continuidade (todo PC vira novo). Sem ele, as rotas da contagem respondem 503 e não guardam nada. Trocar o `SESSION_SECRET` só desconecta todo mundo (cada um liga a sincronização de novo).
+
+## Contagem de usuários
+
+O app e os instaladores contam **PCs**, não downloads (o número do GitHub soma toda baixada do instalador, inclusive as atualizações automáticas e quem baixa duas vezes, então aparece só como referência, marcado como impreciso). Rotas anônimas, sem login:
+
+| Rota | Corpo | Para quê | Limite por dia |
+|---|---|---|---|
+| `POST /v1/pulse` | `{ pc, version, platform }` | "Este PC abriu hoje" (UTC). Repetir no mesmo dia não muda nada | 10 por PC, 1.000 por IP |
+| `POST /v1/install` | `{ pc, event, version, platform }`, com `event` = `instalou`, `atualizou` ou `desinstalou` | Avisos do instalador (`installer/count.ps1`, escondido, prazo de 4 s) | 10 por PC, 300 por IP |
+| `POST /v1/optout` | `{ origem: 'app' \| 'instalador' }` | O "+1 desligou", **sem código nenhum** | 5 por IP |
+
+- `pc` é `SHA-256("nexo-pc-v1|" + id do sistema)` em 64 hex (MachineGuid no Windows, machine-id no Linux). O servidor guarda só `HMAC(PC_PEPPER, pc)` cortado em 32 hex.
+- O cron diário tira uma foto dos números em `daily_stats` e soma os downloads do GitHub (`.exe`, `.AppImage`, `.deb`) em `gh_downloads`. Para não esbarrar no limite da API do GitHub sem login, crie o segredo **opcional** `NEXO_GITHUB_TOKEN` no repositório (um token *fine-grained* só de leitura de conteúdo público basta): o fluxo **Publicar servidor** o copia para o Worker como `GITHUB_TOKEN`.
+- No painel: aba **Usuários** (funil, retenção, novos por dia) e aba **Versões** (PCs por versão, ≈ % sem erro e o alarme de regressão). No conector: `nexo_usuarios` e `nexo_versoes`.
+- Retenção: dias de uso e avisos 400 dias; o PC some depois de 400 dias sem aparecer.
 
 ## Painel e equipe
 
@@ -65,7 +80,7 @@ O servidor também é um **conector remoto (MCP)** do Claude: com ele, o Claude 
    - URL: `https://nexo-api.<subdomínio>.workers.dev/mcp` (o endereço aparece em **Equipe e acessos**, no cartão "Conexões do Claude", com botão de copiar).
    - Configurações avançadas: **em branco**. O Claude se registra sozinho, e o servidor só aceita os endereços de volta do próprio Claude.
 2. Abre a página **Conectar o Claude ao painel do Nexo**. Com o painel aberto **no mesmo navegador**, ela mostra o que o Claude pode e não pode fazer. Clique em **Autorizar**.
-3. Pronto: em qualquer conversa o Claude tem as ferramentas `nexo_resumo`, `nexo_usuarios`, `nexo_erros`, `nexo_erro`, `nexo_marcar_erro`, `nexo_telemetria`, `nexo_cruzar` e `nexo_historico`.
+3. Pronto: em qualquer conversa o Claude tem as ferramentas `nexo_resumo`, `nexo_usuarios`, `nexo_erros`, `nexo_erro`, `nexo_marcar_erro`, `nexo_telemetria`, `nexo_cruzar`, `nexo_historico` e `nexo_versoes`.
 
 O Claude herda o papel de quem autorizou: com **leitura**, ele só lê. Tirar a pessoa da equipe corta o Claude dela no próximo pedido. Em **Equipe e acessos**, o dono vê as conexões (com **Revogar**) e o cartão **O que o Claude fez**, com cada mudança. O acesso vale 1 hora e é renovado sozinho por até 30 dias; reusar um token de renovação já trocado revoga a conexão inteira.
 

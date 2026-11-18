@@ -1,0 +1,321 @@
+/* Contagem exata de usuários no servidor. Spec: docs/superpowers/specs/2026-11-17-contagem-exata-design.md */
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const nodeCrypto = require('node:crypto');
+const { createHarness } = require('./helpers/server-harness.cjs');
+
+const DAY = 24 * 3600 * 1000;
+let h;
+test.before(async () => { h = await createHarness(); });
+
+/** Código do PC como o app manda (64 hex) a partir de um nome qualquer. */
+const pcOf = (name) => nodeCrypto.createHash('sha256').update(`nexo-pc-v1|${name}`).digest('hex');
+const pulse = (call, pc, extra = {}) => call('POST', '/v1/pulse', { body: { pc, version: '0.12.0', platform: 'win32', ...extra } });
+const install = (call, pc, event, extra = {}) => call('POST', '/v1/install', { body: { pc, event, version: '0.12.0', platform: 'win32', ...extra } });
+const optout = (call, origem, headers = {}) => call('POST', '/v1/optout', { body: { origem }, headers });
+const rows = async (env, sql) => (await env.DB.prepare(sql).all()).results.map((row) => ({ ...row }));
+const today = () => new Date(h.clock.now).toISOString().slice(0, 10);
+
+test('pulse: um por PC por dia, days_active certo e só o HMAC guardado', async () => {
+  const { call, env } = h.setup();
+  const pc = pcOf('pc-a');
+  assert.equal((await pulse(call, pc)).status, 200);
+  assert.equal((await pulse(call, pc)).status, 200);
+  assert.equal((await rows(env, 'SELECT * FROM pulses')).length, 1);
+  assert.equal((await rows(env, 'SELECT days_active FROM pcs'))[0].days_active, 1);
+  h.tick(DAY);
+  await pulse(call, pc);
+  assert.equal((await rows(env, 'SELECT days_active FROM pcs'))[0].days_active, 2);
+  const everything = JSON.stringify([...await rows(env, 'SELECT * FROM pcs'), ...await rows(env, 'SELECT * FROM pulses'), ...await rows(env, 'SELECT * FROM pc_events')]);
+  assert.ok(!everything.includes(pc), 'o código cru nunca é guardado');
+  assert.match((await rows(env, 'SELECT pc FROM pcs'))[0].pc, /^[0-9a-f]{32}$/);
+});
+
+test('pulse: validação e PC_PEPPER', async () => {
+  const { call, env } = h.setup();
+  assert.equal((await pulse(call, 'abc')).status, 400);
+  assert.equal((await pulse(call, pcOf('x').toUpperCase())).status, 400);
+  assert.equal((await pulse(call, pcOf('pc-b'), { platform: 'amiga' })).status, 200);
+  assert.equal((await rows(env, 'SELECT platform FROM pcs'))[0].platform, 'win32');
+  delete env.PC_PEPPER;
+  const before = (await rows(env, 'SELECT * FROM pulses')).length;
+  assert.equal((await pulse(call, pcOf('pc-c'))).status, 503);
+  assert.equal((await rows(env, 'SELECT * FROM pulses')).length, before);
+});
+
+test('pulse: o dia é o do servidor', async () => {
+  const { call, env } = h.setup();
+  await pulse(call, pcOf('pc-d'), { day: '1999-01-01' });
+  assert.equal((await rows(env, 'SELECT day FROM pulses'))[0].day, today());
+});
+
+test('install: instalou, reinstalou, atualizou, desinstalou e voltou', async () => {
+  const { call, env } = h.setup();
+  const pc = pcOf('pc-e');
+  const get = async () => (await rows(env, 'SELECT installs, first_pulse_day, last_version, uninstalled_at FROM pcs'))[0];
+  assert.equal((await install(call, pc, 'instalou')).status, 200);
+  assert.equal((await get()).installs, 1);
+  assert.equal((await get()).first_pulse_day, null);
+  await install(call, pc, 'instalou');
+  assert.equal((await get()).installs, 2);
+  await install(call, pc, 'atualizou', { version: '0.12.1' });
+  assert.equal((await get()).last_version, '0.12.1');
+  await install(call, pc, 'desinstalou');
+  assert.ok((await get()).uninstalled_at > 0);
+  await pulse(call, pc);
+  assert.equal((await get()).uninstalled_at, null, 'voltou a usar');
+  assert.equal((await install(call, pc, 'explodiu')).status, 400);
+  assert.equal((await rows(env, 'SELECT event FROM pc_events ORDER BY id')).map((row) => row.event).join(','), 'instalou,instalou,atualizou,desinstalou');
+});
+
+test('optout: só uma contagem, sem código', async () => {
+  const { call, env } = h.setup();
+  await optout(call, 'app');
+  await call('POST', '/v1/optout', { body: { origem: 'app', pc: pcOf('pc-f') } });
+  await optout(call, 'instalador');
+  const counts = Object.fromEntries((await rows(env, 'SELECT origem, n FROM optouts')).map((row) => [row.origem, row.n]));
+  assert.deepEqual(counts, { app: 2, instalador: 1 });
+  assert.ok(!JSON.stringify(await rows(env, 'SELECT * FROM optouts')).includes(pcOf('pc-f')));
+  assert.equal((await optout(call, 'hacker')).status, 400);
+});
+
+test('limites diários por PC e por IP', async () => {
+  const { call } = h.setup();
+  const pc = pcOf('pc-g');
+  for (let i = 0; i < 10; i += 1) assert.equal((await pulse(call, pc)).status, 200);
+  assert.equal((await pulse(call, pc)).status, 429);
+  const ip = { 'cf-connecting-ip': '9.9.9.9' };
+  for (let i = 0; i < 5; i += 1) assert.equal((await optout(call, 'app', ip)).status, 200);
+  assert.equal((await optout(call, 'app', ip)).status, 429);
+});
+
+/* ---------- Funil, retenção, séries e versões ---------- */
+let contagemMod;
+test.before(async () => { contagemMod = await import('../server/src/contagem.js'); });
+/** As consultas, ligadas ao relógio do teste. */
+const queries = () => contagemMod.createQueries({ now: () => h.clock.now });
+const errors = (call, installId, version, signature) => call('POST', '/v1/errors', { body: { installId, version, platform: 'win32', reports: [{ signature, source: 'interface', level: 'erro', message: `Erro ${signature}`, count: 1, firstAt: h.clock.now, lastAt: h.clock.now }] } });
+
+test('funil com cada tipo de PC', async () => {
+  const { call, env } = h.setup();
+  const linux = { platform: 'linux' };
+  const [A, B, C, D, E, F] = ['A', 'B', 'C', 'D', 'E', 'F'].map(pcOf);
+  const t0 = h.clock.now;
+  await install(call, A, 'instalou');
+  await install(call, B, 'instalou'); await pulse(call, B);
+  await install(call, D, 'instalou'); await pulse(call, D);
+  h.tick(DAY); await pulse(call, D); await pulse(call, E, linux);
+  h.tick(DAY); await pulse(call, D); await pulse(call, E, linux);
+  h.clock.now = t0 + 10 * DAY;
+  await install(call, C, 'instalou'); await pulse(call, C);
+  await install(call, F, 'instalou'); await install(call, F, 'instalou'); await pulse(call, F); await install(call, F, 'desinstalou');
+  await optout(call, 'app');
+  const funil = await queries().funil(env);
+  assert.deepEqual({ ...funil, desligaram: undefined, inicio: undefined }, { instalaram: 6, abriram: 5, reais: 2, experimentaram: 1, ativosHoje: 2, ativos7: 2, ativos30: 5, reinstalaram: 1, desinstalaram: 1, desligaram: undefined, inicio: undefined });
+  assert.deepEqual(funil.desligaram, { app: 1, instalador: 0, total: 1 });
+  assert.equal(funil.inicio, new Date(t0).toISOString().slice(0, 10));
+});
+
+test('retenção: quem voltou depois de 1, 7 e 30 dias', async () => {
+  const { call, env } = h.setup();
+  const t0 = h.clock.now;
+  await pulse(call, pcOf('R1')); await pulse(call, pcOf('R2'));
+  h.clock.now = t0 + 8 * DAY; await pulse(call, pcOf('R1'));
+  h.clock.now = t0 + 40 * DAY;
+  const ret = await queries().retencao(env);
+  assert.deepEqual(ret, { d1: { pct: 50, de: 2 }, d7: { pct: 50, de: 2 }, d30: { pct: 0, de: 2 } });
+});
+
+test('banco vazio: zeros, listas vazias e nada de NaN ou Infinity', async () => {
+  const { env } = h.setup();
+  const q = queries();
+  const funil = await q.funil(env);
+  assert.deepEqual(funil, { instalaram: 0, abriram: 0, reais: 0, experimentaram: 0, ativosHoje: 0, ativos7: 0, ativos30: 0, reinstalaram: 0, desinstalaram: 0, desligaram: { app: 0, instalador: 0, total: 0 }, inicio: null });
+  assert.deepEqual(await q.retencao(env), { d1: { pct: null, de: 0 }, d7: { pct: null, de: 0 }, d30: { pct: null, de: 0 } });
+  assert.deepEqual(await q.porDia(env, 30), { ativos: [], novos: [], eventos: [] });
+  assert.deepEqual(await q.versoes(env), { maisNova: null, versoes: [] });
+});
+
+test('séries por dia: ativos, novos e eventos do instalador', async () => {
+  const { call, env } = h.setup();
+  await install(call, pcOf('S1'), 'instalou'); await pulse(call, pcOf('S1')); await pulse(call, pcOf('S2'));
+  h.tick(DAY); await pulse(call, pcOf('S1')); await install(call, pcOf('S2'), 'atualizou');
+  const series = await queries().porDia(env, 30);
+  assert.deepEqual(series.ativos.map((row) => row.n), [2, 1]);
+  assert.deepEqual(series.novos.map((row) => row.n), [2]);
+  assert.deepEqual(series.eventos.map(({ instalou, atualizou, desinstalou }) => [instalou, atualizou, desinstalou]), [[1, 0, 0], [0, 1, 0]]);
+});
+
+test('versões: % sem erro aproximado e regressão só na mais nova', async () => {
+  const { call, env } = h.setup();
+  for (const name of ['N1', 'N2', 'N3', 'N4']) await pulse(call, pcOf(name), { version: '0.12.0' });
+  for (const name of ['O1', 'O2']) await pulse(call, pcOf(name), { version: '0.11.3' });
+  h.tick(60 * 1000);
+  await errors(call, 'install-nova-000001', '0.12.0', 'aaaaaaaaaaaaaaa1');
+  await errors(call, 'install-nova-000001', '0.12.0', 'bbbbbbbbbbbbbbb2');
+  await errors(call, 'install-velha-00002', '0.11.3', 'bbbbbbbbbbbbbbb2');
+  const { maisNova, versoes } = await queries().versoes(env);
+  assert.equal(maisNova, '0.12.0');
+  assert.deepEqual(versoes.map((v) => v.version), ['0.12.0', '0.11.3']);
+  const nova = versoes[0];
+  assert.equal(nova.ativos7, 4);
+  assert.equal(nova.pctSemErro, 75);
+  assert.equal(nova.errosAbertos, 2);
+  assert.deepEqual(nova.regressoes.map((r) => r.signature), ['aaaaaaaaaaaaaaa1']);
+  assert.equal(versoes[1].pctSemErro, 50);
+  assert.deepEqual(versoes[1].regressoes, []);
+});
+
+/* ---------- Cron: foto diária, downloads do GitHub e limpeza ---------- */
+const RELEASES = [
+  { tag_name: 'v0.11.3', assets: [{ name: 'Nexo-Setup-0.11.3.exe', download_count: 10 }, { name: 'Nexo-0.11.3.AppImage', download_count: 3 }, { name: 'latest.yml', download_count: 99 }] },
+  { tag_name: 'v0.11.2', assets: [{ name: 'nexo_0.11.2_amd64.deb', download_count: 4 }, { name: 'Nexo-Setup-0.11.2.exe.blockmap', download_count: 50 }] }
+];
+
+test('cron grava a foto de ontem e os downloads do GitHub', async () => {
+  const seen = [];
+  const fetchImpl = async (url, init = {}) => { seen.push({ url: String(url), ua: init.headers?.['user-agent'] }); return new Response(JSON.stringify(RELEASES), { headers: { 'content-type': 'application/json' } }); };
+  const { call, env, app } = h.setup({ fetchImpl });
+  await pulse(call, pcOf('Y1'));
+  h.tick(DAY);
+  await app.scheduled({}, env);
+  const github = seen.find((item) => item.url.startsWith('https://api.github.com/repos/Samuklvm/Project-Nexo/releases'));
+  assert.ok(github, 'leu as releases');
+  assert.equal(github.ua, 'nexo-api');
+  const downloads = Object.fromEntries((await rows(env, 'SELECT tag, total FROM gh_downloads')).map((row) => [row.tag, row.total]));
+  assert.deepEqual(downloads, { 'v0.11.3': 13, 'v0.11.2': 4 });
+  const photo = await rows(env, 'SELECT day, data FROM daily_stats');
+  assert.equal(photo.length, 1);
+  assert.equal(photo[0].day, new Date(h.clock.now - DAY).toISOString().slice(0, 10));
+  const data = JSON.parse(photo[0].data);
+  assert.equal(data.ativosDia, 1);
+  assert.equal(data.novosDia, 1);
+  assert.equal(data.funil.abriram, 1);
+  assert.deepEqual(data.porVersao, [{ version: '0.12.0', n: 1 }]);
+});
+
+test('GitHub fora do ar não quebra o cron', async () => {
+  const fetchImpl = async () => { throw new Error('sem rede'); };
+  const { env, app } = h.setup({ fetchImpl });
+  await env.DB.prepare("INSERT INTO oauth_codes (code_hash, client_id, redirect_uri, challenge, email, scope, expires_at) VALUES ('velho', 'x', 'y', 'z', 'e', 'painel', 1)").run();
+  await app.scheduled({}, env);
+  assert.equal((await rows(env, 'SELECT * FROM gh_downloads')).length, 0);
+  assert.equal((await rows(env, 'SELECT * FROM oauth_codes')).length, 0, 'as outras limpezas rodaram');
+  assert.equal((await rows(env, 'SELECT * FROM daily_stats')).length, 1, 'a foto diária também');
+});
+
+test('limpeza: sinais de vida, eventos e PCs com mais de 400 dias somem', async () => {
+  const { call, env, app } = h.setup();
+  await install(call, pcOf('V1'), 'instalou'); await pulse(call, pcOf('V1'));
+  h.tick(401 * DAY);
+  await pulse(call, pcOf('V2'));
+  await app.scheduled({}, env);
+  assert.equal((await rows(env, 'SELECT * FROM pcs')).length, 1);
+  assert.equal((await rows(env, 'SELECT * FROM pulses')).length, 1);
+  assert.equal((await rows(env, 'SELECT * FROM pc_events')).length, 0);
+});
+
+/* ---------- Painel ---------- */
+test('painel: contagem e versões sem código de PC', async () => {
+  const env = h.setup();
+  const { call } = env;
+  const codes = ['P1', 'P2'].map(pcOf);
+  await install(call, codes[0], 'instalou'); await install(call, codes[0], 'instalou');
+  await pulse(call, codes[0]); await pulse(call, codes[1], { platform: 'linux' });
+  const stored = (await rows(env.env, 'SELECT pc FROM pcs')).map((row) => row.pc);
+  const owner = await env.panelCookie();
+  await call('POST', '/painel/api/equipe', { cookie: owner, headers: { 'x-nexo-painel': '1' }, body: { email: 'leitor@exemplo.com', role: 'leitura' } });
+  const reader = await env.panelCookie('leitor@exemplo.com');
+  const contagem = await call('GET', '/painel/api/contagem', { cookie: reader });
+  assert.equal(contagem.status, 200);
+  assert.equal(contagem.data.funil.abriram, 2);
+  assert.ok(contagem.data.retencao.d1);
+  assert.ok(Array.isArray(contagem.data.porDia.ativos));
+  assert.equal(contagem.data.github.impreciso, true);
+  assert.equal(typeof contagem.data.antigo.instalacoesVistas, 'number');
+  assert.equal(contagem.data.ultimos.length, 2);
+  assert.deepEqual(Object.keys(contagem.data.ultimos[0]).sort(), ['dias', 'primeira', 'reinstalou', 'sistema', 'ultima', 'versao']);
+  assert.equal(contagem.data.ultimos.find((row) => row.sistema === 'win32').reinstalou, true);
+  for (const row of contagem.data.ultimos) {
+    assert.match(row.primeira, /^\d{4}-\d{2}-\d{2}$/, 'só o dia: hora exata deixaria cruzar com a instalação da telemetria');
+    assert.match(row.ultima, /^\d{4}-\d{2}-\d{2}$/);
+  }
+  const versoes = await call('GET', '/painel/api/versoes', { cookie: reader });
+  assert.equal(versoes.status, 200);
+  assert.equal(versoes.data.maisNova, '0.12.0');
+  for (const text of [JSON.stringify(contagem.data), JSON.stringify(versoes.data)]) for (const code of [...codes, ...stored]) assert.ok(!text.includes(code));
+  assert.equal((await call('GET', '/painel/api/contagem')).status, 401);
+});
+
+/* ---------- Pontos menores da revisão final ---------- */
+
+test('pulse atômico: um dia novo sempre soma, mesmo se a linha do dia já tinha entrado antes de uma falha', async () => {
+  const { call, env } = h.setup();
+  const pc = pcOf('atomico');
+  await pulse(call, pc);
+  h.tick(DAY);
+  const key = (await rows(env, 'SELECT pc FROM pcs'))[0].pc;
+  // Simula a falha de antes: a linha de hoje entrou em pulses, mas o pcs não foi atualizado.
+  await env.DB.prepare('INSERT INTO pulses (pc, day, version, platform) VALUES (?, ?, ?, ?)').bind(key, today(), '0.12.0', 'win32').run();
+  await pulse(call, pc);
+  assert.equal((await rows(env, 'SELECT days_active FROM pcs'))[0].days_active, 2);
+});
+
+test('foto diária: os números são do fim de ontem, não do meio da manhã de hoje', async () => {
+  const fetchImpl = async () => { throw new Error('sem rede'); };
+  const { call, env, app } = h.setup({ fetchImpl });
+  await install(call, pcOf('F1'), 'instalou');
+  await pulse(call, pcOf('F1'));
+  h.tick(DAY);
+  await pulse(call, pcOf('F1'));
+  await install(call, pcOf('F2'), 'instalou');
+  await pulse(call, pcOf('F2'));
+  await optout(call, 'app');
+  await app.scheduled({}, env);
+  const data = JSON.parse((await rows(env, 'SELECT data FROM daily_stats'))[0].data);
+  assert.equal(data.funil.instalaram, 1, 'F2 chegou hoje');
+  assert.equal(data.funil.abriram, 1);
+  assert.equal(data.funil.reais, 0, 'F1 tinha 1 dia até ontem');
+  assert.equal(data.funil.ativosHoje, 1, '"hoje" da foto = ontem');
+  assert.equal(data.funil.desligaram.total, 0);
+  assert.equal(data.dia, new Date(h.clock.now - DAY).toISOString().slice(0, 10));
+});
+
+test('versões: a versão de cada erro fica guardada, mesmo depois da instalação atualizar', async () => {
+  const { call, env } = h.setup();
+  for (const name of ['M1', 'M2']) await pulse(call, pcOf(name), { version: '0.12.0' });
+  await pulse(call, pcOf('M3'), { version: '0.12.1' });
+  h.tick(60 * 1000);
+  // Erro visto na 0.12.0; depois a mesma instalação atualizou e o erro continuou na 0.12.1: não é regressão da 0.12.1.
+  await errors(call, 'install-muda-000001', '0.12.0', 'ccccccccccccccc3');
+  await errors(call, 'install-muda-000001', '0.12.1', 'ccccccccccccccc3');
+  const { maisNova, versoes } = await queries().versoes(env);
+  assert.equal(maisNova, '0.12.1');
+  const byVersion = Object.fromEntries(versoes.map((v) => [v.version, v]));
+  assert.deepEqual(byVersion['0.12.1'].regressoes, []);
+  assert.equal(byVersion['0.12.0'].errosAbertos, 1, 'a 0.12.0 continua com o erro');
+  assert.equal(byVersion['0.12.0'].pctSemErro, 50);
+});
+
+test('optout sem PC_PEPPER: 503, como as outras rotas da contagem', async () => {
+  const { call, env } = h.setup();
+  delete env.PC_PEPPER;
+  assert.equal((await optout(call, 'app')).status, 503);
+  assert.equal((await rows(env, 'SELECT * FROM optouts')).length, 0);
+});
+
+test('o banco guarda só o dia dos PCs e dos avisos (sem hora para cruzar com a telemetria)', async () => {
+  const { call, env } = h.setup();
+  h.tick(5 * 3600 * 1000 + 1234);
+  await install(call, pcOf('H1'), 'instalou');
+  await pulse(call, pcOf('H1'));
+  await install(call, pcOf('H1'), 'desinstalou');
+  const [pc] = await rows(env, 'SELECT first_seen, last_seen, installed_at, uninstalled_at FROM pcs');
+  for (const value of Object.values(pc)) assert.equal(value % DAY, 0, `só o dia: ${value}`);
+  for (const event of await rows(env, 'SELECT at FROM pc_events')) assert.equal(event.at % DAY, 0);
+});
+
+test('o aviso do GitHub explica que as atualizações automáticas também contam', async () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'server', 'src', 'tools.js'), 'utf8');
+  assert.match(src, /porque: '[^']*atualiza[^']*'/);
+});

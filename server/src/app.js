@@ -19,6 +19,7 @@ import { createSteam } from './steam.js';
 import { createOAuth } from './oauth.js';
 import { createMcp } from './mcp.js';
 import { createTools } from './tools.js';
+import { createContagem, createCron, createQueries } from './contagem.js';
 import { AGE_BANDS, DAY_METRICS, RAM_BANDS, SKY_FLAGS, SYSTEM_FLAGS, band, num } from './cruzar.js';
 import { CONNECT_CSS, CONNECT_JS } from './connect-page.js';
 
@@ -85,8 +86,11 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return `ip:${mixed.slice(0, 20)}`;
   };
   const oauth = createOAuth({ now, limit, ipKey, json, readJson, page, adminSession, roleOf, ROLE_NAMES: ROLES, CAN });
+  const contagem = createContagem({ now, limit, ipKey, json, readJson, HttpError });
+  const queries = createQueries({ now });
+  const cron = createCron({ now, fetchImpl, queries });
   // Ferramentas do Claude: as do Nexo e, só nos testes, as que o teste injeta.
-  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
+  const mcp = createMcp({ tools: [...createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory, queries, githubTotal: cron.githubTotal, dailyStats }), ...extraTools], serverVersion: SERVER_VERSION, bearer: oauth.bearer, limit, json, now, emptyHeaders: { 'cache-control': 'no-store', ...SECURITY_HEADERS } });
 
   /** Papel no painel: dono (segredo ADMIN_EMAILS), colaborador ou leitura (aba Equipe), ou nenhum. */
   async function roleOf(env, email) {
@@ -259,7 +263,11 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
           email = CASE WHEN excluded.email IS NULL THEN error_reports.email WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN error_reports.email ELSE excluded.email END,
           email_verified = CASE WHEN excluded.email IS NULL THEN error_reports.email_verified WHEN error_reports.email IS NOT NULL AND error_reports.email_verified = 1 AND excluded.email_verified = 0 THEN 1 ELSE excluded.email_verified END,
           version = excluded.version, platform = excluded.platform,
-          count = error_reports.count + excluded.count, first_at = MIN(error_reports.first_at, excluded.first_at), last_at = MAX(error_reports.last_at, excluded.last_at)`).bind(report.signature, installId, email, verified, version, platform, count, firstAt, lastAt)
+          count = error_reports.count + excluded.count, first_at = MIN(error_reports.first_at, excluded.first_at), last_at = MAX(error_reports.last_at, excluded.last_at)`).bind(report.signature, installId, email, verified, version, platform, count, firstAt, lastAt),
+      // Histórico por versão (o error_reports só guarda a última): é o que a saúde por versão e a regressão usam.
+      env.DB.prepare(`INSERT INTO error_seen (signature, install_id, version, count, first_at, last_at) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(signature, install_id, version) DO UPDATE SET count = error_seen.count + excluded.count,
+          first_at = MIN(error_seen.first_at, excluded.first_at), last_at = MAX(error_seen.last_at, excluded.last_at)`).bind(report.signature, installId, version, count, firstAt, lastAt)
     ];
   }
 
@@ -453,6 +461,12 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     return json({ ok: true });
   }
 
+  /** Fotos diárias da contagem no período (as mais velhas primeiro). */
+  async function dailyStats(env, days) {
+    const { results = [] } = await env.DB.prepare('SELECT day, data FROM daily_stats WHERE day >= ? ORDER BY day').bind(dayOf(now() - days * DAY)).all();
+    return results.map((row) => { let data = null; try { data = JSON.parse(row.data); } catch { data = null; } return { day: row.day, data }; });
+  }
+
   /** O Claude marca um erro (pelo conector): muda e registra antes/depois em claude_actions. null se o erro não existe. */
   async function markErrorByClaude(env, grantId, signature, { status, fixedIn, note }) {
     const pick = 'SELECT status, fixed_in, note FROM error_groups WHERE signature = ?';
@@ -472,6 +486,21 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
       LEFT JOIN error_groups g ON g.signature = a.target ORDER BY a.id DESC LIMIT ?`).bind(clampInt(limite, 1, 200, 30)).all();
     const parse = (value) => { try { return JSON.parse(value); } catch { return null; } };
     return results.map((row) => ({ em: row.at, ferramenta: row.tool, alvo: row.target, mensagem: row.message || null, antes: parse(row.before), depois: parse(row.after), conexao: row.grant_id }));
+  }
+
+  /** Contagem exata para o painel: funil, retenção, séries de 30 dias, GitHub (impreciso), a contagem antiga e os últimos PCs (sem código). */
+  async function adminContagem({ env }) {
+    const [funil, retencao, porDia, github, old, recent] = await Promise.all([
+      queries.funil(env), queries.retencao(env), queries.porDia(env, 30), cron.githubTotal(env), usersData(env, 30),
+      env.DB.prepare('SELECT first_seen, last_seen, last_version, platform, days_active, installs FROM pcs ORDER BY first_seen DESC LIMIT 15').all()
+    ]);
+    return json({
+      funil, retencao, porDia,
+      github: { ...(github || { dia: null, total: null, porTag: [] }), impreciso: true },
+      antigo: { instalacoesVistas: old.instalacoesVistas, novos30: old.novosPorDia.reduce((sum, row) => sum + (Number(row.n) || 0), 0) },
+      // Só o dia (UTC): a hora exata deixaria cruzar um PC com a instalação vista pela telemetria.
+      ultimos: (recent.results || []).map((row) => ({ primeira: new Date(row.first_seen).toISOString().slice(0, 10), ultima: new Date(row.last_seen).toISOString().slice(0, 10), versao: row.last_version, sistema: row.platform, dias: row.days_active, reinstalou: row.installs >= 2 }))
+    });
   }
 
   /** Conexões do Claude e o que ele fez (só o dono). */
@@ -585,6 +614,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['POST chaves', adminKeyCreate],
     ['POST chaves/revogar', adminKeyRevoke],
     ['GET claude', adminClaude],
+    ['GET contagem', adminContagem],
+    ['GET versoes', async ({ env }) => json(await queries.versoes(env))],
     ['POST claude/revogar', adminClaudeRevoke],
     ['POST sair', adminLogout]
   ]);
@@ -643,6 +674,10 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     ['POST /v1/errors', postErrors],
     ['POST /v1/errors/forget-email', forgetErrorEmail],
     ['POST /v1/telemetry', postTelemetry],
+    // Contagem exata de usuários (src/contagem.js).
+    ['POST /v1/pulse', (request, env) => contagem.pulse(request, env)],
+    ['POST /v1/install', (request, env) => contagem.install(request, env)],
+    ['POST /v1/optout', (request, env) => contagem.optout(request, env)],
     ['POST /v1/admin/link', adminLink],
     ['GET /v1/tools/errors', toolErrors],
     // Conector do Claude: descoberta e registro do OAuth (src/oauth.js).
@@ -705,8 +740,12 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     /** Limpeza diária (cron). */
     async scheduled(_event, env) {
       const at = now();
+      // Contagem: cada parte por si (uma falha não impede as outras nem as limpezas).
+      try { await cron.fotoDiaria(env); } catch (error) { console.error('nexo-cron foto', error?.name || 'Error'); }
+      try { await cron.downloadsGithub(env); } catch (error) { console.error('nexo-cron github', error?.name || 'Error'); }
       await env.DB.batch([
         env.DB.prepare('DELETE FROM error_reports WHERE last_at < ?').bind(at - 180 * DAY),
+        env.DB.prepare('DELETE FROM error_seen WHERE last_at < ?').bind(at - 180 * DAY),
         env.DB.prepare("DELETE FROM error_groups WHERE last_at < ? AND status != 'aberto' AND signature NOT IN (SELECT signature FROM error_reports)").bind(at - 180 * DAY),
         env.DB.prepare('DELETE FROM telemetry WHERE day < ?').bind(dayOf(at - 120 * DAY)),
         env.DB.prepare('DELETE FROM installs WHERE last_seen < ?').bind(at - 400 * DAY),
@@ -724,7 +763,8 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
         // Conexão parada até a renovação vencer (30 dias sem uso): sai também.
         env.DB.prepare("DELETE FROM oauth_grants WHERE revoked = 0 AND created_at < ? AND grant_id NOT IN (SELECT grant_id FROM oauth_tokens WHERE kind = 'renovacao' AND expires_at >= ?)").bind(at - DAY, at),
         env.DB.prepare('DELETE FROM oauth_clients WHERE created_at < ? AND client_id NOT IN (SELECT client_id FROM oauth_grants)').bind(at - 7 * DAY),
-        env.DB.prepare('DELETE FROM claude_actions WHERE at < ?').bind(at - 180 * DAY)
+        env.DB.prepare('DELETE FROM claude_actions WHERE at < ?').bind(at - 180 * DAY),
+        ...cron.limpeza(env)
       ]);
     }
   };

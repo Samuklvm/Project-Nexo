@@ -120,8 +120,9 @@
     const anchor = document.getElementById('cloud-email-row');
     if (!anchor) return;
     if (!line) { line = document.createElement('p'); line.id = 'cloud-share-status'; line.className = 'muted small cloud-share-status'; line.setAttribute('aria-live', 'polite'); anchor.after(line); }
-    if (!s?.configured || (!s.telemetry && !s.errors)) { line.textContent = ''; return; }
+    if (!s?.configured || (!s.telemetry && !s.errors && !s.count)) { line.textContent = ''; return; }
     const parts = [];
+    if (s.count) parts.push(s.lastPulseDay ? (s.lastPulseDay === new Date().toISOString().slice(0, 10) ? 'Contado pela última vez hoje.' : `Contado pela última vez em ${s.lastPulseDay.split('-').reverse().slice(0, 2).join('/')}.`) : 'Contagem ligada: este PC entra na conta em alguns minutos.');
     if (s.telemetry) parts.push(s.lastTelemetryAt ? `Telemetria enviada pela última vez em ${when(s.lastTelemetryAt)}.` : 'Telemetria ligada: o primeiro resumo sai em alguns minutos.');
     if (s.telemetryProblem) parts.push(`Último problema da telemetria: ${s.telemetryProblem.message}`);
     if (s.errors && s.errorsProblem) parts.push(`Último problema ao mandar erros: ${s.errorsProblem.message}`);
@@ -169,10 +170,12 @@
   function syncToggles() {
     const s = view.status;
     const telemetry = document.getElementById('cloud-telemetry');
+    const count = document.getElementById('cloud-count');
     const errors = document.getElementById('cloud-errors');
     const email = document.getElementById('cloud-error-email');
     const disabled = !s?.configured;
     if (telemetry) { telemetry.checked = Boolean(s?.telemetry); telemetry.disabled = disabled; }
+    if (count) { count.checked = s?.count !== false; count.disabled = disabled; }
     if (errors) { errors.checked = Boolean(s?.errors); errors.disabled = disabled; }
     // O e-mail vai com a sincronização ligada (confirmado pelo servidor) OU com a conta Google entrada no app.
     const hasEmail = Boolean(s?.connected || view.account?.profile?.email);
@@ -255,6 +258,7 @@
     render();
     if (patch.telemetry) sendTelemetry();
   }
+  document.getElementById('cloud-count')?.addEventListener('change', (event) => setOption({ count: event.target.checked }, event.target.checked ? 'Obrigado! Este PC volta a entrar na contagem de uso.' : 'Contagem desligada: este PC não é mais contado.'));
   document.getElementById('cloud-telemetry')?.addEventListener('change', (event) => setOption({ telemetry: event.target.checked }, event.target.checked ? 'Obrigado! A telemetria manda um resumo por dia, sem nada pessoal.' : 'Telemetria desligada.'));
   document.getElementById('cloud-errors')?.addEventListener('change', (event) => setOption({ errors: event.target.checked }, event.target.checked ? 'Obrigado! Os erros do app vão para o criador corrigir.' : 'Relatórios de erro desligados. Nada sai até você ligar de novo.'));
   document.getElementById('cloud-error-email')?.addEventListener('change', (event) => setOption({ errorEmail: event.target.checked }, event.target.checked ? 'O seu e-mail vai junto com os erros.' : 'Os erros vão sem o seu e-mail, e ele sai dos relatórios que já foram.'));

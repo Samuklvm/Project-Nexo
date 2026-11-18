@@ -1609,11 +1609,50 @@ async function readSharePreference() {
     return { shareWithCreator: /0x1\b/i.test(stdout) };
   } catch { return { shareWithCreator: false }; }
 }
+/** Grava um campo do arquivo de privacidade (Linux) sem apagar os outros. */
+async function writePrivacyField(key, value) {
+  let current = {};
+  try { current = JSON.parse(await fs.readFile(PRIVACY_FILE(), 'utf8')) || {}; } catch { current = {}; }
+  await fs.writeFile(PRIVACY_FILE(), JSON.stringify({ ...current, [key]: value }), 'utf8');
+}
 async function writeSharePreference(enabled) {
-  if (IS_LINUX) { await fs.writeFile(PRIVACY_FILE(), JSON.stringify({ shareWithCreator: Boolean(enabled) }), 'utf8'); return { shareWithCreator: Boolean(enabled) }; }
+  if (IS_LINUX) { await writePrivacyField('shareWithCreator', Boolean(enabled)); return { shareWithCreator: Boolean(enabled) }; }
   if (process.platform !== 'win32') return { shareWithCreator: false };
   await execFileAsync(systemTool('reg'), ['add', PRIVACY_KEY, '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', enabled ? '1' : '0', '/f'], { windowsHide: true, timeout: 5000 });
   return { shareWithCreator: Boolean(enabled) };
+}
+/** A caixa "Contar esta instalação" do instalador (Windows: CountOptIn) ou a escolha guardada (Linux). null = nunca respondeu. */
+async function readCountPreference() {
+  if (IS_LINUX) { try { const value = JSON.parse(await fs.readFile(PRIVACY_FILE(), 'utf8')).count; return typeof value === 'boolean' ? value : null; } catch { return null; } }
+  if (process.platform !== 'win32') return null;
+  try {
+    const { stdout } = await execFileAsync(systemTool('reg'), ['query', PRIVACY_KEY, '/v', 'CountOptIn'], { windowsHide: true, timeout: 5000 });
+    if (/0x0\b/i.test(stdout)) return false;
+    if (/0x1\b/i.test(stdout)) return true;
+    return null;
+  } catch { return null; }
+}
+async function writeCountPreference(enabled) {
+  if (IS_LINUX) { await writePrivacyField('count', Boolean(enabled)); return; }
+  if (process.platform !== 'win32') return;
+  await execFileAsync(systemTool('reg'), ['add', PRIVACY_KEY, '/v', 'CountOptIn', '/t', 'REG_DWORD', '/d', enabled ? '1' : '0', '/f'], { windowsHide: true, timeout: 5000 });
+}
+/**
+ * Identificador do sistema para o código do PC (sai do computador só embaralhado: SHA-256 com o prefixo do Nexo).
+ * Windows: MachineGuid (visão de 64 bits). Linux: machine-id. Sem ele, o app usa um código reserva aleatório.
+ */
+async function machineId() {
+  if (process.platform === 'win32') {
+    try {
+      const { stdout } = await execFileAsync(systemTool('reg'), ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid', '/reg:64'], { windowsHide: true, timeout: 5000 });
+      const match = /MachineGuid\s+REG_SZ\s+([0-9a-fA-F-]{20,64})/.exec(stdout);
+      return match ? match[1] : null;
+    } catch { return null; }
+  }
+  for (const file of ['/etc/machine-id', '/var/lib/dbus/machine-id']) {
+    try { const id = (await fs.readFile(file, 'utf8')).trim(); if (/^[0-9a-f]{16,64}$/i.test(id)) return id; } catch { /* tenta o próximo */ }
+  }
+  return null;
 }
 registerIpcHandler('privacy:get', async () => readSharePreference());
 registerIpcHandler('privacy:set', async (_event, enabled) => writeSharePreference(enabled));
@@ -2691,9 +2730,9 @@ const { createCloud, fitTelemetry } = require('./electron/cloud.cjs');
 // E-mail da conta Google entrada no app: vai com os erros (marcado como "informado pelo app") quando a pessoa marcou
 // "incluir meu e-mail" e não ligou a sincronização (sem ela o servidor não tem como confirmar o e-mail).
 const accountEmail = async () => { const profile = await readProfile().catch(() => null); return profile?.email || null; };
-let cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: null, fetchImpl: (url, init) => net.fetch(url, init), safeStorage, version: app.getVersion(), errorLog, accountEmail });
+let cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: null, fetchImpl: (url, init) => net.fetch(url, init), safeStorage, version: app.getVersion(), errorLog, accountEmail, machineId, readCountPreference });
 const cloudReady = serverUrl().then(async (url) => {
-  cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog, accountEmail });
+  cloud = createCloud({ fs, path, dir: app.getPath('userData'), serverUrl: url, fetchImpl: (url2, init) => net.fetch(url2, init), safeStorage, version: app.getVersion(), errorLog, accountEmail, machineId, readCountPreference });
   // Quem marcou "Ajudar a melhorar o Nexo" no instalador já respondeu: liga a telemetria e o app não pergunta de novo.
   // (Os relatórios de erro vêm ligados por padrão e têm o próprio interruptor em Ajustes; não dependem dessa caixa.)
   const status = await cloud.status();
@@ -2701,6 +2740,9 @@ const cloudReady = serverUrl().then(async (url) => {
   return cloud;
 }).catch(() => {});
 const withCloud = async () => { await cloudReady; return cloud; };
+// Contagem de uso: o sinal de vida do dia 1 min depois de abrir e a cada hora (o próprio cloud decide se já mandou hoje).
+const pulseSoon = () => withCloud().then((target) => target.sendPulse()).catch(() => {});
+setTimeout(() => { void pulseSoon(); setInterval(() => { void pulseSoon(); }, 60 * 60 * 1000).unref?.(); }, 60 * 1000).unref?.();
 /**
  * Telemetria: o que dá para saber do PC sem nada pessoal. Hardware (fabricante e modelo do processador e da placa
  * de vídeo, núcleos, memória), monitores (resolução, escala e taxa de atualização), discos (quantos e tamanho) e o
@@ -2750,9 +2792,10 @@ registerIpcHandler('cloud:status', async () => {
   return target.status();
 });
 registerIpcHandler('cloud:set', async (_event, options) => {
-  const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked });
+  const status = await (await withCloud()).setOptions({ telemetry: options?.telemetry, errors: options?.errors, errorEmail: options?.errorEmail, sync: options?.sync, asked: options?.asked, count: options?.count });
   // O Registro acompanha a escolha, para o instalador mostrar a caixa certa numa reinstalação.
   if (typeof options?.telemetry === 'boolean') writeSharePreference(status.telemetry).catch(() => {});
+  if (typeof options?.count === 'boolean') writeCountPreference(status.count).catch(() => {});
   return status;
 });
 /** Liga a sincronização: usa o login recente ou abre o login do Google de novo. */

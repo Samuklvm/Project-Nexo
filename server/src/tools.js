@@ -46,23 +46,39 @@ export function trimTelemetry(aggregate, { partes, days }) {
   return { dias: days, installs: aggregate.installs, reports: aggregate.reports, aviso: 'Grande demais: peça partes específicas.', partes: names };
 }
 
-export function createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory }) {
+export function createTools({ summaryData, usersData, errorListData, errorDetailRows, telemetryRows, aggregateTelemetry, markErrorByClaude, claudeHistory, queries, githubTotal, dailyStats }) {
+  const github = async (env) => ({ ...((await githubTotal(env)) || { dia: null, total: null, porTag: [] }), impreciso: true, porque: 'O GitHub conta qualquer download do instalador: as atualizações automáticas do app (que baixam o instalador inteiro de novo), quem baixa duas vezes, revisões e robôs. Use a contagem por PC.' });
   return [
     {
       name: 'nexo_resumo',
       title: 'Resumo do Nexo',
-      description: 'Visão geral do Nexo agora: erros abertos, instalações ativas em 7 e 30 dias (pela telemetria), contas, versões em uso e usuários novos (hoje, 7 e 30 dias). Comece por aqui.',
+      description: 'Visão geral do Nexo agora: erros abertos, contas, versões em uso e, em "contagem", o funil exato por PC (instalaram, abriram, usuários reais = 2+ dias, ativos hoje/7/30, desinstalaram, desligaram a contagem) e a retenção (1, 7 e 30 dias). Os campos antigos (instalações ativas pela telemetria, usuários novos) contam só quem manda telemetria ou erro. Comece por aqui.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       annotations: READ,
-      run: async (_args, { env, now }) => ({ ...(await summaryData(env)), agora: now() })
+      run: async (_args, { env, now }) => {
+        const [summary, funil, retencao] = await Promise.all([summaryData(env), queries.funil(env), queries.retencao(env)]);
+        return { ...summary, contagem: { funil, retencao }, agora: now() };
+      }
     },
     {
       name: 'nexo_usuarios',
       title: 'Usuários do Nexo',
-      description: 'Usuários no período: instalações vistas pela primeira vez por dia (com versões e sistemas), instalações ativas por dia (telemetria), total de instalações já vistas, contas e as últimas instalações. Atenção: hoje só conta quem mandou telemetria ou relatório de erro.',
+      description: 'Usuários no período, contados por PC (exato; reinstalar no mesmo PC não conta de novo): funil, retenção, PCs ativos e novos por dia, avisos do instalador por dia (instalou, atualizou, desinstalou), quem desligou a contagem, as fotos diárias guardadas e os downloads do GitHub (impreciso, só referência). Em "antigo", a contagem de antes (só quem manda telemetria ou erro).',
       inputSchema: { type: 'object', properties: { dias: { type: 'integer', minimum: 1, maximum: 120, default: 30, description: 'Quantos dias para trás.' } }, additionalProperties: false },
       annotations: READ,
-      run: async (args, { env }) => { const days = dias(args.dias); return { dias: days, ...(await usersData(env, days)) }; }
+      run: async (args, { env }) => {
+        const days = dias(args.dias);
+        const [funil, retencao, porDia, gh, fotos, old] = await Promise.all([queries.funil(env), queries.retencao(env), queries.porDia(env, days), github(env), dailyStats(env, days), usersData(env, days)]);
+        return { dias: days, funil, retencao, porDia, github: gh, fotos, antigo: { instalacoesVistas: old.instalacoesVistas, novosPorDia: old.novosPorDia } };
+      }
+    },
+    {
+      name: 'nexo_versoes',
+      title: 'Saúde por versão',
+      description: 'Cada versão do Nexo com PCs ativos em 7 dias, PCs desde que saiu, ≈ % de PCs sem erro (aproximado: instalações com erro ÷ PCs ativos), erros abertos e, na mais nova, as regressões (erros que só aparecem nela). Use para saber se uma versão nova piorou algo.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      annotations: READ,
+      run: async (_args, { env }) => queries.versoes(env)
     },
     {
       name: 'nexo_erros',

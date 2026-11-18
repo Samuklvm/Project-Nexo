@@ -1,0 +1,97 @@
+name: Conferir o instalador
+
+# Quando o instalador muda, ele é montado e testado num Windows de verdade, antes de ir para uma release:
+#  - o count.ps1 dá o mesmo código de PC que o app (vetor fixo) e, sem servidor, desiste rápido e sai com 0;
+#  - o instalador compila, instala em silêncio sem travar, grava as escolhas e leva o count.ps1 junto;
+#  - a desinstalação de verdade roda o aviso e apaga tudo.
+# O servidor do Nexo fica bloqueado no hosts do runner: nenhum teste entra na contagem de verdade.
+
+on:
+  pull_request:
+    paths: ['installer/**', 'installer-launcher/**', '.github/workflows/installer-check.yml']
+  push:
+    branches: [main]
+    paths: ['installer/**', 'installer-launcher/**', '.github/workflows/installer-check.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Bloquear o servidor do Nexo (nada de teste na contagem de verdade)
+        shell: pwsh
+        run: Add-Content -Path "$env:SystemRoot\System32\drivers\etc\hosts" -Value "`n127.0.0.1 nexo-api.nexo-device-care.workers.dev"
+
+      - name: count.ps1 — vetor fixo
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'O código do PC do instalador não bate com o do app.' }
+
+      - name: count.ps1 — sem servidor ou com um servidor que não responde, desiste a tempo e sai com 0
+        shell: powershell
+        run: |
+          # O pedido tem prazo de 4 s contado do começo do script; abrir e fechar o Windows PowerShell soma uns 2 s.
+          # O que não pode é travar a instalação por muito tempo, nem com um DNS ou uma rede que nunca respondem.
+          # Medidos no runner: ~6,3 s com o servidor bloqueado e ~6,5 s com um endereço que nunca responde.
+          foreach ($server in @('https://nexo-api.nexo-device-care.workers.dev', 'https://10.255.255.1')) {
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -Event atualizou -Version 0.0.0 -Server $server
+            $code = $LASTEXITCODE
+            $watch.Stop()
+            Write-Output ("{0}: saiu com {1} em {2:N1} s" -f $server, $code, $watch.Elapsed.TotalSeconds)
+            if ($code -ne 0) { throw 'O count.ps1 tem que sair sempre com 0.' }
+            if ($watch.Elapsed.TotalSeconds -gt 9) { throw "O count.ps1 levou mais de 9 s com $server." }
+          }
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Montar o instalador (sem publicar)
+        run: |
+          npm run build:sensors
+          npx electron-builder --win nsis --publish never
+
+      - name: Instalar em silêncio, conferir e desinstalar
+        shell: powershell
+        run: |
+          $setup = Get-ChildItem release -Filter 'Nexo-Setup-*.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'Instalador não encontrado.' }
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          $proc = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -PassThru
+          if (-not $proc.WaitForExit(180000)) { $proc.Kill(); throw 'A instalação travou (mais de 3 min).' }
+          Write-Output "Instalou em $([int]$watch.Elapsed.TotalSeconds) s (código $($proc.ExitCode))"
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Nexo Device Care'
+          if (-not (Test-Path (Join-Path $dir 'resources\count.ps1'))) { throw 'O count.ps1 não foi instalado em resources.' }
+          $count = (Get-ItemProperty 'HKCU:\Software\NexoDeviceCare\Privacy' -Name CountOptIn -ErrorAction Stop).CountOptIn
+          if ($count -ne 1) { throw "CountOptIn deveria ser 1 (ligado por padrão), veio $count." }
+          Get-Process -Name 'Nexo Device Care' -ErrorAction SilentlyContinue | Stop-Process -Force
+          $env:NEXO_PURGE = '1'
+          $uninstaller = Get-ChildItem $dir -Filter 'Uninstall*.exe' | Select-Object -First 1
+          $proc = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -PassThru
+          if (-not $proc.WaitForExit(180000)) { $proc.Kill(); throw 'A desinstalação travou (mais de 3 min).' }
+          # O desinstalador do NSIS se copia para a pasta temporária e roda de lá: o processo de cima sai na hora.
+          # Espera (até 2 min) o de verdade terminar, olhando o Registro que ele apaga.
+          $deadline = (Get-Date).AddMinutes(2)
+          while ((Test-Path 'HKCU:\Software\NexoDeviceCare') -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if (Test-Path 'HKCU:\Software\NexoDeviceCare') { throw 'A desinstalação de verdade deveria apagar o Registro do Nexo.' }
+          Write-Output "Desinstalou em $([int]((Get-Date) - $deadline.AddMinutes(-2)).TotalSeconds) s"
+          Write-Output 'Instalou, contou (bloqueado) e desinstalou sem travar.'

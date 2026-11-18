@@ -66,12 +66,13 @@ export const PANEL_HTML = `<!doctype html><html lang="pt-BR"><head><meta charset
   <button type="button" role="tab" data-tab="geral" aria-selected="true">Visão geral</button>
   <button type="button" role="tab" data-tab="erros" aria-selected="false">Erros</button>
   <button type="button" role="tab" data-tab="usuarios" aria-selected="false">Usuários</button>
+  <button type="button" role="tab" data-tab="versoes" aria-selected="false">Versões</button>
   <button type="button" role="tab" data-tab="telemetria" aria-selected="false">Telemetria</button>
   <button type="button" role="tab" data-tab="equipe" aria-selected="false" hidden>Equipe e acessos</button>
 </nav>
 <section id="tab-geral" role="tabpanel">
   <div class="cols">
-    <div class="card wide"><h3>Usuários novos por dia <span class="muted small">(últimos 30 dias)</span></h3><div class="days tall" id="new-days"></div><p class="muted small" id="new-note"></p></div>
+    <div class="card wide"><h3>PCs novos por dia <span class="muted small">(últimos 30 dias, contagem exata)</span></h3><div class="days tall" id="new-days"></div><p class="muted small" id="new-note"></p></div>
     <div class="card span2"><h3>O que mais limita os PCs</h3><p class="muted small">Minutos com carga por causa (últimos 30 dias). "GPU no limite" só conta com a placa em clock alto.</p><div id="geral-limiter"></div></div>
     <div class="card"><h3>Versões em uso <span class="muted small">(7 dias)</span></h3><div id="geral-versions"></div></div>
     <div class="card"><h3>Erros que mais precisam de atenção</h3><ul class="list compact" id="geral-errors"></ul></div>
@@ -83,10 +84,21 @@ export const PANEL_HTML = `<!doctype html><html lang="pt-BR"><head><meta charset
   <div class="split"><ul class="list" id="errors"></ul><aside class="detail" id="detail"><p class="muted">Escolha um erro para ver os detalhes, a trilha do que aconteceu antes, quem avisar e marcar como corrigido.</p></aside></div>
 </section>
 <section id="tab-usuarios" role="tabpanel" hidden>
-  <div class="cols">
-    <div class="card wide"><h3>Como "usuário novo" é contado</h3><p class="muted">Cada instalação tem um código aleatório que fica nos dados do app. Ela conta como nova no dia em que o servidor a vê pela primeira vez (telemetria ou relatório de erro). Atualizar o app não cria código novo, então não infla como contar downloads. Quem deixa a telemetria e os erros desligados não aparece aqui.</p></div>
-    <div class="card wide"><h3>Últimas instalações vistas pela primeira vez</h3><div class="table-wrap"><table class="nums" id="recent"><thead><tr><th>Primeira vez</th><th>Versão de entrada</th><th>Versão agora</th><th>Sistema</th><th>Chegou por</th><th>Última vez</th></tr></thead><tbody></tbody></table></div></div>
+  <p class="count-start" id="count-start" hidden></p>
+  <div class="funnel" id="funnel" aria-label="Funil de usuários"></div>
+  <div class="side" id="funnel-side"></div>
+  <div class="cols users">
+    <div class="card span2"><h3>PCs ativos por dia <span class="muted small">(últimos 30 dias)</span></h3><div class="days tall duo" id="active-days"></div><p class="legend small"><span class="key a"></span>ativos no dia <span class="key n"></span>novos no dia</p></div>
+    <div class="card"><h3>Quantos voltam</h3><p class="muted small">Dos PCs que chegaram há pelo menos esse tempo, quantos abriram o Nexo de novo depois dele.</p><div class="rings" id="rings"></div></div>
+    <div class="card wide"><h3>Últimos PCs <span class="muted small">(nada aqui identifica o PC)</span></h3><div class="table-wrap"><table class="nums" id="pcs-recent"><thead><tr><th>Primeira vez</th><th>Versão</th><th>Sistema</th><th>Dias com o app aberto</th><th>Reinstalou</th><th>Última vez</th></tr></thead><tbody></tbody></table></div>
+      <p class="muted small">Contagem por PC: um código embaralhado do PC (reinstalar no mesmo PC não conta de novo), uma vez por dia, ligado por padrão e desligável no app. "Usuário real" = abriu o Nexo em 2 dias diferentes ou mais.</p></div>
   </div>
+</section>
+<section id="tab-versoes" role="tabpanel" hidden>
+  <div class="card wide versions-card"><h3>Saúde de cada versão <span class="muted small">(últimos 7 dias)</span></h3>
+    <p class="muted small">"Sem erro" é aproximado (≈): instalações que mandaram erro ÷ PCs ativos na versão. O servidor não liga o PC à instalação de propósito. <strong class="reg-inline">REGRESSÃO</strong> = erro aberto que só aparece na versão mais nova.</p>
+    <div class="table-wrap"><table class="versions" id="versions"><thead><tr><th>Versão</th><th>PCs ativos (7 dias)</th><th>PCs desde que saiu</th><th>≈ Sem erro</th><th>Erros abertos</th></tr></thead><tbody></tbody></table></div>
+    <ul class="list compact" id="regressions"></ul></div>
 </section>
 <section id="tab-telemetria" role="tabpanel" hidden>
   <div class="filters"><label class="sr" for="dias">Período</label><select id="dias"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select></div>
@@ -143,6 +155,51 @@ button.danger { border-color: rgba(255, 91, 110, 0.5); background: rgba(255, 91,
 button.ok { border-color: rgba(70, 230, 160, 0.5); background: rgba(70, 230, 160, 0.14); }
 select, input[type=search], input[type=text] { padding: 8px 11px; border-radius: 11px; border: 1px solid var(--hair-strong); background: rgba(5, 8, 24, 0.7); }
 .check { display: inline-flex; gap: 6px; align-items: center; }
+.count-start { margin: 0 0 14px; padding: 10px 14px; border-radius: 13px; border: 1px solid rgba(255, 193, 90, 0.4); background: rgba(255, 193, 90, 0.08); color: #ffd58a; font-size: 13px; }
+.funnel { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 22px; margin-bottom: 14px; position: relative; }
+.step { position: relative; padding: 16px 16px 14px; border-radius: 18px; border: 1px solid transparent; background: linear-gradient(var(--card-strong), var(--card-strong)) padding-box, linear-gradient(150deg, rgba(90, 215, 255, 0.55), rgba(155, 123, 255, 0.35) 60%, rgba(150, 175, 255, 0.12)) border-box; backdrop-filter: blur(14px); box-shadow: 0 14px 40px -24px rgba(90, 120, 255, 0.8); }
+.step + .step::before { content: ""; position: absolute; left: -23px; top: 50%; width: 24px; height: 2px; background: linear-gradient(90deg, var(--star), var(--violet)); box-shadow: 0 0 10px rgba(90, 215, 255, 0.8); }
+.step span { display: block; font-size: 12px; color: var(--mist); letter-spacing: .02em; }
+.step strong { display: block; font-size: 34px; line-height: 1.15; font-weight: 650; font-variant-numeric: tabular-nums; background: linear-gradient(180deg, #ffffff, #c9d6ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.step em { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 99px; font-style: normal; font-size: 11.5px; color: var(--star); border: 1px solid rgba(90, 215, 255, 0.35); background: rgba(90, 215, 255, 0.08); }
+.step.hero { background: linear-gradient(var(--card-strong), var(--card-strong)) padding-box, linear-gradient(150deg, rgba(70, 230, 160, 0.75), rgba(90, 215, 255, 0.5) 55%, rgba(155, 123, 255, 0.3)) border-box; box-shadow: 0 16px 50px -22px rgba(70, 230, 160, 0.7); }
+.side { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.side span { padding: 4px 11px; border-radius: 99px; border: 1px solid var(--hair); background: rgba(5, 8, 24, 0.5); font-size: 12.5px; color: var(--mist); }
+.side span b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.side .gh { opacity: .55; border-style: dashed; }
+.days.duo i { position: relative; overflow: hidden; }
+.days.duo i b { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(180deg, #7dffc8, var(--ok)); border-radius: 5px 5px 0 0; }
+.legend { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--mist); }
+.legend .key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-left: 8px; }
+.legend .key.a { background: linear-gradient(180deg, var(--star), var(--violet)); margin-left: 0; }
+.legend .key.n { background: var(--ok); }
+@media (min-width: 980px) { .cols.users { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); } .cols.users .card.span2 { grid-column: auto; } }
+.rings { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; margin-top: 14px; }
+.rings > svg:first-child { position: absolute; width: 0; height: 0; }
+.ring { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.ring .dial { position: relative; width: 84px; height: 84px; margin-bottom: 6px; }
+.ring svg { width: 84px; height: 84px; display: block; transform: rotate(-90deg); }
+.ring .dial strong { position: absolute; inset: 0; display: grid; place-items: center; font-size: 19px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.ring small { font-size: 11px; color: var(--mist); opacity: .8; text-align: center; }
+.ring circle { fill: none; stroke-width: 7; }
+.ring .track { stroke: rgba(150, 175, 255, 0.14); }
+.ring .arc { stroke: url(#ringGrad); stroke-linecap: round; filter: drop-shadow(0 0 6px rgba(90, 215, 255, 0.6)); transition: stroke-dashoffset .8s cubic-bezier(.2, .8, .2, 1); }
+.ring span { font-size: 12px; color: var(--mist); text-align: center; }
+table.versions { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.versions th, table.versions td { padding: 10px 10px; border-bottom: 1px solid var(--hair); text-align: left; white-space: nowrap; }
+table.versions th { color: var(--mist); font-weight: 600; font-size: 12.5px; }
+table.versions td { font-variant-numeric: tabular-nums; }
+table.versions tr.newest td { background: rgba(90, 215, 255, 0.07); }
+table.versions tr.newest td:first-child { box-shadow: inset 3px 0 0 var(--star); }
+.vtag { margin-left: 8px; padding: 1px 8px; border-radius: 99px; font-size: 11px; color: var(--star); border: 1px solid rgba(90, 215, 255, 0.4); }
+.health { display: flex; align-items: center; gap: 10px; min-width: 170px; }
+.health i { display: block; flex: 1; height: 7px; border-radius: 99px; background: rgba(150, 175, 255, 0.14); overflow: hidden; }
+.health i b { display: block; height: 100%; border-radius: 99px; }
+.health i b.good { background: linear-gradient(90deg, #2fd4a0, var(--ok)); box-shadow: 0 0 10px rgba(70, 230, 160, 0.6); }
+.health i b.mid { background: linear-gradient(90deg, #ffb347, var(--warn)); }
+.health i b.bad { background: linear-gradient(90deg, #ff3d5a, var(--rose)); box-shadow: 0 0 10px rgba(255, 91, 110, 0.6); }
+.reg, .reg-inline { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; color: #fff; background: linear-gradient(135deg, #ff3d5a, #ff7a59); box-shadow: 0 0 14px rgba(255, 70, 90, 0.55); }
+@media (max-width: 900px) { .funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .step + .step::before { display: none; } }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
 .tile { position: relative; overflow: hidden; padding: 14px 16px; border: 1px solid var(--hair); border-radius: var(--radius); background: var(--card); backdrop-filter: blur(12px); }
 .tile::after { content: ""; position: absolute; inset: auto -30% -60% auto; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(90, 215, 255, 0.18), transparent 70%); }
@@ -229,15 +286,22 @@ export const PANEL_JS = `
     'gpu-baixo-clock': 'GPU "100%" mas em clock baixo', 'gpu-e-cpu': 'GPU e processador no limite', 'cpu-thread': 'Um núcleo do processador no limite', 'cpu-total': 'Processador inteiro no limite',
     'cpu-calor': 'Processador segurado pelo calor', memoria: 'Memória RAM no limite', 'limite-de-quadros': 'Limite de quadros / V-Sync', equilibrado: 'Sem gargalo claro' };
   let resumo = null;
+  let contagem = null;
+  const num = (n) => (n === null || n === undefined ? '--' : Number(n).toLocaleString('pt-BR'));
+  const shortDay = (day) => (day ? day.split('-').reverse().slice(0, 2).join('/') : '--');
   async function summary() {
-    const s = resumo = await api('resumo');
+    const [s, c] = await Promise.all([api('resumo'), api('contagem').catch(() => null)]);
+    resumo = s;
+    contagem = c;
     can = new Set(s.permissions || []);
     $('who').textContent = 'Entrou como ' + s.admin + ' (' + (ROLE[s.role] || s.role) + ')';
     $('updated').textContent = 'atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     document.querySelector('[data-tab="equipe"]').hidden = !can.has('equipe');
     const nu = s.newUsers || {};
-    const tiles = [['new', 'Usuários novos hoje', nu.today ?? 0, ''], ['new', 'Novos em 7 dias', nu.days7 ?? 0, ''], ['new', 'Novos em 30 dias', nu.days30 ?? 0, ''],
-      ['', 'PCs ativos (7 dias)', s.activeInstalls7, ''], ['', 'PCs ativos (30 dias)', s.activeInstalls30, ''], ['bad', 'Erros abertos', s.openErrors, ''], ['bad', 'PCs com erro (7 dias)', s.reportingInstalls7, ''],
+    const f = (c && c.funil) || {};
+    const novos30 = ((c && c.porDia && c.porDia.novos) || []).reduce((sum, d) => sum + d.n, 0);
+    const tiles = [['new', 'Usuários reais', num(f.reais ?? 0), 'abriram em 2+ dias'], ['', 'Ativos hoje', num(f.ativosHoje ?? 0), ''], ['', 'Ativos em 7 dias', num(f.ativos7 ?? 0), ''],
+      ['new', 'PCs novos em 30 dias', num(novos30), ''], ['bad', 'Erros abertos', s.openErrors, ''], ['bad', 'PCs com erro (7 dias)', s.reportingInstalls7, ''],
       ['', 'Contas sincronizando', s.accounts, nu.accounts7 ? '+' + nu.accounts7 + ' em 7 dias' : '']];
     $('tiles').innerHTML = tiles.map(([tone, label, n, extra]) => '<div class="tile ' + tone + '"><span class="muted">' + esc(label) + '</span><strong>' + esc(n) + '</strong>' + (extra ? '<em>' + esc(extra) + '</em>' : '') + '</div>').join('');
     renderOverview();
@@ -255,12 +319,73 @@ export const PANEL_JS = `
   }
   function renderOverview() {
     if (!resumo) return;
-    const total = dayBars($('new-days'), resumo.newUsers?.perDay, 30);
-    $('new-note').textContent = total ? total + ' instalação(ões) nova(s) em 30 dias. Passe o mouse nas barras para ver o dia.' : 'Nenhuma instalação nova nos últimos 30 dias (ou ninguém novo ligou a telemetria/os erros).';
+    const total = dayBars($('new-days'), contagem && contagem.porDia ? contagem.porDia.novos : [], 30);
+    const old = contagem && contagem.antigo ? contagem.antigo.novos30 : 0;
+    $('new-note').textContent = (total ? total + ' PC(s) novo(s) em 30 dias. Passe o mouse nas barras para ver o dia.' : 'Nenhum PC novo na contagem exata nos últimos 30 dias.') + (startedRecently() ? ' A contagem exata começou há pouco; pela contagem antiga (telemetria e erros) foram ' + old + ' em 30 dias.' : '');
     $('geral-versions').innerHTML = bars((resumo.versions || []).map((v) => ({ key: v.version, n: v.n })));
     sizes($('geral-versions'));
-    const recent = (resumo.newUsers?.recent || []);
-    $('recent').querySelector('tbody').innerHTML = recent.length ? recent.map((r) => '<tr><td>' + esc(when(r.first_seen)) + '</td><td>' + esc(r.first_version) + '</td><td>' + esc(r.last_version) + '</td><td>' + esc(r.platform === 'win32' ? 'Windows' : r.platform === 'linux' ? 'Linux' : r.platform) + '</td><td>' + esc(r.via) + '</td><td>' + esc(when(r.last_seen)) + '</td></tr>').join('') : '<tr><td colspan="6" class="muted">Ainda ninguém.</td></tr>';
+    renderUsers();
+  }
+
+  /** A contagem exata começou há menos de 30 dias (ou ainda não começou). */
+  function startedRecently() {
+    const start = contagem && contagem.funil ? contagem.funil.inicio : null;
+    return !start || Date.now() - Date.parse(start + 'T00:00:00Z') < 30 * 86400000;
+  }
+  const OS = (p) => (p === 'win32' ? 'Windows' : p === 'linux' ? 'Linux' : p);
+  /** Aba Usuários: funil, chips do lado, ativos por dia, anéis de retenção e últimos PCs. */
+  function renderUsers() {
+    if (!contagem) { $('funnel').innerHTML = '<p class="muted">Contagem indisponível agora.</p>'; return; }
+    const f = contagem.funil;
+    const start = $('count-start');
+    start.hidden = !startedRecently();
+    start.textContent = f.inicio ? 'A contagem exata começou em ' + shortDay(f.inicio) + ' e vai enchendo conforme as pessoas atualizam o Nexo. Pela contagem antiga (só quem manda telemetria ou erro): ' + contagem.antigo.instalacoesVistas + ' instalação(ões) já vista(s).'
+      : 'A contagem exata começa quando sair a versão do Nexo com ela. Até lá, pela contagem antiga (só quem manda telemetria ou erro): ' + contagem.antigo.instalacoesVistas + ' instalação(ões) já vista(s).';
+    // Cada passo diz a parte de qual base: abrir sobre quem instalou; o resto sobre quem abriu (ativos em 30 dias podem
+    // passar dos usuários reais: quem chegou há pouco ainda não teve 2 dias).
+    const share = (n, base) => (base ? Math.round((n / base) * 100) : 0);
+    const steps = [['Instalaram', f.instalaram, false, 'todo PC conhecido'], ['Abriram', f.abriram, false, share(f.abriram, f.instalaram) + '% de quem instalou'],
+      ['Usuários reais', f.reais, true, share(f.reais, f.abriram) + '% de quem abriu'], ['Ativos em 30 dias', f.ativos30, false, share(f.ativos30, f.abriram) + '% de quem abriu'],
+      ['Ativos em 7 dias', f.ativos7, false, share(f.ativos7, f.abriram) + '% de quem abriu']];
+    $('funnel').innerHTML = steps.map(([label, n, hero, note]) => {
+      const conv = '<em>' + esc(note) + '</em>';
+      return '<div class="step' + (hero ? ' hero' : '') + '"><span>' + esc(label) + '</span><strong>' + esc(num(n)) + '</strong>' + conv + '</div>';
+    }).join('');
+    const gh = contagem.github || {};
+    $('funnel-side').innerHTML = [['Experimentaram', f.experimentaram, 'abriram 1 dia só e não voltaram em 7 dias'], ['Reinstalaram', f.reinstalaram, 'instalaram de novo no mesmo PC'], ['Desinstalaram', f.desinstalaram, ''], ['Desligaram a contagem', f.desligaram.total, 'no app: ' + f.desligaram.app + ' · no instalador: ' + f.desligaram.instalador]]
+      .map(([label, n, tip]) => '<span title="' + esc(tip) + '">' + esc(label) + ' <b>' + esc(num(n)) + '</b></span>').join('')
+      + '<span class="gh" title="O GitHub conta qualquer download do instalador: as atualizações automáticas do app, quem baixa duas vezes, revisões e robôs. Use a contagem por PC.">⚠ Downloads no GitHub ≈ <b>' + esc(num(gh.total)) + '</b> (impreciso)</span>';
+    // Ativos por dia, com os novos do dia por dentro.
+    const act = new Map((contagem.porDia.ativos || []).map((d) => [d.day, d.n]));
+    const neu = new Map((contagem.porDia.novos || []).map((d) => [d.day, d.n]));
+    const list = [];
+    for (let i = 29; i >= 0; i -= 1) { const day = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); list.push({ day, a: act.get(day) || 0, n: neu.get(day) || 0 }); }
+    const max = Math.max(1, ...list.map((d) => d.a));
+    $('active-days').innerHTML = list.map((d) => '<i class="' + (d.a ? '' : 'zero') + '" title="' + esc(shortDay(d.day) + ': ' + d.a + ' ativo(s), ' + d.n + ' novo(s)') + '" data-h="' + (d.a ? Math.max(4, (d.a / max) * 100) : 2) + '">' + (d.n ? '<b data-h="' + Math.min(100, (d.n / Math.max(1, d.a)) * 100) + '"></b>' : '') + '</i>').join('');
+    sizes($('active-days'));
+    // Anéis de retenção.
+    const C = 2 * Math.PI * 38;
+    $('rings').innerHTML = '<svg width="0" height="0" aria-hidden="true"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5ad7ff"/><stop offset="1" stop-color="#46e6a0"/></linearGradient></defs></svg>'
+      + [['d1', 'depois de 1 dia'], ['d7', 'depois de 7 dias'], ['d30', 'depois de 30 dias']].map(([key, label]) => {
+        const r = contagem.retencao[key];
+        const pct = r.pct === null ? 0 : r.pct;
+        const base = r.de ? 'de ' + r.de + ' PC(s)' : 'ainda sem PCs com esse tempo';
+        return '<div class="ring"><div class="dial"><svg viewBox="0 0 92 92" aria-hidden="true"><circle class="track" cx="46" cy="46" r="38"/><circle class="arc" cx="46" cy="46" r="38" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct / 100)).toFixed(1) + '"/></svg><strong>' + (r.pct === null ? '--' : esc(String(Math.round(r.pct))) + '%') + '</strong></div><span>' + esc(label) + '</span><small>' + esc(base) + '</small></div>';
+      }).join('');
+    const rows = contagem.ultimos || [];
+    $('pcs-recent').querySelector('tbody').innerHTML = rows.length ? rows.map((r) => '<tr><td>' + esc(shortDay(r.primeira)) + '</td><td>' + esc(r.versao) + '</td><td>' + esc(OS(r.sistema)) + '</td><td>' + esc(r.dias) + '</td><td>' + (r.reinstalou ? 'sim' : 'não') + '</td><td>' + esc(shortDay(r.ultima)) + '</td></tr>').join('') : '<tr><td colspan="6" class="muted">Ainda nenhum PC na contagem exata.</td></tr>';
+  }
+
+  /** Aba Versões: saúde de cada versão e as regressões da mais nova. */
+  async function loadVersions() {
+    const v = await api('versoes');
+    const tone = (p) => (p === null ? '' : p >= 90 ? 'good' : p >= 70 ? 'mid' : 'bad');
+    $('versions').querySelector('tbody').innerHTML = v.versoes.length ? v.versoes.map((row) => '<tr class="' + (row.version === v.maisNova ? 'newest' : '') + '"><td><strong>' + esc(row.version) + '</strong>' + (row.version === v.maisNova ? '<span class="vtag">mais nova</span>' : '') + '</td><td>' + esc(num(row.ativos7)) + '</td><td>' + esc(num(row.desde)) + '</td>'
+      + '<td>' + (row.pctSemErro === null ? '<span class="muted">--</span>' : '<div class="health"><i><b class="' + tone(row.pctSemErro) + '" data-w="' + row.pctSemErro + '"></b></i><span>≈ ' + esc(String(row.pctSemErro).replace('.', ',')) + '%</span></div>') + '</td>'
+      + '<td>' + esc(row.errosAbertos) + (row.regressoes.length ? ' <span class="reg">REGRESSÃO ×' + row.regressoes.length + '</span>' : '') + '</td></tr>').join('') : '<tr><td colspan="5" class="muted">A contagem exata ainda não tem PCs.</td></tr>';
+    sizes($('versions'));
+    const newest = v.versoes.find((row) => row.version === v.maisNova);
+    $('regressions').innerHTML = newest && newest.regressoes.length ? newest.regressoes.map((r) => '<li tabindex="0" data-go="' + esc(r.signature) + '"><strong><span class="reg">REGRESSÃO</span> ' + esc(r.message) + '</strong><div class="chips"><span class="chip">só na ' + esc(v.maisNova) + '</span><span class="chip">' + esc(r.installs) + ' instalação(ões)</span><span class="chip">' + esc(r.occurrences) + '×</span></div></li>').join('') : '';
   }
   async function loadOverviewExtras() {
     try {
@@ -401,7 +526,8 @@ export const PANEL_JS = `
 
   document.querySelectorAll('[data-tab]').forEach((button) => { button.onclick = () => {
     document.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b === button)));
-    for (const name of ['geral', 'erros', 'usuarios', 'telemetria', 'equipe']) $('tab-' + name).hidden = button.dataset.tab !== name;
+    for (const name of ['geral', 'erros', 'usuarios', 'versoes', 'telemetria', 'equipe']) $('tab-' + name).hidden = button.dataset.tab !== name;
+    if (button.dataset.tab === 'versoes') loadVersions().catch((error) => alert(error.message));
     if (button.dataset.tab === 'telemetria') loadTelemetry();
     if (button.dataset.tab === 'equipe') loadTeam().catch((error) => alert(error.message));
   }; });
@@ -410,6 +536,7 @@ export const PANEL_JS = `
   const goToError = (li) => { if (!li) return; document.querySelector('[data-tab="erros"]').click(); showDetail(li.dataset.go); };
   $('geral-errors').onclick = (event) => goToError(event.target.closest('li[data-go]'));
   $('geral-errors').onkeydown = (event) => { if (event.key === 'Enter') goToError(event.target.closest('li[data-go]')); };
+  $('regressions').onclick = (event) => goToError(event.target.closest('li[data-go]'));
   $('refresh').onclick = () => { summary().then(loadErrors).then(loadOverviewExtras).catch(() => {}); };
   $('status').onchange = loadErrors;
   $('avisos').onchange = loadErrors;
