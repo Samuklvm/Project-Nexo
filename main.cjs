@@ -1447,7 +1447,17 @@ const oemFetchBytes = async (url, { maxBytes = 30 * 1024 * 1024, domains = [], t
   }
   return Buffer.concat(chunks);
 };
-const driversPage = DriversPage.createDrivers({ runPowerShellCode, fileIcon: driverFileIcon, fetchBytes: oemFetchBytes, fs,
+/** Catálogo da Microsoft (parte 3): só www.catalog.update.microsoft.com, GET da busca ou POST do diálogo de download. */
+const catalogFetchText = async (url, { method = 'GET', body = null, hosts = [] } = {}) => {
+  const allowed = (value) => { try { const u = new URL(value); return u.protocol === 'https:' && hosts.includes(u.hostname.toLowerCase()); } catch { return false; } };
+  if (!allowed(url) || (method !== 'GET' && method !== 'POST')) throw new Error('Endereço fora do Catálogo da Microsoft.');
+  const response = await net.fetch(url, { method, signal: withTimeout(30000), redirect: 'follow', ...(method === 'POST' ? { body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } : {}) });
+  if (!allowed(response.url || url)) throw new Error('Redirecionou para fora do Catálogo da Microsoft.');
+  if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+  const text = await response.text();
+  return text.slice(0, 3 * 1024 * 1024);
+};
+const driversPage = DriversPage.createDrivers({ runPowerShellCode, fileIcon: driverFileIcon, fetchBytes: oemFetchBytes, fetchText: catalogFetchText, fs,
   // Vizinha da pasta de downloads de drivers (LOCALAPPDATA), calculada na hora: o .cab só é aberto ali dentro.
   catalogDir: () => path.join(path.dirname(require('./electron/driver-download.cjs').downloadsDir(process.env, app.getPath('userData'), path)), 'driver-catalogs'),
   fetchJson: async (url) => {

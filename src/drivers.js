@@ -370,6 +370,7 @@
     2012: 'https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe',
     2013: 'https://download.microsoft.com/download/C/C/2/CC2DF5F8-4454-44B4-802D-5EA68D086676/vcredist_x86.exe'
   };
+  const CATALOG_HOSTS = ['catalog.sf.dl.delivery.mp.microsoft.com', 'catalog.s.download.windowsupdate.com', 'download.windowsupdate.com'];
   const VC_DLL = { 2005: '80', 2008: '90', 2010: '100', 2012: '110', 2013: '120' };
   /*
    * Periféricos gamer: o programa oficial de cada marca (botões, DPI, iluminação e firmware). Eles se atualizam
@@ -435,6 +436,16 @@
     if ((item.id === 'vc-x64' || item.id === 'vc-x86') && (item.state === 'missing' || item.state === 'old')) {
       const arch = item.id.slice(3);
       return dl(arch === 'x64' ? PAGES.vc64File : PAGES.vc86File, MS_DOMAINS, `vc_redist.${arch}.exe`, SIGNER.microsoft);
+    }
+    // Peça sem driver e sem fabricante conhecido: o .cab do Catálogo da Microsoft (último recurso).
+    const fromCatalog = item.id.startsWith('pnp-') && item.state === 'missing' ? latest?.catalog?.items?.[item.id.slice(4)] : null;
+    if (fromCatalog) {
+      const ids = /([0-9A-F]{4}):([0-9A-F]{4})$/i.exec(item.id);
+      const tag = ids ? `${ids[1]}-${ids[2]}`.toLowerCase() : String(item.name || 'driver').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'driver';
+      const base = dl(fromCatalog.url, CATALOG_HOSTS, `catalogo-${tag}.cab`, null);
+      if (!base) return null;
+      const { signer, ...rest } = base;
+      return { ...rest, signers: ['Microsoft Corporation'], kind: 'cab', label: 'Baixar do Catálogo da Microsoft' };
     }
     const perif = /^perif-(\w+)$/.exec(item.id);
     if (perif) {
@@ -576,7 +587,11 @@
     const used = new Set(Object.values(items).flat().flatMap((item) => [item.sourceName, ...(item.extra || [])]).filter(Boolean));
     const leftovers = devices.filter((item) => !/^microsoft/i.test(item.provider || '') && !used.has(item.name) && !/high definition audio|display audio|hdmi audio/i.test(item.name));
     items.outros = [...peripheralCards([...devices, ...(Array.isArray(data.others) ? data.others : []), ...(Array.isArray(data.genericDevices) ? data.genericDevices : [])], runtimes), ...otherCards([...leftovers, ...(Array.isArray(data.others) ? data.others : [])], data.generic, now, support)];
-    for (const list of Object.values(items)) for (const item of list) item.download = downloadOf(item, latest, runtimes);
+    for (const list of Object.values(items)) for (const item of list) {
+      item.download = downloadOf(item, latest, runtimes);
+      const found = item.id.startsWith('pnp-') && item.download ? latest?.catalog?.items?.[item.id.slice(4)] : null;
+      if (found) item.note = `Achei no Catálogo da Microsoft: ${found.title} (${found.version}${found.date ? `, ${monthText(found.date)}` : ''}).`;
+    }
     // Assistente da Intel já instalado: o Nexo não oferece de novo, só diz onde atualizar.
     if (hasApp(runtimes, /Driver & Support Assistant/i)) {
       for (const list of Object.values(items)) for (const item of list) {
@@ -595,7 +610,7 @@
     // Cada peça conta uma vez: a que o pacote do fabricante cobre aparece pelo cartão do pacote.
     const count = (...states) => all.filter((item) => !item.coveredBy && states.includes(item.state)).length;
     const summary = { total: all.length, update: count('update'), missing: count('missing', 'problem'), old: count('old'), generic: count('generic'), ok: count('ok'), check: count('check', 'ended'), oem: count('oem') };
-    return { groups, summary, support, oem: oemInfo(latest.oem, runtimes), online: Boolean(latest?.nvidia || latest?.dotnet || (latest?.oem && !latest.oem.error && !latest.oem.pending && !latest.oem.noList && Array.isArray(latest.oem.packages) && latest.oem.packages.length)), at: data.at || now };
+    return { groups, summary, support, oem: oemInfo(latest.oem, runtimes), catalogPending: latest?.catalog?.pending === true, online: Boolean(latest?.nvidia || latest?.dotnet || (latest?.oem && !latest.oem.error && !latest.oem.pending && !latest.oem.noList && Array.isArray(latest.oem.packages) && latest.oem.packages.length)), at: data.at || now };
   }
   /** A frase do topo da página. */
   function headline(summary) {
