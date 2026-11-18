@@ -607,7 +607,8 @@ test('driver-install: pacote zip confere o hash da cópia, abre, procura o insta
   assert.ok(at('Get-FileHash -LiteralPath $dst') < at('Expand-Archive -LiteralPath $dst'));
   assert.ok(at('Expand-Archive') < at("'setup.exe'"));
   assert.ok(at("'AsusSetup.exe'") < at("'install.exe'"));
-  assert.ok(at('Get-AuthenticodeSignature -LiteralPath $setup') < at('pnputil.exe'));
+  assert.ok(at('$sig = NexoSig $setup') < at('pnputil.exe'));
+  assert.ok(at('function NexoSig') < at('$sig = NexoSig $setup'));
   assert.ok(at("-Filter '*.cat'") < at('pnputil.exe'));
   assert.match(body, /pnputil\.exe \/add-driver \(Join-Path \$root '\*\.inf'\) \/subdirs \/install/);
   assert.match(body, /@\(0, 3010, 259\) -contains \$r\.code/);
@@ -627,10 +628,12 @@ test('driver-install: pacote zip confere o hash da cópia, abre, procura o insta
 test('driver-install: instalador de dentro do pacote não vale assinado só pela Microsoft (o .cat vale)', () => {
   const dir = 'C:\\N\\driver-downloads';
   const body = E.driverInstallBody({ file: `${dir}\\a.zip`, dir, kind: 'zip', signers: ['ASUSTeK COMPUTER INC.', 'Microsoft Corporation'], sha256: 'ab'.repeat(32) });
-  const setup = body.slice(body.indexOf('if ($setup) {'), body.indexOf('} else {', body.indexOf('if ($setup) {')));
-  assert.match(setup, /'ASUSTeK COMPUTER INC\.'/);
-  assert.doesNotMatch(setup, /Microsoft/);
-  assert.match(body.slice(body.indexOf("-Filter '*.cat'")), /'Microsoft Corporation'/);
+  const fn = body.slice(body.indexOf('function NexoSig'), body.indexOf('return $sig'));
+  assert.match(fn, /'ASUSTeK COMPUTER INC\.'/);
+  assert.match(fn, /'Microsoft Corporation'/, 'o .cat assinado pela Microsoft (WHQL) vale');
+  const setup = body.slice(body.indexOf('$sig = NexoSig $setup'), body.indexOf("$r.method = 'setup'"));
+  assert.match(setup, /-like 'Microsoft \*'/, 'instalador de dentro assinado pela Microsoft é recusado');
+  assert.match(setup, /\$r\.inner = \$true/);
 });
 
 test('driver-install: ponto de restauração só depois de conferir o conteúdo; 259, cópia mudada e instalador de dentro viram sinais próprios', () => {
@@ -703,8 +706,8 @@ test('silencioso: roda escondido com os parâmetros do perfil, espera com tempo-
   assert.match(b, /WaitForExit\(\$waitMs\)/);
   assert.match(b, /taskkill\.exe.*\/T \/F/);
   assert.match(b, /\$r\.hung = \$true/);
-  assert.match(b, /\$profile = 'nvidia'/);
-  assert.match(b, /\$r\.profile = \$profile/);
+  assert.match(b, /\$nexoKind = 'nvidia'/);
+  assert.match(b, /\$r\.profile = \$nexoKind/);
   assert.ok(b.indexOf('Get-AuthenticodeSignature') < b.indexOf('Process]::Start('), 'assinatura antes de rodar');
 });
 test('silencioso: sem modo, abre a janela como antes', () => {
@@ -822,4 +825,26 @@ test('motor: "instalar sozinho" respeita a chave "sem janelas" e a barra diz que
   two.engine.start('video-rtx', plan({ silent: 'nvidia' }), { auto: { restorePoint: false } });
   await settle(two.engine, 'video-rtx', ['installed', 'error']);
   assert.ok(two.events.some((e) => e.phase === 'installing' && e.quiet === true));
+});
+
+/* ---------------- Correções da revisão (instalação silenciosa) ---------------- */
+test('driver-install: pior caso cabe na linha de comando do Windows (32767) com folga', () => {
+  const Oem = require('../src/oem.js');
+  const user = 'Maria Fernanda Oliveira Santos';
+  const dir = `C:\\Users\\${user}\\AppData\\Local\\Nexo\\driver-downloads`;
+  const name = `${'a'.repeat(116)}.cab`;
+  for (const kind of ['cab', 'zip', 'exe']) {
+    const file = `${dir}\\${name.replace(/cab$/, kind)}`;
+    const body = E.driverInstallBody({ file, dir, signers: Oem.signersFor('dell'), kind, sha256: 'a'.repeat(64), restorePoint: true, silent: 'detect', description: 'Nexo - antes de instalar um driver' });
+    const full = `$ErrorActionPreference = 'Stop'\n$NexoOut = 'C:\\Users\\${user}\\AppData\\Roaming\\Nexo\\elevate\\driver-install-1763500000000.json'\n${body}`;
+    const launcher = `try { $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand','${E.encode(full)}'); exit $p.ExitCode } catch { exit 1223 }`;
+    assert.ok(launcher.length < 28000, `${kind}: ${launcher.length}`);
+    assert.equal((body.match(/Checkpoint-Computer/g) || []).length, 1, `${kind}: um ponto de restauração só no texto`);
+  }
+});
+test('driver-install: travou → marca hung antes de encerrar e o taskkill não derruba o script', () => {
+  const b = E.driverInstallBody({ file: `${SDIR}\\nv.exe`, dir: SDIR, signer: 'NVIDIA Corporation', silent: 'nvidia' });
+  assert.ok(b.indexOf('$r.hung = $true') < b.indexOf('taskkill'), 'hung antes do kill');
+  assert.match(b, /try \{[^\n]*taskkill[^\n]*\} catch \{\}/);
+  assert.doesNotMatch(b, /\$profile\b/, 'sem a variável automática $profile');
 });
