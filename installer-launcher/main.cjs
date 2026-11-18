@@ -56,6 +56,11 @@ const setTelemetry = on => new Promise(r => { execFile(path.join(SYSTEM32, 'reg.
   ['add', 'HKCU\\Software\\NexoDeviceCare\\Privacy', '/v', 'DeveloperTelemetryOptIn', '/t', 'REG_DWORD', '/d', on ? '1' : '0', '/f'],
   () => r()); });
 
+// Contagem de uso (ligada por padrão): o NSIS lê CountOptIn no customInit e manda o aviso (ou o "+1 desligou").
+const setCount = on => new Promise(r => { execFile(path.join(SYSTEM32, 'reg.exe'),
+  ['add', 'HKCU\\Software\\NexoDeviceCare\\Privacy', '/v', 'CountOptIn', '/t', 'REG_DWORD', '/d', on ? '1' : '0', '/f'],
+  () => r()); });
+
 ipcMain.handle('info', () => ({ defaultDir: DEFAULT_DIR, version: app.getVersion() }));
 
 ipcMain.handle('pick-dir', async () => {
@@ -84,6 +89,7 @@ ipcMain.handle('install', async (_e, input) => {
   // Qualquer falha no meio (o instalador não abrir, por exemplo) solta a trava de "instalando" e o relógio do progresso.
   try {
     await setTelemetry(o.telemetry === true); // só um "sim" explícito liga
+    await setCount(o.count !== false); // ligada por padrão: só um "não" explícito desliga
 
     const args = ['/S'];
     if (custom) args.push('/D=' + custom);   // NSIS: /D= precisa ser o último argumento e sem aspas
