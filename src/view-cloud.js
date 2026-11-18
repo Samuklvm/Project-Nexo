@@ -260,7 +260,7 @@
   }
   document.getElementById('cloud-count')?.addEventListener('change', (event) => setOption({ count: event.target.checked }, event.target.checked ? 'Obrigado! Este PC volta a entrar na contagem de uso.' : 'Contagem desligada: este PC não é mais contado.'));
   document.getElementById('cloud-telemetry')?.addEventListener('change', (event) => setOption({ telemetry: event.target.checked }, event.target.checked ? 'Obrigado! A telemetria manda um resumo por dia, sem nada pessoal.' : 'Telemetria desligada.'));
-  document.getElementById('cloud-errors')?.addEventListener('change', (event) => setOption({ errors: event.target.checked }, event.target.checked ? 'Obrigado! Os erros do app vão para o criador corrigir.' : 'Relatórios de erro desligados. Nada sai até você ligar de novo.'));
+  document.getElementById('cloud-errors')?.addEventListener('change', (event) => setOption({ errors: event.target.checked }, event.target.checked ? 'Obrigado! Os erros e os avisos do app vão para o criador corrigir.' : 'Relatórios de erro desligados. Nada sai até você ligar de novo.'));
   document.getElementById('cloud-error-email')?.addEventListener('change', (event) => setOption({ errorEmail: event.target.checked }, event.target.checked ? 'O seu e-mail vai junto com os erros.' : 'Os erros vão sem o seu e-mail, e ele sai dos relatórios que já foram.'));
 
   /** Primeira vez: pergunta uma vez só, com tudo desligado como resposta padrão. */

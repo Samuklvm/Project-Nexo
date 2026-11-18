@@ -166,3 +166,25 @@ test('ligações: index.html carrega os vigias depois do core.js; as fontes dos 
   const core = read('src/core.js');
   for (const vigia of ['arquivo-nao-carregou', 'console-aviso', 'tela-travada', 'memoria-da-tela']) assert.ok(core.includes(`vigia: '${vigia}'`), vigia);
 });
+
+test('textos públicos: os relatórios de erro agora levam os avisos dos vigias (PT e EN), e nada diz que eles ficam só no PC', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const read = (file) => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  const pt = read('PRIVACIDADE.md');
+  const en = read('PRIVACY.md');
+  assert.doesNotMatch(pt, /não os avisos|Avisos \(o que não chega a ser erro\) ficam só no PC/);
+  assert.doesNotMatch(en, /not warnings|Warnings \(things that are not errors\) stay on the PC/);
+  assert.match(pt, /### Vigias de erro/);
+  assert.match(en, /### Error watchers/);
+  for (const vigia of ['leitura impossível', 'sensores', 'memória']) assert.ok(pt.toLowerCase().includes(vigia), `PT: ${vigia}`);
+  assert.doesNotMatch(read('index.html'), /Os erros do registro abaixo \(não os avisos\)/);
+  assert.match(read('index.html'), /Os erros e os avisos do registro abaixo/);
+  const nsh = read('installer/installer.nsh');
+  assert.match(nsh, /os erros e os avisos do registro do app/);
+  assert.match(nsh, /the errors and warnings in the app log/);
+  assert.match(read('installer-launcher/index.html'), /os erros, os avisos e os últimos passos do app/);
+  assert.match(read('installer-launcher/renderer.js'), /the errors, warnings and the app's last steps/);
+  assert.match(read('src/view-cloud.js'), /Os erros e os avisos do app vão para o criador corrigir/);
+  assert.match(read('docs/SERVIDOR.md'), /nexo_vigias/);
+});
