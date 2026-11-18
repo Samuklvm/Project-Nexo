@@ -173,7 +173,17 @@
         out.push(card({ ...base, ...noLatest(), action: support ? { label: `Suporte ${support.maker}`, url: support.url } : null }));
       }
     }
-    if (!real.length && gpus.length) out.push(card({ id: 'video-basico', icon: 'i-gpu', name: 'Vídeo sem driver', purpose: 'O Windows está usando o "Adaptador de Vídeo Básico": sem aceleração, jogo não roda direito.', state: 'missing', action: { label: 'Procurar o driver', url: PAGES.intel } }));
+    // "Adaptador de Vídeo Básico": a peça está sem driver. O código dela ainda diz de quem é (1002 AMD, 10DE NVIDIA,
+    // 8086 Intel): vira cartão desse fabricante, mesmo com outro vídeo funcionando (ex.: Intel integrado + Radeon sem driver).
+    const MAKER_OF = { '1002': 'AMD', '10DE': 'NVIDIA', '8086': 'Intel' };
+    const SITE = { AMD: { label: 'Site da AMD', url: PAGES.amd }, NVIDIA: { label: 'Site da NVIDIA', url: PAGES.nvidia }, Intel: { label: 'Site da Intel', url: PAGES.intel } };
+    const have = new Set(out.map((c) => c.maker).filter(Boolean));
+    const basics = [...new Set(gpus.map((g) => MAKER_OF[String(g.ids || '').slice(0, 4).toUpperCase()] || null))];
+    for (const maker of basics) {
+      if (maker ? have.has(maker) : real.length) continue;
+      have.add(maker);
+      out.push(card({ id: maker ? `video-basico-${maker.toLowerCase()}` : 'video-basico', icon: 'i-gpu', name: maker ? `Vídeo ${maker} sem driver` : 'Vídeo sem driver', maker, purpose: 'O Windows está usando o "Adaptador de Vídeo Básico": sem aceleração, jogo não roda direito.', state: 'missing', action: SITE[maker] || { label: 'Procurar o driver', url: PAGES.intel } }));
+    }
     return out;
   }
 
@@ -432,7 +442,9 @@
     if (item.maker === 'AMD' && (item.id.startsWith('video-') || (item.id === 'placa-chipset' && runtimes?.board?.mobile !== true))) {
       const video = item.id.startsWith('video-');
       // Vídeo: um clique (o instalador oficial de detecção da AMD). Chipset: a página abre para escolher a placa-mãe.
-      return { via: 'amd-site', url: PAGES.amd, domains: ['amd.com'], signers: ['Advanced Micro Devices, Inc.'], kind: 'exe', primary: video || item.state === 'missing' || item.state === 'generic', label: video ? 'Instalar o mais novo da AMD' : 'Escolher e instalar pela AMD', silent: video ? 'amd' : 'detect' };
+      // "Atualizar tudo": só o vídeo que precisa de driver (o em dia não é reinstalado toda vez); chipset nunca (pede escolha).
+      const need = item.state === 'missing' || item.state === 'generic';
+      return { via: 'amd-site', url: PAGES.amd, domains: ['amd.com'], signers: ['Advanced Micro Devices, Inc.'], kind: 'exe', primary: video || need, bulk: video && need, label: video ? 'Instalar o mais novo da AMD' : 'Escolher e instalar pela AMD', silent: video ? 'amd' : 'detect' };
     }
     if (item.id.startsWith('video-') && item.maker === 'NVIDIA' && (item.state === 'update' || item.state === 'ok')) {
       const line = nvidiaLine(item.name);
@@ -536,7 +548,8 @@
       case 'ready': return item.signer ? `✓ Assinado pela ${signerName(item.signer)}` : '✓ Baixado e conferido';
       case 'install-queued': return 'Na fila para instalar';
       case 'site': return String(item.id || '').startsWith('video-') ? 'Abrindo o site da AMD e pegando o driver oficial…' : 'Escolha o driver da sua placa-mãe na janela da AMD que abriu.';
-      case 'installing': return item.quiet ? 'Instalando sem janela…' : 'Instalando… siga a janela do fabricante';
+      // quiet null: o tipo do instalador ainda vai ser descoberto (pode abrir a janela dele).
+      case 'installing': return item.quiet === null ? 'Instalando…' : item.quiet ? 'Instalando sem janela…' : 'Instalando… siga a janela do fabricante';
       case 'installed': return '✓ Instalado';
       case 'canceled': return 'Download cancelado.';
       case 'error': return ERRORS[item.error] || 'O download não terminou. Tente de novo.';
@@ -729,8 +742,10 @@
       const group = (model?.groups || []).find((g) => g.id === groupId);
       for (const item of group?.items || []) {
         const plan = item.download;
-        if (!plan?.primary || item.coveredBy || seen.has(plan.url)) continue;
-        seen.add(plan.url);
+        // Mesmo arquivo em dois cartões entra uma vez; os da página da AMD têm o mesmo endereço e são coisas diferentes.
+        const key = plan?.via ? item.id : plan?.url;
+        if (!plan?.primary || plan.bulk === false || item.coveredBy || seen.has(key)) continue;
+        seen.add(key);
         out.push(item.id);
       }
     }
@@ -811,7 +826,9 @@
    * (instalação que falhou antes de criar não conta). Recusa do administrador ou ponto que falhou param tudo; parar
    * cancela os downloads que sobraram.
    */
-  const LIVE_PHASES = new Set(['queued', 'downloading', 'verifying']);
+  const LIVE_PHASES = new Set(['site', 'queued', 'downloading', 'verifying']);
+  // Também espera a instalação que já estava rodando (o "Baixar e instalar" de um cartão antes do "Atualizar tudo").
+  const WAIT_PHASES = new Set([...LIVE_PHASES, 'install-queued', 'installing']);
   async function runBulk({ ids, phaseOf, start, cancel, install, sleep, restoreOn = false, stopped = () => false, onStep = () => {} }) {
     const out = { done: [], failed: [], stopped: false, declined: false };
     for (const id of ids) {
@@ -825,7 +842,7 @@
       if (stopped()) { out.stopped = true; await cancelRest(i); break; }
       if (out.failed.includes(id)) continue;
       onStep({ index: i, id, phase: 'download' });
-      while (LIVE_PHASES.has(phaseOf(id)) && !stopped()) await sleep(500);
+      while (WAIT_PHASES.has(phaseOf(id)) && !stopped()) await sleep(500);
       const ph = phaseOf(id);
       if (ph === 'installed') { out.done.push(id); continue; }
       if (ph !== 'ready') { if (stopped()) { out.stopped = true; await cancelRest(i); break; } out.failed.push(id); continue; }

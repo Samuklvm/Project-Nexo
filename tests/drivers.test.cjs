@@ -1066,3 +1066,62 @@ test('textos: esperando a AMD, instalando sem janela e erros novos', () => {
   assert.match(D.phaseText({ phase: 'installing', quiet: false }), /janela do fabricante/);
   assert.notEqual(D.phaseText({ phase: 'error', error: 'notfound' }), D.phaseText({ phase: 'error', error: 'xyz' }));
 });
+
+/* ---------------- Correções da revisão (instalação silenciosa) ---------------- */
+const amdData = () => {
+  const data = sample();
+  data.devices = data.devices.filter((d) => !/NVIDIA|Intel\(R\) Management/.test(d.name));
+  data.devices.push(dev('AMD Radeon RX 7800 XT', 'DISPLAY', 'Advanced Micro Devices, Inc.', '32.0.21025.1024', '2025-09-01', '1002:747E'));
+  data.devices.push(dev('AMD GPIO Controller', 'SYSTEM', 'Advanced Micro Devices, Inc', '2.2.0.130', '2023-01-01'));
+  return data;
+};
+test('atualizar tudo: AMD em dia não entra (não reinstala o Adrenalin toda vez) e chipset AMD nunca entra', () => {
+  const model = D.build(amdData(), NOW);
+  const ids = D.updatePlan(model);
+  assert.ok(!ids.some((id) => /amd|chipset/i.test(id)), ids.join(','));
+  const gpu = model.groups.flatMap((g) => g.items).find((i) => i.maker === 'AMD' && i.id.startsWith('video-'));
+  assert.equal(gpu.download.primary, true, 'o botão continua principal');
+  assert.equal(gpu.download.bulk, false);
+});
+test('atualizar tudo: vídeo AMD sem driver entra, e dois cartões com o mesmo endereço (AMD) não se escondem', () => {
+  // Windows recém-instalado: a Radeon aparece como "Adaptador de Vídeo Básico" (código 1002 = AMD).
+  const data = amdData();
+  data.devices = data.devices.map((d) => (/Radeon/.test(d.name) ? { ...d, name: 'Microsoft Basic Display Adapter', provider: 'Microsoft', maker: 'Microsoft', version: '10.0', date: '2006-06-21' } : d));
+  const model = D.build(data, NOW);
+  const gpu = model.groups.find((g) => g.id === 'video').items.find((i) => i.id === 'video-basico-amd');
+  assert.ok(gpu, 'com o Intel integrado funcionando, a Radeon sem driver também aparece');
+  assert.equal(gpu.maker, 'AMD');
+  assert.equal(gpu.state, 'missing');
+  assert.equal(gpu.download?.via, 'amd-site', 'o instalador de detecção da AMD resolve sem saber o modelo');
+  assert.ok(D.updatePlan(model).includes(gpu.id));
+});
+test('atualizar tudo: espera o site da AMD e a instalação automática que já estava rodando', async () => {
+  const phase = { a: 'site', b: 'installing' };
+  let ticks = 0;
+  const out = await D.runBulk({
+    ids: ['a', 'b'], restoreOn: false,
+    phaseOf: (id) => phase[id],
+    start: async () => {}, cancel: async () => {},
+    install: async () => ({ ok: true }),
+    sleep: async () => { ticks += 1; if (ticks === 2) phase.a = 'ready'; if (ticks === 4) phase.b = 'installed'; }
+  });
+  assert.deepEqual(out.done.sort(), ['a', 'b']);
+});
+test('atualizar tudo: parar fecha o site da AMD que estava esperando', async () => {
+  const phase = { a: 'ready', b: 'site' };
+  const canceled = [];
+  let stop = false;
+  await D.runBulk({ ids: ['a', 'b'], restoreOn: false, phaseOf: (id) => phase[id], start: async () => {}, cancel: async (id) => { canceled.push(id); phase[id] = 'canceled'; }, install: async () => { stop = true; return { ok: true }; }, sleep: async () => {}, stopped: () => stop });
+  assert.deepEqual(canceled, ['b']);
+});
+test('textos: instalando com detecção não promete "sem janela"', () => {
+  assert.equal(D.phaseText({ phase: 'installing', quiet: null }), 'Instalando…');
+});
+test('vídeo básico: o código da peça diz de quem é (NVIDIA e Intel apontam para o site certo)', () => {
+  const basic = (ids) => D.build({ at: NOW, devices: [dev('Microsoft Basic Display Adapter', 'DISPLAY', 'Microsoft', '10.0', '2006-06-21', ids)], others: [], generic: 0, runtimes: { os: { build: 22631 }, board: { mobile: false }, vc: {}, uninstall: [], dx: {}, desktop: [], missing: [] }, latest: {} }, NOW).groups.find((g) => g.id === 'video').items[0];
+  assert.equal(basic('10DE:2783').maker, 'NVIDIA');
+  assert.match(basic('10DE:2783').action.url, /nvidia\.com/);
+  assert.equal(basic('8086:4680').maker, 'Intel');
+  assert.equal(basic(null).maker, null);
+  assert.equal(basic(null).name, 'Vídeo sem driver');
+});
