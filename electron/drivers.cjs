@@ -11,6 +11,7 @@
 'use strict';
 const Scan = require('./deep-scan.cjs');
 const Vendors = require('../src/vendors.js');
+const OemCatalogs = require('./oem-catalogs.cjs');
 
 const RUNTIMES_SCRIPT = Scan.PS_HEAD + String.raw`
 $cs = Get-CimInstance Win32_ComputerSystem
@@ -261,7 +262,9 @@ function iconSources(runtimes) {
   return out;
 }
 
-function createDrivers({ runPowerShellCode, fetchJson, fileIcon = null, now = () => Date.now(), platform = process.platform } = {}) {
+function createDrivers({ runPowerShellCode, fetchJson, fetchBytes = null, fs = null, catalogDir = null, fileIcon = null, now = () => Date.now(), platform = process.platform } = {}) {
+  // Catálogo oficial do fabricante do PC (Dell, HP, Lenovo, ASUS...): só quando o app injeta rede, disco e pasta.
+  const oemCatalogs = OemCatalogs.createOemCatalogs({ fetchBytes, runPowerShellCode, fs, catalogDir, now });
   const iconCache = new Map(); // caminho → data: URL (ou null)
   async function localIcons(runtimes) {
     if (!fileIcon) return {};
@@ -292,14 +295,14 @@ function createDrivers({ runPowerShellCode, fetchJson, fileIcon = null, now = ()
       runPowerShellCode(ALL_DRIVERS_SCRIPT, 110000).then((out) => parseAllDrivers(out.stdout)).catch(() => null),
       runPowerShellCode(RUNTIMES_SCRIPT, 60000).then((out) => parseRuntimes(out.stdout)).catch(() => null)
     ]);
-    local = { devices: drivers?.devices || [], others: drivers?.others || [], generic: drivers?.generic ?? null, runtimes };
+    local = { devices: drivers?.devices || [], others: drivers?.others || [], genericDevices: drivers?.genericDevices || [], generic: drivers?.generic ?? null, runtimes };
     localAt = now();
     return local;
   }
   /** Tudo que a página precisa. `online: false` não consulta nada fora do PC. */
   async function scan({ force = false, online: allowOnline = true } = {}) {
-    if (platform !== 'win32') return { platform, devices: [], others: [], generic: null, runtimes: null, latest: {}, icons: {}, at: now() };
-    const { devices, others, generic, runtimes } = await readLocal(force);
+    if (platform !== 'win32') return { platform, devices: [], others: [], genericDevices: [], generic: null, runtimes: null, latest: {}, icons: {}, at: now() };
+    const { devices, others, genericDevices, generic, runtimes } = await readLocal(force);
     const latest = {};
     if (allowOnline) {
       const win11 = (runtimes?.os?.build || 0) >= 22000;
@@ -316,11 +319,16 @@ function createDrivers({ runPowerShellCode, fetchJson, fileIcon = null, now = ()
         const files = await Promise.all(channels.map(async (c) => [c, await cachedFetch(dotnetReleaseUrl(c), parseDotnetRelease)]));
         if (files.some(([, value]) => value)) latest.dotnetFiles = Object.fromEntries(files.filter(([, value]) => value));
       }
+      if (oemCatalogs) {
+        let oem = null;
+        try { oem = await oemCatalogs.lookup({ runtimes, devices: [...(devices || []), ...(genericDevices || [])] }); } catch { oem = null; }
+        if (oem) latest.oem = oem;
+      }
     }
     const icons = await localIcons(runtimes);
-    return { platform, devices: devices || [], others: others || [], generic, runtimes, latest, icons, at: now() };
+    return { platform, devices: devices || [], others: others || [], genericDevices: genericDevices || [], generic, runtimes, latest, icons, at: now() };
   }
   return { scan };
 }
 
-module.exports = { createDrivers, parseDotnetRelease, dotnetReleaseUrl, NV_LINES_NOTEBOOK, iconSources, iconPath, ALL_DRIVERS_SCRIPT, RUNTIMES_SCRIPT, parseRuntimes, parseAllDrivers, parseNvidia, parseDotnet, nvidiaUrl, nvidiaLine, officialLink, NV_ENDPOINT, DOTNET_INDEX };
+module.exports = { expandCabScript: OemCatalogs.expandCabScript, createDrivers, parseDotnetRelease, dotnetReleaseUrl, NV_LINES_NOTEBOOK, iconSources, iconPath, ALL_DRIVERS_SCRIPT, RUNTIMES_SCRIPT, parseRuntimes, parseAllDrivers, parseNvidia, parseDotnet, nvidiaUrl, nvidiaLine, officialLink, NV_ENDPOINT, DOTNET_INDEX };

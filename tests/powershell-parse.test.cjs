@@ -20,6 +20,7 @@ function scripts() {
   // O lote elevado do otimizador, montado com um exemplo de cada tipo de mudança (o mesmo do teste do otimizador).
   // Drivers com um clique: a conferência de assinatura e a instalação elevada (com e sem ponto de restauração).
   const dl = 'C:\\Users\\a\\AppData\\Roaming\\Nexo\\driver-downloads';
+  out['oem-catalogs.catalogCabScript'] = require('../electron/oem-catalogs.cjs').catalogCabScript('C:\\Users\\a\\AppData\\Local\\Nexo\\driver-catalogs\\dell-x-1.cab', 'C:\\Users\\a\\AppData\\Local\\Nexo\\driver-catalogs\\dell-x-1', 'C:\\Users\\a\\AppData\\Local\\Nexo\\driver-catalogs', ['Dell Inc', 'Dell Inc.', 'Dell Technologies']);
   out['driver-signature.signatureScript'] = require('../electron/driver-signature.cjs').signatureScript(`${dl}\\nvidia-572.16.exe`, 'NVIDIA Corporation');
   out['elevate.driverInstallBody.ponto'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ file: `${dl}\\nvidia-572.16.exe`, dir: dl, signer: 'NVIDIA Corporation', restorePoint: true, description: "Nexo - antes do driver d'O vídeo" })}`;
   out['elevate.driverInstallBody.direto'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ file: `${dl}\\vc_redist.x64.exe`, dir: dl, signer: 'Microsoft Corporation' })}`;

@@ -385,3 +385,100 @@ test('drivers: guarda os códigos de hardware de cada peça e o modelo exato do 
   assert.equal(rt.board.bios, '1.12.0');
   assert.deepEqual(rt.missing[0].hwids, ['PCI\\VEN_8086&DEV_7AE8&SUBSYS_0BEB1028']);
 });
+
+/* ---------------- Projeto 2: catálogos do fabricante do PC (latest.oem) ---------------- */
+const fixtureOem = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', 'oem', name));
+const AUDIO_ID = 'HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295&SUBSYS_10280BEB';
+const DELL_BOARD = { maker: 'Dell Inc.', product: '0XYZ', systemMaker: 'Dell Inc.', model: 'XPS 15 9530', mobile: true, sku: '0BEB', version: '', bios: '1.10.0' };
+function oemSvc({ board = DELL_BOARD, fetchBytes, org = 'Dell Inc.', clock } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-cat-'));
+  const calls = { net: [], ps: [] };
+  let t = NOW;
+  const svc = Main.createDrivers({
+    platform: 'win32', now: clock || (() => t), catalogDir: dir, fs: require('node:fs/promises'),
+    fetchJson: async () => { throw new Error('offline'); },
+    fetchBytes: async (url, opts) => { calls.net.push(url); return fetchBytes(url, opts); },
+    runPowerShellCode: async (script) => {
+      calls.ps.push(script);
+      if (script.includes('expand.exe')) {
+        // Imita a tarefa: assinatura conferida e, se for de quem deve, o .cab "expandido" (aqui o .cab já é o XML).
+        const m = /expand\.exe -F:\* '([^']+)' '([^']+)'/.exec(script);
+        const ok = script.includes(`'${org}'`);
+        if (ok) { fs.mkdirSync(m[2], { recursive: true }); fs.copyFileSync(m[1], path.join(m[2], 'Catalog.xml')); }
+        return { stdout: JSON.stringify({ status: 'Valid', org, code: ok ? 0 : -1 }) };
+      }
+      if (script.includes('Win32_PnPSignedDriver | Where-Object')) return { stdout: JSON.stringify({ devices: [{ ...dev('Realtek Audio', 'MEDIA', 'Realtek', '6.0.9500.1', '2025-01-10'), hwids: [AUDIO_ID] }], others: [], generic: 0, genericDevices: [] }) };
+      return { stdout: JSON.stringify({ os: { build: 22631 }, board }) };
+    }
+  });
+  return { svc, calls, dir, tick: (ms) => { t += ms; } };
+}
+const dellNet = (overrides = {}) => async (url) => {
+  if (overrides[url]) return overrides[url]();
+  if (url.endsWith('fontes.json')) return Buffer.from(fs.readFileSync(path.join(__dirname, '..', 'docs', 'drivers', 'fontes.json')));
+  if (url.endsWith('CatalogIndexPC.cab')) return fixtureOem('dell-index.xml');
+  if (url.endsWith('0BEB_Catalog.cab')) return fixtureOem('dell-catalog.xml');
+  throw new Error(`inesperado: ${url}`);
+};
+
+test('oem: sem fabricante identificado não busca nada', async () => {
+  const { svc, calls } = oemSvc({ board: { maker: 'Desconhecida', product: 'X', systemMaker: 'Montado', model: 'PC', mobile: false, sku: '', version: '', bios: '' }, fetchBytes: dellNet() });
+  const r = await svc.scan();
+  assert.equal(r.latest.oem, undefined);
+  assert.equal(calls.net.length, 0);
+});
+
+test('oem: Dell completo (índice → catálogo), só pacotes que casam, BIOS à parte e cache de 6 h', async () => {
+  const { svc, calls, tick } = oemSvc({ fetchBytes: dellNet() });
+  const r = await svc.scan();
+  const oem = r.latest.oem;
+  assert.equal(oem.oem, 'dell');
+  assert.equal(oem.key, '0BEB');
+  assert.equal(oem.error, undefined);
+  assert.deepEqual(oem.packages.map((p) => p.id), ['dell-R1VKP'], 'só o pacote que casa com uma peça deste PC');
+  assert.equal(oem.bios.version, '1.14.0');
+  assert.ok(oem.at > 0);
+  assert.ok(calls.ps.some((s) => s.includes("'Dell Inc.'") && s.includes("'Dell Technologies'")), 'confere a assinatura do .cab pelos nomes da Dell');
+  const n = calls.net.length;
+  tick(5 * 3600 * 1000);
+  await svc.scan({ force: true });
+  assert.equal(calls.net.length, n, 'segunda leitura dentro de 6 h não vai à rede');
+  tick(2 * 3600 * 1000);
+  await svc.scan({ force: true });
+  assert.ok(calls.net.length > n, 'depois de 6 h busca de novo');
+});
+
+test('oem: .cab assinado por outra empresa não é lido', async () => {
+  const { svc } = oemSvc({ fetchBytes: dellNet(), org: 'Evil Corp' });
+  const oem = (await svc.scan()).latest.oem;
+  assert.equal(oem.error.stage, 'signature');
+  assert.equal(oem.error.source, 'dell');
+  assert.deepEqual(oem.packages, []);
+});
+
+test('oem: lista remota inválida usa a local; "disabled" desliga a fonte', async () => {
+  const url = 'https://raw.githubusercontent.com/Samuklvm/Project-Nexo/main/docs/drivers/fontes.json';
+  const bad = oemSvc({ fetchBytes: dellNet({ [url]: () => Buffer.from('{"sources": 3}') }) });
+  assert.deepEqual((await bad.svc.scan()).latest.oem.packages.map((p) => p.id), ['dell-R1VKP']);
+  const local = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'drivers', 'fontes.json'), 'utf8'));
+  const off = oemSvc({ fetchBytes: dellNet({ [url]: () => Buffer.from(JSON.stringify({ ...local, disabled: ['dell'] })) }) });
+  const oem = (await off.svc.scan()).latest.oem;
+  assert.equal(oem.disabled, true);
+  assert.deepEqual(oem.packages, []);
+  assert.equal(off.calls.net.filter((u) => u.includes('dell.com')).length, 0);
+});
+
+test('oem: erro de rede no índice vira erro com etapa e a leitura local continua inteira', async () => {
+  const { svc } = oemSvc({ fetchBytes: dellNet({ 'https://downloads.dell.com/catalog/CatalogIndexPC.cab': () => { throw new Error('ECONNRESET'); } }) });
+  const r = await svc.scan();
+  assert.deepEqual(r.latest.oem.error, { source: 'dell', stage: 'index', code: 'network' });
+  assert.equal(r.devices.length, 1);
+  assert.equal(r.runtimes.board.sku, '0BEB');
+});
+
+test('oem: script do .cab só aceita caminhos dentro da pasta de catálogos', () => {
+  const s = Main.expandCabScript('C:\\Nexo\\driver-catalogs\\dell\\a.cab', 'C:\\Nexo\\driver-catalogs\\dell\\x', 'C:\\Nexo\\driver-catalogs');
+  assert.match(s, /expand\.exe -F:\* 'C:\\Nexo\\driver-catalogs\\dell\\a\.cab' 'C:\\Nexo\\driver-catalogs\\dell\\x'/);
+  assert.throws(() => Main.expandCabScript('C:\\Windows\\a.cab', 'C:\\Nexo\\driver-catalogs\\x', 'C:\\Nexo\\driver-catalogs'));
+  assert.throws(() => Main.expandCabScript('C:\\Nexo\\driver-catalogs\\..\\a.cab', 'C:\\Nexo\\driver-catalogs\\x', 'C:\\Nexo\\driver-catalogs'));
+});

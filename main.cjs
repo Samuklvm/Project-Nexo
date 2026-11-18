@@ -1426,7 +1426,30 @@ const driverFileIcon = async (file) => {
   const image = await app.getFileIcon(file, { size: 'large' });
   return image && !image.isEmpty() ? image.toDataURL() : null;
 };
-const driversPage = DriversPage.createDrivers({ runPowerShellCode, fileIcon: driverFileIcon, fetchJson: async (url) => {
+/** Catálogo do fabricante: HTTPS, só no domínio oficial (conferido de novo depois de redirecionar) e com limite de tamanho. */
+const oemFetchBytes = async (url, { maxBytes = 30 * 1024 * 1024, domains = [] } = {}) => {
+  const { official } = require('./electron/oem-sources.cjs');
+  if (!official(url, domains)) throw new Error('Endereço fora do site oficial.');
+  const response = await net.fetch(url, { signal: withTimeout(120000), redirect: 'follow' });
+  if (!official(response.url || url, domains)) throw new Error('Redirecionou para fora do site oficial.');
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (Number(response.headers.get('content-length')) > maxBytes) throw new Error('Arquivo grande demais.');
+  const chunks = [];
+  let total = 0;
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > maxBytes) { await reader.cancel().catch(() => {}); throw new Error('Arquivo grande demais.'); }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks);
+};
+const driversPage = DriversPage.createDrivers({ runPowerShellCode, fileIcon: driverFileIcon, fetchBytes: oemFetchBytes, fs,
+  // Vizinha da pasta de downloads de drivers (LOCALAPPDATA), calculada na hora: o .cab só é aberto ali dentro.
+  catalogDir: () => path.join(path.dirname(require('./electron/driver-download.cjs').downloadsDir(process.env, app.getPath('userData'), path)), 'driver-catalogs'),
+  fetchJson: async (url) => {
   const response = await net.fetch(url, { signal: withTimeout(12000), headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const body = await response.text();
