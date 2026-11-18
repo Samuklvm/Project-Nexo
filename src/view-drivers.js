@@ -52,12 +52,23 @@
     const dl = Nexo.platform !== 'linux' ? downloads.get(item.id) || null : null;
     // A área do download fica mesmo se o cartão perder o download direto (ex.: virou "Em dia" e precisa reiniciar).
     const zone = Nexo.platform !== 'linux' && D.keepsZone(item, dl, notes.has(item.id)) ? downloadZone(item, dl) : { side: '', below: '' };
-    return `<li class="driver${zone.below ? ' has-dl' : ''}${celebrate.has(item.id) ? ' celebrate' : ''}" data-state="${escapeHtml(item.state)}" data-id="${escapeHtml(item.id)}"${dl ? ` data-dl="${escapeHtml(dl.phase)}"` : ''}>
+    return `<li class="driver${zone.below ? ' has-dl' : ''}${item.kind === 'oem' ? ' is-oem' : ''}${item.coveredBy ? ' is-covered' : ''}${celebrate.has(item.id) ? ' celebrate' : ''}" data-state="${escapeHtml(item.state)}" data-id="${escapeHtml(item.id)}"${dl ? ` data-dl="${escapeHtml(dl.phase)}"` : ''}>
       ${tile(item.brand, item.icon, 'driver-ico', item.brandAlt)}
-      <div class="driver-main"><strong class="driver-name">${escapeHtml(item.name)}</strong><span class="driver-purpose">${escapeHtml(item.purpose)}</span>${item.note ? `<span class="driver-note">${escapeHtml(item.note)}</span>` : ''}${extra}</div>
+      <div class="driver-main">${oemSeal(item)}<strong class="driver-name">${escapeHtml(item.name)}</strong><span class="driver-purpose">${escapeHtml(item.purpose)}</span>${item.covers?.length ? `<span class="driver-covers">${escapeHtml(D.coversText(item.covers))}</span>` : ''}${item.note ? `<span class="driver-note">${escapeHtml(item.note)}</span>` : ''}${covered(item)}${extra}</div>
       ${item.plain ? '<span class="driver-ver"></span>' : `<dl class="driver-ver">${versionCell('Instalado', item.installed)}${latest}</dl>`}
       <div class="driver-side"><span class="driver-state">${escapeHtml(D.STATES[item.state] || '')}</span><div class="driver-actions">${zone.side}${action}</div></div>${zone.below}
     </li>`;
+  }
+  const oemName = () => D.OEM_NAME[model?.oem?.oem] || 'fabricante';
+  /** O selo do pacote do fabricante do PC (de onde ele vem). */
+  function oemSeal(item) {
+    if (item.kind !== 'oem') return '';
+    return `<span class="driver-seal">${ico('i-shield')}Pacote oficial · ${escapeHtml(oemName())}</span>`;
+  }
+  /** A peça que o pacote do fabricante atualiza: aponta para ele no lugar do botão do site. */
+  function covered(item) {
+    if (!item.coveredBy) return '';
+    return `<span class="driver-covered">${ico('i-check')}<span>Atualizado pelo pacote oficial da ${escapeHtml(oemName())}</span><button class="driver-jump" type="button" data-driver-jump="${escapeHtml(item.coveredBy)}">Ver o pacote</button></span>`;
   }
   /** Botões e barra do download direto de um cartão, conforme a fase. */
   function downloadZone(item, dl) {
@@ -127,10 +138,14 @@
     const s = model.summary;
     // Dourado quando há algo a fazer (os itens com erro já ficam marcados na lista); verde com tudo em dia.
     const tone = s.missing || s.update || s.old ? 'warn' : 'good';
-    const online = model.online ? 'As versões mais recentes da NVIDIA e do .NET vieram agora dos sites oficiais; nos outros fabricantes, o botão abre a página certa para conferir.' : 'Sem acesso aos sites oficiais agora: o estado vem da data de cada driver.';
     const support = model.support;
-    const supportBox = support ? `<div class="drivers-support">${support.brand ? tile(support.brand, 'i-board', 'ds-logo') : ''}<span class="ds-label">${support.kind === 'notebook' ? 'Seu notebook' : support.kind === 'computador' ? 'Seu computador' : 'Sua placa-mãe'}</span><strong>${escapeHtml(`${support.maker}${support.model ? ` ${support.model}` : ''}`)}</strong><span class="ds-hint">Chipset, áudio e rede feitos para ela estão na página de suporte.</span><div class="ds-actions"><button class="btn sm" type="button" data-driver-url="${escapeHtml(support.url)}">Página de suporte da ${escapeHtml(support.maker)}</button>${support.model ? `<button class="btn sm ghost" type="button" data-driver-copy="${escapeHtml(support.model)}">Copiar o modelo</button>` : ''}</div></div>` : '';
-    box.innerHTML = `<div class="drivers-status"><h3 class="drivers-headline" data-tone="${tone}">${escapeHtml(D.headline(s))}</h3><p class="drivers-sub">${escapeHtml(`Conferido às ${timeText(model.at)}. ${online}`)}</p><p class="drivers-rule">O Nexo baixa só do site oficial de cada fabricante, confere a assinatura de cada arquivo e nunca usa o Windows Update.</p>${restoreToggle()}</div>${supportBox}`;
+    const fromOem = model.oem && !model.oem.error && !model.oem.disabled && D.OEM_NAME[model.oem.oem] && model.oem.packages;
+    const online = model.online ? `As versões mais recentes da NVIDIA${fromOem ? `, do .NET e da lista oficial da ${D.OEM_NAME[model.oem.oem]}` : ' e do .NET'} vieram agora dos sites oficiais; nos outros fabricantes, o botão abre a página certa para conferir.` : 'Sem acesso aos sites oficiais agora: o estado vem da data de cada driver.';
+    const line = D.oemLine(model.oem, Date.now());
+    const oemBox = line ? `<p class="drivers-oem" data-tone="${model.oem.error ? 'warn' : 'good'}">${tile(model.oem.oem, 'i-board', 'do-logo')}<span>${escapeHtml(line)}</span></p>` : '';
+    const bios = model.oem?.bios?.newer ? `<div class="drivers-bios"><span class="db-ico">${ico('i-alert')}</span><div><strong>BIOS ${escapeHtml(model.oem.bios.version)} disponível</strong><span>Você tem a ${escapeHtml(model.oem.bios.installed || 'anterior')}. A BIOS não entra no Baixar: atualize pela página de suporte${support?.kind === 'notebook' ? ', com o notebook na tomada' : ''}, sem desligar no meio.</span></div></div>` : '';
+    const supportBox = support ? `<div class="drivers-support">${support.brand ? tile(support.brand, 'i-board', 'ds-logo') : ''}<span class="ds-label">${support.kind === 'notebook' ? 'Seu notebook' : support.kind === 'computador' ? 'Seu computador' : 'Sua placa-mãe'}</span><strong>${escapeHtml(`${support.maker}${support.model ? ` ${support.model}` : ''}`)}</strong><span class="ds-hint">Chipset, áudio e rede feitos para ela estão na página de suporte.</span>${bios}<div class="ds-actions"><button class="btn sm" type="button" data-driver-url="${escapeHtml(support.url)}">Página de suporte da ${escapeHtml(support.maker)}</button>${support.model ? `<button class="btn sm ghost" type="button" data-driver-copy="${escapeHtml(support.model)}">Copiar o modelo</button>` : ''}</div></div>` : '';
+    box.innerHTML = `<div class="drivers-status"><h3 class="drivers-headline" data-tone="${tone}">${escapeHtml(D.headline(s))}</h3><p class="drivers-sub">${escapeHtml(`Conferido às ${timeText(model.at)}. ${online}`)}</p>${oemBox}${support ? '' : bios}<p class="drivers-rule">O Nexo baixa só do site oficial de cada fabricante, confere a assinatura de cada arquivo e nunca usa o Windows Update.</p>${restoreToggle()}</div>${supportBox}`;
   }
   function restoreLine() {
     if (!restoreOn) return 'Instala direto, sem ponto de restauração';
@@ -258,6 +273,12 @@
         notes.set(id, { tone: result?.declined ? 'warn' : 'bad', text: result?.note || 'O instalador fechou sem terminar.' });
         updateCard(id);
       }
+      return;
+    }
+    const jump = event.target.closest?.('[data-driver-jump]');
+    if (jump && jump.closest('.drivers-view')) {
+      const target = groupsBox()?.querySelector(`.driver[data-id="${CSS.escape(jump.dataset.driverJump)}"]`);
+      if (target) { target.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); target.classList.remove('flash'); void target.offsetWidth; target.classList.add('flash'); setTimeout(() => target.classList.remove('flash'), 1800); }
       return;
     }
     const copy = event.target.closest?.('[data-driver-copy]');

@@ -307,7 +307,7 @@
 
   /* ---------------- Pacotes do fabricante do PC ---------------- */
   const OEM_TYPE = { dell: 'dell-catalog', hp: 'hpia-ref', lenovo: 'lenovo-catalog', asus: 'asus-api' };
-  const OEM_NAME = { dell: 'Dell', hp: 'HP', lenovo: 'Lenovo', asus: 'ASUS' };
+  const OEM_NAME = { dell: 'Dell', hp: 'HP', lenovo: 'Lenovo', asus: 'ASUS', msi: 'MSI', gigabyte: 'GIGABYTE', asrock: 'ASRock', acer: 'Acer' };
   const GROUP_OF = { MEDIA: 'audio', NET: 'rede', BLUETOOTH: 'bluetooth', HDC: 'disco', SCSIADAPTER: 'disco', SYSTEM: 'placa' };
   const GROUP_ICON = { audio: 'i-sound', rede: 'i-net', bluetooth: 'i-bt', disco: 'i-disk', placa: 'i-board', semdriver: 'i-alert', outros: 'i-driver' };
   /** O maior entre os drivers instalados das peças (as que estão sem driver não têm versão). */
@@ -342,9 +342,9 @@
       const covers = [...new Set(hits.map((item) => item.name))];
       const who = OEM_NAME[oem.oem];
       const item = card({
-        id, icon: GROUP_ICON[group], brand: oem.oem, name: pkg.title, maker: who, purpose: `Pacote oficial da ${who} para o ${oem.label}. Atende: ${covers.join(', ')}.`,
+        id, icon: GROUP_ICON[group], brand: oem.oem, name: pkg.title, maker: who, purpose: `Pacote oficial da ${who} feito para o ${oem.label}.`,
         installed: top ? installedOf(top) : null, latest: { version: pkg.driverVersion || pkg.version || null, date: pkg.date || null, month: monthText(pkg.date) },
-        state, note: state === 'oem' ? `A ${who} numera este pacote de outro jeito (${pkg.version || 'sem versão'}), então não dá para comparar. Saiu em ${monthText(pkg.date) || 'data desconhecida'}.` : null
+        state, note: state === 'oem' ? `A ${who} numera este pacote de outro jeito, então não dá para comparar com o instalado${pkg.date ? `. Saiu em ${monthText(pkg.date)}` : ''}.` : null
       });
       item.kind = 'oem';
       item.covers = covers;
@@ -421,7 +421,8 @@
       case 'queued': return item.position ? `Na fila (${item.position}º)` : 'Na fila';
       case 'downloading': return progressText(item);
       case 'verifying': return 'Conferindo a assinatura…';
-      case 'ready': return `✓ Assinado pela ${signerName(item.signer)}`;
+      // Pacote .zip/.cab: confere o hash agora e a assinatura do instalador de dentro na hora de instalar.
+      case 'ready': return item.signer ? `✓ Assinado pela ${signerName(item.signer)}` : '✓ Baixado e conferido';
       case 'install-queued': return 'Na fila para instalar';
       case 'installing': return 'Instalando… siga a janela do fabricante';
       case 'installed': return '✓ Instalado';
@@ -454,6 +455,29 @@
     const installed = runtimes?.board?.bios || null;
     const bios = oem.bios?.version ? { version: oem.bios.version, date: oem.bios.date || null, installed, newer: Oem ? Oem.compareToInstalled(installed, { driverVersion: oem.bios.version }) === 'newer' : false } : null;
     return { oem: oem.oem, label: oem.label || null, at: oem.at || null, error: oem.error || null, bios, disabled: oem.disabled === true, support: oem.support || null, packages: Array.isArray(oem.packages) ? oem.packages.length : 0 };
+  }
+
+  const clock = (at) => { const d = new Date(at); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  /** A linha do topo sobre o fabricante do PC ('' quando o Nexo não identificou o fabricante). */
+  function oemLine(oem, now = Date.now()) {
+    if (!oem || !oem.oem) return '';
+    const who = OEM_NAME[oem.oem] || 'fabricante';
+    const head = `Seu PC: ${oem.label || who}`;
+    if (oem.disabled) return `${head} · os pacotes da ${who} estão pausados por enquanto; o botão abre a página de suporte`;
+    if (oem.error?.stage === 'signature') return `${head} · a lista da ${who} não passou na conferência da assinatura, então ignorei por segurança`;
+    if (oem.error) return `${head} · fonte da ${who} fora do ar agora; tentando de novo mais tarde`;
+    if (!OEM_TYPE[oem.oem]) return `${head} · a ${who} não tem lista pública de drivers; use a página de suporte do modelo`;
+    const at = Number(oem.at);
+    if (!Number.isFinite(at) || at <= 0) return head;
+    const day = new Date(at).toDateString() === new Date(now).toDateString() ? '' : ` de ${new Date(at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
+    return `${head} · lista oficial da ${who} conferida${day} às ${clock(at)}`;
+  }
+  /** "Atualiza: A, B e C" / "Atualiza: A, B, C e mais 2". */
+  function coversText(names) {
+    const list = Array.isArray(names) ? names.filter(Boolean) : [];
+    if (!list.length) return '';
+    if (list.length <= 3) return `Atualiza: ${list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} e ${list[list.length - 1]}`}`;
+    return `Atualiza: ${list.slice(0, 3).join(', ')} e mais ${list.length - 3}`;
   }
 
   /** O modelo inteiro da página. */
@@ -498,5 +522,5 @@
   const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Antigo', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova', oem: 'Pacote do fabricante disponível' };
   /** As chaves de ícone que a página vai mostrar (para pedir só essas). */
   const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.flatMap((item) => [item.brand, item.brandAlt]))].filter(Boolean))];
-  return { build, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  return { build, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });

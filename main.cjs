@@ -1462,8 +1462,18 @@ let lastDriversModel = null;
 registerIpcHandler('drivers:scan', async (_event, options = {}) => {
   const result = await driversPage.scan({ force: options?.force === true, online: options?.online !== false });
   try { lastDriversModel = DriverRules.build(result, Date.now()); } catch { lastDriversModel = null; }
+  watchDriverSource(result?.latest?.oem?.error);
   return result;
 });
+// Vigia: a fonte de drivers de um fabricante (Dell, HP, Lenovo, ASUS) falhando. No máximo um aviso por fonte por dia.
+const driverSourceWarned = new Map();
+function watchDriverSource(error) {
+  if (!error || typeof error.source !== 'string') return;
+  const day = new Date().toISOString().slice(0, 10);
+  if (driverSourceWarned.get(error.source) === day) return;
+  driverSourceWarned.set(error.source, day);
+  errorLog.record({ source: 'principal', level: 'aviso', message: `Fonte de drivers falhando: ${error.source}`, context: { fonte: error.source, etapa: String(error.stage || ''), codigo: String(error.code || ''), vigia: 'fonte-de-driver' } });
+}
 /*
  * Drivers com um clique: baixa o arquivo oficial do cartão (fila, no máximo 4 juntos), confere hash e assinatura e instala
  * pela tarefa de administrador (uma de cada vez). A tela manda só o id do cartão.

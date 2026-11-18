@@ -413,7 +413,33 @@ if (window.__nexoPlatform === 'linux') {
   const optEmit = (event) => optListeners.forEach((cb) => cb(event));
   const opt = (id, label, current, currentKind, options, extra = {}) => ({ id, label, available: true, values: options.find((o) => o.label === current)?.values || [null], current, currentKind, options, evidence: 'medido', risk: 'baixo', reboot: 'nao', admin: false, ...extra });
   const O = (label, values, kind = 'alternativa') => ({ label, values, kind });
+  /*
+   * O PC da prévia: a placa ASUS de sempre (pacotes pela consulta da ASUS). Com ?pc=dell vira um Dell XPS 15 (catálogo da
+   * Dell e aviso de BIOS) e com ?pc=dell-off a fonte da Dell fora do ar.
+   */
+  function mockPc() {
+    const which = new URLSearchParams(location.search).get('pc') || '';
+    const dell = which.startsWith('dell');
+    const pkg = (id, title, category, version, driverVersion, date, url, kind, size, hw) => ({ id: `${dell ? 'dell' : 'asus'}-${id}`, source: dell ? 'dell' : 'asus', title, category, version, driverVersion, date, url, fileName: url.split('/').pop(), kind, size, hardwareIds: hw, signers: [] });
+    const packages = dell ? [
+      pkg('R1VKP', 'Realtek High Definition Audio Driver', 'Audio', '6.0.9700.1, A05', '6.0.9700.1', '2026-10-02', 'https://dl.dell.com/FOLDER11223344M/1/Realtek-High-Definition-Audio-Driver_R1VKP_WIN64_6.0.9700.1_A05.exe', 'exe', 352718840, ['HDAUDIO\\FUNC_01&VEN_10EC&DEV_0897&SUBSYS_10280BEB']),
+      pkg('7CHKN', 'Intel Serial IO Driver', 'Chipset', '30.100.2405.44, A02', null, '2026-08-21', 'https://dl.dell.com/FOLDER11223355M/1/Intel-Serial-IO-Driver_7CHKN_WIN64_30.100.2405.44_A02.exe', 'exe', 5242880, ['PCI\\VEN_8086&DEV_7AF8']),
+      pkg('W1FI6', 'Intel AX211 Wi-Fi Driver', 'Network', '23.80.0.4, A08', '23.80.0.4', '2026-09-30', 'https://dl.dell.com/FOLDER11223399M/1/Intel-AX211-WiFi-Driver_W1FI6_WIN64_23.80.0.4_A08.exe', 'exe', 41943040, ['PCI\\VEN_8086&DEV_51F1&SUBSYS_00948086'])
+    ] : [
+      pkg('a1', 'Realtek Audio Driver', 'Audio', 'V6.0.9700.1', '6.0.9700.1', '2026-10-02', 'https://dlcdnets.asus.com/pub/ASUS/mb/03CHIPSET/Realtek_Audio_6.0.9700.1.zip', 'zip', 440401920, ['HDAUDIO\\FUNC_01&VEN_10EC&DEV_0897&SUBSYS_10438882']),
+      pkg('c1', 'Intel Serial IO Driver', 'Chipset', 'V30.100.2405.44 (WHQL)', null, '2026-08-21', 'https://dlcdnets.asus.com/pub/ASUS/mb/03CHIPSET/Intel_SerialIO_30.100.2405.44.zip', 'zip', 5242880, ['PCI\\VEN_8086&DEV_7AF8']),
+      pkg('w1', 'Intel Wi-Fi Driver', 'WIRELESS', 'V23.80.0.4', '23.80.0.4', '2026-09-30', 'https://dlcdnets.asus.com/pub/ASUS/mb/08WIRELESS/Intel_WiFi_23.80.0.4.zip', 'zip', 41943040, ['PCI\\VEN_8086&DEV_51F1&SUBSYS_00948086'])
+    ];
+    const oem = dell
+      ? { oem: 'dell', label: 'Dell XPS 15 9530', key: '0BEB', at: Date.now() - 4 * 60 * 1000, packages: which === 'dell-off' ? [] : packages, bios: { version: '1.14.0', date: '2026-09-15' }, ...(which === 'dell-off' ? { error: { source: 'dell', stage: 'index', code: 'network' } } : {}) }
+      : { oem: 'asus', label: 'ASUS TUF GAMING B760M-PLUS WIFI', key: 'TUF GAMING B760M-PLUS WIFI', at: Date.now() - 4 * 60 * 1000, packages };
+    const board = dell
+      ? { maker: 'Dell Inc.', product: '0XYZ', systemMaker: 'Dell Inc.', model: 'XPS 15 9530', mobile: true, sku: '0BEB', version: '', bios: '1.10.0' }
+      : { maker: 'ASUSTeK COMPUTER INC.', product: 'TUF GAMING B760M-PLUS WIFI', systemMaker: 'System manufacturer', model: 'System Product Name', mobile: false };
+    return { oem, board, sub: dell ? '10280BEB' : '10438882' };
+  }
   function mockDrivers() {
+    const pc = mockPc();
     const d = (name, cls, provider, version, date, ids) => ({ name, cls, provider, maker: provider, version, date, ids: ids || null, signed: true });
     return {
       platform: 'win32', at: Date.now(),
@@ -421,13 +447,13 @@ if (window.__nexoPlatform === 'linux') {
         d('NVIDIA GeForce RTX 4070 SUPER', 'DISPLAY', 'NVIDIA', '32.0.15.6614', '2025-10-30', '10DE:2783'),
         d('Intel(R) UHD Graphics 770', 'DISPLAY', 'Intel Corporation', '31.0.101.4502', '2023-06-10', '8086:4680'),
         d('Realtek Gaming 2.5GbE Family Controller', 'NET', 'Realtek', '10.50.511.2021', '2021-05-11', '10EC:8125'),
-        d('Intel(R) Wi-Fi 6E AX211 160MHz', 'NET', 'Microsoft', '22.0.0.1', '2022-01-01', '8086:51F1'),
+        { ...d('Intel(R) Wi-Fi 6E AX211 160MHz', 'NET', 'Microsoft', '22.0.0.1', '2022-01-01', '8086:51F1'), hwids: ['PCI\\VEN_8086&DEV_51F1&SUBSYS_00948086&REV_01'] },
         d('WAN Miniport (IP)', 'NET', 'Microsoft', '10.0.22621.1', '2006-06-21'),
-        d('Realtek(R) Audio', 'MEDIA', 'Realtek Semiconductor Corp.', '6.0.9235.1', '2021-09-01'),
+        { ...d('Realtek(R) Audio', 'MEDIA', 'Realtek Semiconductor Corp.', '6.0.9235.1', '2021-09-01'), hwids: [`HDAUDIO\\FUNC_01&VEN_10EC&DEV_0897&SUBSYS_${pc.sub}`] },
         d('NVIDIA High Definition Audio', 'MEDIA', 'NVIDIA', '1.4.0.1', '2024-01-01'),
         d('Intel(R) Management Engine Interface #1', 'SYSTEM', 'Intel', '2229.1.4.0', '2022-07-18'),
         d('Intel(R) SMBus - 7AA3', 'SYSTEM', 'INTEL', '10.1.18793.8276', '2018-03-15'),
-        d('Intel(R) Serial IO I2C Host Controller - 7AF8', 'SYSTEM', 'Intel Corporation', '30.100.2221.20', '2022-05-30'),
+        { ...d('Intel(R) Serial IO I2C Host Controller - 7AF8', 'SYSTEM', 'Intel Corporation', '30.100.2221.20', '2022-05-30'), hwids: ['PCI\\VEN_8086&DEV_7AF8&REV_11'] },
         d('Standard NVM Express Controller', 'SCSIADAPTER', 'Microsoft', '10.0.22621.3672', '2006-06-21'),
         d('Intel(R) Wireless Bluetooth(R)', 'BLUETOOTH', 'Intel Corporation', '23.60.0.1', '2024-06-20'),
         d('Elgato HD60 X', 'MEDIA', 'Elgato', '1.4.0.0', '2023-11-02', '0FD9:0082'),
@@ -443,7 +469,7 @@ if (window.__nexoPlatform === 'linux') {
       generic: 94,
       runtimes: {
         os: { build: 22631, name: 'Windows 11 Pro', display: '23H2' },
-        board: { maker: 'ASUSTeK COMPUTER INC.', product: 'TUF GAMING B760M-PLUS WIFI', systemMaker: 'System manufacturer', model: 'System Product Name', mobile: false },
+        board: pc.board,
         vc: { x64: '14.44.35211.00', x86: null, arm64: null },
         uninstall: [{ name: 'Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219', version: '10.0.40219' }, { name: 'Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664', version: '12.0.40664' }, { name: 'NVIDIA PhysX System Software 9.23.1019', version: '9.23.1019' }],
         dx: { d3dx9: false, xinput13: true, x3daudio: true }, netfx: 533320, desktop: ['8.0.11', '9.0.6'], vulkan: '1.4.303.0', amd: null,
@@ -452,7 +478,8 @@ if (window.__nexoPlatform === 'linux') {
       latest: {
         nvidia: { modern: { version: '621.14', date: '2026-11-04', name: 'GeForce Game Ready Driver', details: 'https://www.nvidia.com/en-us/drivers/details/283968/', download: 'https://us.download.nvidia.com/Windows/621.14/621.14-desktop-win10-win11-64bit-international-dch-whql.exe', size: '1.04 GB' } },
         dotnetFiles: { '9.0': { version: '9.0.23', url: 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.23/windowsdesktop-runtime-9.0.23-win-x64.exe', sha512: 'a'.repeat(128) } },
-        dotnet: { '9.0': { latest: '9.0.23', phase: 'eol', eol: '2026-11-10' }, '8.0': { latest: '8.0.34', phase: 'eol', eol: '2026-11-10' } }
+        dotnet: { '9.0': { latest: '9.0.23', phase: 'eol', eol: '2026-11-10' }, '8.0': { latest: '8.0.34', phase: 'eol', eol: '2026-11-10' } },
+        oem: pc.oem
       }
     };
   }

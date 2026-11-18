@@ -27,7 +27,7 @@ test('contagem recusada: só 4xx (sem 429); sem rede, 5xx e sucesso não contam'
 
 test('main: avisos antigos ganham nome de vigia e os vigias novos estão ligados', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8');
-  for (const vigia of ['acao-lenta', 'processo-travado', 'janela-sem-resposta', 'memoria-alta', 'contagem-recusada']) assert.ok(main.includes(`vigia: '${vigia}'`), vigia);
+  for (const vigia of ['acao-lenta', 'processo-travado', 'janela-sem-resposta', 'memoria-alta', 'contagem-recusada', 'fonte-de-driver']) assert.ok(main.includes(`vigia: '${vigia}'`), vigia);
   assert.match(main, /memoryAlarm\(app\.getAppMetrics\(\)\)/);
   assert.match(main, /pulseRefused\(/);
 });

@@ -565,3 +565,21 @@ test('oem: downloadFor devolve o plano com assinantes da Dell e das peças, md5 
   assert.equal(plan.fileName, DELL_PKGS.find((p) => p.id === 'dell-R1VKP').fileName);
   assert.equal(D.downloadFor(model, 'oem-nada'), null);
 });
+
+test('oem: linha do topo nos três casos (conferida, fonte fora do ar, sem fabricante)', () => {
+  const at = Date.parse('2026-11-12T14:32:00');
+  assert.match(D.oemLine({ oem: 'dell', label: 'Dell XPS 15 9530', at, error: null }, at + 60000), /^Seu PC: Dell XPS 15 9530 · lista oficial da Dell conferida às \d{2}:\d{2}$/);
+  assert.equal(D.oemLine({ oem: 'dell', label: 'Dell XPS 15 9530', at, error: { source: 'dell', stage: 'index', code: 'network' } }, at), 'Seu PC: Dell XPS 15 9530 · fonte da Dell fora do ar agora; tentando de novo mais tarde');
+  assert.match(D.oemLine({ oem: 'dell', label: 'Dell XPS 15 9530', at, error: { source: 'dell', stage: 'signature', code: 'unsigned' } }, at), /não passou na conferência da assinatura/);
+  assert.match(D.oemLine({ oem: 'msi', label: 'MSI MAG B550 TOMAHAWK', at, support: 'https://www.msi.com/Motherboard/MAG-B550-TOMAHAWK/support' }, at), /^Seu PC: MSI MAG B550 TOMAHAWK · a MSI não tem lista pública/);
+  assert.match(D.oemLine({ oem: 'dell', label: 'Dell XPS 15 9530', at, disabled: true }, at), /pausad/);
+  assert.equal(D.oemLine(null, at), '');
+});
+
+test('oem: texto das peças atendidas (até 3 nomes e "e mais N")', () => {
+  assert.equal(D.coversText(['A']), 'Atualiza: A');
+  assert.equal(D.coversText(['A', 'B', 'C']), 'Atualiza: A, B e C');
+  assert.equal(D.coversText(['A', 'B', 'C', 'D', 'E']), 'Atualiza: A, B, C e mais 2');
+  assert.equal(D.coversText([]), '');
+  assert.equal(D.phaseText({ phase: 'ready', signer: null }), '✓ Baixado e conferido');
+});
