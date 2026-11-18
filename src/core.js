@@ -2,8 +2,9 @@
 const desktopBridge = window.nexoDesktop;
 
 /*
- * Detecção de erros da interface (vão para o registro local; com "relatórios de erro" ligados, os de nível erro vão
- * para o criador). Pega mais que erro não tratado:
+ * Detecção de erros da interface (vão para o registro local; com "relatórios de erro" ligados, os erros e os avisos
+ * vão para o criador). Os avisos levam o nome do vigia (context.vigia); os vigias de "funcionando estranho" ficam em
+ * src/watchers.js. Pega mais que erro não tratado:
  *  - erros e promessas rejeitadas sem tratamento (com o stack);
  *  - console.error / console.warn do próprio app (ex.: um cartão de recurso que quebrou);
  *  - imagem, script ou folha de estilo do app que não carregou;
@@ -28,7 +29,7 @@ const desktopBridge = window.nexoDesktop;
     if (target && target !== window && target.tagName) {
       const url = String(target.src || target.href || '');
       if (/^(blob:|data:|https?:)/.test(url) && target.tagName === 'IMG') return; // capas e fotos da internet: falha comum, não é bug
-      report(`Arquivo do app não carregou: <${target.tagName.toLowerCase()}> ${url.split(/[?#]/)[0].split('/').slice(-2).join('/')}`, '', 'aviso', { recurso: target.tagName.toLowerCase() });
+      report(`Arquivo do app não carregou: <${target.tagName.toLowerCase()}> ${url.split(/[?#]/)[0].split('/').slice(-2).join('/')}`, '', 'aviso', { recurso: target.tagName.toLowerCase(), vigia: 'arquivo-nao-carregou' });
       return;
     }
     report(event.message || event.error?.message, event.error?.stack || (event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : ''));
@@ -42,18 +43,18 @@ const desktopBridge = window.nexoDesktop;
       try {
         const error = args.find((arg) => arg instanceof Error);
         const text = args.map((arg) => (arg instanceof Error ? `${arg.name}: ${arg.message}` : typeof arg === 'string' ? arg : '')).filter(Boolean).join(' ').slice(0, 600);
-        report(text || error?.message, error?.stack, level, { via: `console.${method}` });
+        report(text || error?.message, error?.stack, level, { via: `console.${method}`, ...(level === 'aviso' ? { vigia: 'console-aviso' } : {}) });
       } catch { /* nunca quebra o console */ }
     };
   }
   try {
     new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) if (entry.duration >= 2000) report(`A tela travou por ${(entry.duration / 1000).toFixed(1)} s`, '', 'aviso', { ms: Math.round(entry.duration) });
+      for (const entry of list.getEntries()) if (entry.duration >= 2000) report(`A tela travou por ${(entry.duration / 1000).toFixed(1)} s`, '', 'aviso', { ms: Math.round(entry.duration), vigia: 'tela-travada' });
     }).observe({ type: 'longtask', buffered: false });
   } catch { /* sem longtask */ }
   setInterval(() => {
     const { memory } = performance;
-    if (memory?.jsHeapSizeLimit && memory.usedJSHeapSize / memory.jsHeapSizeLimit >= 0.85) report('A memória da tela passou de 85% do limite', '', 'aviso', { usadoMB: Math.round(memory.usedJSHeapSize / 1048576) });
+    if (memory?.jsHeapSizeLimit && memory.usedJSHeapSize / memory.jsHeapSizeLimit >= 0.85) report('A memória da tela passou de 85% do limite', '', 'aviso', { usadoMB: Math.round(memory.usedJSHeapSize / 1048576), vigia: 'memoria-da-tela' });
   }, 5 * 60000);
   // Trilha: cada troca de tela vai para o processo principal (só o nome da tela).
   setTimeout(() => window.Nexo?.on?.('view', (name) => { try { desktopBridge?.crumb?.('tela', name); } catch { /* sem ponte */ } }), 0);
