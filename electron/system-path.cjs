@@ -34,4 +34,21 @@ function nvidiaSmi({ platform = process.platform, env = process.env, exists = (f
   return candidates.find((file) => exists(file)) || null;
 }
 
-module.exports = { systemTool, nvidiaSmi, WINDOWS_TOOLS };
+/** Monitores de sistema das áreas de trabalho do Linux, na ordem de preferência (GNOME, KDE novo e antigo, Xfce, MATE, LXDE, Qt). */
+const LINUX_MONITORS = ['gnome-system-monitor', 'plasma-systemmonitor', 'ksysguard', 'xfce4-taskmanager', 'mate-system-monitor', 'lxtask', 'qps'];
+const LINUX_BIN_DIRS = ['/usr/bin', '/usr/local/bin', '/bin'];
+
+/**
+ * O "Gerenciador de Tarefas" de cada sistema: no Windows o Taskmgr.exe; no Linux, o primeiro monitor de sistema
+ * instalado, pelo caminho fixo (nunca pelo PATH). Sem nenhum, null.
+ */
+function systemMonitor({ platform = process.platform, env = process.env, exists = (file) => fs.existsSync(file) } = {}) {
+  if (platform === 'win32') return systemTool('taskmgr', { platform, env });
+  for (const name of LINUX_MONITORS) for (const dir of LINUX_BIN_DIRS) {
+    const file = path.posix.join(dir, name);
+    if (exists(file)) return file;
+  }
+  return null;
+}
+
+module.exports = { systemTool, nvidiaSmi, systemMonitor, WINDOWS_TOOLS };

@@ -170,3 +170,21 @@ test('instalador visual: mesma versão do app (o nome do arquivo e a tela do ins
   const launcher = JSON.parse(fs.readFileSync(path.join(root, 'installer-launcher', 'package.json'), 'utf8')).version;
   assert.equal(launcher, app, 'atualize installer-launcher/package.json junto com a versão do app');
 });
+
+test('sessões/fundo: o relatório guarda o programa de fundo como objeto (não lista) e o cartão mostra ele', () => {
+  // Erro real do painel (assinatura 2cef73096c38be04): "((intermediate value) || []).map is not a function".
+  const ctx = load('win32');
+  const def = ctx.NexoFeatures.forView('sessions').find((item) => item.id === 'fundo');
+  const sessions = [
+    { report: { background: { cpu: { name: 'chrome', avg: 22, presence: 0.6 }, gpu: null } } },
+    { report: { background: { cpu: { name: 'chrome', avg: 18, presence: 0.4 } } } },
+    { report: { background: { cpu: [{ name: 'discord' }] } } },
+    { report: { background: { cpu: null } } },
+    { report: {} }
+  ];
+  const c = Object.create(ctx.NexoFeatures.makeContext(), { sessions: { value: sessions } });
+  let out;
+  assert.doesNotThrow(() => { out = def.compute(c); });
+  assert.equal(out.value, 'chrome');
+  assert.match(out.detail, /2 sessões/);
+});

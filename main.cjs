@@ -12,7 +12,7 @@ const { createProbe } = require('./electron/probe.cjs');
 const { createFpsRunner } = require('./electron/fps-runner.cjs');
 const { createElevator, toolLauncher, PAWNIO } = require('./electron/elevate.cjs');
 const { decodeConsole } = require('./electron/console-text.cjs');
-const { systemTool, nvidiaSmi } = require('./electron/system-path.cjs');
+const { systemTool, nvidiaSmi, systemMonitor } = require('./electron/system-path.cjs');
 const { createSensorService } = require('./electron/sensor-service.cjs');
 const { createLabSystem, parseList: parseLabPlanList } = require('./electron/lab-system.cjs');
 const { createSystemScan, validateChange: validateScanChange } = require('./electron/system-scan.cjs');
@@ -854,12 +854,12 @@ registerIpcHandler('sensors:snapshot', getHardwareSensors);
 registerIpcHandler('system:top-processes', getTopProcesses);
 
 registerIpcHandler('system:task-manager', async () => {
-  if (process.platform !== 'win32') {
-    throw new Error('O Gerenciador de Tarefas está disponível somente no Windows.');
-  }
+  // Windows: o Gerenciador de Tarefas. Linux: o monitor de sistema da área de trabalho (GNOME, KDE, Xfce…).
+  const monitor = systemMonitor();
+  if (!monitor) throw new Error('Não achei um monitor do sistema instalado (como o Monitor do Sistema do GNOME ou do KDE).');
 
   await new Promise((resolve, reject) => {
-    const taskManager = spawn(systemTool('taskmgr'), [], { detached: true, stdio: 'ignore' });
+    const taskManager = spawn(monitor, [], { detached: true, stdio: 'ignore' });
     taskManager.once('spawn', () => {
       taskManager.unref();
       resolve();
