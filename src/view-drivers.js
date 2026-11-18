@@ -456,7 +456,7 @@
     const bRestore = event.target.closest?.('[data-driver-backup-restore]');
     if (bRestore && bRestore.closest('.drivers-view') && !bulk && !backupBusy) {
       const name = bRestore.dataset.driverBackupRestore;
-      const ok = await Nexo.confirm({ title: 'Restaurar os drivers deste backup?', body: `O Windows reinstala os drivers guardados em ${name}, só nas peças deste PC; nada é apagado. Restaurar não volta versão: se uma peça já tem driver igual ou mais novo, ela fica como está.`, confirmLabel: 'Restaurar' });
+      const ok = await Nexo.confirm({ title: 'Restaurar os drivers deste backup?', body: `O Windows reinstala os drivers do backup de ${(() => { const b = (backups || []).find((x) => x.name === name); return b ? `${new Date(b.at).toLocaleDateString('pt-BR')}, ${timeText(b.at)}` : name; })()}, só nas peças deste PC; nada é apagado. Restaurar não volta versão: se uma peça já tem driver igual ou mais novo, ela fica como está.`, confirmLabel: 'Restaurar' });
       if (!ok) return;
       backupBusy = 'restore';
       renderHero();
