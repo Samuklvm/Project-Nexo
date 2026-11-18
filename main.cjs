@@ -2680,7 +2680,7 @@ const cloudReady = serverUrl().then(async (url) => {
 const withCloud = async () => { await cloudReady; return cloud; };
 // Contagem de uso: o sinal de vida do dia 1 min depois de abrir e a cada hora (o próprio cloud decide se já mandou hoje).
 const pulseSoon = () => withCloud().then((target) => target.sendPulse()).catch(() => {});
-setTimeout(() => { pulseSoon(); setInterval(pulseSoon, 60 * 60 * 1000).unref?.(); }, 60 * 1000).unref?.();
+setTimeout(() => { void pulseSoon(); setInterval(() => { void pulseSoon(); }, 60 * 60 * 1000).unref?.(); }, 60 * 1000).unref?.();
 /**
  * Telemetria: o que dá para saber do PC sem nada pessoal. Hardware (fabricante e modelo do processador e da placa
  * de vídeo, núcleos, memória), monitores (resolução, escala e taxa de atualização), discos (quantos e tamanho) e o
