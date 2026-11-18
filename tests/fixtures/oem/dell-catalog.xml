@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exemplo resumido do catálogo de um modelo Dell (mesmo formato do CatalogPC.xml do Dell Command Update):
+     SoftwareComponent com ComponentType DRVR/BIOS, hashMD5, vendorVersion/dellVersion e SupportedDevices/Device/PCIInfo
+     (vendorID, deviceID, subVendorID, subDeviceID). -->
+<Manifest baseLocation="downloads.dell.com" version="2026.11.04">
+  <SoftwareComponent packageID="R1VKP" releaseID="R1VKP" path="FOLDER11223344M/1/Realtek-High-Definition-Audio-Driver_R1VKP_WIN64_6.0.9600.1_A05.EXE" dateTime="2026-08-01T10:00:00+00:00" releaseDate="August 01, 2026" vendorVersion="6.0.9600.1" dellVersion="A05" hashMD5="0123456789abcdef0123456789abcdef" size="352718840" packageType="LWXP">
+    <Name><Display lang="en"><![CDATA[Realtek High Definition Audio Driver]]></Display></Name>
+    <ComponentType value="DRVR"><Display lang="en"><![CDATA[Drivers]]></Display></ComponentType>
+    <Category value="AU"><Display lang="en"><![CDATA[Audio]]></Display></Category>
+    <SupportedDevices>
+      <Device componentID="104529" embedded="0"><Display lang="en"><![CDATA[Realtek ALC3254]]></Display>
+        <PnPInfo pnpString="HDAUDIO\FUNC_01&amp;VEN_10EC&amp;DEV_0295&amp;SUBSYS_10280BEB" />
+      </Device>
+    </SupportedDevices>
+  </SoftwareComponent>
+  <SoftwareComponent packageID="7CHKN" path="FOLDER11223355M/1/Intel-Serial-IO-Driver_7CHKN_WIN64_30.100.2237.1_A02.EXE" dateTime="2026-06-10T10:00:00+00:00" vendorVersion="30.100.2237.1" dellVersion="A02" hashMD5="fedcba9876543210fedcba9876543210" size="5242880">
+    <Name><Display lang="en"><![CDATA[Intel Serial IO Driver]]></Display></Name>
+    <ComponentType value="DRVR" />
+    <Category value="CS"><Display lang="en"><![CDATA[Chipset]]></Display></Category>
+    <SupportedDevices>
+      <Device componentID="1"><PCIInfo vendorID="8086" deviceID="7AE8" subVendorID="1028" subDeviceID="0BEB" /></Device>
+      <Device componentID="2"><PCIInfo vendorID="8086" deviceID="7A4C" /></Device>
+    </SupportedDevices>
+  </SoftwareComponent>
+  <SoftwareComponent packageID="BIOS1" path="FOLDER11223366M/1/XPS_9530_1.14.0.exe" dateTime="2026-09-01T10:00:00+00:00" vendorVersion="1.14.0" dellVersion="1.14.0" hashMD5="11111111111111111111111111111111" size="40000000">
+    <Name><Display lang="en"><![CDATA[Dell XPS 15 9530 System BIOS]]></Display></Name>
+    <ComponentType value="BIOS" />
+    <Category value="BI"><Display lang="en"><![CDATA[BIOS]]></Display></Category>
+  </SoftwareComponent>
+  <SoftwareComponent packageID="APP1" path="FOLDER11223377M/1/Dell-Command-Update.EXE" vendorVersion="5.4.0" dellVersion="A00" hashMD5="22222222222222222222222222222222" size="1000">
+    <Name><Display lang="en"><![CDATA[Dell Command Update]]></Display></Name>
+    <ComponentType value="APAC" />
+  </SoftwareComponent>
+  <SoftwareComponent packageID="EVIL" path="//evil.example/x.exe" vendorVersion="1.0.0.0" dellVersion="A00" hashMD5="33333333333333333333333333333333">
+    <Name><Display lang="en"><![CDATA[Fora do domínio]]></Display></Name>
+    <ComponentType value="DRVR" />
+    <SupportedDevices><Device><PCIInfo vendorID="8086" deviceID="1111" /></Device></SupportedDevices>
+  </SoftwareComponent>
+</Manifest>

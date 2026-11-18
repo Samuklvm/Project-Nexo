@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exemplo resumido do índice de catálogos do Dell Command Update (CatalogIndexPC.xml, dentro de CatalogIndexPC.cab).
+     Formato conferido pelos registros do Dell Command Update e pela documentação de catálogos da Dell
+     (dell.com/support/kbdoc/000122176). -->
+<ManifestIndex baseLocation="downloads.dell.com" version="2026.11.05">
+  <GroupManifest>
+    <SupportedSystems>
+      <Brand key="72" prefix="XPSNOTEBOOK"><Display lang="en"><![CDATA[XPS Notebook]]></Display>
+        <Model systemID="0BEB"><Display lang="en"><![CDATA[XPS 15 9530]]></Display></Model>
+      </Brand>
+    </SupportedSystems>
+    <ManifestInformation path="FOLDER12345678M/1/0BEB_Catalog.cab" version="2026.11.04" />
+  </GroupManifest>
+  <GroupManifest>
+    <SupportedSystems>
+      <Brand key="4" prefix="LAT"><Model systemID="0A69"><Display lang="en"><![CDATA[Latitude 7420]]></Display></Model></Brand>
+    </SupportedSystems>
+    <ManifestInformation path="FOLDER87654321M/1/0A69_Catalog.cab" version="2026.11.04" />
+  </GroupManifest>
+</ManifestIndex>
