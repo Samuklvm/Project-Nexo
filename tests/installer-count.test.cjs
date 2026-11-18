@@ -51,7 +51,7 @@ test('o build leva o count.ps1 para resources e o instalador visual tem a opçã
 
 test('o servidor do instalador é o mesmo de config/server.json', () => {
   const server = JSON.parse(read('config/server.json')).url;
-  assert.match(read('installer/installer.nsh'), new RegExp(`!define NEXO_SERVER "${server.replace(/[.]/g, '\\.')}"`));
+  assert.ok(read('installer/installer.nsh').includes(`!define NEXO_SERVER "${server}"`), `NEXO_SERVER tem que ser ${server}`);
 });
 
 test('installer.nsh: atualização manual (Setup novo por cima) conta como "atualizou", não como reinstalação', () => {

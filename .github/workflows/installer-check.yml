@@ -38,13 +38,19 @@ jobs:
       - name: count.ps1 — sem servidor, desiste rápido e sai com 0
         shell: powershell
         run: |
+          # Abrir um PowerShell no runner já leva alguns segundos: mede isso antes (o -SelfTest não usa rede) e
+          # confere só o tempo a mais do aviso, que tem prazo de 4 s.
+          $base = [Diagnostics.Stopwatch]::StartNew()
+          powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -SelfTest
+          $base.Stop()
           $watch = [Diagnostics.Stopwatch]::StartNew()
           powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -Event atualizou -Version 0.0.0 -Server https://nexo-api.nexo-device-care.workers.dev
           $code = $LASTEXITCODE
           $watch.Stop()
-          Write-Output "Saiu com $code em $([int]$watch.Elapsed.TotalMilliseconds) ms"
+          $extra = $watch.Elapsed.TotalSeconds - $base.Elapsed.TotalSeconds
+          Write-Output ("Saiu com $code em {0:N1} s (abrir o PowerShell: {1:N1} s; o aviso: {2:N1} s)" -f $watch.Elapsed.TotalSeconds, $base.Elapsed.TotalSeconds, $extra)
           if ($code -ne 0) { throw 'O count.ps1 tem que sair sempre com 0.' }
-          if ($watch.Elapsed.TotalSeconds -gt 6) { throw 'O count.ps1 demorou mais de 6 s sem servidor.' }
+          if ($extra -gt 5) { throw 'O aviso do count.ps1 passou do prazo de 4 s (com folga de 1 s).' }
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
