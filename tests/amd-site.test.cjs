@@ -32,3 +32,32 @@ test('AMD: só o vídeo vai escondido; chipset abre a página para escolher a pl
   assert.equal(A.hiddenFor('video-amd-radeon-rx-7800-xt'), true);
   assert.equal(A.hiddenFor('placa-chipset'), false);
 });
+
+/* ---- correções da revisão ---- */
+test('AMD vídeo (escondido): só aceita o AMD Software; o botão clicado é o do Adrenalin', () => {
+  const adrenalin = 'amd-software-adrenalin-edition-26.11.1-minimalsetup-261111_web.exe';
+  assert.ok(A.allowedDownload(`https://drivers.amd.com/drivers/installer/26.20/beta/${adrenalin}`, adrenalin, { video: true }));
+  assert.ok(!A.allowedDownload('https://drivers.amd.com/drivers/amd_chipset_software_7.10.20.742.exe', 'amd_chipset_software_7.10.20.742.exe', { video: true }));
+  assert.ok(A.allowedDownload('https://drivers.amd.com/drivers/amd_chipset_software_7.10.20.742.exe', 'amd_chipset_software_7.10.20.742.exe', { video: false }));
+  assert.match(A.PICK_SCRIPT, /adrenalin\|minimalsetup/);
+});
+test('AMD: nome de arquivo segue a mesma regra do motor (o que a página aceita, o motor aceita)', () => {
+  const DL = require('../electron/driver-download.cjs');
+  for (const name of ['amd-software-adrenalin-edition-26.11.1-minimalsetup-261111_web.exe', 'amd (1).exe', `${'a'.repeat(140)}.exe`]) {
+    assert.equal(A.allowedDownload(`https://drivers.amd.com/drivers/${encodeURIComponent(name)}`, name), DL.SAFE_NAME.test(name), name);
+  }
+});
+test('AMD: sessão sem permissão nenhuma e popup só com a janela visível', () => {
+  const calls = {};
+  const ses = { setPermissionRequestHandler: (f) => { calls.req = f; }, setPermissionCheckHandler: (f) => { calls.check = f; }, setDevicePermissionHandler: (f) => { calls.dev = f; } };
+  A.lockSession(ses);
+  let answer = null;
+  calls.req(null, 'media', (ok) => { answer = ok; });
+  assert.equal(answer, false);
+  assert.equal(calls.check(), false);
+  assert.equal(calls.dev(), false);
+  assert.equal(A.popupAction('https://www.amd.com/x', { visible: false }), 'stay');
+  assert.equal(A.popupAction('https://ads.example.com/x', { visible: false }), 'deny');
+  assert.equal(A.popupAction('https://ads.example.com/x', { visible: true }), 'external');
+  assert.equal(A.popupAction('http://ads.example.com/x', { visible: true }), 'deny');
+});

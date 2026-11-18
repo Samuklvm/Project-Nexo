@@ -848,3 +848,41 @@ test('driver-install: travou → marca hung antes de encerrar e o taskkill não 
   assert.match(b, /try \{[^\n]*taskkill[^\n]*\} catch \{\}/);
   assert.doesNotMatch(b, /\$profile\b/, 'sem a variável automática $profile');
 });
+test('motor (AMD): só a janela dona do pedido entrega; cancelado não revive; arquivo recusado é apagado', async () => {
+  const { engine, dir } = engineWith({ routes: {}, signer: 'Advanced Micro Devices, Inc.' });
+  const first = engine.external('video-amd', { signers: ['Advanced Micro Devices, Inc.'], silent: 'amd' }, { token: 'A' });
+  assert.equal(first.created, true);
+  const again = engine.external('video-amd', { signers: ['Advanced Micro Devices, Inc.'], silent: 'amd' }, { token: 'B' });
+  assert.equal(again.created, undefined, 'já tem uma página aberta para esse cartão');
+  engine.cancel('video-amd');
+  const file = path.join(dir, 'amd-software-adrenalin-edition-25.11.1.exe');
+  fs.writeFileSync(file, BODY);
+  await engine.arrived('video-amd', { file, url: 'https://drivers.amd.com/drivers/x.exe', token: 'A' }).catch(() => {});
+  assert.equal(engine.list().find((x) => x.id === 'video-amd').phase, 'canceled', 'download que chegou depois de cancelar não revive');
+  engine.external('video-amd', { signers: ['Advanced Micro Devices, Inc.'], silent: 'amd' }, { token: 'C' });
+  engine.progress('video-amd', 10, 100, 'A');
+  assert.equal(engine.list().find((x) => x.id === 'video-amd').phase, 'site', 'progresso de outra janela é ignorado');
+  const bad = path.join(dir, 'amd (1).exe');
+  fs.writeFileSync(bad, BODY);
+  await engine.arrived('video-amd', { file: bad, url: 'https://drivers.amd.com/drivers/x.exe', token: 'C' }).catch(() => {});
+  assert.equal(fs.existsSync(bad), false, 'arquivo recusado não fica no disco');
+  assert.equal(engine.list().find((x) => x.id === 'video-amd').error, 'file', 'não diz "sem assinatura" quando o problema é o nome');
+});
+test('motor (AMD): confere o hash lendo aos pedaços (não carrega o arquivo inteiro na memória)', async () => {
+  let whole = 0;
+  const fsApi = { ...fs.promises, readFile: async (...a) => { whole += 1; return fs.promises.readFile(...a); } };
+  const { engine, dir } = engineWith({ routes: {}, signer: 'Advanced Micro Devices, Inc.', fsApi });
+  engine.external('video-amd', { signers: ['Advanced Micro Devices, Inc.'], silent: 'amd' }, { token: 'T' });
+  const file = path.join(dir, 'amd-software-adrenalin-edition-25.11.1.exe');
+  fs.writeFileSync(file, Buffer.alloc(3 * 1024 * 1024 + 7, 3));
+  const before = whole;
+  await engine.arrived('video-amd', { file, url: 'https://drivers.amd.com/drivers/x.exe', token: 'T' });
+  assert.equal(whole, before, 'sem readFile do instalador');
+  void dir;
+});
+test('motor: com detecção, a barra não promete "sem janela" (quiet null)', async () => {
+  const { engine, events } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } } });
+  engine.start('a', plan({ silent: 'detect' }), { auto: { restorePoint: false } });
+  await settle(engine, 'a', ['installed', 'error']);
+  assert.ok(events.some((e) => e.phase === 'installing' && e.quiet === null));
+});

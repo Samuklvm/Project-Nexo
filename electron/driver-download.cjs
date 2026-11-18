@@ -56,7 +56,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     if (item.phase === 'queued') out.position = queue.indexOf(item.id) + 1;
     if (item.error) out.error = item.error;
     if (item.signer) out.signer = item.signer;
-    if (item.phase === 'installing') out.quiet = item.quiet === true;
+    if (item.phase === 'installing') out.quiet = item.quiet === undefined ? false : item.quiet;
     if (item.file && (item.phase === 'ready' || item.phase === 'installed' || item.phase === 'install-queued' || item.phase === 'installing')) out.file = item.file;
     return out;
   };
@@ -351,34 +351,42 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
    * Download feito pela página da AMD (o servidor dela só libera o que começa no amd.com): o processo principal abre a
    * página, o Electron baixa, e o motor recebe o arquivo pronto. Daí para a frente é igual: assinatura, hash, instalar.
    */
-  function external(id, plan, { auto = null, cancel: close = null } = {}) {
+  /*
+   * `token`: a janela que pediu. Só ela entrega progresso/arquivo; uma janela velha (cancelada, trocada) é ignorada.
+   * Devolve `created: true` só quando abriu um pedido novo (aí a janela pode ser criada).
+   */
+  function external(id, plan, { auto = null, cancel: close = null, token = null } = {}) {
     if (typeof id !== 'string' || !id || id.length > 200) throw new Error('Cartão inválido.');
     const signers = Array.isArray(plan?.signers) ? plan.signers : [];
     if (!Sig.allowedSigner(signers)) throw new Error('Assinante não permitido.');
     const current = items.get(id);
     if (current && (BUSY.has(current.phase) || current.phase === 'site')) return snapshot(current);
     const frozen = Object.freeze({ url: null, domains: Object.freeze(['drivers.amd.com']), fileName: null, signers: Object.freeze([...signers]), kind: 'exe', hash: null, silent: silentOf(plan || {}) });
-    const item = { id, external: true, plan: frozen, phase: 'site', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: close, samples: [], auto: auto ? { restorePoint: auto.restorePoint === true, window: auto.window === true } : null };
+    const item = { id, external: true, token, plan: frozen, phase: 'site', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: close, samples: [], auto: auto ? { restorePoint: auto.restorePoint === true, window: auto.window === true } : null };
     items.set(id, item);
     send(item);
-    return snapshot(item);
+    return { ...snapshot(item), created: true };
   }
-  function progress(id, received, total) {
+  const owner = (item, token) => Boolean(item?.external) && (item.token === null || item.token === token) && (item.phase === 'site' || item.phase === 'downloading');
+  function setCancel(id, close, token) { const item = items.get(id); if (owner(item, token)) item.cancel = close; }
+  function progress(id, received, total, token = null) {
     const item = items.get(id);
-    if (!item?.external || (item.phase !== 'site' && item.phase !== 'downloading')) return;
+    if (!owner(item, token)) return;
     item.received = Math.max(0, Number(received) || 0);
     item.total = Number(total) > 0 ? Number(total) : null;
     if (item.phase !== 'downloading') { item.samples = []; setPhase(item, 'downloading'); }
     measure(item);
     send(item, false);
   }
-  async function arrived(id, { file, url, profile } = {}) {
+  async function arrived(id, { file, url, profile, token = null } = {}) {
     const item = items.get(id);
-    if (!item?.external) throw new Error('Esse download não foi pedido.');
     const name = path.basename(String(file || ''));
-    const inside = path.resolve(path.dirname(String(file || ''))) === path.resolve(dir);
+    const inside = Boolean(file) && path.resolve(path.dirname(String(file))) === path.resolve(dir);
+    // Pedido cancelado ou de outra janela: o arquivo não vira instalação (e não fica largado na pasta).
+    if (!owner(item, token)) { if (inside) await rm(file); throw new Error('Esse download não foi pedido.'); }
     if (!inside || !SAFE_NAME.test(name) || !name.toLowerCase().endsWith('.exe')) {
-      setPhase(item, 'error', { error: 'signature', speed: null, eta: null });
+      if (inside) await rm(file);
+      setPhase(item, 'error', { error: 'file', speed: null, eta: null });
       throw new Error('Arquivo fora da pasta de downloads (não permitido).');
     }
     const silent = profile === undefined ? item.plan.silent : (profile === null ? null : (Silent.isName(profile) ? profile : item.plan.silent));
@@ -387,8 +395,13 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     item.cancel = null;
     try {
       setPhase(item, 'verifying', { speed: null, eta: null });
+      // Aos pedaços: o pacote pode ter mais de 1 GB.
       const own = crypto.createHash('sha256');
-      own.update(await fs.readFile(file));
+      const handle = await fs.open(file, 'r');
+      try {
+        const buf = Buffer.alloc(1024 * 1024);
+        for (;;) { const { bytesRead } = await handle.read(buf, 0, buf.length, null); if (!bytesRead) break; own.update(buf.subarray(0, bytesRead)); }
+      } finally { await handle.close(); }
       item.sha256 = own.digest('hex');
       await verify(item);
       setPhase(item, 'ready');
@@ -398,9 +411,9 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     }
     return snapshot(item);
   }
-  function failed(id, code) {
+  function failed(id, code, token = null) {
     const item = items.get(id);
-    if (!item?.external || (item.phase !== 'site' && item.phase !== 'downloading')) return;
+    if (!owner(item, token)) return;
     item.cancel = null;
     if (code === 'canceled') setPhase(item, 'canceled', { speed: null, eta: null });
     else setPhase(item, 'error', { error: ['offline', 'notfound', 'site'].includes(code) ? code : 'offline', speed: null, eta: null });
@@ -419,7 +432,8 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
   }
 
   async function runInstall(item, restorePoint, window) {
-    item.quiet = !window && Boolean(item.plan.silent);
+    // null: o tipo do instalador vai ser descoberto agora (pode abrir a janela dele).
+    item.quiet = window || !item.plan.silent ? false : item.plan.silent === 'detect' ? null : true;
     setPhase(item, 'installing');
     let answer = null;
     try {
@@ -491,7 +505,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
   }
 
   return {
-    start, cancel, install, cleanup, external, progress, arrived, failed,
+    start, cancel, install, cleanup, external, setCancel, progress, arrived, failed,
     list: () => [...items.values()].map(snapshot),
     fileOf: (id) => { const item = items.get(id); return item && item.file ? item.file : null; }
   };
@@ -503,4 +517,4 @@ function downloadsDir(env, userData, p = require('node:path').win32) {
   return /^[A-Za-z]:\\/.test(local) ? p.join(local, 'Nexo', 'driver-downloads') : p.join(userData, 'driver-downloads');
 }
 
-module.exports = { createDriverDownloads, downloadsDir, IDLE_MS, MAX_BYTES, MAX_REDIRECTS, official };
+module.exports = { createDriverDownloads, downloadsDir, IDLE_MS, MAX_BYTES, MAX_REDIRECTS, official, SAFE_NAME };

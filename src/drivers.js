@@ -536,7 +536,7 @@
     signature: 'O arquivo não veio assinado pelo fabricante, então apaguei por segurança.', disk: 'Sem espaço no disco.', http: 'O site do fabricante não respondeu.',
     file: 'Não consegui gravar o arquivo no disco.', changed: 'O arquivo mudou depois do download, então apaguei. Baixe de novo.',
     inner: 'O instalador de dentro do pacote não veio assinado pelo fabricante, então apaguei por segurança.',
-    notfound: 'Não achei o botão de download no site da AMD. Tente de novo.', site: 'O site da AMD não abriu. Tente de novo.'
+    site: 'O site da AMD não abriu. Confira a internet e tente de novo.'
   };
   const signerName = (signer) => String(signer || 'fabricante').replace(/\s+(Corporation|Corp\.?|Inc\.?|Ltd\.?)$/i, '');
   function phaseText(item = {}) {

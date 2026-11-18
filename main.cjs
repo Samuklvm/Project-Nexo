@@ -1536,28 +1536,37 @@ const cardId = (id) => { if (typeof id !== 'string' || !id || id.length > 200) t
  */
 const AmdSite = require('./electron/amd-site.cjs');
 let amdSite = null;
+let amdToken = 0;
 function openAmdSite(id, plan, auto) {
-  if (amdSite) { try { amdSite.close(); } catch { /* já fechou */ } }
+  // Uma página da AMD por vez: abrir outra cancelaria a primeira sem a pessoa perceber.
+  if (amdSite && amdSite.id !== id) throw new Error('Termine o outro download da AMD primeiro.');
+  const token = `amd-${++amdToken}`;
+  // O pedido entra no motor ANTES da janela: se esse cartão já tem página aberta, nada de janela nova.
+  const snap = driverDownloads.external(id, plan, { auto, token });
+  if (!snap?.created) return snap;
   const { session } = require('electron');
   const ses = session.fromPartition('nexo-amd-site');
-  const hidden = AmdSite.hiddenFor(id);
+  AmdSite.lockSession(ses);
+  const video = AmdSite.hiddenFor(id);
   const win = new BrowserWindow({
-    show: !hidden, parent: mainWindow || undefined, width: 1180, height: 820, backgroundColor: '#0b1020', autoHideMenuBar: true,
+    show: !video, parent: mainWindow || undefined, width: 1180, height: 820, backgroundColor: '#0b1020', autoHideMenuBar: true,
     title: 'Site da AMD: o Nexo instala o driver que você baixar aqui',
     webPreferences: { session: ses, sandbox: true, contextIsolation: true, nodeIntegration: false, devTools: false, spellcheck: false }
   });
+  const wc = win.webContents;
   let started = false;
   let dlItem = null;
   let timer = null;
   let poll = null;
   const stopTimers = () => { clearTimeout(timer); clearInterval(poll); };
-  const close = () => { stopTimers(); ses.removeListener('will-download', onDownload); try { dlItem?.cancel(); } catch { /* já terminou */ } if (!win.isDestroyed()) win.destroy(); if (amdSite?.win === win) amdSite = null; };
+  const detach = () => { stopTimers(); ses.removeListener('will-download', onDownload); if (amdSite?.token === token) amdSite = null; };
+  const close = () => { detach(); try { dlItem?.cancel(); } catch { /* já terminou */ } if (!win.isDestroyed()) win.destroy(); };
   const reveal = () => { stopTimers(); if (!win.isDestroyed() && !started) { win.show(); win.focus(); } };
   function onDownload(_event, item, contents) {
-    if (contents !== win.webContents) return;
+    if (contents !== wc) return;
     const url = item.getURL();
     const name = item.getFilename();
-    if (started || !AmdSite.allowedDownload(url, name)) { item.cancel(); return; }
+    if (started || !AmdSite.allowedDownload(url, name, { video })) { item.cancel(); if (!started) reveal(); return; }
     started = true;
     stopTimers();
     dlItem = item;
@@ -1565,42 +1574,47 @@ function openAmdSite(id, plan, auto) {
     require('fs').mkdirSync(DRIVER_DOWNLOADS_DIR(), { recursive: true });
     item.setSavePath(target);
     if (!win.isDestroyed()) win.hide();
-    item.on('updated', () => driverDownloads.progress(id, item.getReceivedBytes(), item.getTotalBytes()));
+    item.on('updated', () => driverDownloads.progress(id, item.getReceivedBytes(), item.getTotalBytes(), token));
     item.once('done', (_e, state) => {
-      ses.removeListener('will-download', onDownload);
       dlItem = null;
-      if (state === 'completed') driverDownloads.arrived(id, { file: target, url, profile: AmdSite.profileFor(name) }).catch(() => {});
-      else driverDownloads.failed(id, state === 'cancelled' ? 'canceled' : 'offline');
-      if (!win.isDestroyed()) win.destroy();
-      if (amdSite?.win === win) amdSite = null;
+      if (state === 'completed') driverDownloads.arrived(id, { file: target, url, profile: AmdSite.profileFor(name), token }).catch(() => {});
+      else driverDownloads.failed(id, state === 'cancelled' ? 'canceled' : 'offline', token);
+      close();
     });
   }
   ses.on('will-download', onDownload);
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (AmdSite.allowedNav(url)) win.loadURL(url).catch(() => {});
-    else if (/^https:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
+  wc.setWindowOpenHandler(({ url }) => {
+    const action = AmdSite.popupAction(url, { visible: !win.isDestroyed() && win.isVisible() });
+    if (action === 'stay') win.loadURL(url).catch(() => {});
+    else if (action === 'external') shell.openExternal(url).catch(() => {});
     return { action: 'deny' };
   });
-  win.webContents.on('will-navigate', (event, url) => { if (!AmdSite.allowedNav(url)) event.preventDefault(); });
-  win.webContents.on('will-redirect', (event, url) => { if (!AmdSite.allowedNav(url)) event.preventDefault(); });
-  win.on('closed', () => { stopTimers(); if (!started) driverDownloads.failed(id, 'canceled'); if (amdSite?.win === win) amdSite = null; });
-  if (hidden) {
+  wc.on('will-navigate', (event, url) => { if (!AmdSite.allowedNav(url)) event.preventDefault(); });
+  wc.on('will-redirect', (event, url) => { if (!AmdSite.allowedNav(url)) event.preventDefault(); });
+  // A página não abriu (sem internet, AMD fora do ar): o cartão volta com o aviso, sem janela de erro do navegador.
+  wc.on('did-fail-load', (_e, code, _desc, _url, isMainFrame) => {
+    if (!isMainFrame || code === -3 || started) return;
+    driverDownloads.failed(id, 'site', token);
+    close();
+  });
+  win.on('closed', () => { if (!started) driverDownloads.failed(id, 'canceled', token); detach(); });
+  if (video) {
     timer = setTimeout(reveal, AmdSite.HIDDEN_MS);
-    win.webContents.on('did-finish-load', () => {
+    wc.on('did-finish-load', () => {
       if (poll || started) return;
       let tries = 0;
       poll = setInterval(() => {
         tries += 1;
         if (started || win.isDestroyed()) { clearInterval(poll); return; }
-        win.webContents.executeJavaScript(AmdSite.PICK_SCRIPT, true).then((href) => { if (href) clearInterval(poll); }).catch(() => {});
+        wc.executeJavaScript(AmdSite.PICK_SCRIPT, true).then((href) => { if (href) clearInterval(poll); }).catch(() => {});
         if (tries >= 20) clearInterval(poll);
       }, 1500);
     });
-    win.webContents.on('did-fail-load', (_e, code) => { if (code !== -3) reveal(); });
   }
-  amdSite = { win, close };
-  win.loadURL(AmdSite.PAGE).catch(() => reveal());
-  return driverDownloads.external(id, plan, { auto, cancel: close });
+  amdSite = { id, token, close };
+  driverDownloads.setCancel(id, close, token);
+  win.loadURL(AmdSite.PAGE).catch(() => {});
+  return snap;
 }
 registerIpcHandler('drivers:download', async (_event, id, options = {}) => {
   cardId(id);

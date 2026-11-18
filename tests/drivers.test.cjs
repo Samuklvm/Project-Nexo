@@ -1064,7 +1064,7 @@ test('textos: esperando a AMD, instalando sem janela e erros novos', () => {
   assert.match(D.phaseText({ id: 'placa-chipset', phase: 'site' }), /placa-mãe/);
   assert.match(D.phaseText({ phase: 'installing', quiet: true }), /sem janela/);
   assert.match(D.phaseText({ phase: 'installing', quiet: false }), /janela do fabricante/);
-  assert.notEqual(D.phaseText({ phase: 'error', error: 'notfound' }), D.phaseText({ phase: 'error', error: 'xyz' }));
+  assert.notEqual(D.phaseText({ phase: 'error', error: 'site' }), D.phaseText({ phase: 'error', error: 'xyz' }));
 });
 
 /* ---------------- Correções da revisão (instalação silenciosa) ---------------- */

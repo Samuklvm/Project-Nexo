@@ -47,3 +47,10 @@ test('perfil pelo nome do arquivo baixado no site da AMD', () => {
   assert.equal(S.amdProfileFor('amd_chipset_software_7.10.20.742.exe'), 'detect');
   assert.equal(S.amdProfileFor('qualquer.zip'), null);
 });
+test('3010 é "reiniciar" em qualquer perfil (nunca vira "fechou sem terminar")', () => {
+  for (const name of Object.keys(S.PROFILES)) {
+    const o = S.outcome(name, 3010);
+    if (name === 'dell') continue; // a Dell usa 2 para reiniciar; 3010 não é dela
+    assert.deepEqual(o, { ok: true, restart: true }, name);
+  }
+});

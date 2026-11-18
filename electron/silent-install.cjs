@@ -40,7 +40,9 @@ const profileFor = (name) => (own(name) ? PROFILES[name] : null);
 
 /** O que o código de saída significa para esse perfil (código desconhecido = não deu certo). */
 function outcome(name, code) {
-  const what = own(name) ? PROFILES[name].codes[code] : undefined;
+  if (!own(name)) return { ok: false };
+  // 3010 é o "reinicie o PC" padrão do Windows: vale em todo perfil que não usa o número para outra coisa.
+  const what = PROFILES[name].codes[code] ?? (code === 3010 ? 'restart' : undefined);
   if (what === 'ok') return { ok: true, restart: false };
   if (what === 'restart') return { ok: true, restart: true };
   if (what === 'nothing') return { ok: false, nothing: true };

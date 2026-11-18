@@ -28,6 +28,10 @@
   const SILENT_KEY = 'nexo-drivers-silent';
   const SILENT_OK_KEY = 'nexo-drivers-silent-ok';
   let silentOn = store.get(SILENT_KEY) !== '0';
+  // A versão de cada peça na hora do pedido (o "antes" do "mudou mesmo?"; a lista pode ser relida no meio).
+  const versionAtRequest = new Map();
+  const versionNow = (id) => model?.groups.flatMap((g) => g.items).find((x) => x.id === id)?.installed?.version || null;
+  const remember = (id) => { if (!versionAtRequest.has(id)) versionAtRequest.set(id, versionNow(id)); };
   let restoreAt = store.get(RESTORE_AT_KEY);
   // "Atualizar tudo" (parte 4): { ids, index, current, done, failed, stop } enquanto roda.
   let bulk = null;
@@ -244,6 +248,7 @@
     if (!silentOn || store.get(SILENT_OK_KEY) === '1') return true;
     const ok = await Nexo.confirm({ title: 'Instalar sem janelas?', body: 'O Nexo baixa do site oficial, confere a assinatura e instala sem abrir a janela do instalador. Instalando assim, você aceita a licença de cada fabricante (a mesma que a janela mostraria). Onde o instalador deixa escolher, o Nexo recusa a telemetria: na NVIDIA, instala só o driver, sem o NVIDIA App. Se um instalador não tiver modo sem janela conhecido, a janela dele abre. Dá para desligar na chave "Instalar sem janelas".', confirmLabel: 'Instalar sem janelas' });
     if (ok) store.set(SILENT_OK_KEY, '1');
+    else showToast('Sem problema: desligue a chave "Instalar sem janelas" e cada instalador abre a janela dele.');
     return ok;
   }
   /** O que fazer com o resultado de uma instalação (do clique em Instalar ou do "Baixar e instalar" automático). */
@@ -253,7 +258,8 @@
       if (result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' });
       else if (result.windowed && result.note) notes.set(id, { tone: 'info', text: result.note });
       const itemOf = () => model?.groups.flatMap((g) => g.items).find((x) => x.id === id);
-      const before = itemOf()?.installed?.version || null;
+      const before = versionAtRequest.has(id) ? versionAtRequest.get(id) : itemOf()?.installed?.version || null;
+      versionAtRequest.delete(id);
       await load(true);
       // Confere se mudou mesmo (instalador cancelado também sai com código 0): estado novo "em dia" ou versão diferente.
       const after = itemOf();
@@ -266,9 +272,11 @@
       }
       render();
     } else if (result?.restore && result.restore.ok === false) {
+      versionAtRequest.delete(id);
       notes.set(id, { tone: 'warn', text: result.note || 'O ponto de restauração não foi criado.', retry: true });
       updateCard(id);
     } else {
+      versionAtRequest.delete(id);
       notes.set(id, { tone: result?.declined || result?.nothing ? 'warn' : 'bad', text: result?.note || 'O instalador fechou sem terminar.', window: result?.hung === true });
       updateCard(id);
     }
@@ -279,6 +287,8 @@
     const ids = D.updatePlan(model);
     if (!ids.length || bulk) return;
     bulk = { ids, index: 0, current: null, phase: 'download', done: [], failed: [], stop: false };
+    const before = new Map(ids.map((id) => [id, versionNow(id)]));
+    const already = new Set();
     renderHero();
     const out = await D.runBulk({
       ids, restoreOn,
@@ -289,7 +299,9 @@
         const result = await bridge.installDriver(id, { ...options, window: !silentOn });
         if (result?.restore?.created && result.restore.at) { restoreAt = result.restore.at; store.set(RESTORE_AT_KEY, restoreAt); }
         if (result?.ok && result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' });
-        else if (!result?.ok && result?.note) notes.set(id, { tone: 'warn', text: result.note });
+        else if (result?.ok && result.windowed && result.note) notes.set(id, { tone: 'info', text: result.note });
+        else if (!result?.ok && result?.note) notes.set(id, { tone: 'warn', text: result.note, window: result.hung === true });
+        if (result?.nothing) already.add(id);
         if (result?.ok) bulk.done.push(id); else bulk.failed.push(id);
         return result;
       },
@@ -300,11 +312,15 @@
     await load(true);
     // Instalador cancelado também sai com código 0: só conta o que mudou de verdade na leitura nova.
     const items = new Map((model?.groups || []).flatMap((g) => g.items).map((i) => [i.id, i]));
-    const really = out.done.filter((id) => notes.get(id)?.text?.startsWith('Reinicie') || D.installOutcome(items.get(id)?.state) === 'updated');
+    const changed = (id) => { const v = items.get(id)?.installed?.version || null; return Boolean(v) && v !== before.get(id); };
+    const really = out.done.filter((id) => notes.get(id)?.text?.startsWith('Reinicie') || D.installOutcome(items.get(id)?.state) === 'updated' || changed(id));
     for (const id of out.done.filter((x) => !really.includes(x))) notes.set(id, { tone: 'warn', text: 'O instalador fechou, mas a versão continua a mesma. Se você cancelou, é só instalar de novo.' });
     render();
     const why = out.declined ? ' Você recusou a permissão de administrador, então parei.' : out.stopped ? ' Parei antes do fim.' : '';
-    showToast(really.length === ids.length ? `Pronto: ${really.length} ${really.length === 1 ? 'driver atualizado' : 'drivers atualizados'}.` : `Atualizei ${really.length} de ${ids.length}.${why} Os outros ficaram com o aviso no cartão.`);
+    // "Já estava instalado" não é falha: conta à parte.
+    const had = already.size ? ` ${already.size} já ${already.size === 1 ? 'estava em dia' : 'estavam em dia'}.` : '';
+    const rest = ids.length - really.length - already.size;
+    showToast(rest === 0 ? `Pronto: ${really.length} ${really.length === 1 ? 'driver atualizado' : 'drivers atualizados'}.${had}` : `Atualizei ${really.length} de ${ids.length}.${had}${why} Os outros ficaram com o aviso no cartão.`);
   }
 
   function restoreLine() {
@@ -441,6 +457,7 @@
       down.disabled = true;
       if (!(await silentConsent())) { down.disabled = false; return; }
       notes.delete(id);
+      remember(id);
       // Um clique: baixa e instala sozinho quando o arquivo fica pronto (o resultado chega por onDriverAutoInstalled).
       try { const item = await bridge.downloadDriver(id, { install: true, restorePoint: restoreOn, window: !silentOn }); if (item?.id) { downloads.set(item.id, { ...downloads.get(item.id), ...item }); updateCard(item.id); } else if (item?.note) showToast(item.note); } catch (error) { showToast(error?.message || 'Não consegui começar o download.'); down.disabled = false; }
       return;
@@ -458,6 +475,7 @@
       inst.disabled = true; // clique duplo não manda dois pedidos
       if (!withWindow && !(await silentConsent())) { inst.disabled = false; return; }
       notes.delete(id);
+      remember(id);
       let result = null;
       try { result = await bridge.installDriver(id, { restorePoint: withPoint, window: withWindow }); } catch (error) { result = { ok: false, note: error?.message || 'Não consegui abrir o instalador.' }; }
       await afterInstall(id, result);
