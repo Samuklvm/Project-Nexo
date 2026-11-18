@@ -35,36 +35,21 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { throw 'O código do PC do instalador não bate com o do app.' }
 
-      - name: Diagnóstico temporário do tempo do count.ps1
+      - name: count.ps1 — sem servidor ou com um servidor que não responde, desiste a tempo e sai com 0
         shell: powershell
-        continue-on-error: true
         run: |
-          $src = Get-Content installer/count.ps1 -Raw
-          $src = $src.Replace('  $pending = $send.BeginInvoke()', '  [Console]::Error.WriteLine("antes do pedido: " + $clock.ElapsedMilliseconds); $pending = $send.BeginInvoke()')
-          $src = $src.Replace('# Encerra o processo', '[Console]::Error.WriteLine("antes de sair: " + $clock.ElapsedMilliseconds)' + "`n# Encerra o processo")
-          Set-Content -Path "$env:RUNNER_TEMP\count-diag.ps1" -Value $src -Encoding UTF8
+          # O pedido tem prazo de 4 s contado do começo do script; abrir e fechar o Windows PowerShell soma uns 2 s.
+          # O que não pode é travar a instalação por muito tempo, nem com um DNS ou uma rede que nunca respondem.
+          # Medidos no runner: ~6,3 s com o servidor bloqueado e ~6,5 s com um endereço que nunca responde.
           foreach ($server in @('https://nexo-api.nexo-device-care.workers.dev', 'https://10.255.255.1')) {
-            $w = [Diagnostics.Stopwatch]::StartNew()
-            powershell -NoProfile -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\count-diag.ps1" -Event atualizou -Version 0.0.0 -Server $server
-            Write-Output ("{0}: total {1} ms, código {2}" -f $server, $w.ElapsedMilliseconds, $LASTEXITCODE)
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -Event atualizou -Version 0.0.0 -Server $server
+            $code = $LASTEXITCODE
+            $watch.Stop()
+            Write-Output ("{0}: saiu com {1} em {2:N1} s" -f $server, $code, $watch.Elapsed.TotalSeconds)
+            if ($code -ne 0) { throw 'O count.ps1 tem que sair sempre com 0.' }
+            if ($watch.Elapsed.TotalSeconds -gt 9) { throw "O count.ps1 levou mais de 9 s com $server." }
           }
-
-      - name: count.ps1 — sem servidor, desiste rápido e sai com 0
-        shell: powershell
-        run: |
-          # Abrir um PowerShell no runner já leva alguns segundos: mede isso antes (o -SelfTest não usa rede) e
-          # confere só o tempo a mais do aviso, que tem prazo de 4 s.
-          $base = [Diagnostics.Stopwatch]::StartNew()
-          powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -SelfTest
-          $base.Stop()
-          $watch = [Diagnostics.Stopwatch]::StartNew()
-          powershell -NoProfile -ExecutionPolicy Bypass -File installer/count.ps1 -Event atualizou -Version 0.0.0 -Server https://nexo-api.nexo-device-care.workers.dev
-          $code = $LASTEXITCODE
-          $watch.Stop()
-          $extra = $watch.Elapsed.TotalSeconds - $base.Elapsed.TotalSeconds
-          Write-Output ("Saiu com $code em {0:N1} s (abrir o PowerShell: {1:N1} s; o aviso: {2:N1} s)" -f $watch.Elapsed.TotalSeconds, $base.Elapsed.TotalSeconds, $extra)
-          if ($code -ne 0) { throw 'O count.ps1 tem que sair sempre com 0.' }
-          if ($extra -gt 5) { throw 'O aviso do count.ps1 passou do prazo de 4 s (com folga de 1 s para encerrar o processo).' }
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -103,6 +88,10 @@ jobs:
           $uninstaller = Get-ChildItem $dir -Filter 'Uninstall*.exe' | Select-Object -First 1
           $proc = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -PassThru
           if (-not $proc.WaitForExit(180000)) { $proc.Kill(); throw 'A desinstalação travou (mais de 3 min).' }
-          Start-Sleep -Seconds 5
+          # O desinstalador do NSIS se copia para a pasta temporária e roda de lá: o processo de cima sai na hora.
+          # Espera (até 2 min) o de verdade terminar, olhando o Registro que ele apaga.
+          $deadline = (Get-Date).AddMinutes(2)
+          while ((Test-Path 'HKCU:\Software\NexoDeviceCare') -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
           if (Test-Path 'HKCU:\Software\NexoDeviceCare') { throw 'A desinstalação de verdade deveria apagar o Registro do Nexo.' }
+          Write-Output "Desinstalou em $([int]((Get-Date) - $deadline.AddMinutes(-2)).TotalSeconds) s"
           Write-Output 'Instalou, contou (bloqueado) e desinstalou sem travar.'
