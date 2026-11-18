@@ -235,7 +235,7 @@
   function watchOem(reset = false) {
     clearTimeout(oemTimer);
     if (reset) oemTries = 0;
-    if (!model?.oem?.pending || oemTries >= 30) return;
+    if (!(model?.oem?.pending || model?.catalogPending) || oemTries >= 30) return;
     oemTries += 1;
     oemTimer = setTimeout(async () => {
       if (loading) { watchOem(); return; }

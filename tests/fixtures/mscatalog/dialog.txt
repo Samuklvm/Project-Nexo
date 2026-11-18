@@ -1,0 +1,7 @@
+var downloadInformation = new Array();
+downloadInformation[0] = new Object();
+downloadInformation[0].updateID ='9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff';
+downloadInformation[0].files = new Array();
+downloadInformation[0].files[0] = new Object();
+downloadInformation[0].files[0].url = 'https://catalog.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0b1c2d3e-aaaa-bbbb-cccc-1234567890ab/leitor_1.3.0.0_x64.cab';
+downloadInformation[0].files[0].digest = 'abcdefghijklmnopqrstuvwxyz0=';

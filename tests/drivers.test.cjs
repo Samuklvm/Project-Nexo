@@ -749,3 +749,37 @@ test('parte 2: a leitura do PC traz os programas dos periféricos e o assistente
   assert.match(Main.RUNTIMES_SCRIPT, /Driver & Support Assistant|Driver . Support Assistant/);
   assert.match(Main.RUNTIMES_SCRIPT, /HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall/);
 });
+
+/* ---------------- Projeto 2, parte 3: Catálogo da Microsoft ---------------- */
+test('parte 3: peça sem driver e sem fabricante conhecido busca no Catálogo da Microsoft; com fabricante, nunca', async () => {
+  const fx = (n) => fs.readFileSync(path.join(__dirname, 'fixtures', 'mscatalog', n), 'utf8');
+  const searched = [];
+  const svc = Main.createDrivers({
+    platform: 'win32', now: () => NOW,
+    fetchJson: async () => { throw new Error('offline'); },
+    fetchText: async (url) => { searched.push(url); return url.includes('Search.aspx') ? fx('search.html') : fx('dialog.txt'); },
+    runPowerShellCode: async (script) => {
+      if (script.includes('Win32_PnPSignedDriver | Where-Object')) return { stdout: JSON.stringify({ devices: [], others: [], generic: 0, genericDevices: [] }) };
+      return { stdout: JSON.stringify({ os: { build: 22631 }, board: {}, missing: [
+        { name: 'Controlador desconhecido', code: 28, ids: 'ABCD:1242', hwids: ['PCI\\VEN_ABCD&DEV_1242&SUBSYS_86751043'] },
+        { name: 'Placa Realtek', code: 28, ids: '10EC:8125', hwids: ['PCI\\VEN_10EC&DEV_8125'] },
+        { name: 'Desativado', code: 22, ids: 'ABCD:9999', hwids: ['PCI\\VEN_ABCD&DEV_9999'] }
+      ] }) };
+    }
+  });
+  const first = await svc.scan();
+  assert.equal(first.latest.catalog.pending, true);
+  await svc.oemSettled();
+  const r = await svc.scan();
+  assert.equal(searched.filter((u) => u.includes('Search.aspx')).length, 1, 'só a peça sem fabricante e sem driver');
+  assert.ok(searched[0].includes('VEN_ABCD'));
+  const model = D.build(r, NOW);
+  const card = model.groups.find((g) => g.id === 'semdriver').items.find((i) => i.name === 'Controlador desconhecido');
+  assert.equal(card.download.url, 'https://catalog.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0b1c2d3e-aaaa-bbbb-cccc-1234567890ab/leitor_1.3.0.0_x64.cab');
+  assert.equal(card.download.kind, 'cab');
+  assert.deepEqual(card.download.signers, ['Microsoft Corporation']);
+  assert.equal(card.download.primary, true);
+  assert.match(card.download.label, /Catálogo da Microsoft/);
+  assert.match(card.note, /Catálogo da Microsoft: Fabricante X - Other hardware - Leitor \(1\.3\.0\.0, set\/2026\)/);
+  assert.equal(D.downloadFor(model, card.id).fileName, 'catalogo-abcd-1242.cab');
+});

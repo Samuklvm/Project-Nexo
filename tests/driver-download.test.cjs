@@ -671,3 +671,10 @@ test('assinatura: os programas oficiais dos periféricos entram na lista do app'
   for (const name of ['Logitech Inc', 'Logitech Inc.', 'Logitech', 'SteelSeries ApS']) assert.equal(Sig.allowedSigner(name), true, name);
   assert.equal(Sig.allowedSigner('Logitech Evil'), false);
 });
+
+test('driver-install: .cab do Catálogo da Microsoft (só Microsoft) instala pelo .inf, sem procurar instalador', () => {
+  const dir = 'C:\\N\\driver-downloads';
+  const body = E.driverInstallBody({ file: `${dir}\\catalogo-1b21-1242.cab`, dir, kind: 'cab', signers: ['Microsoft Corporation'], sha256: 'ab'.repeat(32) });
+  assert.doesNotMatch(body, /'setup\.exe'/);
+  assert.match(body, /pnputil\.exe \/add-driver/);
+});

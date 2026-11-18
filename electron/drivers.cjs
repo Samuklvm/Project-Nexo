@@ -12,6 +12,8 @@
 const Scan = require('./deep-scan.cjs');
 const Vendors = require('../src/vendors.js');
 const OemCatalogs = require('./oem-catalogs.cjs');
+const MsCatalog = require('./ms-catalog.cjs');
+const Oem = require('../src/oem.js');
 
 const RUNTIMES_SCRIPT = Scan.PS_HEAD + String.raw`
 $cs = Get-CimInstance Win32_ComputerSystem
@@ -263,8 +265,10 @@ function iconSources(runtimes) {
   return out;
 }
 
-function createDrivers({ runPowerShellCode, fetchJson, fetchBytes = null, fs = null, catalogDir = null, oemLimitMs, fileIcon = null, now = () => Date.now(), platform = process.platform } = {}) {
+function createDrivers({ runPowerShellCode, fetchJson, fetchText = null, fetchBytes = null, fs = null, catalogDir = null, oemLimitMs, fileIcon = null, now = () => Date.now(), platform = process.platform } = {}) {
   // Catálogo oficial do fabricante do PC (Dell, HP, Lenovo, ASUS...): só quando o app injeta rede, disco e pasta.
+  // Último recurso (parte 3): Catálogo da Microsoft, só para peça sem driver e sem fabricante identificável.
+  const msCatalog = typeof fetchText === 'function' ? MsCatalog.createMsCatalog({ fetchText, now }) : null;
   const oemCatalogs = OemCatalogs.createOemCatalogs({ fetchBytes, runPowerShellCode, fs, catalogDir, now, ...(oemLimitMs ? { limitMs: oemLimitMs } : {}) });
   const iconCache = new Map(); // caminho → data: URL (ou null)
   async function localIcons(runtimes) {
@@ -325,12 +329,18 @@ function createDrivers({ runPowerShellCode, fetchJson, fetchBytes = null, fs = n
         try { oem = await oemCatalogs.lookup({ runtimes, devices: [...(devices || []), ...(genericDevices || []), ...(runtimes?.missing || [])] }); } catch { oem = null; }
         if (oem) latest.oem = oem;
       }
+      if (msCatalog) {
+        const covered = new Set(Oem.matchPackages(runtimes?.missing || [], latest.oem?.packages || []).flatMap((m) => m.devices));
+        const orphans = (runtimes?.missing || []).filter((m) => m.code === 28 && !covered.has(m) && !Vendors.vendorOf({ name: m.name, ids: m.ids }))
+          .map((m) => ({ key: `${m.name}-${m.ids || ''}`, hwids: m.hwids }));
+        if (orphans.length) latest.catalog = msCatalog.lookup(orphans);
+      }
     }
     const icons = await localIcons(runtimes);
     return { platform, devices: devices || [], others: others || [], genericDevices: genericDevices || [], generic, runtimes, latest, icons, at: now() };
   }
   // A busca do fabricante do PC roda em segundo plano; isto espera ela terminar (a tela pergunta de novo depois).
-  const oemSettled = () => (oemCatalogs ? oemCatalogs.settled() : Promise.resolve());
+  const oemSettled = () => Promise.all([oemCatalogs ? oemCatalogs.settled() : null, msCatalog ? msCatalog.settled() : null]).then(() => undefined);
   return { scan, oemSettled };
 }
 

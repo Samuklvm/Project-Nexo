@@ -85,7 +85,7 @@ function driverInstallBody({ file, dir, signer, signers, kind, sha256 = null, re
   // O instalador de dentro do pacote precisa ser do fabricante do PC ou da peça: assinado só pela Microsoft não vale
   // (qualquer programa da Microsoft renomeado para setup.exe passaria). A Microsoft continua valendo no .cat (WHQL).
   const inner = list.filter((name) => !/^Microsoft /.test(name));
-  if (archive && !inner.length) throw new Error('Assinante não permitido.');
+  // Só Microsoft (pacote do Catálogo da Microsoft): não roda instalador nenhum, só o .inf com .cat assinado.
   const hash = /^[0-9a-f]{64}$/i.test(String(sha256 || '')) ? String(sha256).toUpperCase() : null;
   if (archive && !hash) throw new Error('Pacote sem hash para conferir.');
   const restore = restorePoint === true ? String.raw`
@@ -103,6 +103,7 @@ if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; ret
   New-Item -ItemType Directory -Force -Path $x | Out-Null
   & expand.exe -F:* $dst $x | Out-Null
   if ($LASTEXITCODE -ne 0) { $r.note = 'não consegui abrir o pacote'; ${WRITE_RESULT}; return }`;
+  const findSetup = inner.length ? String.raw`foreach ($n in @('setup.exe', 'AsusSetup.exe', 'install.exe')) { $c = Join-Path $root $n; if (Test-Path -LiteralPath $c -PathType Leaf) { $setup = $c; break } }` : '';
   const run = !archive ? String.raw`
 ${Sig.signatureCoreFor('$dst', list)}
   $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
@@ -113,9 +114,9 @@ ${launchCore('$dst', '$work')}` : String.raw`
   $top = @(Get-ChildItem -LiteralPath $x -Force)
   if ($top.Count -eq 1 -and $top[0].PSIsContainer) { $root = $top[0].FullName }
   $setup = $null
-  foreach ($n in @('setup.exe', 'AsusSetup.exe', 'install.exe')) { $c = Join-Path $root $n; if (Test-Path -LiteralPath $c -PathType Leaf) { $setup = $c; break } }
+  ${findSetup}
   if ($setup) {
-${Sig.signatureCoreFor('$setup', inner)}
+${Sig.signatureCoreFor('$setup', inner.length ? inner : list)}
     $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
     if (-not $sig.valid) { $r.inner = $true; $r.note = 'o instalador de dentro do pacote não está assinado pelo fabricante'; ${WRITE_RESULT}; return }${restore}
     $r.method = 'setup'
