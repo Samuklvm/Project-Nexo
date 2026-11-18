@@ -6,6 +6,8 @@ let html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\s*/, '');
 html = html.replace('href="style.css"', 'href="../style.css"');
 html = html.replace('href="theme.css"', 'href="../theme.css"');
+html = html.replace('href="santuario.css"', 'href="../santuario.css"');
+html = html.replace(/src="assets\//g, 'src="../assets/');
 html = html.replace(/src="(src\/[^"]+|app\.js)"/g, 'src="../$1"');
 html = html.replace('<script src="../src/core.js"></script>', '<script src="mock-bridge.js"></script>\n  <script src="../src/core.js"></script>');
 // Arquivos de assets/ (o vídeo do céu) ficam um nível acima da prévia.

@@ -40,6 +40,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 A interface usa a fonte **Inter** 4.1 (<https://github.com/rsms/inter>), de Rasmus Andersson e colaboradores, distribuída sob a SIL Open Font License 1.1. O arquivo `assets/fonts/InterVariable.woff2` não foi modificado; o texto completo da licença está em `assets/fonts/Inter-LICENSE.txt`.
 
+
+## Cinzel, Cormorant Garamond e Roboto (fontes da página de Ajustes)
+
+A página de Ajustes (o "Santuário") usa as fontes **Cinzel** (<https://github.com/NDISCOVER/Cinzel>), **Cormorant Garamond** (<https://github.com/CatharsisFonts/Cormorant>) e **Roboto** (<https://github.com/googlefonts/roboto-classic>, só no botão "Fazer login com o Google"), todas sob a SIL Open Font License 1.1. Os arquivos em `assets/fonts/` (`Cinzel-Variable.woff2`, `CormorantGaramond-Italic-Variable.woff2` e `Roboto-Medium.woff2`, só os caracteres latinos, como distribuídos pelo projeto Fontsource) não foram modificados; os textos das licenças estão em `assets/fonts/Cinzel-LICENSE.txt`, `assets/fonts/CormorantGaramond-LICENSE.txt` e `assets/fonts/Roboto-LICENSE.txt`.
+
+## Logos do Google, da Steam e do Discord
+
+O "G" do Google, a logo da Steam e a logo do Discord aparecem só nos botões e cartões de entrar ou conectar a essas contas, como as próprias marcas orientam. São marcas registradas da Google LLC, da Valve Corporation e da Discord Inc., respectivamente; o Nexo não é afiliado a nenhuma delas. Os desenhos das logos da Steam e do Discord vêm do projeto Simple Icons (<https://simpleicons.org>, CC0 1.0).
+
+## Arte do Santuário
+
+As lanternas, os sinos, os arcos, as runas, o manto e a máscara do viajante e o papel de parede "Santuário" (`assets/wallpaper-santuario.webp`) foram desenhados para o Nexo, inspirados no clima de fantasia sombria de jogos como Hollow Knight: Silksong. Nada foi tirado desses jogos, e o Nexo não tem ligação com a Team Cherry.
 ## PawnIO (driver de sensores, Windows)
 
 Para ler a temperatura do processador e da placa-mãe no Windows, o Nexo instala o **PawnIO** 2.2.0 (<https://pawnio.eu>, código-fonte em <https://github.com/namazso/PawnIO> e <https://github.com/namazso/PawnIO.Setup>), driver assinado usado também pelo LibreHardwareMonitor. O Nexo não inclui nem modifica o PawnIO: o instalador oficial é baixado da página de releases do projeto no GitHub, conferido pelo SHA-256 `1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032` e executado com a permissão da pessoa (UAC). O PawnIO segue sob as licenças do próprio projeto.

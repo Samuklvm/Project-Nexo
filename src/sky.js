@@ -16,6 +16,7 @@
   const prefs = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }; } catch { return { ...DEFAULTS }; } })();
   Nexo.sky = {
     prefs: () => ({ ...prefs }),
+    defaults: () => ({ ...DEFAULTS }),
     set(patch) {
       Object.assign(prefs, patch);
       try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* só nesta sessão */ }

@@ -23,6 +23,20 @@
     return blob ? blob.arrayBuffer() : file.arrayBuffer();
   }
 
+  /* Papel de parede pronto "Santuário" (arte própria do Nexo, no clima de fantasia sombria). Só vale sem imagem sua. */
+  const PRESET_KEY = 'nexo-wallpaper-preset';
+  // Endereço completo: dentro de uma variável de CSS, um caminho relativo seria lido a partir do style.css.
+  const presetUrl = () => new URL(`${window.__assetBase || ''}assets/wallpaper-santuario.webp`, location.href).href;
+  const setPreset = (id) => { try { if (id) localStorage.setItem(PRESET_KEY, id); else localStorage.removeItem(PRESET_KEY); } catch { /* só nesta sessão */ } };
+  const preset = () => { try { return localStorage.getItem(PRESET_KEY); } catch { return null; } };
+  document.getElementById('wallpaper-santuario').addEventListener('click', async () => {
+    try { await desktopBridge?.resetWallpaper?.(); } catch { /* sem imagem própria guardada */ }
+    setPreset('santuario');
+    applyWallpaper(presetUrl());
+    showToast('Papel de parede: Santuário.');
+    recordActivity('Papel de parede', 'Santuário');
+  });
+
   document.getElementById('choose-wallpaper').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
@@ -31,6 +45,7 @@
     if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { showToast('Use uma imagem PNG, JPEG ou WebP.'); return; }
     try {
       const bytes = await shrinkImage(file);
+      setPreset(null);
       if (desktopBridge?.setWallpaper) applyWallpaper((await desktopBridge.setWallpaper(bytes)).url);
       else applyWallpaper(URL.createObjectURL(new Blob([bytes])));
       showToast('Papel de parede atualizado.');
@@ -39,6 +54,7 @@
   });
   resetButton.addEventListener('click', async () => {
     try { await desktopBridge?.resetWallpaper?.(); } catch { /* o padrão volta de qualquer forma */ }
+    setPreset(null);
     applyWallpaper(null);
     showToast('Papel de parede padrão restaurado.');
   });
@@ -78,7 +94,7 @@
     const confirmed = await Nexo.confirm({
       title: 'Desinstalar o Nexo completamente?',
       body: 'O Nexo vai fechar e remover tudo em poucos segundos. Uma mensagem final mostrará se algo não pôde ser apagado.',
-      items: ['O programa e todos os arquivos da instalação.', 'Seus dados e preferências: histórico, aprendizado, sessões, capas de jogos, conta, papel de parede.', 'Atalhos, entradas do Registro (inclusive iniciar com o Windows) e o cache de atualizações.', 'Planos de energia criados pelo laboratório (o Windows volta ao Equilibrado se um deles estiver ativo).', 'O serviço de sensores e o driver PawnIO, se foi o Nexo que instalou (o Windows pede permissão para remover).', 'Rastros que o Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes).', 'Nada além disso: outros programas, arquivos pessoais e pontos de restauração do Windows não são tocados.', 'Se você usa a sincronização, as cópias no servidor do Nexo ficam lá: para apagar, use antes “Apagar meus dados do servidor”, logo acima.'],
+      items: ['O programa e todos os arquivos da instalação.', 'Seus dados e preferências: histórico, aprendizado, sessões, capas de jogos, conta, papel de parede.', 'Atalhos, entradas do Registro (inclusive iniciar com o Windows) e o cache de atualizações.', 'Planos de energia criados pelo laboratório (o Windows volta ao Equilibrado se um deles estiver ativo).', 'O serviço de sensores e o driver PawnIO, se foi o Nexo que instalou (o Windows pede permissão para remover).', 'Rastros que o Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes).', 'Nada além disso: outros programas, arquivos pessoais e pontos de restauração do Windows não são tocados.', 'Se você usa a sincronização, as cópias no servidor do Nexo ficam lá: para apagar, use antes “Apagar meus dados do servidor”, na seção Conta, no topo dos Ajustes.'],
       confirmLabel: 'Desinstalar', tone: 'danger'
     });
     if (!confirmed) return;
@@ -106,7 +122,9 @@
   Nexo.initSettings = async function initSettings() {
     Nexo.setEffects(localStorage.getItem(Nexo.keys.effects) === 'lite' ? 'lite' : 'full');
     Nexo.setLiveRate(Nexo.liveRate, { save: false });
-    try { applyWallpaper((await desktopBridge?.getWallpaper?.())?.url || null); } catch { applyWallpaper(null); }
+    let custom = null;
+    try { custom = (await desktopBridge?.getWallpaper?.())?.url || null; } catch { custom = null; }
+    applyWallpaper(custom || (preset() === 'santuario' ? presetUrl() : null));
 
     refreshInfo();
   };

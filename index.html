@@ -8,6 +8,7 @@
   <title>Nexo Device Care</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="theme.css" />
+  <link rel="stylesheet" href="santuario.css" />
 </head>
 <body>
   <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
@@ -37,6 +38,8 @@
       <symbol id="i-max" viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
       <symbol id="i-restore" viewBox="0 0 12 12"><path d="M4 2.2h5.8v5.8M2.2 4h5.8v5.8H2.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
       <symbol id="i-close" viewBox="0 0 12 12"><path d="m2.5 2.5 7 7m0-7-7 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+      <symbol id="i-steam" viewBox="0 0 24 24"><g fill="currentColor" stroke="none"><path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/></g></symbol>
+      <symbol id="i-google" viewBox="0 0 48 48"><g stroke="none"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></g></symbol>
     </defs>
   </svg>
 
@@ -459,64 +462,142 @@
       </section>
 
       <!-- AJUSTES -->
-      <section class="view" data-view-panel="settings">
-        <header class="page-head"><div><h2>Ajustes</h2><p>Aparência, privacidade e controle dos seus dados.</p></div></header>
-        <section class="sheet account-sheet" id="account-sheet">
-          <div class="account-row"><span class="avatar lg" id="account-avatar-lg"><svg><use href="#i-user"/></svg></span><div class="account-copy"><h3 id="account-name">Conta</h3><p class="muted" id="account-detail">Entre com a sua conta Google para ter o seu perfil no Nexo.</p></div><div class="btn-row" id="account-actions"></div></div>
-          <p class="muted footnote" id="account-note">Opcional. O login acontece no seu navegador; o Nexo guarda só nome, e-mail e foto neste PC (cifrados pelo Windows) e não guarda senhas nem tokens do Google.</p>
-        </section>
-        <section class="sheet cloud-sheet" id="cloud-sheet">
-          <div class="sheet-head"><div><h3>Sincronização entre PCs</h3><p class="muted">Com o seu login do Google, cada PC guarda uma cópia criptografada no servidor do Nexo. Em outro PC, você escolhe de qual PC e o que trazer. Desligado por padrão.</p></div></div>
-          <div id="cloud-sync-body"><p class="muted">Carregando…</p></div>
-        </section>
-        <section class="sheet connections-sheet" id="connections-sheet">
-          <div class="sheet-head"><div><h3>Contas e conexões</h3><p class="muted">Ligue o Nexo às suas plataformas para completar a biblioteca, trazer tempo de jogo e capas oficiais e mostrar no Discord o que você está jogando. Tudo opcional e desconectável.</p></div><button class="btn sm ghost" id="integrations-import" type="button" hidden>Importar configuração (desenvolvedor)</button></div>
-          <div class="conn-grid" id="conn-grid"></div>
-        </section>
-        <section class="sheet profile-sheet">
-          <div class="sheet-head"><div><h3>Perfil de uso</h3><p class="muted">Muda o peso de cada fator no Índice Nexo, a ordem das observações e o que as sessões destacam. Não muda o que é verdade sobre o seu PC, e você pode trocar quando quiser.</p></div></div>
-          <div class="pcards" id="profile-cards" role="radiogroup" aria-label="Perfil de uso"></div>
-        </section>
-        <div class="split even">
-          <section class="sheet">
-            <div class="sheet-head"><h3>Aparência</h3></div>
-            <div class="wall-row"><div class="wall-preview" id="wall-preview" aria-hidden="true"></div><div><strong>Papel de parede</strong><p class="muted">Imagens PNG, JPEG ou WebP. O Nexo reduz o tamanho antes de guardar.</p><div class="btn-row"><button class="btn sm" id="choose-wallpaper" type="button">Escolher imagem</button><button class="btn sm ghost" id="reset-wallpaper" type="button" hidden>Restaurar padrão</button></div><label class="sr-only" for="wallpaper-file">Imagem do papel de parede</label><input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Imagem do papel de parede" hidden /></div></div>
-            <div class="self-meter"><div><strong>Custo do Nexo agora</strong><p class="muted">Medido pelo próprio Electron. Com a janela sem foco, animações param e as leituras ficam 6× mais espaçadas.</p></div><dl><div><dt>CPU</dt><dd id="self-cpu">--</dd></div><div><dt>Memória</dt><dd id="self-mem">--</dd></div><div><dt>Processos</dt><dd id="self-proc">--</dd></div></dl><div class="progress-track slim"><span id="self-bar"></span></div></div>
-            <div class="setting-row"><div><strong>Efeitos visuais</strong><p class="muted">O modo leve desliga o desfoque de vidro e as animações de fundo para poupar GPU e bateria.</p></div><div class="segmented sm" role="group" aria-label="Efeitos visuais"><button type="button" data-effects="full" aria-pressed="true">Completo</button><button type="button" data-effects="lite" aria-pressed="false">Leve</button></div></div>
-            <div class="setting-row"><div><strong>Cor de destaque</strong><p class="muted">Muda o neon do app inteiro: botões, brilhos, barra lateral e gráficos de destaque.</p></div><div class="accent-picker" id="accent-picker" role="group" aria-label="Cor de destaque"></div></div>
-            <div class="sky-settings" id="sky-settings"></div>
-            <div class="setting-row"><div><strong>Velocidade das leituras</strong><p class="muted">Tempo real atualiza o painel a cada segundo e os sensores a cada 2 s, sem travar: as leituras rodam fora da tela e uma só começa quando a anterior termina. Sem a janela em foco, o Nexo lê a cada 30 s.</p></div><div class="segmented sm" role="group" aria-label="Velocidade das leituras"><button type="button" data-live-rate="realtime" aria-pressed="true">Tempo real</button><button type="button" data-live-rate="balanced" aria-pressed="false">Equilibrada</button><button type="button" data-live-rate="eco" aria-pressed="false">Econômica</button></div></div>
-          </section>
-          <section class="sheet">
-            <div class="sheet-head"><h3>Privacidade e dados</h3></div>
-            <p class="muted">Tudo o que o Nexo aprende fica neste computador. Saem só a consulta pública de atualizações ao GitHub, a contagem de uso e os relatórios de erro (ligados por padrão, desligáveis, sem nada pessoal) e o que você ligar: login com o Google, capas da CDN da Steam, a sincronização e a telemetria.</p>
-            <dl class="facts"><div><dt>Dados locais</dt><dd id="data-size">--</dd></div><div><dt>Pasta</dt><dd class="path" id="data-path">--</dd></div></dl>
-            <label class="switch"><input id="cloud-count" type="checkbox" checked /><i></i><span><strong>Contar este PC nas estatísticas do Nexo</strong><small>Ligado por padrão. Uma vez por dia o Nexo avisa só "este PC abriu hoje", com a versão e o sistema, usando um código do PC embaralhado (não dá para saber de quem é, nem cruzar com outro app). É o que faz o criador saber quantas pessoas usam o Nexo de verdade. Desligar para de contar na hora.</small></span></label>
-            <label class="switch"><input id="cloud-telemetry" type="checkbox" /><i></i><span><strong>Ajudar a melhorar o Nexo (telemetria)</strong><small>Desligado por padrão. Um resumo por dia (o de hoje vai parcial, no máximo a cada 3 h), sem nada pessoal: versão, hardware e monitores, quanto o Nexo pesa no PC, médias do dia, o que limitou o PC, ajustes do app, quais telas e recursos foram usados e o que falhou no app. Nada de nomes, pastas, programas ou e-mail; vai com um código aleatório deste PC.</small></span></label>
-            <label class="switch"><input id="cloud-errors" type="checkbox" checked /><i></i><span><strong>Relatórios de erro</strong><small>Ligados por padrão. Os erros e os avisos do registro abaixo (coisas funcionando de um jeito estranho) vão para o criador corrigir, sem o seu nome de usuário nem as suas pastas. Dá para desligar quando quiser.</small></span></label>
-            <label class="switch sub" id="cloud-email-row"><input id="cloud-error-email" type="checkbox" /><i></i><span><strong>Incluir meu e-mail nos relatórios</strong><small>Ligado por padrão com a conta Google entrada no Nexo, para o criador avisar você quando o erro for corrigido. Desmarcar tira o e-mail também dos relatórios que já foram. Com a sincronização ligada, o servidor ainda confirma o e-mail com o Google.</small></span></label>
-            <div class="btn-row"><button class="btn sm" id="export-data" type="button">Exportar meus dados</button><button class="btn sm" id="erase-learning" type="button">Apagar aprendizado e histórico</button><button class="btn sm ghost" id="open-privacy" type="button">Política completa</button></div>
-          </section>
-        </div>
-        <section class="sheet errors-sheet" id="errors-sheet">
-          <div class="sheet-head"><div><h3>Registro de erros</h3><p class="muted">Quando algo dá errado, o Nexo anota aqui, sem o seu nome de usuário nem as suas pastas. Erros iguais ficam juntos, com quantas vezes aconteceram. Os erros vão para o criador corrigir; os avisos ficam só neste computador.</p></div><button class="btn sm ghost" id="errors-refresh" type="button">Atualizar</button></div>
-          <div class="errors-filters"><label class="toggle-line"><input type="checkbox" id="errors-warnings" /> Mostrar também avisos (ações que não deram certo, como uma permissão recusada)</label></div>
-          <div id="errors-body"><p class="muted">Carregando…</p></div>
-          <div class="btn-row"><button class="btn sm" id="errors-copy" type="button">Copiar relatório</button><button class="btn sm" id="errors-folder" type="button">Abrir a pasta</button><button class="btn sm ghost" id="errors-clear" type="button">Limpar o registro</button></div>
-        </section>
-        <section class="sheet">
-          <div class="sheet-head"><div><h3>Em segundo plano</h3><p class="muted">Tudo desligado por padrão. Ligue só o que você quer.</p></div></div>
-          <div class="bg-grid">
-            <label class="switch"><input id="set-tray" type="checkbox" /><i></i><span><strong>Ficar na bandeja ao fechar</strong><small>O botão fechar esconde a janela; o Nexo continua perto do relógio. Para sair de verdade, use o menu do ícone.</small></span></label>
-            <label class="switch"><input id="set-auto" type="checkbox" /><i></i><span><strong>Gravar sessões de jogo sozinho</strong><small>Quando um jogo da biblioteca abre, o Nexo grava; quando fecha, guarda o relatório.</small></span></label>
-            <label class="switch"><input id="set-login" type="checkbox" /><i></i><span><strong>Iniciar com o sistema (escondido)</strong><small>Abre direto na bandeja. Só na versão instalada.</small></span></label>
-            <label class="switch"><input id="set-covers" type="checkbox" /><i></i><span><strong>Buscar capas oficiais na internet</strong><small>Desligado: só as capas que as lojas já guardaram no PC. Ligado: as que faltam vêm da Steam e da Microsoft Store (só arte oficial); essas lojas recebem o nome ou o número de cada jogo pesquisado.</small></span></label>
+      <section class="view santuario" data-view-panel="settings">
+        <header class="sanct-hall" id="sanct-hall">
+          <canvas class="sanct-embers" id="sanct-embers" aria-hidden="true"></canvas>
+          <div class="sanct-arches" aria-hidden="true"></div>
+          <div class="sanct-runes" id="sanct-runes" aria-hidden="true"></div>
+          <div class="sanct-title">
+            <p class="sanct-kicker">Santuário do Nexo</p>
+            <h2>Ajustes</h2>
+            <p class="sanct-sub">A luz, as contas, a privacidade e tudo o que é seu, num lugar só.</p>
           </div>
+          <nav class="sanct-lanterns" id="sanct-lanterns" aria-label="Seções dos Ajustes"></nav>
+        </header>
+
+        <div class="sanct-bar" id="sanct-bar">
+          <nav class="sanct-chips" id="sanct-chips" aria-label="Ir para a seção"></nav>
+          <label class="sanct-search"><svg aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Procurar um ajuste</span><input id="sanct-search" type="search" placeholder="Procurar um ajuste…" autocomplete="off" spellcheck="false" /></label>
+        </div>
+        <p class="sanct-empty" id="sanct-empty" hidden></p>
+
+        <section class="sanct-sec" id="sec-encantos" data-sec="encantos" aria-labelledby="sec-encantos-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-encantos-t">Encantos</h3><p class="sanct-flavor">Um toque e o Nexo muda de humor.</p></div></header>
+          <div class="sanct-charms" id="sanct-charms"></div>
         </section>
-        <section class="sheet danger-zone">
-          <div class="sheet-head"><div><h3>Desinstalar completamente</h3><p class="muted" data-only="win32">Remove o programa, os dados e as preferências, os atalhos e as entradas do Registro, e limpa os rastros que o próprio Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes). Ao final, mostra o que não conseguiu apagar, se houver.</p><p class="muted" data-only="linux">Apaga os dados e preferências (~/.config e ~/.cache do Nexo) e a entrada de inicialização; depois remove a própria AppImage ou, se instalado pelo pacote .deb, desinstala o pacote (o sistema pede a sua senha).</p></div><button class="btn danger" id="uninstall-app" type="button">Desinstalar o Nexo</button></div>
+
+        <section class="sanct-sec" id="sec-conta" data-sec="conta" aria-labelledby="sec-conta-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-conta-t">Conta</h3><p class="sanct-flavor">Quem você é, guardado com cuidado.</p></div></header>
+          <section class="sheet account-sheet" id="account-sheet" data-keywords="google login entrar conta perfil e-mail email sair">
+            <div class="account-row">
+              <span class="medallion" aria-hidden="true"><span class="avatar lg" id="account-avatar-lg"><svg><use href="#i-user"/></svg></span></span>
+              <div class="account-copy"><p class="account-kicker" id="account-kicker">Conta do Nexo</p><h3 id="account-name">Conta</h3><p class="muted" id="account-detail">Entre com a sua conta Google para ter o seu perfil no Nexo.</p></div>
+              <div class="btn-row" id="account-actions"></div>
+            </div>
+            <ul class="account-perks" id="account-perks" aria-label="O que a conta libera"></ul>
+            <p class="muted footnote" id="account-note">Opcional. O login acontece no seu navegador; o Nexo guarda só nome, e-mail e foto neste PC (cifrados pelo Windows) e não guarda senhas nem tokens do Google.</p>
+          </section>
+          <section class="sheet cloud-sheet" id="cloud-sheet" data-keywords="sincronizar sincronização nuvem servidor outro pc backup apagar meus dados do servidor">
+            <div class="sheet-head"><div><h3>Sincronização entre PCs</h3><p class="muted">Com o seu login do Google, cada PC guarda uma cópia criptografada no servidor do Nexo. Em outro PC, você escolhe de qual PC e o que trazer. Desligado por padrão.</p></div></div>
+            <div id="cloud-sync-body"><p class="muted">Carregando…</p></div>
+          </section>
         </section>
-        <section class="sheet about"><div><strong>Nexo Device Care</strong><span class="muted">Versão <span id="about-version">--</span> · gratuito · código aberto (GPL-3.0)</span></div><div class="btn-row"><button class="btn sm ghost" data-link="repo" type="button">Projeto no GitHub</button><button class="btn sm ghost" data-link="issues" type="button">Relatar um problema</button><button class="btn sm ghost" data-link="creator" type="button">Criador</button></div></section>
+
+        <section class="sanct-sec" id="sec-conexoes" data-sec="conexoes" aria-labelledby="sec-conexoes-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-conexoes-t">Conexões</h3><p class="sanct-flavor">Os portões para as suas outras terras.</p></div></header>
+          <section class="sheet connections-sheet" id="connections-sheet" data-keywords="steam xbox discord biblioteca conquistas jogos login chave api status">
+            <div class="sheet-head"><div><h3>Contas e conexões</h3><p class="muted">Ligue o Nexo às suas plataformas para completar a biblioteca, trazer tempo de jogo e capas oficiais e mostrar no Discord o que você está jogando. Tudo opcional e desconectável.</p></div><button class="btn sm ghost" id="integrations-import" type="button" hidden>Importar configuração (desenvolvedor)</button></div>
+            <div class="conn-grid" id="conn-grid"></div>
+          </section>
+        </section>
+
+        <section class="sanct-sec" id="sec-perfil" data-sec="perfil" aria-labelledby="sec-perfil-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-perfil-t">Perfil de uso</h3><p class="sanct-flavor">O que pesa mais na sua jornada.</p></div></header>
+          <section class="sheet profile-sheet" data-keywords="perfil jogos trabalho geral índice nexo peso">
+            <div class="sheet-head"><div><h3>Como você usa o PC</h3><p class="muted">Muda o peso de cada fator no Índice Nexo, a ordem das observações e o que as sessões destacam. Não muda o que é verdade sobre o seu PC, e você pode trocar quando quiser.</p></div></div>
+            <div class="pcards" id="profile-cards" role="radiogroup" aria-label="Perfil de uso"></div>
+          </section>
+        </section>
+
+        <section class="sanct-sec" id="sec-aparencia" data-sec="aparencia" aria-labelledby="sec-aparencia-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-aparencia-t">Aparência</h3><p class="sanct-flavor">A luz, as cores e o céu do seu santuário.</p></div><button class="sanct-reset" type="button" data-reset-sec="aparencia" hidden>Restaurar o padrão</button></header>
+          <section class="sheet">
+            <div class="wall-row" data-setting="wallpaper" data-keywords="papel de parede fundo imagem wallpaper"><div class="wall-preview" id="wall-preview" aria-hidden="true"></div><div><strong>Papel de parede</strong><p class="muted">Imagens PNG, JPEG ou WebP (o Nexo reduz o tamanho antes de guardar), ou o Santuário: ruínas, lanternas e névoa desenhadas a pena.</p><div class="btn-row"><button class="btn sm" id="choose-wallpaper" type="button">Escolher imagem</button><button class="btn sm" id="wallpaper-santuario" type="button">Usar o Santuário</button><button class="btn sm ghost" id="reset-wallpaper" type="button" hidden>Restaurar padrão</button></div><label class="sr-only" for="wallpaper-file">Imagem do papel de parede</label><input id="wallpaper-file" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Imagem do papel de parede" hidden /></div></div>
+            <div class="setting-row" data-setting="effects" data-keywords="efeitos visuais leve completo vidro desfoque animação gpu bateria"><div><strong>Efeitos visuais</strong><p class="muted">O modo leve desliga o desfoque de vidro e as animações de fundo para poupar GPU e bateria.</p><p class="sanct-auto-note" id="effects-auto-note" hidden></p></div><div class="segmented sm" role="group" aria-label="Efeitos visuais"><button type="button" data-effects="full" aria-pressed="true">Completo</button><button type="button" data-effects="lite" aria-pressed="false">Leve</button></div></div>
+            <div class="setting-row" data-setting="accent" data-keywords="cor de destaque neon tema cor"><div><strong>Cor de destaque</strong><p class="muted">Muda o neon do app inteiro: botões, brilhos, barra lateral e gráficos de destaque.</p></div><div class="accent-picker" id="accent-picker" role="group" aria-label="Cor de destaque"></div></div>
+            <div class="sky-settings" id="sky-settings" data-setting="sky" data-keywords="céu vivo vagalumes estrelas meteoros chuva hora"></div>
+          </section>
+        </section>
+
+        <section class="sanct-sec" id="sec-desempenho" data-sec="desempenho" aria-labelledby="sec-desempenho-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-desempenho-t">Desempenho do Nexo</h3><p class="sanct-flavor">Quanto o Nexo pesa, e como ele respira.</p></div><button class="sanct-reset" type="button" data-reset-sec="desempenho" hidden>Restaurar o padrão</button></header>
+          <section class="sheet">
+            <div class="self-meter" data-keywords="custo cpu memória processos peso consumo"><div><strong>Custo do Nexo agora</strong><p class="muted">Medido pelo próprio Electron. Com a janela sem foco, animações param e as leituras ficam 6× mais espaçadas.</p></div><dl><div><dt>CPU</dt><dd id="self-cpu">--</dd></div><div><dt>Memória</dt><dd id="self-mem">--</dd></div><div><dt>Processos</dt><dd id="self-proc">--</dd></div></dl><div class="progress-track slim"><span id="self-bar"></span></div></div>
+            <div class="setting-row" data-setting="liveRate" data-keywords="velocidade das leituras tempo real equilibrada econômica atualização sensores"><div><strong>Velocidade das leituras</strong><p class="muted">Tempo real atualiza o painel a cada segundo e os sensores a cada 2 s, sem travar: as leituras rodam fora da tela e uma só começa quando a anterior termina. Sem a janela em foco, o Nexo lê a cada 30 s.</p></div><div class="segmented sm" role="group" aria-label="Velocidade das leituras"><button type="button" data-live-rate="realtime" aria-pressed="true">Tempo real</button><button type="button" data-live-rate="balanced" aria-pressed="false">Equilibrada</button><button type="button" data-live-rate="eco" aria-pressed="false">Econômica</button></div></div>
+            <div class="auto-lite" data-setting="autoLite" data-keywords="modo leve automático bateria notebook jogo sessão">
+              <div><strong>Modo leve automático</strong><p class="muted">O Nexo liga o modo leve sozinho e volta ao que você escolheu quando a situação passa. Não muda a sua escolha em Efeitos visuais.</p></div>
+              <div class="bg-grid two">
+                <label class="switch compact"><input id="auto-lite-battery" type="checkbox" /><i></i><span><strong>Na bateria</strong><small>Quando o notebook sai da tomada. Num PC de mesa, nunca acontece.</small></span></label>
+                <label class="switch compact"><input id="auto-lite-game" type="checkbox" /><i></i><span><strong>Durante uma sessão de jogo</strong><small>Enquanto o Nexo grava uma sessão, sobra mais placa de vídeo para o jogo. Junto com “Gravar sessões de jogo sozinho”, liga quando o jogo abre.</small></span></label>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="sanct-sec" id="sec-privacidade" data-sec="privacidade" aria-labelledby="sec-privacidade-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-privacidade-t">Privacidade e dados</h3><p class="sanct-flavor">Cada fio que sai deste PC, à vista.</p></div></header>
+          <section class="sheet privacy-sheet" data-keywords="privacidade dados telemetria contagem relatórios de erro e-mail exportar apagar aprendizado política">
+            <div class="privacy-map" id="privacy-map" aria-label="Para onde vão os seus dados"></div>
+            <div class="privacy-cols">
+              <div class="privacy-switches">
+                <label class="switch" data-flow="contagem"><input id="cloud-count" type="checkbox" checked /><i></i><span><strong>Contar este PC nas estatísticas do Nexo</strong><small>Ligado por padrão. Uma vez por dia o Nexo avisa só "este PC abriu hoje", com a versão e o sistema, usando um código do PC embaralhado (não dá para saber de quem é, nem cruzar com outro app). É o que faz o criador saber quantas pessoas usam o Nexo de verdade. Desligar para de contar na hora.</small></span></label>
+                <label class="switch" data-flow="telemetria"><input id="cloud-telemetry" type="checkbox" /><i></i><span><strong>Ajudar a melhorar o Nexo (telemetria)</strong><small>Desligado por padrão. Um resumo por dia (o de hoje vai parcial, no máximo a cada 3 h), sem nada pessoal: versão, hardware e monitores, quanto o Nexo pesa no PC, médias do dia, o que limitou o PC, ajustes do app, quais telas e recursos foram usados e o que falhou no app. Nada de nomes, pastas, programas ou e-mail; vai com um código aleatório deste PC.</small></span></label>
+                <label class="switch" data-flow="erros"><input id="cloud-errors" type="checkbox" checked /><i></i><span><strong>Relatórios de erro</strong><small>Ligados por padrão. Os erros e os avisos do registro abaixo (coisas funcionando de um jeito estranho) vão para o criador corrigir, sem o seu nome de usuário nem as suas pastas. Dá para desligar quando quiser.</small></span></label>
+                <label class="switch sub" id="cloud-email-row"><input id="cloud-error-email" type="checkbox" /><i></i><span><strong>Incluir meu e-mail nos relatórios</strong><small>Ligado por padrão com a conta Google entrada no Nexo, para o criador avisar você quando o erro for corrigido. Desmarcar tira o e-mail também dos relatórios que já foram. Com a sincronização ligada, o servidor ainda confirma o e-mail com o Google.</small></span></label>
+              </div>
+              <div class="privacy-local">
+                <p class="muted">Tudo o que o Nexo aprende fica neste computador. Saem só a consulta pública de atualizações ao GitHub, a contagem de uso e os relatórios de erro (ligados por padrão, desligáveis, sem nada pessoal) e o que você ligar: login com o Google, capas da CDN da Steam, a sincronização e a telemetria.</p>
+                <dl class="facts"><div><dt>Dados locais</dt><dd id="data-size">--</dd></div><div><dt>Pasta</dt><dd class="path" id="data-path">--</dd></div></dl>
+                <div class="btn-row"><button class="btn sm" id="export-data" type="button">Exportar meus dados</button><button class="btn sm" id="erase-learning" type="button">Apagar aprendizado e histórico</button><button class="btn sm ghost" id="open-privacy" type="button">Política completa</button></div>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="sanct-sec" id="sec-segundo-plano" data-sec="segundo-plano" aria-labelledby="sec-segundo-plano-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-segundo-plano-t">Em segundo plano</h3><p class="sanct-flavor">O que o Nexo faz enquanto você não olha.</p></div><button class="sanct-reset" type="button" data-reset-sec="segundo-plano" hidden>Restaurar o padrão</button></header>
+          <section class="sheet">
+            <p class="muted sheet-lead">Tudo desligado por padrão. Ligue só o que você quer.</p>
+            <div class="bg-grid">
+              <label class="switch" data-setting="tray" data-keywords="bandeja fechar minimizar relógio"><input id="set-tray" type="checkbox" /><i></i><span><strong>Ficar na bandeja ao fechar</strong><small>O botão fechar esconde a janela; o Nexo continua perto do relógio. Para sair de verdade, use o menu do ícone.</small></span></label>
+              <label class="switch" data-setting="autoSession" data-keywords="gravar sessões jogo automático"><input id="set-auto" type="checkbox" /><i></i><span><strong>Gravar sessões de jogo sozinho</strong><small>Quando um jogo da biblioteca abre, o Nexo grava; quando fecha, guarda o relatório.</small></span></label>
+              <label class="switch" data-setting="openAtLogin" data-keywords="iniciar com o sistema windows inicialização ligar pc"><input id="set-login" type="checkbox" /><i></i><span><strong>Iniciar com o sistema (escondido)</strong><small>Abre direto na bandeja. Só na versão instalada.</small></span></label>
+              <label class="switch" data-setting="onlineCovers" data-keywords="capas oficiais internet steam microsoft store"><input id="set-covers" type="checkbox" /><i></i><span><strong>Buscar capas oficiais na internet</strong><small>Desligado: só as capas que as lojas já guardaram no PC. Ligado: as que faltam vêm da Steam e da Microsoft Store (só arte oficial); essas lojas recebem o nome ou o número de cada jogo pesquisado.</small></span></label>
+            </div>
+          </section>
+        </section>
+
+        <section class="sanct-sec" id="sec-avancado" data-sec="avancado" aria-labelledby="sec-avancado-t">
+          <header class="sanct-sec-head"><div><h3 id="sec-avancado-t">Avançado</h3><p class="sanct-flavor">O porão: cópias, registros e despedidas.</p></div></header>
+          <section class="sheet backup-sheet" data-keywords="backup cópia dos ajustes exportar importar arquivo">
+            <div class="sheet-head"><div><h3>Cópia dos ajustes</h3><p class="muted">Guarda num arquivo a aparência, o desempenho e o segundo plano, para trazer de volta depois ou levar a outro PC sem sincronização. O papel de parede, as contas e a privacidade não entram.</p></div><div class="btn-row"><button class="btn sm" id="settings-export" type="button">Salvar cópia</button><button class="btn sm" id="settings-import" type="button">Trazer de um arquivo</button></div></div>
+            <label class="sr-only" for="settings-file">Arquivo de cópia dos ajustes</label><input id="settings-file" type="file" accept="application/json,.json" hidden />
+          </section>
+          <section class="sheet errors-sheet" id="errors-sheet" data-keywords="registro de erros log avisos relatório copiar pasta">
+            <div class="sheet-head"><div><h3>Registro de erros</h3><p class="muted">Quando algo dá errado, o Nexo anota aqui, sem o seu nome de usuário nem as suas pastas. Erros iguais ficam juntos, com quantas vezes aconteceram. Os erros vão para o criador corrigir; os avisos ficam só neste computador.</p></div><button class="btn sm ghost" id="errors-refresh" type="button">Atualizar</button></div>
+            <div class="errors-filters"><label class="toggle-line"><input type="checkbox" id="errors-warnings" /> Mostrar também avisos (ações que não deram certo, como uma permissão recusada)</label></div>
+            <div id="errors-body"><p class="muted">Carregando…</p></div>
+            <div class="btn-row"><button class="btn sm" id="errors-copy" type="button">Copiar relatório</button><button class="btn sm" id="errors-folder" type="button">Abrir a pasta</button><button class="btn sm ghost" id="errors-clear" type="button">Limpar o registro</button></div>
+          </section>
+          <section class="sheet danger-zone" data-keywords="desinstalar remover apagar tudo">
+            <div class="sheet-head"><div><h3>Desinstalar completamente</h3><p class="muted" data-only="win32">Remove o programa, os dados e as preferências, os atalhos e as entradas do Registro, e limpa os rastros que o próprio Windows guarda sobre o Nexo (MuiCache, UserAssist e Recentes). Ao final, mostra o que não conseguiu apagar, se houver.</p><p class="muted" data-only="linux">Apaga os dados e preferências (~/.config e ~/.cache do Nexo) e a entrada de inicialização; depois remove a própria AppImage ou, se instalado pelo pacote .deb, desinstala o pacote (o sistema pede a sua senha).</p></div><button class="btn danger" id="uninstall-app" type="button">Desinstalar o Nexo</button></div>
+          </section>
+          <section class="sheet about" data-keywords="sobre versão github criador problema">
+            <span class="about-seal" aria-hidden="true"><img src="assets/nexo-star.png" alt="" /></span>
+            <div><strong>Nexo Device Care</strong><span class="muted">Versão <span id="about-version">--</span> · gratuito · código aberto (GPL-3.0)</span></div>
+            <div class="btn-row"><button class="btn sm ghost" data-link="repo" type="button">Projeto no GitHub</button><button class="btn sm ghost" data-link="issues" type="button">Relatar um problema</button><button class="btn sm ghost" data-link="creator" type="button">Criador</button></div>
+          </section>
+        </section>
       </section>
     </main>
   </div>
@@ -585,6 +666,9 @@
   <script src="src/view-scan.js"></script>
   <script src="src/view-atlas.js"></script>
   <script src="src/view-account.js"></script>
+  <script src="src/settings-hub.js"></script>
+  <script src="src/privacy-map.js"></script>
+  <script src="src/santuario.js"></script>
   <script src="src/features.js"></script>
   <script src="src/feats-1.js"></script>
   <script src="src/feats-2.js"></script>

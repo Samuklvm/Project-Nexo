@@ -18,13 +18,14 @@
   const SECTIONS = {
     preferencias: {
       // A limpeza automática não viaja: ela apaga arquivos, então cada PC confirma a sua.
-      label: 'Preferências', hint: 'efeitos visuais, cor de destaque, céu vivo, velocidade das leituras, bandeja, sessões automáticas e capas online',
-      collect: () => ({ effects: lsGet(Nexo.keys.effects), liveRate: lsGet('nexo-live-rate'), accent: lsGet('nexo-accent'), skyHour: lsGet('nexo-sky-hour'), sky: Nexo.sky?.prefs?.() || null }),
+      label: 'Preferências', hint: 'efeitos visuais, modo leve automático, cor de destaque, céu vivo, velocidade das leituras, bandeja, sessões automáticas e capas online',
+      collect: () => ({ effects: lsGet(Nexo.keys.effects), liveRate: lsGet('nexo-live-rate'), accent: lsGet('nexo-accent'), skyHour: lsGet('nexo-sky-hour'), sky: Nexo.sky?.prefs?.() || null, autoLite: Nexo.autoLite?.get?.() || null }),
       apply: (data) => {
         if (['lite', 'full'].includes(data?.effects)) Nexo.setEffects?.(data.effects);
         if (['realtime', 'balanced', 'eco'].includes(data?.liveRate)) Nexo.setLiveRate?.(data.liveRate);
         if (typeof data?.accent === 'string' && Nexo.accents?.some((item) => item.id === data.accent)) Nexo.setAccent?.(data.accent);
         if (['on', 'off'].includes(data?.skyHour)) Nexo.setSkyHour?.(data.skyHour === 'on');
+        if (data?.autoLite && typeof data.autoLite === 'object') Nexo.autoLite?.set?.({ battery: data.autoLite.battery === true, game: data.autoLite.game === true });
         if (data?.sky && typeof data.sky === 'object') {
           const patch = {};
           for (const key of ['fireflies', 'twinkle', 'meteors', 'showers', 'cursor']) if (typeof data.sky[key] === 'boolean') patch[key] = data.sky[key];
@@ -181,6 +182,7 @@
     const hasEmail = Boolean(s?.connected || view.account?.profile?.email);
     if (email) { email.checked = Boolean(s?.errorEmail && hasEmail); email.disabled = disabled || !s?.errors || !hasEmail; }
     renderPrivacyStatus();
+    Nexo.emit('cloud-status', { configured: Boolean(s?.configured), connected: Boolean(s?.connected), count: s?.count !== false, telemetry: Boolean(s?.telemetry), errors: Boolean(s?.errors), errorEmail: Boolean(email?.checked) });
   }
 
   async function refresh() {

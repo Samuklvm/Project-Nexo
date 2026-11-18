@@ -150,11 +150,11 @@
   });
 
   /* ---------- Efeitos visuais ---------- */
-  Nexo.setEffects = function setEffects(mode) {
+  Nexo.setEffects = function setEffects(mode, { save = true } = {}) {
     const lite = mode === 'lite';
     document.body.classList.toggle('lite', lite);
     $$('[data-effects]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.effects === (lite ? 'lite' : 'full'))));
-    try { localStorage.setItem(Nexo.keys.effects, lite ? 'lite' : 'full'); } catch { /* preferência só nesta sessão */ }
+    if (save) { try { localStorage.setItem(Nexo.keys.effects, lite ? 'lite' : 'full'); } catch { /* preferência só nesta sessão */ } }
     Nexo.effectsLite = lite;
     Nexo.emit?.('effects', lite ? 'lite' : 'full');
   };

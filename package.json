@@ -42,6 +42,7 @@
       "index.html",
       "style.css",
       "theme.css",
+      "santuario.css",
       "app.js",
       "main.cjs",
       "preload.cjs",

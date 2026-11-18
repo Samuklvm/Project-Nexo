@@ -4,6 +4,19 @@
   let account = null;
   let packaged = true; // até o processo principal responder, esconde as opções de desenvolvedor
 
+  /* Botões das marcas (Google e Steam): o "carregando" troca só o texto e mantém a logo. */
+  const GOOGLE_BUTTON = '<button class="gsi-btn" type="button" id="account-in"><span class="gsi-icon" aria-hidden="true"><svg><use href="#i-google"/></svg></span><span class="gsi-label" data-label>Fazer login com o Google</span></button>';
+  const steamButton = (label = 'Entrar com a') => `<button class="steam-btn" type="button" data-conn="steam-in"><svg class="steam-logo" aria-hidden="true"><use href="#i-steam"/></svg><span class="steam-label" data-label><small>${label}</small><b>STEAM</b></span></button>`;
+  function brandBusy(button, busy, label) {
+    const slot = button?.querySelector('[data-label]');
+    if (!slot) { setButtonBusy(button, busy, label); return; }
+    if (busy) { slot.dataset.idle = slot.innerHTML; slot.textContent = label; } else if (slot.dataset.idle) slot.innerHTML = slot.dataset.idle;
+    button.disabled = busy;
+    button.classList.toggle('is-busy', busy);
+  }
+  Nexo.brandBusy = brandBusy;
+  const PERKS = [['i-user', 'Seu nome e foto no Nexo'], ['i-refresh', 'Sincronização entre PCs, se você ligar'], ['i-check', 'Aviso quando um erro seu for corrigido']];
+
   function avatarHtml(url) { return url ? `<img src="${escapeHtml(url)}" alt="" />` : '<svg><use href="#i-user"/></svg>'; }
 
   /** Desenha o cartão da conta Google (entrar, sair, quem está conectado). */
@@ -14,10 +27,14 @@
     setText('account-chip-label', profile ? profile.name.split(' ')[0] : 'Entrar');
     document.getElementById('account-chip').classList.toggle('signed', Boolean(profile));
     setText('account-name', profile ? profile.name : 'Conta');
+    setText('account-kicker', profile ? 'Conectado com o Google' : 'Conta do Nexo');
+    document.getElementById('account-sheet')?.classList.toggle('signed', Boolean(profile));
+    const perks = document.getElementById('account-perks');
+    if (perks) { perks.hidden = !profile && !account?.configured; perks.innerHTML = PERKS.map(([icon, text]) => `<li class="${profile ? 'got' : ''}"><svg aria-hidden="true"><use href="#${icon}"/></svg>${escapeHtml(text)}</li>`).join(''); }
     setText('account-detail', profile ? `${profile.email} · conectado em ${new Date(profile.signedInAt).toLocaleDateString('pt-BR')}` : account?.configured ? 'Entre com a sua conta Google para ter o seu perfil no Nexo.' : packaged ? 'Login com Google indisponível nesta instalação.' : 'O login com Google ainda não foi configurado nesta build.');
     const actions = document.getElementById('account-actions');
-    actions.innerHTML = profile ? '<button class="btn sm" type="button" id="account-out">Sair da conta</button>'
-      : account?.configured ? '<button class="btn primary" type="button" id="account-in">Entrar com o Google</button>'
+    actions.innerHTML = profile ? '<span class="gsi-chip"><svg aria-hidden="true"><use href="#i-google"/></svg>Google</span><button class="btn sm ghost" type="button" id="account-out">Sair da conta</button>'
+      : account?.configured ? GOOGLE_BUTTON
       : packaged ? '' : '<button class="btn sm" type="button" id="account-import">Importar credenciais (desenvolvedor)</button>';
     setText('account-note', profile ? `Guardado só neste PC${account.encrypted ? ', cifrado pelo Windows' : ''}: nome, e-mail e foto. O Nexo não guarda senhas nem tokens do Google. A sincronização entre PCs, logo abaixo, é opcional e só liga se você pedir.`
       : account?.configured ? 'Opcional. O login acontece no seu navegador; o Nexo guarda só nome, e-mail e foto neste PC (cifrados pelo Windows) e não guarda senhas nem tokens do Google.'
@@ -34,7 +51,7 @@
 
   async function signIn() {
     const button = document.getElementById('account-in');
-    setButtonBusy(button, true, 'Abrindo o navegador…');
+    brandBusy(button, true, 'Abrindo o navegador…');
     showToast('Continue no navegador. O Nexo espera até 5 minutos.');
     try { account = await bridge.signIn(); render(); Nexo.emit('account', account); showToast(`Olá, ${account.profile.name.split(' ')[0]}!`); recordActivity('Conta Google conectada', account.profile.email); }
     catch (error) { showToast(error.message || 'O login não foi concluído.'); render(); }
@@ -75,6 +92,13 @@
     const picture = url ? `<img src="${escapeHtml(url)}" alt="" />` : '<svg><use href="#i-user"/></svg>';
     return `<span class="avatar md">${picture}</span>`;
   };
+  const MARKS = {
+    steam: '<svg aria-hidden="true"><use href="#i-steam"/></svg>',
+    xbox: '<svg aria-hidden="true"><use href="#i-game"/></svg>',
+    discord: '<svg aria-hidden="true" viewBox="0 0 24 24"><path fill="currentColor" d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>'
+  };
+  const mark = (brand) => `<span class="conn-mark" data-mark="${brand}">${MARKS[brand]}</span>`;
+  const brings = (list) => `<ul class="conn-brings">${list.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
   const status = (on, label) => `<span class="conn-status${on ? ' on' : ''}"><i></i>${escapeHtml(label)}</span>`;
   /** Desenha os cartões de Steam, Xbox e Discord com o estado de cada conexão. */
   function renderConnections() {
@@ -83,7 +107,7 @@
     if (!c) { grid.innerHTML = '<p class="muted">Disponível no aplicativo desktop.</p>'; return; }
     const { steam } = c;
     // "Entrar com a Steam": login oficial da Steam no navegador; jogos da conta e conquistas vêm pelo servidor do Nexo.
-    const steamLogin = steam.loginAvailable !== false ? `<button class="btn primary sm steam-in" type="button" data-conn="steam-in"><svg><use href="#i-game"/></svg>Entrar com a Steam</button>` : '';
+    const steamLogin = steam.loginAvailable !== false ? steamButton() : '';
     const keyBlock = `<details class="steam-key"${steam.hasKey ? ' open' : ''}><summary>Usar a minha própria chave da Steam Web API (opcional)</summary>
         <label class="field"><span>Só precisa dela se não quiser entrar com a Steam: ela traz os jogos da conta que não estão instalados.</span><div class="key-row"><input id="steam-key" type="password" placeholder="${steam.hasKey ? 'Chave salva (cifrada)' : '32 caracteres'}" autocomplete="off" spellcheck="false" /><button class="btn sm" type="button" data-conn="steam-key">${steam.hasKey ? 'Trocar' : 'Salvar'}</button></div></label>
         <div class="btn-row"><button class="link" type="button" data-conn="steam-keypage">Onde pego a minha chave?</button>${steam.hasKey ? '<button class="link" type="button" data-conn="steam-clearkey">Apagar chave</button>' : ''}</div></details>`;
@@ -95,7 +119,7 @@
     const localPick = steam.installed && steam.detected?.length ? `<p class="muted">Ou use uma conta que já entrou na Steam deste PC (só o que está neste PC):</p><div class="conn-pick">${steam.detected.map(pickUser).join('')}</div>` : '';
     const steamBody = steam.connected && steam.signedIn
       ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Entrou com a Steam (login oficial, sem senha no Nexo).${ownedText} tempo de jogo e conquistas pelo servidor do Nexo.</small></div></div>${hidden}
-        <div class="btn-row"><button class="btn sm" type="button" data-conn="steam-in">Entrar de novo</button><button class="btn sm ghost" type="button" data-conn="steam-off">Sair da Steam</button></div>`
+        <div class="btn-row">${steamButton('Entrar de novo na')}<button class="btn sm ghost" type="button" data-conn="steam-off">Sair da Steam</button></div>`
       : steam.connected
         ? `<div class="conn-who">${avatar(steam.avatar)}<div><b>${escapeHtml(steam.personaName)}</b><small>Lida da Steam deste PC, sem senha. Traz tempo de jogo e última vez jogado.</small></div></div>
           ${loginInvite}
@@ -114,9 +138,9 @@
         <label class="switch compact"><input type="checkbox" data-discord="showNexo" ${d.showNexo ? 'checked' : ''} ${d.enabled ? '' : 'disabled'}/><i></i><span>“Cuidando do PC com o Nexo” quando não houver jogo</span></label>
         <small class="muted">Fala com o Discord aberto no PC; seus amigos veem o status. Nada passa por servidor do Nexo.</small>`;
     grid.innerHTML = `
-      <article class="conn-card" data-brand="steam"><header><h4>Steam</h4>${status(steam.connected, steam.connected ? 'conectada' : 'desconectada')}</header>${steamBody}</article>
-      <article class="conn-card" data-brand="xbox"><header><h4>Xbox</h4>${status(xbox.connected, xbox.connected ? 'conectada' : xbox.configured ? 'desconectada' : 'não configurada')}</header>${xboxBody}</article>
-      <article class="conn-card" data-brand="discord"><header><h4>Discord</h4>${status(d.enabled && d.configured, d.enabled ? 'ligado' : d.configured ? 'desligado' : 'não configurado')}</header>${discordBody}</article>`;
+      <article class="conn-card" data-brand="steam"><header>${mark('steam')}<div><h4>Steam</h4>${brings(['Jogos da conta', 'Tempo de jogo', 'Conquistas'])}</div>${status(steam.connected, steam.connected ? 'conectada' : 'desconectada')}</header>${steamBody}</article>
+      <article class="conn-card" data-brand="xbox"><header>${mark('xbox')}<div><h4>Xbox</h4>${brings(['Gamertag', 'Histórico', 'Artes oficiais'])}</div>${status(xbox.connected, xbox.connected ? 'conectada' : xbox.configured ? 'desconectada' : 'não configurada')}</header>${xboxBody}</article>
+      <article class="conn-card" data-brand="discord"><header>${mark('discord')}<div><h4>Discord</h4>${brings(['Status no seu perfil'])}</div>${status(d.enabled && d.configured, d.enabled ? 'ligado' : d.configured ? 'desligado' : 'não configurado')}</header>${discordBody}</article>`;
   }
   async function refreshConnections() {
     if (!bridge?.getConnections) { renderConnections(); return; }
@@ -131,14 +155,14 @@
       if (pick) { changed(await bridge.connectSteam(pick.dataset.steam)); showToast('Steam conectada.'); }
       if (action === 'steam-in') {
         const button = event.target.closest('button');
-        setButtonBusy(button, true, 'Esperando a Steam…');
+        brandBusy(button, true, 'Esperando a Steam…');
         showToast('Continue no navegador, na página da Steam. O Nexo espera até 5 minutos.');
         try {
           changed(await bridge.signInSteam());
           const s = connections.steam;
           const owned = (s.owned ?? null) !== null ? `, ${s.owned} jogos na conta` : '';
           showToast(s.visible === false ? `Steam conectada: ${s.personaName}. O perfil esconde os jogos; veja o aviso no cartão.` : `Steam conectada: ${s.personaName}${owned}.`);
-        } finally { setButtonBusy(button, false); }
+        } finally { brandBusy(button, false); }
       }
       if (action === 'steam-privacy') bridge.openLink('steamprivacy');
       if (action === 'steam-off') changed(await bridge.disconnectSteam());

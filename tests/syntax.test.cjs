@@ -75,7 +75,7 @@ test('animações: nada decorativo roda em loop de CSS (tudo anda no relógio ú
   // painéis de vidro a cada quadro. Só ficam as que aparecem em estados curtos: carregando, gravando, sessão de risco,
   // janela de novidades e o céu de estado vazio.
   const allowed = new Set(['spin', 'shimmer', 'twinkle', 'recpulse', 'riskPulse', 'nvTwinkle', 'nvFloat']);
-  for (const file of ['style.css', 'theme.css']) {
+  for (const file of ['style.css', 'theme.css', 'santuario.css']) {
     const css = fs.readFileSync(path.join(root, file), 'utf8');
     for (const match of css.matchAll(/animation:\s*([A-Za-z-]+)[^;}]*\binfinite\b/g)) assert.ok(allowed.has(match[1]), `${file}: "${match[1]}" em loop infinito`);
   }
