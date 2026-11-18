@@ -687,3 +687,46 @@ test('driver do Catálogo que o Windows não usou: diz que não serve nesta peç
   assert.equal(out.ok, false);
   assert.match(out.note, /não serve nesta peça/);
 });
+
+/* ---------------- Instalação sem janela ---------------- */
+const SDIR = 'C:\\N\\driver-downloads';
+test('silencioso: só nome de perfil da tabela; parâmetro solto é recusado', () => {
+  assert.throws(() => E.driverInstallBody({ file: `${SDIR}\\nv.exe`, dir: SDIR, signer: 'NVIDIA Corporation', silent: '-s; calc' }), /Modo silencioso desconhecido/);
+  assert.throws(() => E.driverInstallBody({ file: `${SDIR}\\nv.exe`, dir: SDIR, signer: 'NVIDIA Corporation', silent: 'toString' }), /Modo silencioso desconhecido/);
+  assert.throws(() => E.driverInstallBody({ file: `${SDIR}\\nv.exe`, dir: SDIR, signer: 'NVIDIA Corporation', silent: 'msi' }), /não confere/, 'perfil msi só para .msi');
+});
+test('silencioso: roda escondido com os parâmetros do perfil, espera com tempo-limite e encerra a árvore se travar', () => {
+  const b = E.driverInstallBody({ file: `${SDIR}\\nv.exe`, dir: SDIR, signer: 'NVIDIA Corporation', silent: 'nvidia' });
+  assert.match(b, /Display\.Driver HDAudio\.Driver PhysX -s -noreboot -noeula -nofinish -nosplash/);
+  assert.match(b, /WindowStyle = 'Hidden'|CreateNoWindow = \$true/);
+  assert.match(b, /'nvidia' \{ 3600000 \}/, 'NVIDIA: 60 min');
+  assert.match(b, /WaitForExit\(\$waitMs\)/);
+  assert.match(b, /taskkill\.exe.*\/T \/F/);
+  assert.match(b, /\$r\.hung = \$true/);
+  assert.match(b, /\$profile = 'nvidia'/);
+  assert.match(b, /\$r\.profile = \$profile/);
+  assert.ok(b.indexOf('Get-AuthenticodeSignature') < b.indexOf('Process]::Start('), 'assinatura antes de rodar');
+});
+test('silencioso: sem modo, abre a janela como antes', () => {
+  const b = E.driverInstallBody({ file: `${SDIR}\\nv.exe`, dir: SDIR, signer: 'NVIDIA Corporation', silent: false });
+  assert.doesNotMatch(b, /-noeula|WaitForExit\(\d/);
+  assert.match(b, /UseShellExecute = \$true/);
+});
+test('silencioso: detect escolhe pelo conteúdo e, sem tipo conhecido, abre a janela (windowed)', () => {
+  const b = E.driverInstallBody({ file: `${SDIR}\\gg.exe`, dir: SDIR, signer: 'SteelSeries ApS', silent: 'detect' });
+  assert.match(b, /Nullsoft/);
+  assert.match(b, /'nsis' \{ '\/S' \}/);
+  assert.match(b, /\$r\.windowed = \$true/);
+  assert.ok(b.indexOf("Contains('Nullsoft')") < b.indexOf('Process]::Start('));
+});
+test('silencioso: .msi vai pelo msiexec /i … /qn /norestart', () => {
+  const b = E.driverInstallBody({ file: `${SDIR}\\x.msi`, dir: SDIR, signer: 'Microsoft Corporation', silent: 'detect' });
+  assert.match(b, /msiexec\.exe/);
+  assert.match(b, /'\/i "' \+ \$dst \+ '" '/);
+  assert.match(b, /\/qn \/norestart/);
+});
+test('silencioso: pacote .zip roda o instalador de dentro pelo detect', () => {
+  const b = E.driverInstallBody({ file: `${SDIR}\\asus.zip`, dir: SDIR, signers: ['ASUSTeK COMPUTER INC.'], kind: 'zip', sha256: 'a'.repeat(64), silent: 'detect' });
+  assert.match(b, /Contains\('Inno Setup'\)/);
+  assert.match(b, /\$r\.windowed = \$true/);
+});

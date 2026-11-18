@@ -59,6 +59,46 @@ function restorePointBody(description) {
  *    instalador, instala o .inf pelo pnputil, só se todo .cat estiver assinado (o WHQL é assinado pela Microsoft).
  */
 const ARCHIVE_KINDS = new Set(['zip', 'cab']);
+/*
+ * Sem janela (perfil da tabela fechada em silent-install.cjs): roda escondido com os parâmetros do perfil e espera
+ * com tempo-limite; se passar, encerra a árvore do processo (o instalador ficou esperando algo na tela) e devolve
+ * `hung`. `detect` lê o começo do .exe e escolhe o perfil; tipo desconhecido abre a janela, como antes (`windowed`).
+ */
+function silentLaunchCore(pathExpr, dirExpr, silent, ext) {
+  const S = require('./silent-install.cjs');
+  const argsOf = (name) => S.profileFor(name).args.join(' ');
+  const ms = (name) => S.profileFor(name).minutes * 60000;
+  const pick = ext === 'msi' ? String.raw`
+  $profile = 'msi'`
+    : silent === 'detect' ? S.detectCore(pathExpr) : String.raw`
+  $profile = ${psQuote(silent)}`;
+  const names = ext === 'msi' ? ['msi'] : silent === 'detect' ? [...S.DETECTABLE] : [silent];
+  const table = names.map((n) => `'${n}' { ${psQuote(argsOf(n))} }`).join('; ');
+  const waits = names.map((n) => `'${n}' { ${ms(n)} }`).join('; ');
+  return String.raw`${pick}
+  if (-not $profile) {
+    $r.windowed = $true${launchCore(pathExpr, dirExpr).split('\n').join('\n  ')}
+  } else {
+    $r.profile = $profile
+    $argText = switch ($profile) { ${table} }
+    $waitMs = switch ($profile) { ${waits} }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    if ($profile -eq 'msi') { $psi.FileName = (Join-Path $env:SystemRoot 'System32\msiexec.exe'); $psi.Arguments = '/i "' + ${pathExpr} + '" ' + $argText }
+    else { $psi.FileName = ${pathExpr}; $psi.Arguments = $argText }
+    $psi.WorkingDirectory = ${dirExpr}
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $p = [System.Diagnostics.Process]::Start($psi)
+    if (-not $p) { $r.note = 'o instalador não abriu'; ${WRITE_RESULT}; return }
+    if (-not $p.WaitForExit($waitMs)) {
+      $null = & (Join-Path $env:SystemRoot 'System32\taskkill.exe') /PID $p.Id /T /F 2>$null
+      $r.hung = $true; $r.note = 'o instalador ficou parado esperando algo na tela, então encerrei'; ${WRITE_RESULT}; return
+    }
+    $r.code = [int]$p.ExitCode
+    $r.ok = ($r.code -eq 0) -or ($r.code -eq 3010)
+    if (-not $r.ok) { $r.note = "o instalador terminou com o código $($r.code)" }
+  }`;
+}
 function launchCore(pathExpr, dirExpr) {
   return String.raw`
   $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -72,7 +112,7 @@ function launchCore(pathExpr, dirExpr) {
   $r.ok = ($r.code -eq 0) -or ($r.code -eq 3010)
   if (-not $r.ok) { $r.note = "o instalador terminou com o código $($r.code)" }`;
 }
-function driverInstallBody({ file, dir, signer, signers, kind, sha256 = null, restorePoint = false, description = 'Nexo - antes de instalar um driver' } = {}) {
+function driverInstallBody({ file, dir, signer, signers, kind, sha256 = null, restorePoint = false, silent = false, description = 'Nexo - antes de instalar um driver' } = {}) {
   const Sig = require('./driver-signature.cjs');
   const list = Array.isArray(signers) ? signers : [signer];
   if (!Sig.insideDir(file, dir)) throw new Error('Arquivo não permitido.');
@@ -81,6 +121,11 @@ function driverInstallBody({ file, dir, signer, signers, kind, sha256 = null, re
   const ext = name.split('.').pop().toLowerCase();
   const type = kind === undefined ? ext : kind;
   if (type !== ext) throw new Error('O tipo do arquivo não confere.');
+  if (silent !== false && silent != null && !require('./silent-install.cjs').isName(silent)) throw new Error('Modo silencioso desconhecido.');
+  if (silent === 'msi' && ext !== 'msi') throw new Error('O modo silencioso não confere com o arquivo.');
+  const quiet = silent !== false && silent != null ? silent : null;
+  // Pacote: o instalador de dentro é sempre um .exe que o detect reconhece (ou abre a janela).
+  const launch = (pathExpr, dirExpr, insideExt) => (quiet ? silentLaunchCore(pathExpr, dirExpr, insideExt === 'msi' ? quiet : (quiet === 'msi' ? 'detect' : (ARCHIVE_KINDS.has(type) ? 'detect' : quiet)), insideExt) : launchCore(pathExpr, dirExpr));
   const archive = ARCHIVE_KINDS.has(type);
   // O instalador de dentro do pacote precisa ser do fabricante do PC ou da peça: assinado só pela Microsoft não vale
   // (qualquer programa da Microsoft renomeado para setup.exe passaria). A Microsoft continua valendo no .cat (WHQL).
@@ -108,7 +153,7 @@ if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; ret
 ${Sig.signatureCoreFor('$dst', list)}
   $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
   if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }${restore}
-${launchCore('$dst', '$work')}` : String.raw`
+${launch('$dst', '$work', ext)}` : String.raw`
   $x = Join-Path $work 'x'${open}
   $root = $x
   $top = @(Get-ChildItem -LiteralPath $x -Force)
@@ -120,7 +165,7 @@ ${Sig.signatureCoreFor('$setup', inner.length ? inner : list)}
     $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
     if (-not $sig.valid) { $r.inner = $true; $r.note = 'o instalador de dentro do pacote não está assinado pelo fabricante'; ${WRITE_RESULT}; return }${restore}
     $r.method = 'setup'
-${launchCore('$setup', '(Split-Path -LiteralPath $setup -Parent)')}
+${launch('$setup', '(Split-Path -LiteralPath $setup -Parent)', 'exe')}
   } else {
     if (@(Get-ChildItem -LiteralPath $root -Filter '*.inf' -File -Recurse).Count -eq 0) { $r.note = 'o pacote não tem instalador nem driver'; ${WRITE_RESULT}; return }
     $cats = @(Get-ChildItem -LiteralPath $root -Filter '*.cat' -File -Recurse)
