@@ -51,21 +51,90 @@ function restorePointBody(description) {
  *  4. espera só o processo do instalador (WaitForExit; Start-Process -Wait esperava a árvore toda, inclusive o app que
  *     o instalador abre no fim) e apaga a pasta.
  */
-function driverInstallBody({ file, dir, signer, restorePoint = false, description = 'Nexo - antes de instalar um driver' } = {}) {
+/*
+ * Instala o que o motor baixou, sempre a partir de uma CÓPIA numa pasta só de administrador:
+ *  - .exe/.msi: assinatura do original e da cópia, depois abre o instalador oficial (nada silencioso).
+ *  - .zip/.cab (pacote do fabricante do PC): hash da cópia igual ao do download, abre o pacote e procura o instalador
+ *    (setup.exe → AsusSetup.exe → install.exe, na raiz ou na única pasta de dentro) assinado por quem deve; sem
+ *    instalador, instala o .inf pelo pnputil, só se todo .cat estiver assinado (o WHQL é assinado pela Microsoft).
+ */
+const ARCHIVE_KINDS = new Set(['zip', 'cab']);
+function launchCore(pathExpr, dirExpr) {
+  return String.raw`
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = ${pathExpr}
+  $psi.WorkingDirectory = ${dirExpr}
+  $psi.UseShellExecute = $true
+  $p = [System.Diagnostics.Process]::Start($psi)
+  if (-not $p) { $r.note = 'o instalador não abriu'; ${WRITE_RESULT}; return }
+  $p.WaitForExit()
+  $r.code = [int]$p.ExitCode
+  $r.ok = ($r.code -eq 0) -or ($r.code -eq 3010)
+  if (-not $r.ok) { $r.note = "o instalador terminou com o código $($r.code)" }`;
+}
+function driverInstallBody({ file, dir, signer, signers, kind, sha256 = null, restorePoint = false, description = 'Nexo - antes de instalar um driver' } = {}) {
   const Sig = require('./driver-signature.cjs');
+  const list = Array.isArray(signers) ? signers : [signer];
   if (!Sig.insideDir(file, dir)) throw new Error('Arquivo não permitido.');
-  if (!Sig.allowedSigner(signer)) throw new Error('Assinante não permitido.');
+  if (!Sig.allowedSigner(list)) throw new Error('Assinante não permitido.');
   const name = require('node:path').win32.basename(file);
+  const ext = name.split('.').pop().toLowerCase();
+  const type = kind === undefined ? ext : kind;
+  if (type !== ext) throw new Error('O tipo do arquivo não confere.');
+  const archive = ARCHIVE_KINDS.has(type);
+  const hash = /^[0-9a-f]{64}$/i.test(String(sha256 || '')) ? String(sha256).toUpperCase() : null;
+  if (archive && !hash) throw new Error('Pacote sem hash para conferir.');
   const restore = restorePoint === true ? String.raw`
 $r.restore = & { ${restorePointCore(String(description).slice(0, 64))}
 $r }
 if (-not $r.restore.ok) { $r.note = 'ponto de restauração não criado'; ${WRITE_RESULT}; return }` : '';
-  return String.raw`
-$r = @{ ok = $false; code = $null; signature = $null; restore = $null; note = '' }
-& {
-${Sig.signatureCore(file, signer)}
+  const before = archive ? '' : String.raw`
+${Sig.signatureCore(file, list)}
 $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
-if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
+if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }`;
+  const hashCheck = hash ? String.raw`
+  if ([string](Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash -ne '${hash}') { $r.note = 'o arquivo mudou depois do download'; ${WRITE_RESULT}; return }` : '';
+  const open = type === 'zip' ? String.raw`
+  Expand-Archive -LiteralPath $dst -DestinationPath $x -Force -ErrorAction Stop` : String.raw`
+  New-Item -ItemType Directory -Force -Path $x | Out-Null
+  & expand.exe -F:* $dst $x | Out-Null
+  if ($LASTEXITCODE -ne 0) { $r.note = 'não consegui abrir o pacote'; ${WRITE_RESULT}; return }`;
+  const run = !archive ? String.raw`
+${Sig.signatureCoreFor('$dst', list)}
+  $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
+  if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
+${launchCore('$dst', '$work')}` : String.raw`
+  $x = Join-Path $work 'x'${open}
+  $root = $x
+  $top = @(Get-ChildItem -LiteralPath $x -Force)
+  if ($top.Count -eq 1 -and $top[0].PSIsContainer) { $root = $top[0].FullName }
+  $setup = $null
+  foreach ($n in @('setup.exe', 'AsusSetup.exe', 'install.exe')) { $c = Join-Path $root $n; if (Test-Path -LiteralPath $c -PathType Leaf) { $setup = $c; break } }
+  if ($setup) {
+${Sig.signatureCoreFor('$setup', list)}
+    $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
+    if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
+    $r.method = 'setup'
+${launchCore('$setup', '(Split-Path -LiteralPath $setup -Parent)')}
+  } else {
+    if (@(Get-ChildItem -LiteralPath $root -Filter '*.inf' -File -Recurse).Count -eq 0) { $r.note = 'o pacote não tem instalador nem driver'; ${WRITE_RESULT}; return }
+    $cats = @(Get-ChildItem -LiteralPath $root -Filter '*.cat' -File -Recurse)
+    if ($cats.Count -eq 0) { $r.note = 'o driver não tem catálogo assinado'; ${WRITE_RESULT}; return }
+    foreach ($cat in $cats) {
+${Sig.signatureCoreFor('$cat.FullName', [...new Set([...list, 'Microsoft Corporation'])])}
+      $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
+      if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
+    }
+    $r.method = 'inf'
+    $null = & pnputil.exe /add-driver (Join-Path $root '*.inf') /subdirs /install
+    $r.code = [int]$LASTEXITCODE
+    $r.ok = @(0, 3010, 259) -contains $r.code
+    if (-not $r.ok) { $r.note = "o Windows recusou o driver (código $($r.code))" }
+  }`;
+  return String.raw`
+$r = @{ ok = $false; code = $null; signature = $null; restore = $null; note = ''; method = '${archive ? 'package' : 'installer'}' }
+& {
+${before}
 ${restore}
 $work = Join-Path (Join-Path $env:SystemRoot 'Temp') ('Nexo-driver-' + [guid]::NewGuid().ToString('N'))
 try {
@@ -77,20 +146,7 @@ try {
   }
   [System.IO.Directory]::CreateDirectory($work, $acl) | Out-Null
   $dst = Join-Path $work ${psQuote(name)}
-  [System.IO.File]::Copy(${psQuote(file)}, $dst, $false)
-${Sig.signatureCoreFor('$dst', signer)}
-  $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
-  if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
-  $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $dst
-  $psi.WorkingDirectory = $work
-  $psi.UseShellExecute = $true
-  $p = [System.Diagnostics.Process]::Start($psi)
-  if (-not $p) { $r.note = 'o instalador não abriu'; ${WRITE_RESULT}; return }
-  $p.WaitForExit()
-  $r.code = [int]$p.ExitCode
-  $r.ok = ($r.code -eq 0) -or ($r.code -eq 3010)
-  if (-not $r.ok) { $r.note = "o instalador terminou com o código $($r.code)" }
+  [System.IO.File]::Copy(${psQuote(file)}, $dst, $false)${hashCheck}${run}
 } catch { $r.note = $_.Exception.Message } finally { if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue } }
 ${WRITE_RESULT}
 }`;

@@ -19,7 +19,7 @@ const EMIT_EVERY = 100; // ms: no máximo 10 atualizações de progresso por seg
 const DAY = 24 * 3600 * 1000;
 const KEEP_INSTALLED = 14 * DAY;
 const KEEP_PART = 7 * DAY;
-const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(exe|msi)$/;
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(exe|msi|zip|cab)$/;
 const BUSY = new Set(['queued', 'downloading', 'verifying', 'install-queued', 'installing']);
 
 class DownloadError extends Error {
@@ -33,6 +33,16 @@ function official(value, domains) {
     return url.protocol === 'https:' && !url.username && !url.password && !url.port && domains.some((d) => host === d || host.endsWith(`.${d}`)) ? url.href : null;
   } catch { return null; }
 }
+
+/** O hash mais forte que a fonte mandou (MD5 só vale no catálogo da Dell, que só traz ele). */
+function hashOf(plan) {
+  const hex = (value, len) => (new RegExp(`^[0-9a-f]{${len}}$`, 'i').test(String(value || '')) ? String(value).toLowerCase() : null);
+  if (hex(plan.sha512, 128)) return Object.freeze({ alg: 'sha512', hex: hex(plan.sha512, 128) });
+  if (hex(plan.sha256, 64)) return Object.freeze({ alg: 'sha256', hex: hex(plan.sha256, 64) });
+  if (plan.source === 'dell' && hex(plan.md5, 32)) return Object.freeze({ alg: 'md5', hex: hex(plan.md5, 32) });
+  return null;
+}
+const ARCHIVES = new Set(['zip', 'cab']);
 
 function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, elevate, emit = () => {}, now = () => Date.now(), max = 4, idleMs = IDLE_MS }) {
   const items = new Map();
@@ -64,15 +74,19 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     const domains = Array.isArray(plan.domains) ? plan.domains.map(String) : [];
     if (!SAFE_NAME.test(String(plan.fileName || ''))) throw new Error('Arquivo inválido.');
     if (!official(plan.url, domains)) throw new Error('Link fora do site oficial.');
-    if (!Sig.allowedSigner(plan.signer)) throw new Error('Assinante não permitido.');
+    const signers = Array.isArray(plan.signers) ? plan.signers : [plan.signer];
+    if (!Sig.allowedSigner(signers)) throw new Error('Assinante não permitido.');
+    const ext = String(plan.fileName).split('.').pop().toLowerCase();
+    const kind = plan.kind === undefined ? ext : plan.kind;
+    if (kind !== ext) throw new Error('O tipo do arquivo não confere.');
     const current = items.get(id);
     if (current && (BUSY.has(current.phase) || current.phase === 'ready')) return snapshot(current);
     for (const other of items.values()) {
       if (other.id !== id && other.plan.fileName === plan.fileName && (other.phase === 'queued' || other.phase === 'downloading' || other.phase === 'verifying')) throw new Error('Esse mesmo arquivo já está sendo baixado em outro cartão.');
     }
     // Cópia: depois de começar, o motor não depende mais da leitura (nem de quem mandou o plano).
-    const frozen = Object.freeze({ url: plan.url, domains: Object.freeze([...domains]), fileName: plan.fileName, signer: plan.signer, sha512: /^[0-9a-f]{128}$/i.test(String(plan.sha512 || '')) ? String(plan.sha512).toLowerCase() : null });
-    const item = { id, plan: frozen, phase: 'queued', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, lastEmit: 0, cancel: null, samples: [] };
+    const frozen = Object.freeze({ url: plan.url, domains: Object.freeze([...domains]), fileName: plan.fileName, signers: Object.freeze([...signers]), kind, hash: hashOf(plan) });
+    const item = { id, plan: frozen, phase: 'queued', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: null, samples: [] };
     items.set(id, item);
     queue.push(id);
     send(item);
@@ -115,6 +129,21 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
 
   async function size(file) { try { return (await fs.stat(file)).size; } catch { return 0; } }
 
+  /**
+   * O hash que a fonte mandou (quando mandou) e sempre o SHA-256 do que chegou: a tarefa de administrador confere a cópia
+   * contra ele, então trocar o arquivo na pasta entre o download e a instalação não adianta.
+   */
+  function digests(plan) {
+    const own = crypto.createHash('sha256');
+    const theirs = plan.hash ? crypto.createHash(plan.hash.alg) : null;
+    return {
+      update(chunk) { own.update(chunk); theirs?.update(chunk); },
+      check(item) {
+        if (theirs && theirs.digest('hex') !== plan.hash.hex) throw new DownloadError('hash');
+        item.sha256 = own.digest('hex');
+      }
+    };
+  }
   /** O hash do pedaço que já estava no disco (para conferir o arquivo inteiro quando continua de onde parou). */
   async function hashExisting(file, hash, bytes) {
     const fh = await fs.open(file, 'r');
@@ -181,7 +210,9 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
         // O pedaço já tinha tudo (o app fechou entre a última gravação e o nome final): confere como está.
         res.abort?.();
         Object.assign(item, { received: offset, total: offset });
-        if (plan.sha512) { const hash = crypto.createHash('sha512'); await hashExisting(part, hash, offset); if (hash.digest('hex') !== plan.sha512) throw new DownloadError('hash'); }
+        const hashes = digests(plan);
+        await hashExisting(part, hashes, offset);
+        hashes.check(item);
         await finish(item, part);
         return;
       }
@@ -201,9 +232,9 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
       const length = Number(res.headers['content-length']);
       const total = Number.isFinite(length) && length >= 0 && res.headers['content-length'] !== undefined ? offset + length : null;
       if (total !== null && total > MAX_BYTES) throw new DownloadError('too-big');
-      const hash = plan.sha512 ? crypto.createHash('sha512') : null;
+      const hash = digests(plan);
       try {
-        if (hash && offset) await hashExisting(part, hash, offset);
+        if (offset) await hashExisting(part, hash, offset);
         fh = await fs.open(part, offset ? 'a' : 'w');
         const tag = String(res.headers.etag || res.headers['last-modified'] || '').slice(0, 200);
         if (!offset) { if (tag) await fs.writeFile(metaOf(part), JSON.stringify({ validator: tag })); else await rm(metaOf(part)); }
@@ -215,7 +246,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
           item.received += chunk.length;
           if (item.received > MAX_BYTES || (total !== null && item.received > total)) throw new DownloadError('too-big');
           try { await fh.write(chunk); } catch (error) { throw fileError(error); }
-          hash?.update(chunk);
+          hash.update(chunk);
           measure(item);
           send(item, false);
         }
@@ -229,7 +260,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
       try { await fh.close(); } catch (error) { throw fileError(error); }
       fh = null;
       if (total !== null && item.received !== total) { keep.part = true; throw new DownloadError('offline'); }
-      if (hash && hash.digest('hex') !== plan.sha512) throw new DownloadError('hash');
+      hash.check(item);
       await finish(item, part);
     } catch (error) {
       res?.abort?.();
@@ -275,8 +306,11 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
   }
 
   async function verify(item) {
+    // Pacote .zip/.cab não tem assinatura própria: vale o hash, e o instalador (ou o .cat) de dentro é conferido na
+    // tarefa de administrador, antes de rodar.
+    if (ARCHIVES.has(item.plan.kind)) return;
     let check = { valid: false };
-    try { check = Sig.parseSignature((await runPowerShell(Sig.signatureScript(item.file, item.plan.signer), 60000))?.stdout, item.plan.signer); } catch { check = { valid: false }; }
+    try { check = Sig.parseSignature((await runPowerShell(Sig.signatureScript(item.file, item.plan.signers), 60000))?.stdout, item.plan.signers); } catch { check = { valid: false }; }
     if (!check.valid) { await rm(item.file); item.file = null; throw new DownloadError('signature'); }
     item.signer = check.signer;
   }
@@ -306,7 +340,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     setPhase(item, 'installing');
     let answer = null;
     try {
-      answer = await elevate('driver-install', { file: item.file, dir, signer: item.plan.signer, restorePoint, description: 'Nexo - antes de instalar um driver' });
+      answer = await elevate('driver-install', { file: item.file, dir, signers: [...item.plan.signers], kind: item.plan.kind, sha256: item.sha256, restorePoint, description: 'Nexo - antes de instalar um driver' });
     } catch (error) {
       setPhase(item, 'ready');
       return { ok: false, restart: false, declined: false, restore: null, note: String(error?.message || 'Não consegui abrir o instalador.').slice(0, 200) };

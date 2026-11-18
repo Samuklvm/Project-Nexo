@@ -530,3 +530,95 @@ test('revisão: falha de disco que não é falta de espaço não diz "Sem intern
   engine.start('v', plan());
   assert.equal((await settle(engine, 'v')).error, 'file');
 });
+
+/* ---------------- Projeto 2: pacotes do fabricante (zip, cab, inf) e vários assinantes ---------------- */
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const md5 = (buf) => crypto.createHash('md5').update(buf).digest('hex');
+const DELL = 'https://dl.dell.com/FOLDER1/1/Realtek-Audio_R1VKP.EXE';
+const ASUS = 'https://dlcdnets.asus.com/pub/ASUS/mb/Realtek_Audio.zip';
+
+test('assinatura: lista de nomes (-ccontains) e os fabricantes de PC e de peça permitidos', () => {
+  const s = Sig.signatureScript(`${DIR}\\x.exe`, ['Dell Inc', 'Dell Inc.', 'Dell Technologies']);
+  assert.match(s, /@\('Dell Inc', 'Dell Inc\.', 'Dell Technologies'\) -ccontains \$sig\.org/);
+  assert.equal(Sig.parseSignature('{"status":"Valid","org":"Dell Inc."}', ['Dell Inc', 'Dell Inc.']).valid, true);
+  assert.equal(Sig.parseSignature('{"status":"Valid","org":"dell inc."}', ['Dell Inc.']).valid, false, 'igualdade exata');
+  assert.equal(Sig.parseSignature('{"status":"Valid","org":"Evil"}', ['Dell Inc.', 'Evil']).valid, false, 'nome fora da lista do app nunca vale');
+  for (const name of ['Dell Inc.', 'HP Inc.', 'Lenovo', 'ASUSTeK COMPUTER INC.', 'Realtek Semiconductor Corp.', 'Intel Corporation']) assert.equal(Sig.allowedSigner(name), true, name);
+  assert.equal(Sig.insideDir(`${DIR}\\Realtek_Audio.zip`, DIR), true);
+  assert.equal(Sig.insideDir(`${DIR}\\x.cab`, DIR), true);
+  assert.equal(Sig.insideDir(`${DIR}\\x.inf`, DIR), false);
+});
+
+test('download: zip confere o SHA-256 do fabricante (certo passa, errado apaga) e não pede Authenticode do zip', async () => {
+  const good = engineWith({ routes: { [ASUS]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, signer: 'ASUSTeK COMPUTER INC.' });
+  const ps = [];
+  const zipPlan = { url: ASUS, domains: ['asus.com'], fileName: 'Realtek_Audio.zip', kind: 'zip', signers: ['ASUSTeK COMPUTER INC.', 'Realtek Semiconductor Corp.'], sha256: sha256(BODY), source: 'asus' };
+  good.engine.start('oem-asus-a1', zipPlan);
+  const ok = await settle(good.engine, 'oem-asus-a1');
+  assert.equal(ok.phase, 'ready');
+  assert.deepEqual(ps, []);
+  const bad = engineWith({ routes: { [ASUS]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } } });
+  bad.engine.start('oem-asus-a1', { ...zipPlan, sha256: 'a'.repeat(64) });
+  assert.equal((await settle(bad.engine, 'oem-asus-a1')).error, 'hash');
+  assert.equal(fs.readdirSync(bad.dir).filter((f) => f.endsWith('.zip')).length, 0);
+});
+
+test('download: MD5 só vale na Dell; fora dela é ignorado', async () => {
+  const route = { [DELL]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } };
+  const exe = { url: DELL, domains: ['dell.com'], fileName: 'Realtek-Audio_R1VKP.exe', kind: 'exe', signers: ['Dell Inc', 'Dell Inc.'] };
+  const hp = engineWith({ routes: route, signer: 'Dell Inc.' });
+  hp.engine.start('a', { ...exe, md5: 'f'.repeat(32), source: 'hp' });
+  assert.equal((await settle(hp.engine, 'a')).phase, 'ready');
+  const dellBad = engineWith({ routes: route, signer: 'Dell Inc.' });
+  dellBad.engine.start('a', { ...exe, md5: 'f'.repeat(32), source: 'dell' });
+  assert.equal((await settle(dellBad.engine, 'a')).error, 'hash');
+  const dellOk = engineWith({ routes: route, signer: 'Dell Inc.' });
+  dellOk.engine.start('a', { ...exe, md5: md5(BODY), source: 'dell' });
+  assert.equal((await settle(dellOk.engine, 'a')).phase, 'ready');
+});
+
+test('download: vários assinantes passam no start e quem assinou vale se estiver na lista', async () => {
+  const { engine } = engineWith({ routes: { [DELL]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, signer: 'Realtek Semiconductor Corp.' });
+  engine.start('b', { url: DELL, domains: ['dell.com'], fileName: 'Realtek-Audio_R1VKP.exe', signers: ['Dell Inc.', 'Realtek Semiconductor Corp.'] });
+  const item = await settle(engine, 'b');
+  assert.equal(item.phase, 'ready');
+  assert.equal(item.signer, 'Realtek Semiconductor Corp.');
+  assert.throws(() => engine.start('c', { url: DELL, domains: ['dell.com'], fileName: 'x.exe', signers: ['Dell Inc.', 'Evil Corp'] }), /Assinante não permitido/);
+  assert.throws(() => engine.start('d', { url: DELL, domains: ['dell.com'], fileName: 'x.exe', signers: [] }), /Assinante não permitido/);
+});
+
+test('instalar: a tarefa recebe o SHA-256 do que foi baixado, o tipo e os assinantes', async () => {
+  const seen = [];
+  const { engine } = engineWith({ routes: { [ASUS]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async (task, args) => { seen.push(args); return { result: { ok: true, code: 0 } }; } });
+  engine.start('z', { url: ASUS, domains: ['asus.com'], fileName: 'Realtek_Audio.zip', kind: 'zip', signers: ['ASUSTeK COMPUTER INC.'], source: 'asus' });
+  await settle(engine, 'z');
+  await engine.install('z', { restorePoint: false });
+  assert.equal(seen[0].sha256, sha256(BODY));
+  assert.equal(seen[0].kind, 'zip');
+  assert.deepEqual(seen[0].signers, ['ASUSTeK COMPUTER INC.']);
+});
+
+test('driver-install: pacote zip confere o hash da cópia, abre, procura o instalador e só usa pnputil com .cat assinado', () => {
+  const dir = 'C:\\N\\driver-downloads';
+  const args = { file: `${dir}\\Realtek_Audio.zip`, dir, kind: 'zip', signers: ['ASUSTeK COMPUTER INC.', 'Realtek Semiconductor Corp.'], sha256: 'ab'.repeat(32) };
+  const body = E.driverInstallBody(args);
+  const at = (s) => { const i = body.indexOf(s); assert.ok(i >= 0, `falta ${s}`); return i; };
+  assert.ok(at('[System.IO.File]::Copy(') < at('Get-FileHash -LiteralPath $dst -Algorithm SHA256'));
+  assert.ok(at('Get-FileHash -LiteralPath $dst') < at('Expand-Archive -LiteralPath $dst'));
+  assert.ok(at('Expand-Archive') < at("'setup.exe'"));
+  assert.ok(at("'AsusSetup.exe'") < at("'install.exe'"));
+  assert.ok(at('Get-AuthenticodeSignature -LiteralPath $setup') < at('pnputil.exe'));
+  assert.ok(at("-Filter '*.cat'") < at('pnputil.exe'));
+  assert.match(body, /pnputil\.exe \/add-driver \(Join-Path \$root '\*\.inf'\) \/subdirs \/install/);
+  assert.match(body, /@\(0, 3010, 259\) -contains \$r\.code/);
+  assert.match(body, /o pacote não tem instalador nem driver/);
+  assert.match(body, /'Microsoft Corporation'/, 'o .cat assinado pela Microsoft (WHQL) vale');
+  const cab = E.driverInstallBody({ ...args, file: `${dir}\\x.cab`, kind: 'cab' });
+  assert.match(cab, /& expand\.exe -F:\* \$dst \$x/);
+  assert.doesNotMatch(cab, /Expand-Archive/);
+  assert.throws(() => E.driverInstallBody({ ...args, sha256: null }), /hash/);
+  assert.throws(() => E.driverInstallBody({ ...args, kind: 'zip', file: `${dir}\\x.exe` }), /tipo/);
+  const exe = E.driverInstallBody({ file: `${dir}\\nv.exe`, dir, signers: ['NVIDIA Corporation'], sha256: 'cd'.repeat(32) });
+  assert.match(exe, /Get-FileHash -LiteralPath \$dst -Algorithm SHA256/);
+  assert.doesNotMatch(exe, /Expand-Archive|pnputil/);
+});

@@ -24,6 +24,10 @@ function scripts() {
   out['driver-signature.signatureScript'] = require('../electron/driver-signature.cjs').signatureScript(`${dl}\\nvidia-572.16.exe`, 'NVIDIA Corporation');
   out['elevate.driverInstallBody.ponto'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ file: `${dl}\\nvidia-572.16.exe`, dir: dl, signer: 'NVIDIA Corporation', restorePoint: true, description: "Nexo - antes do driver d'O vídeo" })}`;
   out['elevate.driverInstallBody.direto'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ file: `${dl}\\vc_redist.x64.exe`, dir: dl, signer: 'Microsoft Corporation' })}`;
+  const pk = { dir: dl, signers: ['ASUSTeK COMPUTER INC.', 'Realtek Semiconductor Corp.'], sha256: 'ab'.repeat(32) };
+  out['elevate.driverInstallBody.zip'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ ...pk, file: `${dl}\\Realtek_Audio.zip`, kind: 'zip', restorePoint: true })}`;
+  out['elevate.driverInstallBody.cab'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ ...pk, file: `${dl}\\sp150001.cab`, kind: 'cab' })}`;
+  out['elevate.driverInstallBody.exe-hash'] = `$NexoOut = 'C:\\x.json'\n${require('../electron/elevate.cjs').driverInstallBody({ ...pk, signers: ['Dell Inc', 'Dell Inc.'], file: `${dl}\\Realtek-Audio_R1VKP.exe` })}`;
   out['elevate.optimizerBatchBody'] = require('../electron/elevate.cjs').optimizerBatchBody({
     restorePoint: true,
     registry: [{ id: 'hags', values: [2] }, { id: 'lastaccess', values: [0x80000001] }],
