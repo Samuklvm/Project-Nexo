@@ -783,3 +783,18 @@ test('parte 3: peça sem driver e sem fabricante conhecido busca no Catálogo da
   assert.match(card.note, /Catálogo da Microsoft: Fabricante X - Other hardware - Leitor \(1\.3\.0\.0, set\/2026\)/);
   assert.equal(D.downloadFor(model, card.id).fileName, 'catalogo-abcd-1242.cab');
 });
+
+/* ---------------- Projeto 2, parte 4: "Atualizar tudo" ---------------- */
+test('parte 4: atualizar tudo segue a ordem certa (placa → … → vídeo por último) e não baixa o mesmo arquivo duas vezes', () => {
+  const model = D.build(oemData({ missing: [{ name: 'PCI Serial IO', code: 28, ids: 'PCI:VEN_8086&DEV_7A4C', hwids: ['PCI\\\\VEN_8086&DEV_7A4C&SUBSYS_0BEB1028&REV_01'] }] }), NOW);
+  const ids = D.updatePlan(model);
+  const all = model.groups.flatMap((g) => g.items.map((i) => ({ ...i, group: g.id })));
+  const byId = Object.fromEntries(all.map((i) => [i.id, i]));
+  assert.ok(ids.length >= 2);
+  for (const id of ids) assert.equal(byId[id].download?.primary, true, `${id} é atualização conhecida`);
+  const order = ['placa', 'disco', 'rede', 'audio', 'bluetooth', 'semdriver', 'outros', 'jogos', 'video'];
+  const rank = ids.map((id) => order.indexOf(byId[id].group));
+  assert.deepEqual(rank, [...rank].sort((a, b) => a - b), 'na ordem dos grupos');
+  assert.equal(new Set(ids.map((id) => byId[id].download.url)).size, ids.length, 'sem arquivo repetido');
+  assert.deepEqual(D.updatePlan(null), []);
+});

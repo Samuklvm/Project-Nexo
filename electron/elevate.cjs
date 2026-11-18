@@ -381,6 +381,8 @@ const TASKS = {
   'registry-tweaks': (args) => registryTweaksBody(args),
   'optimizer-batch': (args) => optimizerBatchBody(args),
   'driver-install': (args) => driverInstallBody(args),
+  'driver-backup': (args) => require('./driver-backup.cjs').driverBackupBody(args),
+  'driver-restore': (args) => require('./driver-backup.cjs').driverRestoreBody(args),
   // Reiniciar direto na tela da BIOS/UEFI (shutdown /fw só funciona como administrador e em PCs com UEFI).
   'restart-firmware': () => String.raw`
 $r = @{ ok = $false; note = '' }
@@ -423,7 +425,7 @@ function linuxPrivileged(name, arg) {
 }
 
 /** Tarefas que podem demorar mais que o padrão de 4 minutos (o instalador da NVIDIA leva vários). */
-const TIMEOUTS = { 'driver-install': 3 * 60 * 60 * 1000 };
+const TIMEOUTS = { 'driver-install': 3 * 60 * 60 * 1000, 'driver-backup': 20 * 60 * 1000, 'driver-restore': 60 * 60 * 1000 };
 
 const encode = (script) => Buffer.from(script, 'utf16le').toString('base64');
 
