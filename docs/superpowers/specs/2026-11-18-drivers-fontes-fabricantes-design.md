@@ -1,6 +1,6 @@
 # Drivers: fontes dos fabricantes de PC e placa-mãe (projeto 2, parte 1 de 4)
 
-Data: 18/11/2026 · Versão alvo: a próxima depois da 0.11.4 · Status: aprovado pelo Samuel em 18/11/2026
+Data: 18/11/2026 · Versão alvo: a próxima depois da 0.11.4 · Status: construído na branch `feat/drivers-fontes` (revisão final em andamento)
 
 ## Por que
 
@@ -251,3 +251,21 @@ Package = { id, source, title, category, version, date, url, fileName, size?, sh
    "atualização" pela data).
 7. Pacotes casados viram **cartões próprios** (um por pacote), inclusive para peças com driver da Microsoft ou sem driver.
 8. Lenovo sem assinatura no catálogo, mas com hash e assinatura em cada pacote.
+
+## Como ficou na construção (18/11/2026)
+
+Tudo acima foi feito; o que mudou em relação ao desenho:
+- A busca dos catálogos ficou num arquivo próprio, `electron/oem-catalogs.cjs` (`lookup` chamado pela leitura).
+- Falha de fonte fica 30 min em cache (sucesso, 6 h), para não insistir num site fora do ar.
+- ASUS pela consulta do site ROG (`rog.asus.com/support/webapi/product/GetPDDrivers`), com códigos de hardware quando a
+  ASUS manda e categoria + fabricante quando não.
+- MSI, GIGABYTE, ASRock e Acer sem consulta pública: `site-only` (MSI de placa-mãe abre a página do modelo exato).
+- O motor calcula sempre o SHA-256 do que baixou e a tarefa de administrador confere a cópia contra ele antes de abrir
+  (em .zip/.cab é obrigatório): trocar o arquivo na pasta do usuário entre o download e a instalação não adianta.
+- .zip/.cab não passam por Authenticode no download (não têm assinatura própria); o instalador de dentro, ou todo .cat,
+  é conferido antes de rodar.
+- O aviso de BIOS fica no quadro do PC no topo (com o botão da página de suporte), não no cartão da placa.
+- A peça coberta mostra "Atualizado pelo pacote oficial da <marca>" com o atalho "Ver o pacote".
+- Vigia com o nome `fonte-de-driver` (padrão dos vigias da 0.11.4), no máximo 1 aviso por fonte por dia.
+- Os formatos de cada fonte foram montados pela documentação e por ferramentas que leem essas listas; falta conferir no
+  Windows (lista no `pendente-proxima-versao.md`).
