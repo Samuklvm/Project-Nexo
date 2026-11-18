@@ -26,24 +26,34 @@ test('leitura impossível: limites exatos (100 % e 125 °C valem; acima, não) e
   assert.deepEqual(W.checkReading(snap({ cpuUsage: 133.333 })), [{ campo: 'cpu', valor: 133.3 }], 'valor arredondado');
 });
 
+/** Leituras a cada 30 s (o app lê a cada poucos segundos; parado, a cada 5 s a 30 s). */
+function feed(state, from, to, hasTemp, step = 30000) {
+  let fired = false;
+  for (let t = from; t <= to; t += step) fired = W.sensorsGone(state, hasTemp, t) || fired;
+  return fired;
+}
+
 test('sensores sumiram: só depois de 5 min seguidos sem temperatura, e só se funcionavam nesta abertura', () => {
-  const never = {};
-  assert.equal(W.sensorsGone(never, false, 0), false);
-  assert.equal(W.sensorsGone(never, false, 10 * MIN), false, 'PC sem sensor nunca dispara');
+  assert.equal(feed({}, 0, 20 * MIN, false), false, 'PC sem sensor nunca dispara');
   const state = {};
-  assert.equal(W.sensorsGone(state, true, 0), false);
-  assert.equal(W.sensorsGone(state, false, 1 * MIN), false);
-  assert.equal(W.sensorsGone(state, false, 5 * MIN), false, '4 min sem');
-  assert.equal(W.sensorsGone(state, false, 6 * MIN), true, '5 min sem');
-  assert.equal(W.sensorsGone(state, true, 7 * MIN), false, 'voltou');
-  assert.equal(W.sensorsGone(state, false, 8 * MIN), false);
-  assert.equal(W.sensorsGone(state, null, 12 * MIN), false, 'janela sem foco: não conta (o coletor pausa)');
-  assert.equal(W.sensorsGone(state, false, 13 * MIN), false, 'recomeça a contar depois do foco');
+  feed(state, 0, 2 * MIN, true);
+  assert.equal(feed(state, 2 * MIN + 30000, 6 * MIN + 30000, false), false, '4 min sem');
+  assert.equal(feed(state, 7 * MIN, 7 * MIN + 30000, false), true, '5 min sem');
+  const back = {};
+  feed(back, 0, MIN, true);
+  feed(back, MIN + 30000, 4 * MIN, false);
+  feed(back, 4 * MIN + 30000, 4 * MIN + 30000, true);
+  assert.equal(feed(back, 5 * MIN, 9 * MIN, false), false, 'voltou: recomeça');
+  const away = {};
+  feed(away, 0, MIN, true);
+  feed(away, MIN + 30000, 4 * MIN, false);
+  feed(away, 4 * MIN + 30000, 4 * MIN + 30000, null);
+  assert.equal(feed(away, 5 * MIN, 9 * MIN, false), false, 'janela sem foco: não conta e recomeça');
 });
 
-test('abertura lenta: acima de 12 s', () => {
-  assert.equal(W.slowStart(12000), false);
-  assert.equal(W.slowStart(12100), true);
+test('abertura lenta: acima de 20 s (acima do p95 da telemetria; 12 s pegava 1 em cada 10 aberturas normais)', () => {
+  assert.equal(W.slowStart(20000), false);
+  assert.equal(W.slowStart(20100), true);
   assert.equal(W.slowStart(Number.NaN), false);
 });
 
@@ -76,7 +86,7 @@ test('fonte falhando: 3 falhas seguidas ou mais de 20 s; um acerto zera', () => 
 });
 
 /** Instala os vigias num "navegador" de mentira e devolve o que eles mandaram. */
-function installFake({ hasFocus = true } = {}) {
+function installFake({ hasFocus = true, hidden = false, sky = { fps: 5, animating: true } } = {}) {
   const listeners = {};
   const sent = [];
   const intervals = [];
@@ -84,12 +94,12 @@ function installFake({ hasFocus = true } = {}) {
   const Nexo = {
     state: { view: 'home' }, effectsLite: false,
     on: (name, fn) => { (listeners[name] ||= []).push(fn); },
-    sky: { stats: () => ({ fps: 5 }) },
+    sky: { stats: () => sky },
     isIdle: () => false
   };
   const env = {
     Nexo, bridge: { reportError: (payload) => sent.push(payload) },
-    document: { hidden: false, hasFocus: () => hasFocus },
+    document: { hidden, hasFocus: () => hasFocus },
     performance: { now: () => now },
     setInterval: (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; }
   };
@@ -110,11 +120,11 @@ test('note: manda AVISO com o nome do vigia, uma vez por chave por abertura', ()
 
 test('ligado na leitura: uma leitura impossível repetida a cada 5 s vira um aviso só, e a primeira leitura lenta avisa', () => {
   const { sent, emit, tick } = installFake();
-  tick(13000);
+  tick(21000);
   for (let i = 0; i < 50; i += 1) { emit('snapshot', snap({ cpuUsage: 120 })); tick(5000); }
   const kinds = sent.map((item) => item.context.vigia).sort();
   assert.deepEqual(kinds, ['abertura-lenta', 'leitura-impossivel']);
-  assert.equal(sent.find((item) => item.context.vigia === 'abertura-lenta').context.segundos, 14);
+  assert.equal(sent.find((item) => item.context.vigia === 'abertura-lenta').context.segundos, 22);
 });
 
 test('ligado nas fontes: três falhas seguidas da mesma fonte, um aviso com o nome fixo da fonte', () => {
@@ -187,4 +197,55 @@ test('textos públicos: os relatórios de erro agora levam os avisos dos vigias 
   assert.match(read('installer-launcher/renderer.js'), /the errors, warnings and the app's last steps/);
   assert.match(read('src/view-cloud.js'), /Os erros e os avisos do app vão para o criador corrigir/);
   assert.match(read('docs/SERVIDOR.md'), /nexo_vigias/);
+});
+
+test('abertura lenta não conta quando o Nexo abriu escondido (com o Windows, na bandeja)', () => {
+  const { sent, emit, tick } = installFake({ hidden: true });
+  tick(60000);
+  emit('snapshot', snap());
+  assert.equal(sent.length, 0);
+});
+
+test('céu lento não conta quando o céu está parado de propósito (movimento reduzido, brilho e vaga-lumes desligados)', () => {
+  const still = installFake({ sky: { fps: 0, animating: false } });
+  const tick10 = still.intervals.find((item) => item.ms === 10000);
+  for (let i = 0; i < 12; i += 1) { tick10.fn(); still.tick(10000); }
+  assert.equal(still.sent.length, 0);
+});
+
+test('sensores sumiram: um intervalo longo sem leitura (o PC dormiu) recomeça a conta', () => {
+  const state = {};
+  feed(state, 0, MIN, true);
+  feed(state, MIN + 30000, 2 * MIN, false); // dormiu já sem sensor
+  const wake = 8 * 3600 * 1000;
+  assert.equal(feed(state, wake, wake + 4 * MIN, false), false, 'acordou: não dispara na hora (o serviço dos sensores religando)');
+  assert.equal(feed(state, wake + 4 * MIN + 30000, wake + 5 * MIN + 30000, false), true, '5 min seguidos depois de acordar: aí sim');
+});
+
+test('o céu diz se está animando de verdade (stats.animating)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'src', 'sky.js'), 'utf8'), /stats: \(\) => \(\{[^}]*animating: running/);
+});
+
+test('privacidade: arquivo que não carregou manda só o tipo e a extensão (sem nome do jogo nem pasta)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const core = fs.readFileSync(path.join(__dirname, '..', 'src', 'core.js'), 'utf8');
+  assert.doesNotMatch(core, /slice\(-2\)\.join\('\/'\)/, 'nada de pedaços do caminho');
+  assert.match(core, /Arquivo do app não carregou: <\$\{tag\}> \$\{ext\}/);
+});
+
+test('paleta de comandos: "Abrir o Gerenciador de Tarefas" mostra o motivo se não der (sem erro solto)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8'), /run: \(\) => desktopBridge\?\.openTaskManager\?\.\(\)\?\.catch\(\(error\) => showToast\(error\.message\)\)/);
+});
+
+test('privacidade: a trilha vai junto de cada erro e de cada aviso (PT e EN)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  assert.ok(fs.readFileSync(path.join(__dirname, '..', 'PRIVACIDADE.md'), 'utf8').includes('Junto de cada **erro** e de cada **aviso** vai a **trilha**'));
+  assert.ok(fs.readFileSync(path.join(__dirname, '..', 'PRIVACY.md'), 'utf8').includes('Each **error** and each **warning** carries the **trail**'));
+  assert.ok(fs.readFileSync(path.join(__dirname, '..', 'PRIVACIDADE.md'), 'utf8').includes('Só saem os avisos que vêm de um vigia'));
 });

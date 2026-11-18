@@ -284,7 +284,7 @@ export function createApp({ fetchImpl = (...args) => fetch(...args), now = () =>
     const body = await readJson(request);
     const installId = String(body.installId || '');
     if (!RE.installId.test(installId)) throw new HttpError(400, 'Instalação inválida.');
-    await limit(env, `err:${installId}`, 30);
+    await limit(env, `err:${installId}`, 60); // o app tenta a cada 30 min (48 por dia): com os avisos, quase todo envio leva algo
     await limit(env, `errip:${(await ipKey(request, env)).slice(3)}`, 300);
     const version = RE.version.test(String(body.version || '')) ? body.version : '0.0.0';
     const platform = PLATFORMS.has(body.platform) ? body.platform : 'win32';

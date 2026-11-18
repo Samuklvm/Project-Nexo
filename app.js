@@ -36,7 +36,7 @@
     ...pages.map(([view, label]) => ({ label: `Ir para ${label}`, hint: 'Página', run: () => Nexo.go(view) })),
     { label: 'Analisar agora', hint: 'Análise inteligente', run: () => { Nexo.go('analysis'); Nexo.runAnalysis(); } },
     { label: 'Recalcular a limpeza segura', hint: 'Otimizar', run: () => { Nexo.go('optimize'); Nexo.scanCleanup(); } },
-    { label: 'Abrir o Gerenciador de Tarefas', hint: 'Sistema', run: () => desktopBridge?.openTaskManager?.() },
+    { label: 'Abrir o Gerenciador de Tarefas', hint: 'Sistema', run: () => desktopBridge?.openTaskManager?.()?.catch((error) => showToast(error.message)) },
     { label: 'Alternar efeitos visuais (completo/leve)', hint: 'Ajustes', run: () => Nexo.setEffects(Nexo.effectsLite ? 'full' : 'lite') }
   );
 

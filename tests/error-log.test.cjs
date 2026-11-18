@@ -175,3 +175,14 @@ test('groupsSince: "since" por nível deixa de fora os avisos antigos e o cursor
   assert.equal((await log.groupsSince({ afterSeq: out.cursor, levels: ['erro', 'aviso'], since: { aviso: 2000 } })).groups.length, 0);
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test('groupsSince: "tagged" manda só os avisos com nome de vigia (os avisos livres ficam no PC)', async () => {
+  const dir = await tempDir();
+  const log = createErrorLog({ fs, path, dir, now: () => 5000 });
+  log.record({ level: 'aviso', message: 'falha esperada com caminho D:/Fotos/eu.jpg', context: { acao: 'games:set-cover' } });
+  log.record({ level: 'aviso', message: 'Leitura impossível do PC: cpu', context: { vigia: 'leitura-impossivel', campo: 'cpu' } });
+  log.record({ level: 'erro', message: 'erro sem vigia' });
+  const out = await log.groupsSince({ levels: ['erro', 'aviso'], tagged: ['aviso'] });
+  assert.deepEqual(out.groups.map((g) => g.message).sort(), ['Leitura impossível do PC: cpu', 'erro sem vigia']);
+  await fs.rm(dir, { recursive: true, force: true });
+});

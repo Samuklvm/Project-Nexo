@@ -31,3 +31,10 @@ test('main: avisos antigos ganham nome de vigia e os vigias novos estão ligados
   assert.match(main, /memoryAlarm\(app\.getAppMetrics\(\)\)/);
   assert.match(main, /pulseRefused\(/);
 });
+
+test('janela: o aviso (menos de 10 s) tem outra mensagem que o erro (10 s ou mais), para não caírem no mesmo grupo', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8');
+  assert.match(main, /seconds >= 10 \? `A janela do Nexo parou de responder por \$\{seconds\} s` : 'A janela do Nexo demorou para responder'/);
+  const { createErrorLog } = require('../electron/error-log.cjs');
+  assert.ok(createErrorLog);
+});

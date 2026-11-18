@@ -20,7 +20,7 @@
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   const MIN = 60000;
-  const LIMITS = { tempMin: -10, tempMax: 125, slowStartMs: 12000, sensorsGoneMs: 5 * MIN, skyFps: 12, skySlowMs: MIN, sourceFails: 3, sourceSlowMs: 20000 };
+  const LIMITS = { tempMin: -10, tempMax: 125, slowStartMs: 20000, sensorsGoneMs: 5 * MIN, skyFps: 12, skySlowMs: MIN, sourceFails: 3, sourceSlowMs: 20000 };
   const round1 = (value) => Math.round(value * 10) / 10;
   const shown = (value) => (Number.isFinite(value) ? round1(value) : 'NaN');
   const isNumber = (value) => typeof value === 'number';
@@ -52,6 +52,9 @@
    * para contar (janela sem foco: o coletor pausa) e recomeça a conta.
    */
   function sensorsGone(state, hasTemp, now) {
+    // Um intervalo longo sem leitura (o PC dormiu, uma medição pausou as leituras) recomeça a conta.
+    if (Number.isFinite(state.lastAt) && now - state.lastAt > 3 * MIN) state.lostAt = null;
+    state.lastAt = now;
     if (hasTemp === null) { state.lostAt = null; return false; }
     if (hasTemp) { state.seen = true; state.lostAt = null; return false; }
     if (!state.seen) return false;
@@ -59,7 +62,7 @@
     return now - state.lostAt >= LIMITS.sensorsGoneMs;
   }
 
-  /** A primeira leitura do PC chegou mais de 12 s depois de a tela abrir. */
+  /** A primeira leitura do PC chegou mais de 20 s depois de a tela abrir (acima do p95 da telemetria). */
   const slowStart = (ms) => Number.isFinite(ms) && ms > LIMITS.slowStartMs;
 
   /** Céu abaixo de 12 quadros/s por 1 min seguido, com o Nexo em foco, efeitos completos e a tela inicial aberta. */
@@ -100,6 +103,8 @@
       note('fonte-falhando', `Fonte de dados dos cartões ${trouble.motivo === 'lenta' ? 'lenta' : 'falhando'}: ${fonte}`, { fonte, ...trouble, ...(message ? { erro: String(message).slice(0, 160) } : {}) }, `fonte:${fonte}:${trouble.motivo}`);
     });
 
+    // Abriu escondido (com o Windows, na bandeja): a primeira leitura disputa o PC com o login e não conta como lenta.
+    const startedHidden = Boolean(document?.hidden);
     let firstReading = true;
     const sensors = {};
     const plausible = (value) => Number.isFinite(value) && value > 5 && value < 125;
@@ -107,7 +112,7 @@
       if (firstReading) {
         firstReading = false;
         const ms = performance?.now?.();
-        if (slowStart(ms)) note('abertura-lenta', 'O Nexo demorou para mostrar a primeira leitura do PC', { segundos: Math.round(ms / 1000) });
+        if (!startedHidden && slowStart(ms)) note('abertura-lenta', 'O Nexo demorou para mostrar a primeira leitura do PC', { segundos: Math.round(ms / 1000) });
       }
       for (const problem of checkReading(snapshot)) note('leitura-impossivel', `Leitura impossível do PC: ${problem.campo}`, problem, `leitura:${problem.campo}`);
       const thermal = snapshot?.temperatureReadings || {};
@@ -119,7 +124,9 @@
 
     const sky = {};
     setInterval?.(guard(() => {
-      const state = { fps: Nexo?.sky?.stats?.()?.fps, focused: focused(), full: !Nexo?.effectsLite, home: Nexo?.state?.view === 'home' };
+      const stats = Nexo?.sky?.stats?.() || {};
+      // Céu parado de propósito (movimento reduzido, brilho e vaga-lumes desligados): fps 0 não é lentidão.
+      const state = { fps: stats.fps, focused: focused(), full: !Nexo?.effectsLite && stats.animating !== false, home: Nexo?.state?.view === 'home' };
       if (skySlow(sky, state, performance?.now?.() ?? Date.now())) note('ceu-lento', 'O céu ficou lento com o Nexo na frente', { fps: Math.round(state.fps) });
     }), 10000);
 

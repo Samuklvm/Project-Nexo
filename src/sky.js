@@ -25,7 +25,7 @@
     },
     /** Chuva de meteoros agora (atalho e recurso de Ajustes). */
     shower: (auto = false) => { if (!still()) { shower(6); wake(); if (auto !== true) Nexo.emit('telemetry-ui', 'meteoros'); } },
-    stats: () => ({ stars: stars.length, fireflies: flies.length, fps: Math.round(fps), budget: Math.round(scale * 100) })
+    stats: () => ({ stars: stars.length, fireflies: flies.length, fps: Math.round(fps), budget: Math.round(scale * 100), animating: running })
   };
 
   let width = 0;

@@ -258,7 +258,7 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       const legacy = Number.isFinite(state.errorsCursor) ? null : (state.lastErrorsSentAt || now());
       let sent = 0;
       for (let batch = 0; batch < ERROR_BATCHES; batch += 1) {
-        const { groups, cursor, more } = await errorLog.groupsSince({ afterSeq: Number.isFinite(state.errorsCursor) ? state.errorsCursor : 0, notBefore: state.errorsWindowAt, legacyAfter: legacy, levels: ['erro', 'aviso'], since: { aviso: state.avisosWindowAt }, limit: 50 });
+        const { groups, cursor, more } = await errorLog.groupsSince({ afterSeq: Number.isFinite(state.errorsCursor) ? state.errorsCursor : 0, notBefore: state.errorsWindowAt, legacyAfter: legacy, levels: ['erro', 'aviso'], since: { aviso: state.avisosWindowAt }, tagged: ['aviso'], limit: 50 });
         if (!groups.length) { if (Number.isFinite(cursor) && cursor > (state.errorsCursor || 0)) { state.errorsCursor = cursor; await save().catch(() => {}); } break; }
         const wantsEmail = state.errorEmail === true;
         const session = wantsEmail && Boolean(token());

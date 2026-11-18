@@ -800,7 +800,7 @@ function createWindow() {
     if (!frozenAt) return;
     const seconds = Math.round((Date.now() - frozenAt) / 1000);
     frozenAt = 0;
-    errorLog.record({ source: 'interface', level: seconds >= 10 ? 'erro' : 'aviso', message: `A janela do Nexo parou de responder por ${seconds} s`, context: { tela: 'janela', segundos: seconds, trilha: trail.slice(-10), ...(seconds >= 10 ? {} : { vigia: 'janela-sem-resposta' }) } });
+    errorLog.record({ source: 'interface', level: seconds >= 10 ? 'erro' : 'aviso', message: seconds >= 10 ? `A janela do Nexo parou de responder por ${seconds} s` : 'A janela do Nexo demorou para responder', context: { tela: 'janela', segundos: seconds, trilha: trail.slice(-10), ...(seconds >= 10 ? {} : { vigia: 'janela-sem-resposta' }) } });
   });
   mainWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => { if (isMainFrame) errorLog.record({ source: 'interface', message: `A tela não carregou (${code} ${description})`, context: { codigo: code, principal: Boolean(isMainFrame), alvo: String(url || '').startsWith('file:') ? 'arquivo do app' : 'outro' } }); });
   mainWindow.webContents.on('preload-error', (_event, _path, error) => errorLog.record({ source: 'interface', message: `Falha no preload: ${error?.message || error}`, stack: error?.stack }));

@@ -13,8 +13,9 @@ export async function vigias(env, { dias = 7, agora = Date.now() } = {}) {
   const since = agora - dias * DAY_MS;
   const [groups, reports, abertos] = await Promise.all([
     env.DB.prepare(`SELECT signature, message, context, status, last_at FROM error_groups WHERE level = 'aviso' AND last_at >= ? ORDER BY last_at DESC LIMIT 2000`).bind(since).all(),
-    env.DB.prepare(`SELECT r.signature, r.install_id, r.version, r.count FROM error_reports r JOIN error_groups g ON g.signature = r.signature
-      WHERE g.level = 'aviso' AND g.last_at >= ? LIMIT 20000`).bind(since).all(),
+    // PCs, ocorrências e versões só do período: o histórico por versão (error_seen) com o último dia de cada um.
+    env.DB.prepare(`SELECT s.signature, s.install_id, s.version, s.count FROM error_seen s JOIN error_groups g ON g.signature = s.signature
+      WHERE g.level = 'aviso' AND s.last_at >= ? LIMIT 20000`).bind(since).all(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM error_groups WHERE level = 'aviso' AND status IN ('aberto', 'reaberto')").first()
   ]);
   const bySig = new Map();

@@ -88,3 +88,29 @@ test('"PCs com erro (7 dias)" conta só quem teve ERRO, não quem só mandou avi
   assert.equal(summary.data.reportingInstalls7, 1, 'só install-aaaaaaaa0001 teve erro');
   assert.equal(summary.data.avisosAbertos, 4);
 });
+
+test('vigias: PCs e ocorrências só do período (um grupo velho com um PC novo conta só o novo)', async () => {
+  const env = h.setup();
+  const s1 = sig();
+  await send(env.call, 'install-old-00000001', '0.11.4', [{ signature: s1, message: 'Os sensores de temperatura pararam de responder', context: ctx('sensores-sumiram'), count: 9 }]);
+  h.tick(20 * DAY);
+  await send(env.call, 'install-new-00000001', '0.11.5', [{ signature: s1, message: 'Os sensores de temperatura pararam de responder', context: ctx('sensores-sumiram'), count: 1 }]);
+  const res = await env.call('GET', '/painel/api/vigias?dias=7', { cookie: await env.panelCookie() });
+  const item = res.data.vigias.find((v) => v.vigia === 'sensores-sumiram');
+  assert.equal(item.pcs, 1);
+  assert.equal(item.ocorrencias, 1);
+  assert.deepEqual(item.versoes, ['0.11.5']);
+});
+
+test('painel: o filtro do vigia no script servido mantém o \\s (regex certa)', async () => {
+  const env = h.setup();
+  const js = await (await env.call('GET', '/painel/app.js', { raw: true })).text();
+  assert.ok(js.includes(String.raw`/"vigia"\s*:\s*"([a-z0-9-]{1,40})"/i`));
+});
+
+test('relatórios de erro: até 60 envios por dia por instalação (o app tenta a cada 30 min)', async () => {
+  const env = h.setup();
+  let last;
+  for (let i = 0; i < 48; i += 1) last = await send(env.call, 'install-daily-0000001', '0.11.4', [{ signature: sig(), message: `aviso ${'x'.repeat(i % 5)}`, context: ctx('tela-travada') }]);
+  assert.equal(last.status, 200);
+});

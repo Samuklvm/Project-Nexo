@@ -79,7 +79,7 @@ export const PANEL_HTML = `<!doctype html><html lang="pt-BR"><head><meta charset
   </div>
 </section>
 <section id="tab-erros" role="tabpanel" hidden>
-  <div class="card vigias-card"><h3>Vigias <span class="muted small">avisos de coisas funcionando de forma estranha, por tipo · últimos 7 dias</span></h3><div class="vigias" id="vigias" role="list"></div><p class="muted small" id="vigias-hint" hidden>Filtrando a lista pelo vigia escolhido. <button type="button" class="lnk" id="vigias-clear">Mostrar tudo</button></p></div>
+  <div class="card vigias-card"><h3>Vigias <span class="muted small">avisos de coisas funcionando de forma estranha, por tipo · últimos 7 dias</span></h3><div class="vigias" id="vigias" role="list"></div><p class="muted small" id="vigias-hint" hidden>Filtrando a lista (todo o histórico) pelo vigia escolhido. <button type="button" class="lnk" id="vigias-clear">Mostrar tudo</button></p></div>
   <div class="filters"><label class="sr" for="status">Situação</label><select id="status"><option value="">Abertos e reabertos primeiro (todos)</option><option value="aberto">Só abertos</option><option value="reaberto">Só reabertos</option><option value="corrigido">Corrigidos</option><option value="ignorado">Ignorados</option></select>
   <label class="check"><input type="checkbox" id="avisos"> Incluir avisos</label><label class="sr" for="busca">Filtrar</label><input id="busca" type="search" placeholder="Filtrar pela mensagem"></div>
   <div class="split"><ul class="list" id="errors"></ul><aside class="detail" id="detail"><p class="muted">Escolha um erro para ver os detalhes, a trilha do que aconteceu antes, quem avisar e marcar como corrigido.</p></aside></div>
@@ -419,7 +419,7 @@ export const PANEL_JS = `
     'ceu-lento': 'Céu lento', 'memoria-alta': 'Memória alta', 'contagem-recusada': 'Contagem recusada', 'tela-travada': 'Tela travada', 'acao-lenta': 'Ação lenta',
     'processo-travado': 'Processo travado', 'janela-sem-resposta': 'Janela sem resposta', 'memoria-da-tela': 'Memória da tela', 'arquivo-nao-carregou': 'Arquivo não carregou',
     'console-aviso': 'Aviso no console', outro: 'Outros avisos' };
-  const vigiaOf = (context) => ((/"vigia"\s*:\s*"([a-z0-9-]{1,40})"/i.exec(String(context || '')) || [])[1] || 'outro').toLowerCase();
+  const vigiaOf = (context) => ((/"vigia"\\s*:\\s*"([a-z0-9-]{1,40})"/i.exec(String(context || '')) || [])[1] || 'outro').toLowerCase();
   let vigiaFilter = null;
   async function loadVigias() {
     const data = await api('vigias?dias=7');

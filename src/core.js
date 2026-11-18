@@ -29,7 +29,10 @@ const desktopBridge = window.nexoDesktop;
     if (target && target !== window && target.tagName) {
       const url = String(target.src || target.href || '');
       if (/^(blob:|data:|https?:)/.test(url) && target.tagName === 'IMG') return; // capas e fotos da internet: falha comum, não é bug
-      report(`Arquivo do app não carregou: <${target.tagName.toLowerCase()}> ${url.split(/[?#]/)[0].split('/').slice(-2).join('/')}`, '', 'aviso', { recurso: target.tagName.toLowerCase(), vigia: 'arquivo-nao-carregou' });
+      // Só o tipo e a extensão: o nome de uma capa é o nome do jogo (e às vezes o caminho do .exe, com o usuário).
+      const tag = target.tagName.toLowerCase();
+      const ext = (/\.([a-z0-9]{1,5})$/i.exec(url.split(/[?#]/)[0]) || [])[0] || '(sem extensão)';
+      report(`Arquivo do app não carregou: <${tag}> ${ext}`, '', 'aviso', { recurso: tag, vigia: 'arquivo-nao-carregou' });
       return;
     }
     report(event.message || event.error?.message, event.error?.stack || (event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : ''));
