@@ -192,12 +192,12 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     exportErrors: async () => 'Nexo Device Care 0.8.1 (win32) · 3 ocorrência(s)',
     // Servidor do Nexo na prévia: sincronização e telemetria desligadas até a pessoa ligar, erros sempre ligados; um "outro PC" de exemplo para trazer dados.
     ...(() => {
-      const cloud = { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false, connected: false, admin: false, lastSyncAt: null };
+      const cloud = { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false, count: true, lastPulseDay: new Date().toISOString().slice(0, 10), connected: false, admin: false, lastSyncAt: null };
       const view = () => ({ configured: true, ...cloud, email: cloud.connected ? account.profile?.email || null : null, deviceId: 'pc-previa0001' });
       const other = { deviceId: 'pc-notebook01', name: 'NOTEBOOK-SALA', sections: ['atividade', 'perfil', 'preferencias', 'preferenciasapp', 'sessoes'], size: 48210, appVersion: '0.9.0', updatedAt: Date.now() - 5 * 3600000, current: false };
       return {
         cloudStatus: async () => view(),
-        cloudSet: async (patch) => { for (const key of ['telemetry', 'errorEmail', 'asked']) if (typeof patch[key] === 'boolean') { cloud[key] = patch[key]; } return view(); },
+        cloudSet: async (patch) => { for (const key of ['telemetry', 'errorEmail', 'asked', 'count']) if (typeof patch[key] === 'boolean') { cloud[key] = patch[key]; } return view(); },
         cloudConnect: async () => { if (!account.profile) { throw new Error('Entre com o Google primeiro.'); } await wait(700); Object.assign(cloud, { connected: true, sync: true, admin: new URLSearchParams(location.search).has('admin') }); return view(); },
         cloudDisconnect: async () => { Object.assign(cloud, { connected: false, sync: false, admin: false }); return view(); },
         cloudDeleteRemote: async () => { await wait(400); Object.assign(cloud, { connected: false, sync: false, admin: false, lastSyncAt: null }); return view(); },

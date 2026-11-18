@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createD1 } = require('../server/test/d1-sqlite.cjs');
-const { createCloud, DEFAULTS } = require('../electron/cloud.cjs');
+const { createCloud, DEFAULTS, pcCodeFrom } = require('../electron/cloud.cjs');
 const { createErrorLog } = require('../electron/error-log.cjs');
 
 const CLIENT_ID = '123-teste.apps.googleusercontent.com';
@@ -29,7 +29,7 @@ async function idToken(claims = {}) {
 const fakeSafeStorage = { isEncryptionAvailable: () => true, encryptString: (value) => Buffer.from(value, 'utf8').reverse(), decryptString: (buffer) => Buffer.from(buffer).reverse().toString('utf8') };
 
 function world() {
-  const env = { DB: createD1(), SESSION_SECRET: 's'.repeat(48), DATA_KEY: 'd'.repeat(48), GOOGLE_CLIENT_IDS: CLIENT_ID, ADMIN_EMAILS: 'criador@exemplo.com' };
+  const env = { DB: createD1(), SESSION_SECRET: 's'.repeat(48), DATA_KEY: 'd'.repeat(48), PC_PEPPER: 'p'.repeat(48), GOOGLE_CLIENT_IDS: CLIENT_ID, ADMIN_EMAILS: 'criador@exemplo.com' };
   const app = mod.createApp({ fetchImpl: async () => new Response(JSON.stringify({ keys: [jwk] }), { headers: { 'cache-control': 'public, max-age=20000' } }), now: () => clock });
   const calls = [];
   const tokens = [];
@@ -53,7 +53,7 @@ test.before(async () => {
 test.beforeEach(() => google.resetGoogleKeys());
 
 test('nuvem: sincronização e telemetria desligadas por padrão; relatórios de erro ligados por padrão e opcionais', async () => {
-  assert.deepEqual(DEFAULTS, { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false });
+  assert.deepEqual(DEFAULTS, { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false, count: true });
   const { client, calls } = world();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
   const errorLog = { groupsSince: async () => ({ groups: [], cursor: 0, more: false }) };
@@ -466,4 +466,86 @@ test('fitTelemetry: corta do menos importante até caber', () => {
   assert.deepEqual(fitted.data.hw, { cores: 8 }, 'o hardware fica');
   assert.ok(fitted.trimmed.includes('diag.ipc'));
   assert.equal(fitTelemetry({ hw: { cores: 2 } }).trimmed.length, 0);
+});
+
+/* ---------- Contagem de uso (sinal de vida diário) ---------- */
+const GUID = '4C4C4544-0042-3510-8051-B4C04F4E3732';
+const VECTOR = '5494d4d3f02aa76ad4d16aa360ffc47e1c4425d210b921c05a16d5540518c698';
+const posts = (calls, route) => calls.filter((call) => call.method === 'POST' && String(call.url).endsWith(route));
+
+test('código do PC: vetor fixo (o mesmo do instalador)', () => {
+  assert.equal(pcCodeFrom(GUID), VECTOR);
+  assert.equal(pcCodeFrom(`  ${GUID.toLowerCase()}\n`), VECTOR, 'maiúsculas e espaços não mudam o código');
+});
+
+test('sinal de vida: um por dia, e um novo depois de 25 h (app aberto há dias)', async () => {
+  const { client, calls, rows } = world();
+  const cloud = client(undefined, { machineId: async () => GUID });
+  assert.equal((await cloud.status()).count, true, 'ligado por padrão');
+  assert.equal((await cloud.sendPulse()).sent, true);
+  assert.equal((await cloud.sendPulse()).already, true);
+  assert.equal(posts(calls, '/v1/pulse').length, 1);
+  clock += 25 * 3600 * 1000;
+  await cloud.sendPulse();
+  assert.equal(posts(calls, '/v1/pulse').length, 2);
+  assert.equal(rows('SELECT days_active FROM pcs')[0].days_active, 2);
+  assert.ok((await cloud.status()).lastPulseDay);
+});
+
+test('o sinal de vida leva só o código do PC, a versão e o sistema', async () => {
+  const { client, calls } = world();
+  await client(undefined, { machineId: async () => GUID }).sendPulse();
+  const [call] = posts(calls, '/v1/pulse');
+  assert.deepEqual(Object.keys(call.body).sort(), ['pc', 'platform', 'version']);
+  assert.equal(call.body.pc, VECTOR);
+  assert.equal(call.auth, false, 'sem conta, sem token');
+});
+
+test('contagem desligada: manda um "+1 desligou" sem código e para de contar', async () => {
+  const { client, calls } = world();
+  const cloud = client(undefined, { machineId: async () => GUID });
+  assert.equal((await cloud.setOptions({ count: false })).count, false);
+  const opt = posts(calls, '/v1/optout');
+  assert.equal(opt.length, 1);
+  assert.deepEqual(opt[0].body, { origem: 'app' });
+  assert.deepEqual(await cloud.sendPulse(), { skipped: true, off: true });
+  assert.equal(posts(calls, '/v1/pulse').length, 0);
+});
+
+test('desligar sem internet: o +1 fica pendente e sai uma vez só', async () => {
+  const world0 = world();
+  let online = false;
+  const fetchImpl = async (url, init) => { if (!online) throw new Error('sem rede'); return world0.fetchImpl(url, init); };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  const cloud = world0.client(dir, { machineId: async () => GUID, fetchImpl });
+  await cloud.setOptions({ count: false });
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'cloud.json'), 'utf8')).optoutPending, true);
+  await cloud.setOptions({ count: true });
+  await cloud.setOptions({ count: false });
+  online = true;
+  await cloud.sendPulse();
+  await cloud.sendPulse();
+  assert.equal(posts(world0.calls, '/v1/optout').length, 1, 'um "+1" só');
+  assert.equal(posts(world0.calls, '/v1/pulse').length, 0, 'desligado não conta');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'cloud.json'), 'utf8')).optoutPending, false);
+});
+
+test('primeira abertura com a caixinha do instalador desmarcada: começa desligado e não manda nada', async () => {
+  const { client, calls } = world();
+  const cloud = client(undefined, { machineId: async () => GUID, readCountPreference: async () => false });
+  assert.equal((await cloud.status()).count, false);
+  await cloud.sendPulse();
+  assert.equal(calls.length, 0, 'o instalador já mandou o "+1"');
+});
+
+test('sem identificador do sistema: código reserva aleatório, guardado entre aberturas', async () => {
+  const { client, calls } = world();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-nuvem-'));
+  await client(dir, { machineId: async () => null }).sendPulse();
+  clock += 25 * 3600 * 1000;
+  await client(dir, { machineId: async () => null }).sendPulse();
+  const codes = posts(calls, '/v1/pulse').map((call) => call.body.pc);
+  assert.equal(codes.length, 2);
+  assert.match(codes[0], /^[0-9a-f]{64}$/);
+  assert.equal(codes[0], codes[1]);
 });

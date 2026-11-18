@@ -4,7 +4,10 @@
  *  - relatórios de erro: SEMPRE ligados (desde a 0.11.1), os do registro local, agrupados, sem nome de usuário nem
  *    pastas; o e-mail da conta Google vai junto só com "incluir meu e-mail" marcado (dá para desmarcar);
  *  - telemetria: um resumo por dia (o de hoje, parcial, no máximo a cada 3 h), anônima (código aleatório deste PC,
- *    sem e-mail e sem conta).
+ *    sem e-mail e sem conta);
+ *  - contagem de uso (ligada por padrão, desligável): uma vez por dia, "este PC abriu hoje", com o código do PC
+ *    embaralhado (SHA-256 do identificador do sistema com o prefixo do Nexo), a versão e o sistema. Desligar manda um
+ *    único "+1 desligou", sem código nenhum.
  * O token de sessão do servidor fica cifrado com o cofre do sistema (safeStorage). Sem cofre (Linux sem chaveiro), o
  * token NÃO vai para o disco: vale só enquanto o app estiver aberto (antes era gravado em Base64, que não protege nada).
  * Toda gravação de cloud.json é conferida: se falhar, a tela fica sabendo e uma escolha que liga algo é desfeita.
@@ -18,7 +21,10 @@ const REQUEST_TIMEOUT_MS = 20000;
 const PARTIAL_EVERY_MS = 3 * 3600 * 1000;
 const ERROR_BATCHES = 5;
 /* Relatórios de erro: ligados por padrão e opcionais (a pessoa desliga em Ajustes). Entre a 0.11.1 e a 0.11.2 eram obrigatórios. */
-const DEFAULTS = { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false };
+const DEFAULTS = { sync: false, telemetry: false, errors: true, errorEmail: true, asked: false, count: true };
+
+/** Código do PC: SHA-256("nexo-pc-v1|" + id do sistema), 64 hex. O instalador (installer/count.ps1) faz a mesma conta. */
+const pcCodeFrom = (id) => crypto.createHash('sha256').update(`nexo-pc-v1|${String(id).trim().toLowerCase()}`, 'utf8').digest('hex');
 
 const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
 /** Endereço do servidor: https, só host (e porta), sem caminho, usuário ou senha — conferido pela API de URL. */
@@ -31,7 +37,7 @@ function serverBase(value) {
 }
 const randomId = (bytes = 18) => crypto.randomBytes(bytes).toString('base64url');
 
-function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version, platform = process.platform, errorLog, accountEmail = async () => null, now = Date.now, timeoutMs = REQUEST_TIMEOUT_MS }) {
+function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version, platform = process.platform, errorLog, accountEmail = async () => null, now = Date.now, timeoutMs = REQUEST_TIMEOUT_MS, machineId = async () => null, readCountPreference = async () => null }) {
   const file = path.join(dir, 'cloud.json');
   const base = serverBase(serverUrl);
   let state = null;
@@ -54,6 +60,12 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       state.errors = true;
       state.errorsWindowAt = stored.installId ? now() : 0;
       if (!Number.isFinite(state.errorsCursor)) state.errorsCursor = 0;
+      fresh = true;
+    }
+    // Contagem de uso: na primeira vez, respeita a caixinha do instalador (desmarcada = começa desligada; o "+1" já saiu dele).
+    if (typeof stored.count !== 'boolean') {
+      const chosen = await Promise.resolve(readCountPreference()).catch(() => null);
+      state.count = chosen !== false;
       fresh = true;
     }
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(state.installId || ''))) { state.installId = randomId(); fresh = true; }
@@ -120,7 +132,8 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       connected: Boolean(token()), email: token() ? state.session.email : null, admin: Boolean(token() && state.session.admin),
       deviceId: state.deviceId, lastSyncAt: state.lastSyncAt || null, lastErrorsAt: state.lastErrorsSentAt || null, lastTelemetryDay: state.lastTelemetryDay || null,
       lastTelemetryAt: state.lastTelemetryAt || null, telemetryProblem: state.telemetryProblem || null, errorsProblem: state.errorsProblem || null,
-      tokenProtected: vault(), saveProblem: lastSaveError, forgetEmailPending: state.forgetEmailPending === true
+      tokenProtected: vault(), saveProblem: lastSaveError, forgetEmailPending: state.forgetEmailPending === true,
+      count: state.count, lastPulseDay: state.lastPulseDay || null, countProblem: state.countProblem || null
     };
   }
 
@@ -131,17 +144,21 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
   async function setOptions(options = {}) {
     await load();
     const before = { ...state };
-    for (const key of ['telemetry', 'errors', 'errorEmail', 'asked']) if (typeof options[key] === 'boolean') state[key] = options[key];
+    for (const key of ['telemetry', 'errors', 'errorEmail', 'asked', 'count']) if (typeof options[key] === 'boolean') state[key] = options[key];
+    // Desligou a contagem: um único "+1 desligou" por dia (sem rede, fica pendente até dar).
+    if (before.count && !state.count && state.lastOptoutDay !== dayOf(now())) state.optoutPending = true;
     // Religou os relatórios: só vai o que acontecer daqui em diante, nada do tempo em que estavam desligados.
     if (!before.errors && state.errors) state.errorsWindowAt = now();
     if (typeof options.sync === 'boolean') state.sync = options.sync && Boolean(token());
     try { await save(); }
     catch (error) {
-      for (const key of ['telemetry', 'errors', 'errorEmail', 'sync']) state[key] = Boolean(before[key] && state[key]);
+      for (const key of ['telemetry', 'errors', 'errorEmail', 'sync', 'count']) state[key] = Boolean(before[key] && state[key]);
+      state.optoutPending = before.optoutPending === true;
       throw Object.assign(new Error(`Não consegui salvar a sua escolha no disco (${error?.code || 'erro'}). Nada foi ligado; tente de novo.`), { code: 'nao-salvou' });
     }
     // Desmarcou "incluir meu e-mail": o servidor tira o e-mail dos relatórios que este PC já mandou. Sem conexão agora,
     // fica pendente e é tentado de novo no próximo envio de erros (ou na próxima vez que mudar a escolha).
+    if (state.optoutPending) await sendOptout().catch(() => {});
     if (before.errorEmail && !state.errorEmail) {
       state.forgetEmailPending = true;
       await save().catch(() => {});
@@ -299,6 +316,54 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     return run;
   }
 
+  /** O "+1 desligou" pendente (sem código nenhum). */
+  async function sendOptout() {
+    if (!state.optoutPending || !base) return { skipped: true };
+    await request('POST', '/v1/optout', { auth: false, body: { origem: 'app' } });
+    state.optoutPending = false;
+    state.lastOptoutDay = dayOf(now());
+    await save().catch(() => {});
+    return { sent: true };
+  }
+
+  /** Código do PC: do identificador do sistema; sem ele, um código reserva aleatório guardado nos dados do app. */
+  let pcCache = null;
+  async function pcCode() {
+    if (pcCache) return pcCache;
+    await load();
+    const id = await Promise.resolve(machineId()).catch(() => null);
+    if (typeof id === 'string' && id.trim()) pcCache = pcCodeFrom(id);
+    else {
+      if (!/^[0-9a-f]{64}$/.test(String(state.pcFallback || ''))) { state.pcFallback = crypto.randomBytes(32).toString('hex'); await save().catch(() => {}); }
+      pcCache = state.pcFallback;
+    }
+    return pcCache;
+  }
+
+  /**
+   * Sinal de vida do dia: no máximo um por dia (UTC), só com a contagem ligada. Também manda o "+1 desligou" que ficou
+   * pendente. Falha de rede não vira erro no registro: tenta de novo na próxima vez.
+   */
+  function sendPulse() {
+    if (inflight.has('pulse')) return inflight.get('pulse');
+    const run = (async () => {
+      await load();
+      if (state.optoutPending) await sendOptout().catch(() => {});
+      if (!state.count) return { skipped: true, off: true };
+      if (!base) return { skipped: true };
+      const day = dayOf(now());
+      if (state.lastPulseDay === day) return { skipped: true, already: true };
+      try { await request('POST', '/v1/pulse', { auth: false, body: { pc: await pcCode(), version, platform } }); }
+      catch (error) { state.countProblem = { at: now(), message: String(error?.message || error).slice(0, 160) }; await save().catch(() => {}); return { skipped: true, failed: true }; }
+      state.lastPulseDay = day;
+      state.countProblem = null;
+      await save().catch(() => {});
+      return { sent: true };
+    })().finally(() => inflight.delete('pulse'));
+    inflight.set('pulse', run);
+    return run;
+  }
+
   async function adminLink() { await load(); return request('POST', '/v1/admin/link'); }
 
   /**
@@ -319,7 +384,7 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     return true;
   }
 
-  return { status, setOptions, connect, disconnect, deleteRemote, push, devices, pull, forget, sendErrors, sendTelemetry, adminLink, refreshRole, get configured() { return Boolean(base); } };
+  return { status, setOptions, connect, disconnect, deleteRemote, push, devices, pull, forget, sendErrors, sendTelemetry, sendPulse, pcCode, adminLink, refreshRole, get configured() { return Boolean(base); } };
 }
 
 /**
@@ -351,4 +416,4 @@ function fitTelemetry(input, budget = TELEMETRY_BUDGET) {
   return { data, bytes: bytes(), trimmed };
 }
 
-module.exports = { createCloud, fitTelemetry, DEFAULTS, TELEMETRY_BUDGET };
+module.exports = { createCloud, fitTelemetry, pcCodeFrom, DEFAULTS, TELEMETRY_BUDGET };
