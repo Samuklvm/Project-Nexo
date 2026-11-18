@@ -626,3 +626,10 @@ test('avisos: religar os relatórios não manda os avisos do tempo em que estava
   await cloud.sendErrors();
   assert.deepEqual(rows('SELECT message FROM error_groups').map((g) => g.message), ['depois de religar']);
 });
+
+test('contagem: servidor recusando o sinal de vida devolve o status (para o vigia "contagem-recusada")', async () => {
+  const world0 = world();
+  const fetchImpl = async (url, init) => (String(url).endsWith('/v1/pulse') ? new Response(JSON.stringify({ error: 'Código do PC inválido.' }), { status: 400, headers: { 'content-type': 'application/json' } }) : world0.fetchImpl(url, init));
+  const cloud = world0.client(undefined, { machineId: async () => GUID, fetchImpl });
+  assert.deepEqual(await cloud.sendPulse(), { skipped: true, failed: true, status: 400 });
+});

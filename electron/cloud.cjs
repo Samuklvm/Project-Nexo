@@ -364,7 +364,7 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       const pc = await pcCode();
       if (!pc) return { skipped: true, failed: true };
       try { await request('POST', '/v1/pulse', { auth: false, body: { pc, version, platform } }); }
-      catch (error) { state.countProblem = { at: now(), message: String(error?.message || error).slice(0, 160) }; await save().catch(() => {}); return { skipped: true, failed: true }; }
+      catch (error) { state.countProblem = { at: now(), message: String(error?.message || error).slice(0, 160) }; await save().catch(() => {}); return { skipped: true, failed: true, ...(error?.status ? { status: error.status } : {}) }; }
       state.lastPulseDay = day;
       state.countProblem = null;
       await save().catch(() => {});
