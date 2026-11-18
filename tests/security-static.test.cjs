@@ -89,3 +89,10 @@ test('"Ver processos" na tela inicial mostra o motivo se não der para abrir (se
   assert.match(main, /systemMonitor\(\)/, 'o main usa o monitor do sistema (Linux incluído)');
   assert.doesNotMatch(main, /Gerenciador de Tarefas está disponível somente no Windows/);
 });
+
+test('vigias: a trilha dos últimos passos vai também nos avisos (o "estranho" precisa do contexto)', () => {
+  const main = read('main.cjs');
+  const hook = main.slice(main.indexOf('errorLog.record = (entry = {}) => {'), main.indexOf('return recordRaw(entry);'));
+  assert.ok(hook.includes('trilha: trail.slice(-12)'));
+  assert.doesNotMatch(hook, /entry\.level !== 'aviso'/);
+});

@@ -67,6 +67,8 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     const chosen = await Promise.resolve(readCountPreference()).catch(() => null);
     if (typeof stored.count !== 'boolean') { state.count = chosen !== false; fresh = true; }
     else if (chosen === false && state.count) { state.count = false; state.optoutPending = false; fresh = true; }
+    // Vigias de erro: os avisos vão ao servidor a partir da primeira abertura da versão que manda avisos (os de antes ficam).
+    if (!Number.isFinite(state.avisosWindowAt)) { state.avisosWindowAt = now(); fresh = true; }
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(state.installId || ''))) { state.installId = randomId(); fresh = true; }
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(state.deviceId || ''))) { state.deviceId = `pc-${randomId(12)}`; fresh = true; }
     // Códigos novos são gravados na hora: senão o PC ganharia outra identidade a cada abertura do app.
@@ -149,7 +151,7 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
     // Religou antes do "+1" pendente sair: a pessoa mudou de ideia, não há o que avisar.
     if (!before.count && state.count) state.optoutPending = false;
     // Religou os relatórios: só vai o que acontecer daqui em diante, nada do tempo em que estavam desligados.
-    if (!before.errors && state.errors) state.errorsWindowAt = now();
+    if (!before.errors && state.errors) { state.errorsWindowAt = now(); state.avisosWindowAt = now(); }
     if (typeof options.sync === 'boolean') state.sync = options.sync && Boolean(token());
     try { await save(); }
     catch (error) {
@@ -256,7 +258,7 @@ function createCloud({ fs, path, dir, serverUrl, fetchImpl, safeStorage, version
       const legacy = Number.isFinite(state.errorsCursor) ? null : (state.lastErrorsSentAt || now());
       let sent = 0;
       for (let batch = 0; batch < ERROR_BATCHES; batch += 1) {
-        const { groups, cursor, more } = await errorLog.groupsSince({ afterSeq: Number.isFinite(state.errorsCursor) ? state.errorsCursor : 0, notBefore: state.errorsWindowAt, legacyAfter: legacy, levels: ['erro'], limit: 50 });
+        const { groups, cursor, more } = await errorLog.groupsSince({ afterSeq: Number.isFinite(state.errorsCursor) ? state.errorsCursor : 0, notBefore: state.errorsWindowAt, legacyAfter: legacy, levels: ['erro', 'aviso'], since: { aviso: state.avisosWindowAt }, limit: 50 });
         if (!groups.length) { if (Number.isFinite(cursor) && cursor > (state.errorsCursor || 0)) { state.errorsCursor = cursor; await save().catch(() => {}); } break; }
         const wantsEmail = state.errorEmail === true;
         const session = wantsEmail && Boolean(token());

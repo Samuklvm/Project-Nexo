@@ -253,8 +253,10 @@ function createErrorLog({ fs, path, dir, version = '0.0.0', platform = process.p
    * por inteiro: o próximo envio continua dali, então nenhum grupo fica para trás.
    * Linhas antigas, sem sequência, só entram se forem mais novas que `legacyAfter` (o cursor por data das versões antigas).
    */
-  async function groupsSince({ afterSeq = 0, notBefore = 0, legacyAfter = null, levels = ['erro'], limit = 50 } = {}) {
+  /** `since` por nível: { aviso: instante } deixa de fora os avisos de antes (ex.: os de antes de os avisos irem ao servidor). */
+  async function groupsSince({ afterSeq = 0, notBefore = 0, legacyAfter = null, levels = ['erro'], limit = 50, since = {} } = {}) {
     const entries = (await readEntries()).filter((entry) => levels.includes(entry.level) && entry.at >= notBefore
+      && !(Number.isFinite(since?.[entry.level]) && entry.at < since[entry.level])
       && (Number.isInteger(entry.seq) ? entry.seq > afterSeq : legacyAfter !== null && entry.at > legacyAfter));
     entries.sort((a, b) => (a.seq || 0) - (b.seq || 0) || a.at - b.at);
     const groups = new Map();

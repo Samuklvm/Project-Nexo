@@ -79,7 +79,8 @@ function crumb(kind, name, extra = '') {
 }
 errorLog.record = (entry = {}) => {
   diag.count(`erro.${String(entry.source || 'outro').replace(/[^a-z]/gi, '') || 'outro'}`);
-  if (entry.level !== 'aviso' && (entry.context === undefined || (entry.context && typeof entry.context === 'object' && !Array.isArray(entry.context)))) {
+  // Erros e avisos levam a trilha dos últimos passos (o aviso que já tem a sua, como o do laço travado, fica com ela).
+  if ((entry.context === undefined || (entry.context && typeof entry.context === 'object' && !Array.isArray(entry.context))) && !entry.context?.trilha) {
     entry = { ...entry, context: { ...(entry.context || {}), trilha: trail.slice(-12) } };
   }
   return recordRaw(entry);
