@@ -476,7 +476,7 @@ if (window.__nexoPlatform === 'linux') {
         missing: [{ name: 'Dispositivo PCI', code: 28, cls: '', ids: '8086:7AE8' }]
       },
       latest: {
-        nvidia: { modern: { version: '621.14', date: '2026-11-04', name: 'GeForce Game Ready Driver', details: 'https://www.nvidia.com/en-us/drivers/details/283968/', download: 'https://us.download.nvidia.com/Windows/621.14/621.14-desktop-win10-win11-64bit-international-dch-whql.exe', size: '1.04 GB' } },
+        nvidia: { modern: { version: '621.14', date: '2026-11-04', name: 'GeForce Game Ready Driver', details: 'https://www.nvidia.com/en-us/drivers/details/283968/', download: 'https://us.download.nvidia.com/Windows/621.14/621.14-desktop-win10-win11-64bit-international-dch-whql.exe', size: '1.04 GB', gameReady: ['Neon Tide', 'Warhammer 40,000: Dawn of War IV', 'Aurora Drift'] } },
         dotnetFiles: { '9.0': { version: '9.0.23', url: 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.23/windowsdesktop-runtime-9.0.23-win-x64.exe', sha512: 'a'.repeat(128) } },
         dotnet: { '9.0': { latest: '9.0.23', phase: 'eol', eol: '2026-11-10' }, '8.0': { latest: '8.0.34', phase: 'eol', eol: '2026-11-10' } },
         oem: pc.oem

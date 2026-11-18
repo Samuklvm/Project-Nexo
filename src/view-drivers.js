@@ -30,6 +30,10 @@
   // Backups dos drivers: a lista vem do processo principal; busy enquanto faz ou restaura.
   let backups = null;
   let backupBusy = '';
+  // Projeto 3: histórico das versões de cada driver (só neste PC) e os nomes dos jogos da biblioteca.
+  const HISTORY_KEY = 'nexo-drivers-history';
+  let history = (() => { try { return JSON.parse(store.get(HISTORY_KEY) || '{}') || {}; } catch { return {}; } })();
+  let gameNames = null;
   const LIVE = new Set(['queued', 'downloading', 'verifying']);
   // Componente: o ícone do próprio programa instalado é o certo; fabricante: o do site oficial, e o do PC na falta dele.
   const COMPONENTS = new Set(['vs', 'dotnet', 'physx', 'directx', 'vulkan']);
@@ -59,10 +63,21 @@
     const zone = Nexo.platform !== 'linux' && D.keepsZone(item, dl, notes.has(item.id)) ? downloadZone(item, dl) : { side: '', below: '' };
     return `<li class="driver${zone.below ? ' has-dl' : ''}${item.kind === 'oem' ? ' is-oem' : ''}${item.coveredBy ? ' is-covered' : ''}${celebrate.has(item.id) ? ' celebrate' : ''}" data-state="${escapeHtml(item.state)}" data-id="${escapeHtml(item.id)}"${dl ? ` data-dl="${escapeHtml(dl.phase)}"` : ''}>
       ${tile(item.brand, item.icon, 'driver-ico', item.brandAlt)}
-      <div class="driver-main">${oemSeal(item)}<strong class="driver-name">${escapeHtml(item.name)}</strong><span class="driver-purpose">${escapeHtml(item.purpose)}</span>${item.covers?.length ? `<span class="driver-covers">${escapeHtml(D.coversText(item.covers))}</span>` : ''}${item.note ? `<span class="driver-note">${escapeHtml(item.note)}</span>` : ''}${covered(item)}${extra}</div>
+      <div class="driver-main">${oemSeal(item)}<strong class="driver-name">${escapeHtml(item.name)}</strong><span class="driver-purpose">${escapeHtml(item.purpose)}</span>${item.covers?.length ? `<span class="driver-covers">${escapeHtml(D.coversText(item.covers))}</span>` : ''}${item.note ? `<span class="driver-note">${escapeHtml(item.note)}</span>` : ''}${gameLine(item)}${historyLine(item)}${covered(item)}${extra}</div>
       ${item.plain ? '<span class="driver-ver"></span>' : `<dl class="driver-ver">${versionCell('Instalado', item.installed)}${latest}</dl>`}
       <div class="driver-side"><span class="driver-state">${escapeHtml(D.STATES[item.state] || '')}</span><div class="driver-actions">${zone.side}${action}</div></div>${zone.below}
     </li>`;
+  }
+  /** "Game Ready para X e Y, que você tem instalados" (vídeo NVIDIA). */
+  function gameLine(item) {
+    const text = D.gameReadyText(item.gameReady);
+    if (!text) return '';
+    return `<span class="driver-games${item.gameReady.yours?.length ? ' is-yours' : ''}">${ico('i-game')}<span>${escapeHtml(text)}</span></span>`;
+  }
+  /** "Antes: 566.14 (02/11)": a versão que o driver tinha antes desta. */
+  function historyLine(item) {
+    const text = D.historyText(history[item.id]);
+    return text ? `<span class="driver-history">${ico('i-clock')}<span>${escapeHtml(text)}</span></span>` : '';
   }
   const oemName = () => D.OEM_NAME[model?.oem?.oem] || 'fabricante';
   /** O selo do pacote do fabricante do PC (de onde ele vem). */
@@ -284,7 +299,13 @@
     render();
     try {
       const data = await bridge.scanDrivers({ force });
-      model = D.build(data, Date.now());
+      if (gameNames === null) { try { gameNames = (await bridge.listGames() || []).filter((g) => g?.kind !== 'app').map((g) => g.name).filter(Boolean).slice(0, 500); } catch { gameNames = []; } }
+      model = D.build(data, Date.now(), { games: gameNames });
+      // Driver que subiu de versão desde a última leitura: comemora no cartão e guarda no histórico.
+      const tracked = D.trackHistory(history, model, Date.now());
+      history = tracked.history;
+      store.set(HISTORY_KEY, JSON.stringify(history));
+      for (const id of tracked.changed) celebrate.add(id);
       localLogos = Object.fromEntries(Object.entries(data?.icons || {}).filter(([, value]) => typeof value === 'string' && /^data:image\/png;base64,/.test(value)));
       loadLogos();
     } catch {
@@ -312,7 +333,7 @@
       if (loading) { watchOem(); return; }
       try {
         const data = await bridge.scanDrivers({ force: false });
-        model = D.build(data, Date.now());
+        model = D.build(data, Date.now(), { games: gameNames || [] });
         localLogos = { ...localLogos, ...Object.fromEntries(Object.entries(data?.icons || {}).filter(([, value]) => typeof value === 'string' && /^data:image\/png;base64,/.test(value))) };
         render();
         if (!model.oem?.pending) loadLogos();

@@ -572,7 +572,49 @@
   }
 
   /** O modelo inteiro da página. */
-  function build(data = {}, now = Date.now()) {
+  /* ---------------- Projeto 3: jogos e histórico ---------------- */
+  const gameKey = (name) => String(name || '').toLowerCase().replace(/[™®©]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  /** Os jogos Game Ready da NVIDIA que estão na biblioteca de jogos desta pessoa. */
+  function gameReadyFor(list, games) {
+    const all = (Array.isArray(list) ? list : []).filter((g) => typeof g === 'string' && g).slice(0, 8);
+    if (!all.length) return null;
+    const mine = (Array.isArray(games) ? games : []).map(gameKey).filter((k) => k.length > 2);
+    const yours = all.filter((g) => { const k = gameKey(g); return mine.some((m) => m === k || m.startsWith(`${k} `) || k.startsWith(`${m} `)); });
+    return { all, yours };
+  }
+  const joinNames = (names) => (names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`);
+  function gameReadyText(info) {
+    if (!info?.all?.length) return '';
+    if (info.yours?.length) return `Game Ready para ${joinNames(info.yours)}, que você tem ${info.yours.length === 1 ? 'instalado' : 'instalados'}.`;
+    return `Game Ready para ${joinNames(info.all)}.`;
+  }
+  const HISTORY_MAX = 6;
+  /** Guarda a versão de cada driver a cada leitura; devolve o histórico novo e os cartões cuja versão mudou agora. */
+  function trackHistory(history, model, now = Date.now()) {
+    const out = { ...(history && typeof history === 'object' ? history : {}) };
+    const changed = [];
+    for (const group of model?.groups || []) {
+      for (const item of group.items || []) {
+        const v = item?.installed?.version;
+        if (!item?.id || !v) continue;
+        const list = Array.isArray(out[item.id]) ? out[item.id].filter((h) => h && typeof h.v === 'string') : [];
+        const last = list[list.length - 1];
+        if (last?.v === v) continue;
+        if (last) changed.push(item.id);
+        out[item.id] = [...list, { v, at: now }].slice(-HISTORY_MAX);
+      }
+    }
+    return { history: out, changed };
+  }
+  /** "Antes: 566.14 (02/11)" — a versão anterior a esta, quando houver. */
+  function historyText(list) {
+    if (!Array.isArray(list) || list.length < 2) return '';
+    const prev = list[list.length - 2];
+    const day = new Date(prev.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return `Antes: ${prev.v} (${day})`;
+  }
+
+  function build(data = {}, now = Date.now(), options = {}) {
     const devices = Array.isArray(data.devices) ? data.devices : [];
     const runtimes = data.runtimes || null;
     const latest = data.latest || {};
@@ -587,6 +629,12 @@
     const used = new Set(Object.values(items).flat().flatMap((item) => [item.sourceName, ...(item.extra || [])]).filter(Boolean));
     const leftovers = devices.filter((item) => !/^microsoft/i.test(item.provider || '') && !used.has(item.name) && !/high definition audio|display audio|hdmi audio/i.test(item.name));
     items.outros = [...peripheralCards([...devices, ...(Array.isArray(data.others) ? data.others : []), ...(Array.isArray(data.genericDevices) ? data.genericDevices : [])], runtimes), ...otherCards([...leftovers, ...(Array.isArray(data.others) ? data.others : [])], data.generic, now, support)];
+    // Vídeo NVIDIA: para quais jogos este driver é Game Ready (e quais deles estão na sua biblioteca).
+    for (const item of items.video || []) {
+      const line = item.maker === 'NVIDIA' ? nvidiaLine(item.name) : null;
+      const top = line ? (runtimes?.board?.mobile === true ? latest?.nvidiaNotebook?.[line] : latest?.nvidia?.[line]) : null;
+      item.gameReady = gameReadyFor(top?.gameReady, options.games);
+    }
     for (const list of Object.values(items)) for (const item of list) {
       item.download = downloadOf(item, latest, runtimes);
       const found = item.id.startsWith('pnp-') && item.download ? latest?.catalog?.items?.[item.id.slice(4)] : null;
@@ -645,5 +693,5 @@
     }
     return out;
   }
-  return { build, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  return { build, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });
