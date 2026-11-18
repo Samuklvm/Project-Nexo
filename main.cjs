@@ -1608,7 +1608,7 @@ registerIpcHandler('drivers:download', async (_event, id, options = {}) => {
   const plan = DriverRules.downloadFor(lastDriversModel, id);
   if (!plan) throw new Error('Este driver não tem download direto.');
   // "Baixar e instalar": o motor instala sozinho quando o arquivo fica pronto (com ou sem ponto, como a chave manda).
-  const auto = options?.install === true ? { restorePoint: options?.restorePoint === true } : null;
+  const auto = options?.install === true ? { restorePoint: options?.restorePoint === true, window: options?.window === true } : null;
   if (plan.via === 'amd-site') return openAmdSite(id, plan, auto);
   return driverDownloads.start(id, plan, { auto });
 });

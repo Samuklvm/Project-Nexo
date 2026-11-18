@@ -56,6 +56,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     if (item.phase === 'queued') out.position = queue.indexOf(item.id) + 1;
     if (item.error) out.error = item.error;
     if (item.signer) out.signer = item.signer;
+    if (item.phase === 'installing') out.quiet = item.quiet === true;
     if (item.file && (item.phase === 'ready' || item.phase === 'installed' || item.phase === 'install-queued' || item.phase === 'installing')) out.file = item.file;
     return out;
   };
@@ -100,7 +101,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     }
     // Cópia: depois de começar, o motor não depende mais da leitura (nem de quem mandou o plano).
     const frozen = Object.freeze({ url: plan.url, domains: Object.freeze([...domains]), fileName: plan.fileName, signers: Object.freeze([...signers]), kind, hash: hashOf(plan), silent: silentOf(plan) });
-    const item = { id, plan: frozen, phase: 'queued', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: null, samples: [], auto: auto ? { restorePoint: auto.restorePoint === true } : null };
+    const item = { id, plan: frozen, phase: 'queued', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: null, samples: [], auto: auto ? { restorePoint: auto.restorePoint === true, window: auto.window === true } : null };
     items.set(id, item);
     queue.push(id);
     send(item);
@@ -357,7 +358,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     const current = items.get(id);
     if (current && (BUSY.has(current.phase) || current.phase === 'site')) return snapshot(current);
     const frozen = Object.freeze({ url: null, domains: Object.freeze(['drivers.amd.com']), fileName: null, signers: Object.freeze([...signers]), kind: 'exe', hash: null, silent: silentOf(plan || {}) });
-    const item = { id, external: true, plan: frozen, phase: 'site', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: close, samples: [], auto: auto ? { restorePoint: auto.restorePoint === true } : null };
+    const item = { id, external: true, plan: frozen, phase: 'site', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: close, samples: [], auto: auto ? { restorePoint: auto.restorePoint === true, window: auto.window === true } : null };
     items.set(id, item);
     send(item);
     return snapshot(item);
@@ -418,6 +419,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
   }
 
   async function runInstall(item, restorePoint, window) {
+    item.quiet = !window && Boolean(item.plan.silent);
     setPhase(item, 'installing');
     let answer = null;
     try {

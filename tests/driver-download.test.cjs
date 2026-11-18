@@ -811,3 +811,15 @@ test('motor: página da AMD — arquivo fora da pasta, nome estranho ou fechar n
   assert.throws(() => engine.external('video-x', { signers: ['Evil Corp'], silent: 'amd' }), /Assinante não permitido/);
   void dir;
 });
+test('motor: "instalar sozinho" respeita a chave "sem janelas" e a barra diz que instala sem janela', async () => {
+  const asked = [];
+  const { engine, events } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async (t, args) => { asked.push(args.silent); return { result: { ok: true, code: 0 } }; } });
+  engine.start('video-rtx', plan({ silent: 'nvidia' }), { auto: { restorePoint: false, window: true } });
+  await settle(engine, 'video-rtx', ['installed', 'error']);
+  assert.deepEqual(asked, [false]);
+  assert.ok(events.some((e) => e.phase === 'installing' && e.quiet === false));
+  const two = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } } });
+  two.engine.start('video-rtx', plan({ silent: 'nvidia' }), { auto: { restorePoint: false } });
+  await settle(two.engine, 'video-rtx', ['installed', 'error']);
+  assert.ok(two.events.some((e) => e.phase === 'installing' && e.quiet === true));
+});

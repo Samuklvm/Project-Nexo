@@ -164,7 +164,7 @@
       } else if (maker === 'AMD') {
         if (runtimes?.amd) base.installed = { ...base.installed, version: `Adrenalin ${runtimes.amd}` };
         const age = noLatest();
-        out.push(card({ ...base, ...age, action: { label: 'Site da AMD', url: PAGES.amd }, note: age.note || 'A AMD não publica a versão mais recente para conferência automática; o site oficial detecta a placa.' }));
+        out.push(card({ ...base, ...age, action: { label: 'Site da AMD', url: PAGES.amd }, note: age.note || 'A AMD não publica a versão mais nova para o Nexo conferir. O botão usa o instalador oficial da AMD, que detecta a placa e instala o driver mais novo.' }));
       } else if (maker === 'Intel') {
         // Vídeo integrado de notebook: muitas vezes só o driver do fabricante do notebook funciona bem.
         const age = noLatest();
@@ -430,8 +430,9 @@
     // AMD: o servidor dela só libera download que começa no amd.com. A página da AMD abre dentro do Nexo, a pessoa clica
     // no Download dela (o aceite da licença) e o Nexo confere a assinatura e instala.
     if (item.maker === 'AMD' && (item.id.startsWith('video-') || (item.id === 'placa-chipset' && runtimes?.board?.mobile !== true))) {
-      const need = item.state === 'missing' || item.state === 'generic';
-      return { via: 'amd-site', url: PAGES.amd, domains: ['amd.com'], signers: ['Advanced Micro Devices, Inc.'], kind: 'exe', primary: need, label: 'Baixar e instalar pelo site da AMD', silent: item.id.startsWith('video-') ? 'amd' : 'detect' };
+      const video = item.id.startsWith('video-');
+      // Vídeo: um clique (o instalador oficial de detecção da AMD). Chipset: a página abre para escolher a placa-mãe.
+      return { via: 'amd-site', url: PAGES.amd, domains: ['amd.com'], signers: ['Advanced Micro Devices, Inc.'], kind: 'exe', primary: video || item.state === 'missing' || item.state === 'generic', label: video ? 'Instalar o mais novo da AMD' : 'Escolher e instalar pela AMD', silent: video ? 'amd' : 'detect' };
     }
     if (item.id.startsWith('video-') && item.maker === 'NVIDIA' && (item.state === 'update' || item.state === 'ok')) {
       const line = nvidiaLine(item.name);
@@ -522,7 +523,8 @@
     'too-big': 'O arquivo veio maior que o esperado, então parei.', hash: 'O arquivo não bateu com o oficial, então apaguei por segurança.',
     signature: 'O arquivo não veio assinado pelo fabricante, então apaguei por segurança.', disk: 'Sem espaço no disco.', http: 'O site do fabricante não respondeu.',
     file: 'Não consegui gravar o arquivo no disco.', changed: 'O arquivo mudou depois do download, então apaguei. Baixe de novo.',
-    inner: 'O instalador de dentro do pacote não veio assinado pelo fabricante, então apaguei por segurança.'
+    inner: 'O instalador de dentro do pacote não veio assinado pelo fabricante, então apaguei por segurança.',
+    notfound: 'Não achei o botão de download no site da AMD. Tente de novo.', site: 'O site da AMD não abriu. Tente de novo.'
   };
   const signerName = (signer) => String(signer || 'fabricante').replace(/\s+(Corporation|Corp\.?|Inc\.?|Ltd\.?)$/i, '');
   function phaseText(item = {}) {
@@ -533,7 +535,8 @@
       // Pacote .zip/.cab: confere o hash agora e a assinatura do instalador de dentro na hora de instalar.
       case 'ready': return item.signer ? `✓ Assinado pela ${signerName(item.signer)}` : '✓ Baixado e conferido';
       case 'install-queued': return 'Na fila para instalar';
-      case 'installing': return 'Instalando… siga a janela do fabricante';
+      case 'site': return String(item.id || '').startsWith('video-') ? 'Abrindo o site da AMD e pegando o driver oficial…' : 'Escolha o driver da sua placa-mãe na janela da AMD que abriu.';
+      case 'installing': return item.quiet ? 'Instalando sem janela…' : 'Instalando… siga a janela do fabricante';
       case 'installed': return '✓ Instalado';
       case 'canceled': return 'Download cancelado.';
       case 'error': return ERRORS[item.error] || 'O download não terminou. Tente de novo.';
@@ -544,7 +547,7 @@
   /** O cartão continua mostrando a área do download (barra, selo, avisos) mesmo depois de perder o download direto
    *  (ex.: Visual C++ instalado vira "Em dia" e não precisa mais baixar, mas o "reinicie o PC" tem que continuar lá). */
   function keepsZone(item, dl, hasNote) {
-    return Boolean(item?.download) || Boolean(hasNote) || ['queued', 'downloading', 'verifying', 'ready', 'install-queued', 'installing', 'installed'].includes(dl?.phase);
+    return Boolean(item?.download) || Boolean(hasNote) || ['site', 'queued', 'downloading', 'verifying', 'ready', 'install-queued', 'installing', 'installed'].includes(dl?.phase);
   }
   /** Depois de instalar e conferir de novo: a versão mudou mesmo? (instalador cancelado também sai com código 0) */
   function installOutcome(stateAfter) {

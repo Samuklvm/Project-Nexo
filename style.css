@@ -1850,6 +1850,8 @@ body.lite .opt-nova, body.lite .opt-comet { display: none; }
 .driver.skeleton-row { display: block; padding: 10px 0; }
 
 /* ---- Drivers com um clique: chave do ponto de restauração, barra de download, selo e comemoração ---- */
+.drivers-switches { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+.drivers-switches .drivers-restore { margin-top: 0; }
 .drivers-restore { margin-top: 16px; width: fit-content; max-width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px 14px; padding: 11px 14px 11px 12px; border-radius: 16px; background: linear-gradient(120deg, rgba(var(--neon-2-rgb), 0.07), rgba(10, 16, 44, 0.42) 60%); border: 1px solid var(--hair); transition: border-color 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out), background 0.3s; }
 .drivers-restore:hover { border-color: rgba(var(--neon-rgb), 0.32); }
 .drivers-restore.on { border-color: rgba(var(--neon-rgb), 0.3); box-shadow: 0 0 28px rgba(var(--neon-rgb), 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
@@ -1873,7 +1875,7 @@ body.lite .opt-nova, body.lite .opt-comet { display: none; }
 .dl-bar i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.55) 50%, transparent 80%); background-size: 220% 100%; background-position: 120% 0; animation: dl-sheen 1.4s linear 3; mix-blend-mode: overlay; }
 .dl-text { font-size: 12.5px; color: var(--dv-ink); font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "cv11", "ss01"; white-space: nowrap; letter-spacing: 0.005em; }
 /* Fases sem porcentagem (na fila, conferindo, instalando): o mesmo brilho de "carregando" do app (shimmer). */
-.dl[data-phase="queued"] .dl-bar i, .dl[data-phase="verifying"] .dl-bar i, .dl[data-phase="installing"] .dl-bar i, .dl[data-phase="install-queued"] .dl-bar i { background: linear-gradient(90deg, rgba(var(--neon-rgb), 0.18), rgba(var(--neon-rgb), 0.75), rgba(var(--neon-rgb), 0.18)); background-size: 220% 100%; animation: shimmer 1.5s linear infinite; }
+.dl[data-phase="site"] .dl-bar i, .dl[data-phase="queued"] .dl-bar i, .dl[data-phase="verifying"] .dl-bar i, .dl[data-phase="installing"] .dl-bar i, .dl[data-phase="install-queued"] .dl-bar i { background: linear-gradient(90deg, rgba(var(--neon-rgb), 0.18), rgba(var(--neon-rgb), 0.75), rgba(var(--neon-rgb), 0.18)); background-size: 220% 100%; animation: shimmer 1.5s linear infinite; }
 .dl[data-phase="queued"] .dl-bar i { opacity: 0.45; box-shadow: none; }
 .dl[data-phase="queued"] .dl-bar i::after, .dl[data-phase="verifying"] .dl-bar i::after, .dl[data-phase="installing"] .dl-bar i::after, .dl[data-phase="install-queued"] .dl-bar i::after { display: none; }
 .dl[data-phase="ready"], .dl[data-phase="installed"] { grid-template-columns: minmax(0, 1fr); }

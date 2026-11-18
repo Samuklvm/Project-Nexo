@@ -441,10 +441,12 @@ if (window.__nexoPlatform === 'linux') {
   function mockDrivers() {
     const pc = mockPc();
     const d = (name, cls, provider, version, date, ids) => ({ name, cls, provider, maker: provider, version, date, ids: ids || null, signed: true });
+    // ?gpu=amd: placa de vídeo AMD (o botão abre a página da AMD escondida e instala sozinho).
+    const amdGpu = new URLSearchParams(location.search).get('gpu') === 'amd';
     return {
       platform: 'win32', at: Date.now(),
       devices: [
-        d('NVIDIA GeForce RTX 4070 SUPER', 'DISPLAY', 'NVIDIA', '32.0.15.6614', '2025-10-30', '10DE:2783'),
+        amdGpu ? d('AMD Radeon RX 7800 XT', 'DISPLAY', 'Advanced Micro Devices, Inc.', '32.0.21025.1024', '2025-09-01', '1002:747E') : d('NVIDIA GeForce RTX 4070 SUPER', 'DISPLAY', 'NVIDIA', '32.0.15.6614', '2025-10-30', '10DE:2783'),
         d('Intel(R) UHD Graphics 770', 'DISPLAY', 'Intel Corporation', '31.0.101.4502', '2023-06-10', '8086:4680'),
         d('Realtek Gaming 2.5GbE Family Controller', 'NET', 'Realtek', '10.50.511.2021', '2021-05-11', '10EC:8125'),
         { ...d('Intel(R) Wi-Fi 6E AX211 160MHz', 'NET', 'Microsoft', '22.0.0.1', '2022-01-01', '8086:51F1'), hwids: ['PCI\\VEN_8086&DEV_51F1&SUBSYS_00948086&REV_01'] },
@@ -550,6 +552,7 @@ if (window.__nexoPlatform === 'linux') {
     // Drivers com um clique: download simulado (6 s, no máximo 4 juntos), conferência e instalação.
     ...(() => {
       const listeners = new Set();
+      const autoListeners = new Set();
       const items = new Map();
       const queue = [];
       let active = 0;
@@ -570,30 +573,42 @@ if (window.__nexoPlatform === 'linux') {
             clearInterval(item.timer);
             Object.assign(item, { phase: 'verifying', speed: null, eta: null });
             send(item);
-            setTimeout(() => { Object.assign(item, { phase: 'ready', signer: item.id.startsWith('video-') ? 'NVIDIA Corporation' : 'Microsoft Corporation' }); send(item); active -= 1; pump(); }, 1200);
+            setTimeout(() => {
+              Object.assign(item, { phase: 'ready', signer: /amd/.test(item.id) ? 'Advanced Micro Devices, Inc.' : item.id.startsWith('video-') ? 'NVIDIA Corporation' : 'Microsoft Corporation' });
+              send(item); active -= 1; pump();
+              if (item.auto) { const opts = item.auto; item.auto = null; api.installDriver(item.id, opts).then((result) => autoListeners.forEach((cb) => cb({ id: item.id, result }))); }
+            }, 1200);
           }
         }, 100);
       };
       let chain = Promise.resolve();
       const mockBackups = [{ name: '2026-11-02 21h40', at: Date.now() - 16 * 86400000, count: 298 }];
-      return {
+      const api = {
+        onDriverAutoInstalled: (cb) => { autoListeners.add(cb); return () => autoListeners.delete(cb); },
         onDriverDownload: (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
         driverBackups: async () => mockBackups.slice(),
         backupDrivers: async () => { await new Promise((r) => setTimeout(r, 1200)); const d = new Date(); const name = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`; mockBackups.unshift({ name, at: Date.now(), count: 312 }); return { ok: true, name, count: 312, note: '' }; },
         openDriverBackup: async () => ({ ok: true }),
         restoreDriverBackup: async () => { await new Promise((r) => setTimeout(r, 1500)); return { ok: true, restart: true, note: '' }; },
         driverDownloads: async () => [...items.values()].map((item) => ({ ...item, timer: undefined })),
-        downloadDriver: async (id) => { const item = { id, phase: 'queued', received: 0, total: null, speed: null, eta: null }; items.set(id, item); queue.push(id); send(item); pump(); return item; },
-        cancelDriverDownload: async (id) => { const item = items.get(id); if (!item) return null; clearInterval(item.timer); const at = queue.indexOf(id); if (at >= 0) queue.splice(at, 1); else if (item.phase === 'downloading') { active -= 1; pump(); } item.phase = 'canceled'; send(item); return item; },
-        installDriver: async (id, { restorePoint } = {}) => {
+        downloadDriver: async (id, options = {}) => {
+          const item = { id, phase: 'queued', received: 0, total: null, speed: null, eta: null, auto: options.install ? { restorePoint: options.restorePoint, window: options.window } : null };
+          items.set(id, item);
+          // AMD: primeiro a página da AMD (escondida) acha o botão oficial; depois o download de verdade.
+          if (/amd/.test(id)) { item.phase = 'site'; send(item); setTimeout(() => { if (item.phase !== 'site') return; item.phase = 'queued'; queue.push(id); pump(); }, 2500); return { ...item }; }
+          queue.push(id); send(item); pump(); return { ...item };
+        },
+        cancelDriverDownload: async (id) => { const item = items.get(id); if (!item) return null; clearInterval(item.timer); if (item.phase === 'site') { item.phase = 'canceled'; send(item); return item; } const at = queue.indexOf(id); if (at >= 0) queue.splice(at, 1); else if (item.phase === 'downloading') { active -= 1; pump(); } item.phase = 'canceled'; send(item); return item; },
+        installDriver: async (id, { restorePoint, window } = {}) => {
           const item = items.get(id);
           item.phase = 'install-queued'; send(item);
-          const job = chain.then(async () => { item.phase = 'installing'; send(item); await wait(2500); item.phase = 'installed'; send(item); return { ok: true, restart: id.startsWith('video-'), declined: false, restore: restorePoint ? { ok: true, created: true, at: new Date().toISOString() } : null, note: '' }; });
+          const job = chain.then(async () => { item.phase = 'installing'; item.quiet = !window; send(item); await wait(2500); item.phase = 'installed'; send(item); return { ok: true, restart: id.startsWith('video-'), declined: false, restore: restorePoint ? { ok: true, created: true, at: new Date().toISOString() } : null, note: '' }; });
           chain = job.catch(() => {});
           return job;
         },
         showDriverFile: async () => ({ ok: true })
       };
+      return api;
     })(),
     afterBootStatus: async () => null,
     runAfterBoot: async () => ({ status: 'completed', comparison: {}, undone: [], rebootAgain: false, log: [] })

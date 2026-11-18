@@ -1049,7 +1049,8 @@ test('AMD: vídeo e chipset (desktop) ganham "Baixar e instalar pelo site da AMD
   const all = model.groups.flatMap((g) => g.items);
   const gpu = all.find((i) => i.maker === 'AMD' && i.id.startsWith('video-'));
   assert.equal(gpu.download.via, 'amd-site');
-  assert.match(gpu.download.label, /site da AMD/);
+  assert.match(gpu.download.label, /AMD/);
+  assert.equal(gpu.download.primary, true, 'vídeo AMD: botão principal');
   assert.deepEqual(gpu.download.signers, ['Advanced Micro Devices, Inc.']);
   assert.equal(gpu.download.silent, 'amd');
   const chip = all.find((i) => i.id === 'placa-chipset');
@@ -1057,4 +1058,11 @@ test('AMD: vídeo e chipset (desktop) ganham "Baixar e instalar pelo site da AMD
   data.runtimes.board.mobile = true;
   const nb = D.build(data, NOW).groups.flatMap((g) => g.items).find((i) => i.id === 'placa-chipset');
   assert.equal(nb.download?.via, undefined, 'notebook: chipset vem do fabricante do notebook');
+});
+test('textos: esperando a AMD, instalando sem janela e erros novos', () => {
+  assert.match(D.phaseText({ id: 'video-amd', phase: 'site' }), /site da AMD/);
+  assert.match(D.phaseText({ id: 'placa-chipset', phase: 'site' }), /placa-mãe/);
+  assert.match(D.phaseText({ phase: 'installing', quiet: true }), /sem janela/);
+  assert.match(D.phaseText({ phase: 'installing', quiet: false }), /janela do fabricante/);
+  assert.notEqual(D.phaseText({ phase: 'error', error: 'notfound' }), D.phaseText({ phase: 'error', error: 'xyz' }));
 });

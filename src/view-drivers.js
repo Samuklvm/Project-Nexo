@@ -24,6 +24,10 @@
   const RESTORE_AT_KEY = 'nexo-drivers-restore-at';
   const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } } };
   let restoreOn = store.get(RESTORE_KEY) !== '0';
+  // Instalar sem janelas (ligado): perfis conhecidos rodam escondidos; a primeira vez pede o aceite da licença.
+  const SILENT_KEY = 'nexo-drivers-silent';
+  const SILENT_OK_KEY = 'nexo-drivers-silent-ok';
+  let silentOn = store.get(SILENT_KEY) !== '0';
   let restoreAt = store.get(RESTORE_AT_KEY);
   // "Atualizar tudo" (parte 4): { ids, index, current, done, failed, stop } enquanto roda.
   let bulk = null;
@@ -37,7 +41,7 @@
   // Projeto 4: filtro "só o que precisa de atenção" (lembrado) e a busca.
   const ATTENTION_KEY = 'nexo-drivers-attention';
   const filter = { attention: store.get(ATTENTION_KEY) === '1', query: '' };
-  const LIVE = new Set(['queued', 'downloading', 'verifying']);
+  const LIVE = new Set(['site', 'queued', 'downloading', 'verifying']);
   // Componente: o ícone do próprio programa instalado é o certo; fabricante: o do site oficial, e o do PC na falta dele.
   const COMPONENTS = new Set(['vs', 'dotnet', 'physx', 'directx', 'vulkan']);
   const pick = (key) => (!key ? null : COMPONENTS.has(key) ? localLogos[key] || logos[key] : logos[key] || localLogos[key]) || null;
@@ -98,7 +102,7 @@
     const id = escapeHtml(item.id);
     const phase = dl?.phase || 'idle';
     const note = notes.get(item.id);
-    const noteHtml = note ? `<p class="dl-note" data-tone="${escapeHtml(note.tone)}">${escapeHtml(note.text)}${note.retry ? ` <button class="btn sm ghost" type="button" data-driver-install="${id}" data-no-restore="1">Instalar sem ponto</button>` : ''}</p>` : '';
+    const noteHtml = note ? `<p class="dl-note" data-tone="${escapeHtml(note.tone)}">${escapeHtml(note.text)}${note.retry ? ` <button class="btn sm ghost" type="button" data-driver-install="${id}" data-no-restore="1">Instalar sem ponto</button>` : ''}${note.window ? ` <button class="btn sm ghost" type="button" data-driver-install="${id}" data-window="1">Instalar com janela</button>` : ''}</p>` : '';
     const button = (label, attr, cls = 'primary', icon = 'i-down') => `<button class="btn sm ${cls}" type="button" ${attr}="${id}">${ico(icon)}${escapeHtml(label)}</button>`;
     if (phase === 'idle' || phase === 'canceled' || phase === 'error') {
       const error = phase === 'error' ? `<p class="dl-note" data-tone="bad">${escapeHtml(D.phaseText(dl))}</p>` : '';
@@ -108,10 +112,11 @@
     if (LIVE.has(phase)) {
       const pct = dl.total ? Math.min(100, (dl.received / dl.total) * 100) : 0;
       const text = phase === 'downloading' ? D.progressText(dl) : D.phaseText(dl);
+      // Esperando o site da AMD: sem barra de porcentagem (ainda não há download), só o brilho de "trabalhando".
       return {
         // Conferindo a assinatura não dá para cancelar (é rapidinho): sem botão que não faz nada.
-        side: phase === 'verifying' ? '' : `<button class="btn sm ghost dl-cancel" type="button" data-driver-cancel="${id}" aria-label="Cancelar o download">${ico('i-close')}</button>`,
-        below: `<div class="dl" data-phase="${escapeHtml(phase)}"><div class="dl-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="Download de ${escapeHtml(item.name)}"><i data-css="width: ${phase === 'downloading' ? pct.toFixed(1) : 100}%"></i></div><span class="dl-text">${escapeHtml(text)}</span></div>`
+        side: phase === 'verifying' ? '' : `<button class="btn sm ghost dl-cancel" type="button" data-driver-cancel="${id}" aria-label="${phase === 'site' ? 'Fechar o site da AMD' : 'Cancelar o download'}">${ico('i-close')}</button>`,
+        below: phase === 'site' ? `<div class="dl" data-phase="site"><div class="dl-bar dl-wait"><i data-css="width: 100%"></i></div><span class="dl-text">${escapeHtml(text)}</span></div>` : `<div class="dl" data-phase="${escapeHtml(phase)}"><div class="dl-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="Download de ${escapeHtml(item.name)}"><i data-css="width: ${phase === 'downloading' ? pct.toFixed(1) : 100}%"></i></div><span class="dl-text">${escapeHtml(text)}</span></div>`
       };
     }
     if (phase === 'ready') {
@@ -231,6 +236,44 @@
     renderHero();
   }
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+  /**
+   * Primeira instalação sem janela: o Nexo diz com todas as letras o que faz no lugar da pessoa (aceitar a licença do
+   * fabricante, recusar telemetria onde o instalador deixa). Com janela, o próprio instalador pergunta.
+   */
+  async function silentConsent() {
+    if (!silentOn || store.get(SILENT_OK_KEY) === '1') return true;
+    const ok = await Nexo.confirm({ title: 'Instalar sem janelas?', body: 'O Nexo baixa do site oficial, confere a assinatura e instala sem abrir a janela do instalador. Instalando assim, você aceita a licença de cada fabricante (a mesma que a janela mostraria). Onde o instalador deixa escolher, o Nexo recusa a telemetria: na NVIDIA, instala só o driver, sem o NVIDIA App. Se um instalador não tiver modo sem janela conhecido, a janela dele abre. Dá para desligar na chave "Instalar sem janelas".', confirmLabel: 'Instalar sem janelas' });
+    if (ok) store.set(SILENT_OK_KEY, '1');
+    return ok;
+  }
+  /** O que fazer com o resultado de uma instalação (do clique em Instalar ou do "Baixar e instalar" automático). */
+  async function afterInstall(id, result) {
+    if (result?.restore?.created && result.restore.at) { restoreAt = result.restore.at; store.set(RESTORE_AT_KEY, restoreAt); const line = document.getElementById('drivers-restore-line'); if (line) line.textContent = restoreLine(); }
+    if (result?.ok) {
+      if (result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' });
+      else if (result.windowed && result.note) notes.set(id, { tone: 'info', text: result.note });
+      const itemOf = () => model?.groups.flatMap((g) => g.items).find((x) => x.id === id);
+      const before = itemOf()?.installed?.version || null;
+      await load(true);
+      // Confere se mudou mesmo (instalador cancelado também sai com código 0): estado novo "em dia" ou versão diferente.
+      const after = itemOf();
+      const now = after?.installed?.version || null;
+      if (D.installOutcome(after?.state) === 'updated' || (now && now !== before)) celebrate.add(id);
+      else if (!result.restart) {
+        notes.set(id, { tone: 'warn', text: 'O instalador fechou, mas a versão continua a mesma. Se você cancelou, é só instalar de novo.' });
+        const dl = downloads.get(id);
+        if (dl?.phase === 'installed') downloads.set(id, { ...dl, phase: 'ready' });
+      }
+      render();
+    } else if (result?.restore && result.restore.ok === false) {
+      notes.set(id, { tone: 'warn', text: result.note || 'O ponto de restauração não foi criado.', retry: true });
+      updateCard(id);
+    } else {
+      notes.set(id, { tone: result?.declined || result?.nothing ? 'warn' : 'bad', text: result?.note || 'O instalador fechou sem terminar.', window: result?.hung === true });
+      updateCard(id);
+    }
+  }
+
   /** Atualizar tudo: o passo a passo é do NexoDrivers.runBulk; aqui só as ações da tela e o resumo honesto no fim. */
   async function runBulk() {
     const ids = D.updatePlan(model);
@@ -243,7 +286,7 @@
       start: async (id) => { const item = await bridge.downloadDriver(id); if (item?.id) { downloads.set(item.id, { ...downloads.get(item.id), ...item }); updateCard(item.id); } },
       cancel: async (id) => { await bridge.cancelDriverDownload(id); },
       install: async (id, options) => {
-        const result = await bridge.installDriver(id, options);
+        const result = await bridge.installDriver(id, { ...options, window: !silentOn });
         if (result?.restore?.created && result.restore.at) { restoreAt = result.restore.at; store.set(RESTORE_AT_KEY, restoreAt); }
         if (result?.ok && result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' });
         else if (!result?.ok && result?.note) notes.set(id, { tone: 'warn', text: result.note });
@@ -273,6 +316,12 @@
   }
   /** A chave do topo: ponto de restauração antes de instalar (vale para todos os drivers). */
   function restoreToggle() {
+    return `<div class="drivers-switches">${restoreSwitch()}${silentSwitch()}</div>`;
+  }
+  function silentSwitch() {
+    return `<label class="switch compact drivers-restore drivers-silent${silentOn ? ' on' : ''}"><span class="dr-shield">${ico('i-bolt')}</span><span class="dr-text"><strong>Instalar sem janelas</strong><small>${escapeHtml(silentOn ? 'Aceita a licença do fabricante e recusa telemetria onde dá' : 'Cada instalador abre a janela dele')}</small></span><input id="drivers-silent" type="checkbox"${silentOn ? ' checked' : ''} /><i></i></label>`;
+  }
+  function restoreSwitch() {
     return `<label class="switch compact drivers-restore${restoreOn ? ' on' : ''}"><span class="dr-shield">${ico('i-shield')}</span><span class="dr-text"><strong>Ponto de restauração antes de instalar</strong><small id="drivers-restore-line">${escapeHtml(restoreLine())}</small></span><input id="drivers-restore" type="checkbox"${restoreOn ? ' checked' : ''} /><i></i></label>`;
   }
   function render() {
@@ -388,9 +437,12 @@
     const down = event.target.closest?.('[data-driver-download]');
     if (down && down.closest('.drivers-view')) {
       const id = down.dataset.driverDownload;
-      notes.delete(id);
+      if (down.disabled) return;
       down.disabled = true;
-      try { const item = await bridge.downloadDriver(id); if (item?.id) { downloads.set(item.id, { ...downloads.get(item.id), ...item }); updateCard(item.id); } else if (item?.note) showToast(item.note); } catch (error) { showToast(error?.message || 'Não consegui começar o download.'); down.disabled = false; }
+      if (!(await silentConsent())) { down.disabled = false; return; }
+      notes.delete(id);
+      // Um clique: baixa e instala sozinho quando o arquivo fica pronto (o resultado chega por onDriverAutoInstalled).
+      try { const item = await bridge.downloadDriver(id, { install: true, restorePoint: restoreOn, window: !silentOn }); if (item?.id) { downloads.set(item.id, { ...downloads.get(item.id), ...item }); updateCard(item.id); } else if (item?.note) showToast(item.note); } catch (error) { showToast(error?.message || 'Não consegui começar o download.'); down.disabled = false; }
       return;
     }
     const stop = event.target.closest?.('[data-driver-cancel]');
@@ -401,31 +453,14 @@
     if (inst && inst.closest('.drivers-view')) {
       const id = inst.dataset.driverInstall;
       const withPoint = restoreOn && inst.dataset.noRestore !== '1';
+      const withWindow = !silentOn || inst.dataset.window === '1';
       if (inst.disabled) return;
       inst.disabled = true; // clique duplo não manda dois pedidos
+      if (!withWindow && !(await silentConsent())) { inst.disabled = false; return; }
       notes.delete(id);
       let result = null;
-      try { result = await bridge.installDriver(id, { restorePoint: withPoint }); } catch (error) { result = { ok: false, note: error?.message || 'Não consegui abrir o instalador.' }; }
-      if (result?.restore?.created && result.restore.at) { restoreAt = result.restore.at; store.set(RESTORE_AT_KEY, restoreAt); const line = document.getElementById('drivers-restore-line'); if (line) line.textContent = restoreLine(); }
-      if (result?.ok) {
-        if (result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' });
-        await load(true);
-        // Confere se a versão mudou mesmo (instalador cancelado também sai com código 0).
-        const after = model?.groups.flatMap((g) => g.items).find((x) => x.id === id);
-        if (D.installOutcome(after?.state) === 'updated') celebrate.add(id);
-        else if (!result.restart) {
-          notes.set(id, { tone: 'warn', text: 'O instalador fechou, mas a versão continua a mesma. Se você cancelou, é só instalar de novo.' });
-          const dl = downloads.get(id);
-          if (dl?.phase === 'installed') downloads.set(id, { ...dl, phase: 'ready' });
-        }
-        render();
-      } else if (result?.restore && result.restore.ok === false) {
-        notes.set(id, { tone: 'warn', text: result.note || 'O ponto de restauração não foi criado.', retry: true });
-        updateCard(id);
-      } else {
-        notes.set(id, { tone: result?.declined ? 'warn' : 'bad', text: result?.note || 'O instalador fechou sem terminar.' });
-        updateCard(id);
-      }
+      try { result = await bridge.installDriver(id, { restorePoint: withPoint, window: withWindow }); } catch (error) { result = { ok: false, note: error?.message || 'Não consegui abrir o instalador.' }; }
+      await afterInstall(id, result);
       return;
     }
     const chip = event.target.closest?.('[data-driver-chip]');
@@ -436,7 +471,8 @@
     }
     if (event.target.closest?.('[data-driver-bulk]') && event.target.closest('.drivers-view')) {
       const ids = D.updatePlan(model);
-      const ok = await Nexo.confirm({ title: `Atualizar ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}?`, body: `O Nexo baixa tudo do site oficial e abre um instalador por vez, na ordem certa (placa primeiro, vídeo por último).${restoreOn ? ' Antes do primeiro, cria um ponto de restauração.' : ''} Cada instalador abre na sua frente.`, items: D.bulkNames(model, ids, 8), confirmLabel: 'Atualizar tudo' });
+      if (!ids.length || !(await silentConsent())) return;
+      const ok = await Nexo.confirm({ title: `Atualizar ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}?`, body: `O Nexo baixa tudo do site oficial e instala um por vez, na ordem certa (placa primeiro, vídeo por último).${restoreOn ? ' Antes do primeiro, cria um ponto de restauração.' : ''}${silentOn ? ' Tudo sem janelas: pode continuar usando o PC.' : ' Cada instalador abre na sua frente.'}`, items: D.bulkNames(model, ids, 8), confirmLabel: 'Atualizar tudo' });
       if (ok) runBulk().catch(() => { bulk = null; renderHero(); });
       return;
     }
@@ -487,6 +523,15 @@
     }
   });
   document.addEventListener('change', (event) => {
+    if (event.target?.id === 'drivers-silent') {
+      silentOn = event.target.checked;
+      store.set(SILENT_KEY, silentOn ? '1' : '0');
+      const label = event.target.closest('.drivers-silent');
+      label?.classList.toggle('on', silentOn);
+      const small = label?.querySelector('small');
+      if (small) small.textContent = silentOn ? 'Aceita a licença do fabricante e recusa telemetria onde dá' : 'Cada instalador abre a janela dele';
+      return;
+    }
     if (event.target?.id !== 'drivers-restore') return;
     restoreOn = event.target.checked;
     store.set(RESTORE_KEY, restoreOn ? '1' : '0');
@@ -494,6 +539,7 @@
     const line = document.getElementById('drivers-restore-line');
     if (line) line.textContent = restoreLine();
   });
+  bridge.onDriverAutoInstalled?.((payload) => { if (payload?.id) afterInstall(payload.id, payload.result); });
   bridge.onDriverDownload?.((item) => {
     if (!item?.id) return;
     downloads.set(item.id, item);
