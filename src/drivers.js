@@ -246,6 +246,10 @@
     const years = new Set((runtimes.uninstall || []).map((item) => (/Visual C\+\+ (\d{4})/i.exec(item.name) || [])[1]).filter(Boolean));
     const old = ['2005', '2008', '2010', '2012', '2013'];
     const have = old.filter((year) => years.has(year));
+    // Os que faltam, um cartão cada, com o arquivo oficial da Microsoft (32 bits: é o que os jogos antigos usam).
+    for (const year of old.filter((y) => !years.has(y))) {
+      out.push(card({ id: `vc-${year}`, icon: 'i-box', brand: 'vs', brandAlt: 'microsoft', name: `Visual C++ ${year} (32 bits)`, maker: 'Microsoft', purpose: `Só instale se um jogo antigo pedir (erro de MSVCR${VC_DLL[year]}.dll ou MSVCP${VC_DLL[year]}.dll).`, state: 'check', action: { label: 'Página da Microsoft', url: PAGES.vcOld } }));
+    }
     out.push(card({ id: 'vc-antigos', icon: 'i-box', brand: 'vs', brandAlt: 'microsoft', name: 'Visual C++ antigos (2005 a 2013)', maker: 'Microsoft', purpose: 'Jogos antigos ainda pedem estas versões. Instale só a que um jogo pedir.', installed: have.length ? { version: have.join(', ') } : null, state: have.length === old.length ? 'ok' : 'check', note: have.length < old.length ? `Faltam: ${old.filter((year) => !years.has(year)).join(', ')}.` : null, action: { label: 'Página da Microsoft', url: PAGES.vcOld } }));
     const dx = runtimes.dx || {};
     const dxOk = dx.d3dx9 && dx.xinput13;
@@ -358,6 +362,50 @@
 
   /* ---------------- Download direto (o arquivo oficial certo para este PC) ---------------- */
   const MS_DOMAINS = ['aka.ms', 'microsoft.com', 'visualstudio.microsoft.com'];
+  // Visual C++ antigos (32 bits), dos links oficiais da Microsoft (Download Center).
+  const VC_OLD = {
+    2005: 'https://download.microsoft.com/download/8/B/4/8B42259F-5D70-43F4-AC2E-4B208FD8D66A/vcredist_x86.EXE',
+    2008: 'https://download.microsoft.com/download/d/d/9/dd9a82d0-52ef-40db-8dab-795376989c03/vcredist_x86.exe',
+    2010: 'https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x86.exe',
+    2012: 'https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe',
+    2013: 'https://download.microsoft.com/download/C/C/2/CC2DF5F8-4454-44B4-802D-5EA68D086676/vcredist_x86.exe'
+  };
+  const VC_DLL = { 2005: '80', 2008: '90', 2010: '100', 2012: '110', 2013: '120' };
+  /*
+   * Periféricos gamer: o programa oficial de cada marca (botões, DPI, iluminação e firmware). Eles se atualizam
+   * sozinhos, então instalado = em dia. Baixar direto só onde o link oficial é fixo; os outros abrem o site.
+   */
+  const PERIPHERALS = [
+    { key: 'logitech', vid: '046D', name: 'Logitech G HUB', maker: 'Logitech', app: /logitech g hub/i, page: 'https://www.logitechg.com/innovation/g-hub.html',
+      file: { url: 'https://download01.logi.com/web/ftp/pub/techsupport/gaming/lghub_installer.exe', domains: ['download01.logi.com'], fileName: 'lghub_installer.exe', signers: ['Logitech Inc', 'Logitech Inc.', 'Logitech'] } },
+    { key: 'steelseries', vid: '1038', name: 'SteelSeries GG', maker: 'SteelSeries', app: /steelseries gg/i, page: 'https://steelseries.com/gg',
+      file: { url: 'https://steelseries.com/gg/downloads/gg/latest/windows', domains: ['steelseries.com', 'steelseriescdn.com'], fileName: 'SteelSeriesGG-Setup.exe', signers: ['SteelSeries ApS'] } },
+    { key: 'razer', vid: '1532', name: 'Razer Synapse', maker: 'Razer', app: /razer synapse/i, page: 'https://www.razer.com/synapse-4' },
+    { key: 'corsair', vid: '1B1C', name: 'CORSAIR iCUE', maker: 'Corsair', app: /\bicue\b/i, page: 'https://www.corsair.com/us/en/s/downloads' }
+  ];
+  const vidOf = (item) => {
+    const ids = String(item?.ids || '');
+    if (/^[0-9A-F]{4}:/.test(ids)) return ids.slice(0, 4);
+    for (const h of Array.isArray(item?.hwids) ? item.hwids : []) { const m = /VID_([0-9A-F]{4})/i.exec(String(h)); if (m) return m[1].toUpperCase(); }
+    return null;
+  };
+  function peripheralCards(devices, runtimes) {
+    const vids = new Set(devices.map(vidOf).filter(Boolean));
+    return PERIPHERALS.filter((p) => vids.has(p.vid)).map((p) => {
+      const installed = (Array.isArray(runtimes?.uninstall) ? runtimes.uninstall : []).find((item) => p.app.test(String(item?.name || '')));
+      return card({
+        id: `perif-${p.key}`, icon: 'i-spark', brand: p.key, name: p.name, maker: p.maker,
+        purpose: `O programa oficial da ${p.maker} para o seu periférico: botões, DPI, iluminação e as atualizações de firmware.`,
+        installed: installed ? { version: installed.version || null } : null, state: installed ? 'ok' : 'check',
+        note: installed ? `O ${p.name} se atualiza sozinho e atualiza o firmware do periférico.` : `Você tem um periférico ${p.maker} e o ${p.name} não está instalado.`,
+        action: { label: `Site da ${p.maker}`, url: p.page }
+      });
+    });
+  }
+  // O assistente oficial da Intel: detecta e instala os drivers Intel certos para este PC.
+  const INTEL_DSA = { url: 'https://dsadata.intel.com/installer', domains: ['dsadata.intel.com', 'downloadmirror.intel.com'], fileName: 'Intel-Driver-and-Support-Assistant-Installer.exe' };
+  const hasApp = (runtimes, re) => (Array.isArray(runtimes?.uninstall) ? runtimes.uninstall : []).some((item) => re.test(String(item?.name || '')));
+  const INTEL_CARD = /^(rede|bt|video|disco)-|^placa-chipset$/;
   const SIGNER = { nvidia: 'NVIDIA Corporation', microsoft: 'Microsoft Corporation' };
   /** Só https e só o domínio do fabricante (o que vem da internet não é confiável, mesmo já filtrado no processo principal). */
   function official(value, domains) {
@@ -387,6 +435,23 @@
     if ((item.id === 'vc-x64' || item.id === 'vc-x86') && (item.state === 'missing' || item.state === 'old')) {
       const arch = item.id.slice(3);
       return dl(arch === 'x64' ? PAGES.vc64File : PAGES.vc86File, MS_DOMAINS, `vc_redist.${arch}.exe`, SIGNER.microsoft);
+    }
+    const perif = /^perif-(\w+)$/.exec(item.id);
+    if (perif) {
+      const p = PERIPHERALS.find((x) => x.key === perif[1]);
+      if (!p?.file || item.state === 'ok') return null;
+      const base = dl(p.file.url, p.file.domains, p.file.fileName, null, { reinstall: true });
+      if (!base) return null;
+      const { signer, ...rest } = base;
+      return { ...rest, signers: [...p.file.signers], label: `Baixar o ${p.name}` };
+    }
+    const vcOld = /^vc-(2005|2008|2010|2012|2013)$/.exec(item.id);
+    if (vcOld) { const plan = dl(VC_OLD[vcOld[1]], ['download.microsoft.com'], `vcredist-${vcOld[1]}-x86.exe`, SIGNER.microsoft, { reinstall: true }); return plan && { ...plan, label: 'Baixar da Microsoft' }; }
+    // Peça Intel sem pacote do fabricante do PC: o assistente oficial da Intel (vídeo de notebook fica com o fabricante).
+    if (item.maker === 'Intel' && INTEL_CARD.test(item.id) && !(item.id.startsWith('video-') && runtimes?.board?.mobile === true) && !hasApp(runtimes, /Driver & Support Assistant/i)) {
+      const known = item.state === 'generic' || item.state === 'missing';
+      const plan = dl(INTEL_DSA.url, INTEL_DSA.domains, INTEL_DSA.fileName, 'Intel Corporation', { reinstall: !known });
+      return plan && { ...plan, label: 'Baixar o assistente da Intel' };
     }
     if (item.id === 'directx9' && item.state === 'missing') return dl(PAGES.directxFile, MS_DOMAINS, 'dxwebsetup.exe', SIGNER.microsoft);
     const net = /^dotnet-(\d+\.\d+)$/.exec(item.id);
@@ -510,13 +575,19 @@
     // VPN, tela virtual...) mais os dispositivos das outras classes.
     const used = new Set(Object.values(items).flat().flatMap((item) => [item.sourceName, ...(item.extra || [])]).filter(Boolean));
     const leftovers = devices.filter((item) => !/^microsoft/i.test(item.provider || '') && !used.has(item.name) && !/high definition audio|display audio|hdmi audio/i.test(item.name));
-    items.outros = otherCards([...leftovers, ...(Array.isArray(data.others) ? data.others : [])], data.generic, now, support);
+    items.outros = [...peripheralCards([...devices, ...(Array.isArray(data.others) ? data.others : []), ...(Array.isArray(data.genericDevices) ? data.genericDevices : [])], runtimes), ...otherCards([...leftovers, ...(Array.isArray(data.others) ? data.others : [])], data.generic, now, support)];
     for (const list of Object.values(items)) for (const item of list) item.download = downloadOf(item, latest, runtimes);
+    // Assistente da Intel já instalado: o Nexo não oferece de novo, só diz onde atualizar.
+    if (hasApp(runtimes, /Driver & Support Assistant/i)) {
+      for (const list of Object.values(items)) for (const item of list) {
+        if (item.maker === 'Intel' && INTEL_CARD.test(item.id) && item.state !== 'ok' && item.state !== 'update') item.note = `${item.note ? `${item.note} ` : ''}O assistente da Intel já está instalado: abra ele para atualizar este driver.`;
+      }
+    }
     // Pacotes do fabricante do PC: primeiro no grupo da peça; a peça coberta deixa o botão do site para o pacote.
     const oem = oemCards(latest.oem, [...devices, ...(Array.isArray(data.genericDevices) ? data.genericDevices : [])], Array.isArray(runtimes?.missing) ? runtimes.missing : []);
     for (const list of Object.values(items)) for (const item of list) {
       const by = item.sourceName && oem.covered.get(item.sourceName);
-      if (by && !item.id.startsWith('video-')) { item.coveredBy = by; item.action = null; }
+      if (by && !item.id.startsWith('video-')) { item.coveredBy = by; item.action = null; item.download = null; }
     }
     for (const [group, list] of Object.entries(oem.cards)) items[group] = [...list, ...(items[group] || [])];
     const groups = GROUPS.map((group) => ({ ...group, items: items[group.id] || [] })).filter((group) => group.items.length);

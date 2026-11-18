@@ -26,8 +26,9 @@ function VC($arch) {
   }
   return $null
 }
-$un = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' |
-  Where-Object { [string]$_.DisplayName -match 'Visual C\+\+ .*Redistributable|PhysX' } |
+# Runtimes, e os programas oficiais que atualizam drivers (assistente da Intel, G HUB, GG, Synapse, iCUE, AMD).
+$un = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+  Where-Object { [string]$_.DisplayName -match 'Visual C\+\+ .*Redistributable|PhysX|Logitech G HUB|SteelSeries GG|Razer Synapse|iCUE|Driver & Support Assistant|AMD Software' } |
   ForEach-Object { @{ name = [string]$_.DisplayName; version = [string]$_.DisplayVersion } } | Select-Object -First 40)
 # Programas instalados com ícone (DisplayIcon): o ícone de verdade de cada componente e de cada fabricante vem daqui.
 $apps = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
