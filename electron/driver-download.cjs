@@ -68,7 +68,21 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
   const setPhase = (item, phase, extra = {}) => { Object.assign(item, { phase, ...extra }); send(item); };
   const announceQueue = () => { for (const id of queue) send(items.get(id)); };
 
-  function start(id, plan) {
+  const Silent = require('./silent-install.cjs');
+  const silentOf = (plan) => {
+    if (plan.silent === undefined || plan.silent === null || plan.silent === false) return null;
+    if (!Silent.isName(plan.silent)) throw new Error('Modo silencioso desconhecido.');
+    return plan.silent;
+  };
+  /** Depois de pronto: instala sozinho quando o pedido veio do "Baixar e instalar", e avisa a tela do resultado. */
+  function autoInstall(item) {
+    if (!item.auto) return;
+    const opts = item.auto;
+    item.auto = null;
+    install(item.id, opts).then((result) => emit('drivers:auto-installed', { id: item.id, result }), (error) => emit('drivers:auto-installed', { id: item.id, result: { ok: false, note: String(error?.message || 'Não consegui instalar.').slice(0, 200) } }));
+  }
+
+  function start(id, plan, { auto = null } = {}) {
     if (typeof id !== 'string' || !id || id.length > 200) throw new Error('Cartão inválido.');
     if (!plan) throw new Error('Este driver não tem download direto.');
     const domains = Array.isArray(plan.domains) ? plan.domains.map(String) : [];
@@ -85,8 +99,8 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
       if (other.id !== id && other.plan.fileName === plan.fileName && (other.phase === 'queued' || other.phase === 'downloading' || other.phase === 'verifying')) throw new Error('Esse mesmo arquivo já está sendo baixado em outro cartão.');
     }
     // Cópia: depois de começar, o motor não depende mais da leitura (nem de quem mandou o plano).
-    const frozen = Object.freeze({ url: plan.url, domains: Object.freeze([...domains]), fileName: plan.fileName, signers: Object.freeze([...signers]), kind, hash: hashOf(plan) });
-    const item = { id, plan: frozen, phase: 'queued', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: null, samples: [] };
+    const frozen = Object.freeze({ url: plan.url, domains: Object.freeze([...domains]), fileName: plan.fileName, signers: Object.freeze([...signers]), kind, hash: hashOf(plan), silent: silentOf(plan) });
+    const item = { id, plan: frozen, phase: 'queued', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: null, samples: [], auto: auto ? { restorePoint: auto.restorePoint === true } : null };
     items.set(id, item);
     queue.push(id);
     send(item);
@@ -112,6 +126,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
       setPhase(item, 'verifying');
       await verify(item);
       setPhase(item, 'ready');
+      autoInstall(item);
     } catch (error) {
       const code = error instanceof DownloadError ? error.code : 'offline';
       if (code === 'canceled') setPhase(item, 'canceled', { speed: null, eta: null });
@@ -320,27 +335,93 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     if (!item) return null;
     const at = queue.indexOf(id);
     if (at >= 0) { queue.splice(at, 1); setPhase(item, 'canceled'); announceQueue(); return snapshot(item); }
+    if (item.external && (item.phase === 'site' || item.phase === 'downloading')) {
+      const close = item.cancel;
+      item.cancel = null;
+      try { close?.(); } catch { /* janela já fechou */ }
+      setPhase(item, 'canceled', { speed: null, eta: null });
+      return snapshot(item);
+    }
     if (item.phase === 'downloading') { item.canceled = true; item.cancel?.(); }
     return snapshot(item);
+  }
+
+  /*
+   * Download feito pela página da AMD (o servidor dela só libera o que começa no amd.com): o processo principal abre a
+   * página, o Electron baixa, e o motor recebe o arquivo pronto. Daí para a frente é igual: assinatura, hash, instalar.
+   */
+  function external(id, plan, { auto = null, cancel: close = null } = {}) {
+    if (typeof id !== 'string' || !id || id.length > 200) throw new Error('Cartão inválido.');
+    const signers = Array.isArray(plan?.signers) ? plan.signers : [];
+    if (!Sig.allowedSigner(signers)) throw new Error('Assinante não permitido.');
+    const current = items.get(id);
+    if (current && (BUSY.has(current.phase) || current.phase === 'site')) return snapshot(current);
+    const frozen = Object.freeze({ url: null, domains: Object.freeze(['drivers.amd.com']), fileName: null, signers: Object.freeze([...signers]), kind: 'exe', hash: null, silent: silentOf(plan || {}) });
+    const item = { id, external: true, plan: frozen, phase: 'site', received: 0, total: null, speed: null, eta: null, error: null, signer: null, file: null, sha256: null, lastEmit: 0, cancel: close, samples: [], auto: auto ? { restorePoint: auto.restorePoint === true } : null };
+    items.set(id, item);
+    send(item);
+    return snapshot(item);
+  }
+  function progress(id, received, total) {
+    const item = items.get(id);
+    if (!item?.external || (item.phase !== 'site' && item.phase !== 'downloading')) return;
+    item.received = Math.max(0, Number(received) || 0);
+    item.total = Number(total) > 0 ? Number(total) : null;
+    if (item.phase !== 'downloading') { item.samples = []; setPhase(item, 'downloading'); }
+    measure(item);
+    send(item, false);
+  }
+  async function arrived(id, { file, url, profile } = {}) {
+    const item = items.get(id);
+    if (!item?.external) throw new Error('Esse download não foi pedido.');
+    const name = path.basename(String(file || ''));
+    const inside = path.resolve(path.dirname(String(file || ''))) === path.resolve(dir);
+    if (!inside || !SAFE_NAME.test(name) || !name.toLowerCase().endsWith('.exe')) {
+      setPhase(item, 'error', { error: 'signature', speed: null, eta: null });
+      throw new Error('Arquivo fora da pasta de downloads (não permitido).');
+    }
+    const silent = profile === undefined ? item.plan.silent : (profile === null ? null : (Silent.isName(profile) ? profile : item.plan.silent));
+    item.plan = Object.freeze({ ...item.plan, url: String(url || ''), fileName: name, silent });
+    item.file = file;
+    item.cancel = null;
+    try {
+      setPhase(item, 'verifying', { speed: null, eta: null });
+      const own = crypto.createHash('sha256');
+      own.update(await fs.readFile(file));
+      item.sha256 = own.digest('hex');
+      await verify(item);
+      setPhase(item, 'ready');
+      autoInstall(item);
+    } catch (error) {
+      setPhase(item, 'error', { error: error instanceof DownloadError ? error.code : 'file', speed: null, eta: null });
+    }
+    return snapshot(item);
+  }
+  function failed(id, code) {
+    const item = items.get(id);
+    if (!item?.external || (item.phase !== 'site' && item.phase !== 'downloading')) return;
+    item.cancel = null;
+    if (code === 'canceled') setPhase(item, 'canceled', { speed: null, eta: null });
+    else setPhase(item, 'error', { error: ['offline', 'notfound', 'site'].includes(code) ? code : 'offline', speed: null, eta: null });
   }
 
   async function readIndex() { try { const raw = JSON.parse(await fs.readFile(INDEX(), 'utf8')); return raw && typeof raw === 'object' ? raw : {}; } catch { return {}; } }
   async function writeIndex(index) { await fs.mkdir(dir, { recursive: true }); await fs.writeFile(INDEX(), JSON.stringify(index)); }
 
-  function install(id, { restorePoint = true } = {}) {
+  function install(id, { restorePoint = true, window = false } = {}) {
     const item = items.get(id);
     if (!item || !item.file || (item.phase !== 'ready' && item.phase !== 'installed')) return Promise.reject(new Error('Este driver ainda não foi baixado.'));
     setPhase(item, 'install-queued');
-    const job = installChain.then(() => runInstall(item, restorePoint === true));
+    const job = installChain.then(() => runInstall(item, restorePoint === true, window === true));
     installChain = job.catch(() => {});
     return job;
   }
 
-  async function runInstall(item, restorePoint) {
+  async function runInstall(item, restorePoint, window) {
     setPhase(item, 'installing');
     let answer = null;
     try {
-      answer = await elevate('driver-install', { file: item.file, dir, signers: [...item.plan.signers], kind: item.plan.kind, sha256: item.sha256, restorePoint, description: 'Nexo - antes de instalar um driver' });
+      answer = await elevate('driver-install', { file: item.file, dir, signers: [...item.plan.signers], kind: item.plan.kind, sha256: item.sha256, restorePoint, silent: window ? false : (item.plan.silent || false), description: 'Nexo - antes de instalar um driver' });
     } catch (error) {
       setPhase(item, 'ready');
       return { ok: false, restart: false, declined: false, restore: null, note: String(error?.message || 'Não consegui abrir o instalador.').slice(0, 200) };
@@ -365,19 +446,29 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
       return { ok: false, restart: false, declined: false, restore: null, note: 'O arquivo não estava mais assinado pelo fabricante, então apaguei por segurança.' };
     }
     if (restore && !restore.ok) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, note: `O ponto de restauração não foi criado: ${String(restore.note || 'o Windows não criou').slice(0, 160)}.` }; }
+    // Sem janela: o instalador ficou esperando algo na tela (encerrado) → dá para tentar com a janela.
+    if (result.hung === true) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, hung: true, note: 'O instalador ficou parado sem janela (queria perguntar algo), então encerrei. Use "Instalar com janela".' }; }
+    // O código de saída quer dizer coisas diferentes em cada instalador: vale a tabela do perfil.
+    if (result.profile && Silent.isName(result.profile) && result.profile !== 'detect') {
+      const o = Silent.outcome(result.profile, result.code);
+      if (o.nothing) result.nothing = true;
+      else if (o.notApplicable) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, notApplicable: true, note: 'Esse pacote não serve neste PC (o instalador do fabricante recusou). Nada mudou.' }; }
+      else { result.ok = o.ok; if (o.restart) result.code = 3010; }
+    }
     // pnputil 259: nenhuma peça precisou do driver (o Windows já usa um igual ou mais novo). Não é "Instalado".
     if (result.nothing === true) {
       setPhase(item, 'ready');
+      if (result.profile) return { ok: false, restart: false, declined: false, restore, nothing: true, note: 'Já estava instalado (o instalador não mudou nada). Nada mudou.' };
       // Pacote só da Microsoft (Catálogo): achado pelo código da peça, mas o Windows não usou em nenhuma.
       const catalog = item.plan.signers.every((s) => /^Microsoft /.test(s));
-      return { ok: false, restart: false, declined: false, restore, note: catalog ? 'Esse driver do Catálogo da Microsoft não serve nesta peça (o Windows não usou em nenhuma). Nada mudou.' : 'O Windows já usa um driver igual ou mais novo para essas peças; nada mudou.' };
+      return { ok: false, restart: false, declined: false, restore, nothing: true, note: catalog ? 'Esse driver do Catálogo da Microsoft não serve nesta peça (o Windows não usou em nenhuma). Nada mudou.' : 'O Windows já usa um driver igual ou mais novo para essas peças; nada mudou.' };
     }
     if (!result.ok) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, note: String(result.note || 'O instalador fechou sem terminar.').slice(0, 200) }; }
     const index = await readIndex();
     index[path.basename(item.file)] = now();
     await writeIndex(index).catch(() => {});
     setPhase(item, 'installed');
-    return { ok: true, restart: result.code === 3010, declined: false, restore, note: '' };
+    return { ok: true, restart: result.code === 3010, declined: false, restore, note: result.windowed ? 'Esse instalador não tem modo sem janela conhecido, então ele abriu a janela do fabricante.' : '', ...(result.windowed ? { windowed: true } : {}) };
   }
 
   /** Apaga instaladores já usados há mais de 14 dias e pedaços parados há mais de 7. */
@@ -398,7 +489,7 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
   }
 
   return {
-    start, cancel, install, cleanup,
+    start, cancel, install, cleanup, external, progress, arrived, failed,
     list: () => [...items.values()].map(snapshot),
     fileOf: (id) => { const item = items.get(id); return item && item.file ? item.file : null; }
   };

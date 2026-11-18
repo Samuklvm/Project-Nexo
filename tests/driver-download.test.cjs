@@ -730,3 +730,84 @@ test('silencioso: pacote .zip roda o instalador de dentro pelo detect', () => {
   assert.match(b, /Contains\('Inno Setup'\)/);
   assert.match(b, /\$r\.windowed = \$true/);
 });
+
+/* ---------------- Motor: sem janela, instala sozinho, página da AMD ---------------- */
+test('motor: manda o perfil sem janela para o administrador; "com janela" manda false', async () => {
+  const asked = [];
+  const { engine } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async (task, args) => { asked.push(args.silent); return { result: { ok: true, code: 0, profile: 'nvidia' } }; } });
+  engine.start('video-rtx', plan({ silent: 'nvidia' }));
+  await settle(engine, 'video-rtx');
+  await engine.install('video-rtx', { restorePoint: false });
+  await engine.install('video-rtx', { restorePoint: false, window: true });
+  assert.deepEqual(asked, ['nvidia', false]);
+  assert.throws(() => engine.start('x', plan({ silent: '-s; calc', fileName: 'outro.exe' })), /Modo silencioso desconhecido/);
+});
+test('motor: baixou com "instalar depois" → instala sozinho e avisa o resultado', async () => {
+  const { engine, events } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async () => ({ result: { ok: true, code: 0, profile: 'nvidia' } }) });
+  engine.start('video-rtx', plan({ silent: 'nvidia' }), { auto: { restorePoint: true } });
+  await settle(engine, 'video-rtx', ['installed', 'error']);
+  for (let i = 0; i < 50 && !events.some((e) => e.channel === 'drivers:auto-installed'); i += 1) await tick();
+  const done = events.find((e) => e.channel === 'drivers:auto-installed');
+  assert.equal(done.id, 'video-rtx');
+  assert.equal(done.result.ok, true);
+});
+test('motor: resultado pelo código do perfil (Dell 3 = já tinha, Dell 5 = não serve, burn 3010 = reiniciar)', async () => {
+  const run = async (result) => {
+    const { engine } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async () => ({ result }) });
+    engine.start('a', plan({ silent: 'detect' }));
+    await settle(engine, 'a');
+    return engine.install('a', { restorePoint: false });
+  };
+  const same = await run({ ok: false, code: 3, profile: 'dell' });
+  assert.equal(same.ok, false); assert.equal(same.nothing, true); assert.match(same.note, /nada mudou/i);
+  const no = await run({ ok: false, code: 5, profile: 'dell' });
+  assert.equal(no.ok, false); assert.match(no.note, /não serve neste PC/);
+  const reboot = await run({ ok: true, code: 3010, profile: 'burn' });
+  assert.equal(reboot.ok, true); assert.equal(reboot.restart, true);
+  const dellReboot = await run({ ok: false, code: 2, profile: 'dell' });
+  assert.equal(dellReboot.ok, true); assert.equal(dellReboot.restart, true);
+});
+test('motor: travou sem janela → oferece "com janela"; tipo desconhecido → avisa que abriu a janela', async () => {
+  const run = async (result) => {
+    const { engine } = engineWith({ routes: { [NV]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async () => ({ result }) });
+    engine.start('a', plan({ silent: 'detect' }));
+    await settle(engine, 'a');
+    return engine.install('a', { restorePoint: false });
+  };
+  const hung = await run({ ok: false, hung: true, profile: 'inno' });
+  assert.equal(hung.ok, false); assert.equal(hung.hung, true); assert.match(hung.note, /com janela/);
+  const win = await run({ ok: true, code: 0, windowed: true });
+  assert.equal(win.ok, true); assert.equal(win.windowed, true);
+});
+test('motor: arquivo da página da AMD (site → baixando → confere → pronto → instala sozinho)', async () => {
+  const asked = [];
+  const { engine, dir, events } = engineWith({ routes: {}, signer: 'Advanced Micro Devices, Inc.', elevate: async (task, args) => { asked.push(args); return { result: { ok: true, code: 0, profile: 'amd' } }; } });
+  const site = engine.external('video-amd', { signers: ['Advanced Micro Devices, Inc.'], silent: 'amd' }, { auto: { restorePoint: false } });
+  assert.equal(site.phase, 'site');
+  engine.progress('video-amd', 1000, 3000);
+  assert.equal(engine.list().find((x) => x.id === 'video-amd').phase, 'downloading');
+  const file = path.join(dir, 'amd-software-adrenalin-edition-25.11.1-win10-win11-nov-rdna.exe');
+  fs.writeFileSync(file, BODY);
+  await engine.arrived('video-amd', { file, url: 'https://drivers.amd.com/drivers/amd-software-adrenalin-edition-25.11.1-win10-win11-nov-rdna.exe' });
+  await settle(engine, 'video-amd', ['installed', 'error']);
+  assert.equal(asked[0].silent, 'amd');
+  assert.equal(asked[0].sha256, crypto.createHash('sha256').update(BODY).digest('hex'));
+  for (let i = 0; i < 50 && !events.some((e) => e.channel === 'drivers:auto-installed'); i += 1) await tick();
+  assert.ok(events.some((e) => e.channel === 'drivers:auto-installed' && e.id === 'video-amd'));
+});
+test('motor: página da AMD — arquivo fora da pasta, nome estranho ou fechar no meio', async () => {
+  const { engine, dir } = engineWith({ routes: {}, signer: 'Advanced Micro Devices, Inc.' });
+  let closed = 0;
+  engine.external('video-amd', { signers: ['Advanced Micro Devices, Inc.'], silent: 'amd' }, { cancel: () => { closed += 1; } });
+  await assert.rejects(engine.arrived('video-amd', { file: 'C:\\Windows\\evil.exe', url: 'https://drivers.amd.com/x.exe' }), /fora da pasta|não permitido/i);
+  assert.equal(engine.list().find((x) => x.id === 'video-amd').phase, 'error');
+  engine.external('video-amd', { signers: ['Advanced Micro Devices, Inc.'], silent: 'amd' }, { cancel: () => { closed += 1; } });
+  engine.cancel('video-amd');
+  assert.equal(closed, 1);
+  assert.equal(engine.list().find((x) => x.id === 'video-amd').phase, 'canceled');
+  engine.external('video-amd', { signers: ['Advanced Micro Devices, Inc.'], silent: 'amd' });
+  engine.failed('video-amd', 'canceled');
+  assert.equal(engine.list().find((x) => x.id === 'video-amd').phase, 'canceled');
+  assert.throws(() => engine.external('video-x', { signers: ['Evil Corp'], silent: 'amd' }), /Assinante não permitido/);
+  void dir;
+});
