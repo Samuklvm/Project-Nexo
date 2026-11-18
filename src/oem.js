@@ -20,7 +20,7 @@
     'asus-api': Object.freeze(['rog.asus.com', 'www.asus.com', 'dlcdnets.asus.com'])
   });
   const SIGNERS = Object.freeze({
-    dell: Object.freeze(['Dell Inc', 'Dell Inc.', 'Dell Technologies']),
+    dell: Object.freeze(['Dell Inc', 'Dell Inc.', 'Dell Technologies', 'Dell Technologies Inc.']),
     hp: Object.freeze(['HP Inc.', 'HP Inc', 'Hewlett-Packard Company']),
     lenovo: Object.freeze(['Lenovo', 'Lenovo (Beijing) Limited']),
     asus: Object.freeze(['ASUSTeK COMPUTER INC.', 'ASUSTeK Computer Inc.'])

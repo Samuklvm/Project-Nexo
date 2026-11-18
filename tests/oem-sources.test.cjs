@@ -168,3 +168,16 @@ test('lista de fontes: subdomínio que não é o servidor oficial exato é recus
   assert.equal(list.sources.hp, undefined);
   assert.ok(list.sources.dell);
 });
+
+test('lenovo: código dentro de <Not> não conta como peça atendida', () => {
+  const xml = fixture('lenovo-package.xml').replace('<And>', '<And><Not><_PnPID><![CDATA[PCI\\VEN_8086&DEV_9999]]></_PnPID></Not>');
+  const p = S.parseLenovoPackage(xml, 'https://download.lenovo.com/pccbbs/mobiles/n32ac12w_2_.xml', 'Audio');
+  assert.ok(!p.hardwareIds.includes('PCI\\VEN_8086&DEV_9999'));
+  assert.ok(p.hardwareIds.length >= 1);
+});
+test('dell: pacote só de 32 bits (ou só de ARM) fica de fora', () => {
+  const xml = fixture('dell-catalog.xml').replace('<Category value="CS">', '<SupportedOperatingSystems><OperatingSystem osCode="W10P4" osArch="x86" /></SupportedOperatingSystems><Category value="CS">');
+  assert.ok(!S.parseDellCatalog(xml).some((p) => p.id === 'dell-7CHKN'));
+  const x64 = fixture('dell-catalog.xml').replace('<Category value="CS">', '<SupportedOperatingSystems><OperatingSystem osCode="W11P4" osArch="x64" /></SupportedOperatingSystems><Category value="CS">');
+  assert.ok(S.parseDellCatalog(x64).some((p) => p.id === 'dell-7CHKN'));
+});

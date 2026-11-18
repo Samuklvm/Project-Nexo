@@ -130,7 +130,7 @@ test('oem: domínios e assinantes fixos', () => {
   assert.deepEqual(O.DOMAINS['hpia-ref'], ['hpia.hpcloud.hp.com', 'ftp.hp.com']);
   assert.deepEqual(O.DOMAINS['lenovo-catalog'], ['download.lenovo.com']);
   assert.deepEqual(O.DOMAINS['asus-api'], ['rog.asus.com', 'www.asus.com', 'dlcdnets.asus.com']);
-  assert.deepEqual(O.SIGNERS.dell, ['Dell Inc', 'Dell Inc.', 'Dell Technologies']);
+  assert.deepEqual(O.SIGNERS.dell, ['Dell Inc', 'Dell Inc.', 'Dell Technologies', 'Dell Technologies Inc.']);
   assert.ok(O.signersFor('dell').includes('Dell Inc'));
   assert.ok(O.signersFor('dell').includes('Realtek Semiconductor Corp.'));
   assert.ok(O.signersFor('asus').includes('ASUSTeK COMPUTER INC.'));
@@ -172,4 +172,10 @@ test('oem (ASUS): no chipset, o pacote precisa falar da peça; empate por catego
 });
 test('oem: firmware não casa com peça', () => {
   assert.deepEqual(O.matchPackages([audio], [pkg({ id: 'fw', firmware: true })]), []);
+});
+
+test('xml: ">" dentro do valor de um atributo não corta a tag', () => {
+  const root = X.parseXml('<a x="1>2" y=\'b>c\'><b/></a>');
+  assert.deepEqual(root.attrs, { x: '1>2', y: 'b>c' });
+  assert.equal(X.kids(root, 'b').length, 1);
 });

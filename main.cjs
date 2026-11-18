@@ -1463,16 +1463,16 @@ let lastDriversModel = null;
 registerIpcHandler('drivers:scan', async (_event, options = {}) => {
   const result = await driversPage.scan({ force: options?.force === true, online: options?.online !== false });
   try { lastDriversModel = DriverRules.build(result, Date.now()); } catch { lastDriversModel = null; }
-  watchDriverSource(result?.latest?.oem?.error);
+  watchDriverSource(result?.latest?.oem?.error).catch(() => {});
   return result;
 });
 // Vigia: a fonte de drivers de um fabricante (Dell, HP, Lenovo, ASUS) falhando. No máximo um aviso por fonte por dia.
-const driverSourceWarned = new Map();
-function watchDriverSource(error) {
+let driverSourceDaily = null;
+async function watchDriverSource(error) {
   if (!error || typeof error.source !== 'string') return;
-  const day = new Date().toISOString().slice(0, 10);
-  if (driverSourceWarned.get(error.source) === day) return;
-  driverSourceWarned.set(error.source, day);
+  // Lembrança em disco: reiniciar o app não faz o vigia avisar de novo no mesmo dia.
+  if (!driverSourceDaily) driverSourceDaily = require('./electron/once-a-day.cjs').createOnceADay({ file: path.join(app.getPath('userData'), 'vigia-fonte-de-driver.json') });
+  if (!(await driverSourceDaily.take(error.source).catch(() => false))) return;
   errorLog.record({ source: 'principal', level: 'aviso', message: `Fonte de drivers falhando: ${error.source}`, context: { fonte: error.source, etapa: String(error.stage || ''), codigo: String(error.code || ''), vigia: 'fonte-de-driver' } });
 }
 /*

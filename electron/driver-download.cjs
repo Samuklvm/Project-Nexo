@@ -349,6 +349,15 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     if (answer?.declined) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: true, restore: null, note: 'Você recusou a permissão de administrador.' }; }
     if (!result) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore: null, note: 'A instalação ainda pode estar aberta. Termine na janela do fabricante e clique em Conferir de novo.' }; }
     const restore = result.restore || null;
+    // A cópia não bate com o que foi baixado, ou o instalador/driver de dentro do pacote não está assinado: apaga e
+    // deixa o cartão pronto para baixar de novo.
+    if (result.changed === true || result.inner === true) {
+      await rm(item.file);
+      item.file = null;
+      const error = result.changed === true ? 'changed' : 'inner';
+      setPhase(item, 'error', { error });
+      return { ok: false, restart: false, declined: false, restore: null, note: error === 'changed' ? 'O arquivo mudou depois do download, então apaguei. Baixe de novo.' : 'O instalador de dentro do pacote não veio assinado pelo fabricante, então apaguei por segurança.' };
+    }
     if (result.signature && result.signature.valid === false) {
       await rm(item.file);
       item.file = null;
@@ -356,6 +365,8 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
       return { ok: false, restart: false, declined: false, restore: null, note: 'O arquivo não estava mais assinado pelo fabricante, então apaguei por segurança.' };
     }
     if (restore && !restore.ok) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, note: `O ponto de restauração não foi criado: ${String(restore.note || 'o Windows não criou').slice(0, 160)}.` }; }
+    // pnputil 259: nenhuma peça precisou do driver (o Windows já usa um igual ou mais novo). Não é "Instalado".
+    if (result.nothing === true) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, note: 'O Windows já usa um driver igual ou mais novo para essas peças; nada mudou.' }; }
     if (!result.ok) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, note: String(result.note || 'O instalador fechou sem terminar.').slice(0, 200) }; }
     const index = await readIndex();
     index[path.basename(item.file)] = now();

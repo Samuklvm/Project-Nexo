@@ -93,6 +93,9 @@ function parseDellCatalog(xml) {
   for (const sc of X.walk(root, 'SoftwareComponent')) {
     const type = String(X.kid(sc, 'ComponentType')?.attrs.value || '').toUpperCase();
     if (!['DRVR', 'BIOS', 'FRMW'].includes(type)) continue;
+    // Só pacote que serve para Windows de 64 bits (x64): os de 32 bits e de ARM ficam de fora.
+    const arches = X.walk(sc, 'OperatingSystem').map((os) => String(os.attrs.osArch || '').toLowerCase()).filter(Boolean);
+    if (arches.length && !arches.includes('x64')) continue;
     const url = dellUrl(sc.attrs.path);
     const file = url && fileNameOf(url);
     const id = text(sc.attrs.packageID || sc.attrs.releaseID, 20).replace(/[^A-Za-z0-9]/g, '');
@@ -204,7 +207,11 @@ function parseLenovoPackage(xml, descriptorUrl, category = '') {
   const id = String(root.attrs.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
   if (!file || !id) return null;
   const driverVer = X.walk(root, '_Driver').map((d) => driverVersionOf(X.textOf(d, 'Version').replace(/[\^~]+$/, ''))).find(Boolean);
-  const ids = [...X.walk(root, '_PnPID'), ...X.walk(root, 'HardwareID')].map((n) => Oem.normalizeHwid(n.text)).filter(Boolean);
+  // Códigos da regra de detecção, menos os que estão dentro de <Not> (esses dizem onde o pacote NÃO serve).
+  const found = [];
+  const collect = (node) => { for (const child of node.children || []) { if (/^not$/i.test(child.name)) continue; if (/^(_pnpid|hardwareid)$/i.test(child.name)) found.push(child); collect(child); } };
+  collect(root);
+  const ids = found.map((n) => Oem.normalizeHwid(n.text)).filter(Boolean);
   const size = Number(X.textOf(fileNode, 'Size'));
   const sha256 = sha256Of(X.textOf(fileNode, 'CRC'));
   // Tipo 3 = BIOS; tipo 4 = firmware (Thunderbolt, SSD, dock...): firmware nunca vira o aviso de BIOS.

@@ -97,7 +97,7 @@ ${Sig.signatureCore(file, list)}
 $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
 if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }`;
   const hashCheck = hash ? String.raw`
-  if ([string](Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash -ne '${hash}') { $r.note = 'o arquivo mudou depois do download'; ${WRITE_RESULT}; return }` : '';
+  if ([string](Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash -ne '${hash}') { $r.changed = $true; $r.note = 'o arquivo mudou depois do download'; ${WRITE_RESULT}; return }` : '';
   const open = type === 'zip' ? String.raw`
   Expand-Archive -LiteralPath $dst -DestinationPath $x -Force -ErrorAction Stop` : String.raw`
   New-Item -ItemType Directory -Force -Path $x | Out-Null
@@ -106,7 +106,7 @@ if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; ret
   const run = !archive ? String.raw`
 ${Sig.signatureCoreFor('$dst', list)}
   $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
-  if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
+  if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }${restore}
 ${launchCore('$dst', '$work')}` : String.raw`
   $x = Join-Path $work 'x'${open}
   $root = $x
@@ -117,7 +117,7 @@ ${launchCore('$dst', '$work')}` : String.raw`
   if ($setup) {
 ${Sig.signatureCoreFor('$setup', inner)}
     $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
-    if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
+    if (-not $sig.valid) { $r.inner = $true; $r.note = 'o instalador de dentro do pacote não está assinado pelo fabricante'; ${WRITE_RESULT}; return }${restore}
     $r.method = 'setup'
 ${launchCore('$setup', '(Split-Path -LiteralPath $setup -Parent)')}
   } else {
@@ -127,19 +127,19 @@ ${launchCore('$setup', '(Split-Path -LiteralPath $setup -Parent)')}
     foreach ($cat in $cats) {
 ${Sig.signatureCoreFor('$cat.FullName', [...new Set([...list, 'Microsoft Corporation'])])}
       $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
-      if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
-    }
+      if (-not $sig.valid) { $r.inner = $true; $r.note = 'o driver de dentro do pacote não está assinado'; ${WRITE_RESULT}; return }
+    }${restore}
     $r.method = 'inf'
     $null = & pnputil.exe /add-driver (Join-Path $root '*.inf') /subdirs /install
     $r.code = [int]$LASTEXITCODE
     $r.ok = @(0, 3010, 259) -contains $r.code
+    if ($r.code -eq 259) { $r.nothing = $true; $r.note = 'o Windows já usa um driver igual ou mais novo nessas peças' }
     if (-not $r.ok) { $r.note = "o Windows recusou o driver (código $($r.code))" }
   }`;
   return String.raw`
 $r = @{ ok = $false; code = $null; signature = $null; restore = $null; note = ''; method = '${archive ? 'package' : 'installer'}' }
 & {
 ${before}
-${restore}
 $work = Join-Path (Join-Path $env:SystemRoot 'Temp') ('Nexo-driver-' + [guid]::NewGuid().ToString('N'))
 try {
   $acl = New-Object System.Security.AccessControl.DirectorySecurity

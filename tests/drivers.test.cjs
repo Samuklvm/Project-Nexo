@@ -159,7 +159,8 @@ test('drivers: cartões, estados e botões sempre para o site oficial', () => {
   assert.equal(gpu.action.url, 'https://www.nvidia.com/en-us/drivers/details/283968/');
   assert.ok(!all.some((item) => /basic display|wan miniport|nvidia high definition/i.test(item.name)), 'sem adaptador virtual nem áudio do HDMI');
   assert.equal(byName('Intel(R) Wi-Fi 6E AX211 160MHz').state, 'generic');
-  assert.equal(byName('Realtek Gaming 2.5GbE Family Controller').state, 'old');
+  assert.equal(byName('Realtek Gaming 2.5GbE Family Controller').state, 'check', 'sem lista do fabricante o app não chuta: manda conferir');
+  assert.ok(!all.some((item) => /provavelmente/i.test(item.note || '')), 'nenhum cartão adivinha que há versão nova');
   assert.equal(byName('Realtek Gaming 2.5GbE Family Controller').icon, 'i-lan');
   assert.equal(byName('Controladores de disco do Windows').installed.month, null, 'driver do Windows sem a data de 2006');
   assert.equal(byName('Visual C++ (32 bits)').state, 'missing');
@@ -659,4 +660,29 @@ test('oem: aviso de BIOS ignora firmware (Thunderbolt, SSD)', async () => {
   const { svc } = oemSvc({ fetchBytes: dellNet({ 'https://downloads.dell.com/FOLDER12345678M/1/0BEB_Catalog.cab': () => Buffer.from(xml) }) });
   const r = await full(svc);
   assert.equal(r.latest.oem.bios, undefined);
+});
+
+
+/* ---- Pontos pequenos da revisão e "saber ou não saber" ---- */
+test('topo: conta cada peça uma vez (a coberta pelo pacote não entra) e separa desatualizado de driver genérico', () => {
+  const model = D.build(oemData({ missing: [{ name: 'PCI Serial IO', code: 28, ids: 'PCI:VEN_8086&DEV_7A4C', hwids: ['PCI\\VEN_8086&DEV_7A4C&SUBSYS_0BEB1028&REV_01'] }] }), NOW);
+  const cards = cardsOf(model);
+  assert.ok(cards.some((c) => c.coveredBy && c.state === 'missing'), 'há uma peça faltando coberta pelo pacote');
+  assert.equal(model.summary.missing, cards.filter((c) => !c.coveredBy && ['missing', 'problem'].includes(c.state)).length);
+  assert.equal(D.headline({ total: 9, update: 0, missing: 0, old: 1, generic: 2 }), '1 driver desatualizado e 2 com o driver básico do Windows');
+  assert.equal(D.headline({ total: 9, update: 1, missing: 0, old: 0, generic: 1 }), '1 atualização disponível e 1 com o driver básico do Windows');
+});
+
+test('BIOS: compara também o jeito da HP e da Lenovo de numerar', () => {
+  assert.equal(D.biosNewer('T70 Ver. 01.15.00', '01.18.00 Rev.A'), true);
+  assert.equal(D.biosNewer('N2IET98W (1.76)', '1.78'), true);
+  assert.equal(D.biosNewer('1.14.0', '1.14.0'), false);
+  assert.equal(D.biosNewer('1.10.0', '1.14.0'), true);
+  assert.equal(D.biosNewer('F.12', '01.18.00'), false, 'formatos diferentes: não sabe, não avisa');
+  assert.equal(D.biosNewer('', '1.2'), false);
+});
+
+test('download: erros novos do pacote têm texto próprio', () => {
+  assert.match(D.phaseText({ phase: 'error', error: 'changed' }), /mudou depois do download/);
+  assert.match(D.phaseText({ phase: 'error', error: 'inner' }), /instalador de dentro do pacote/);
 });

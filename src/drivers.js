@@ -11,10 +11,8 @@
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./vendors.js'), require('./oem.js'));
   else root.NexoDrivers = factory(root.NexoVendors, root.NexoOem);
 })(typeof self !== 'undefined' ? self : this, function (Vendors, Oem) {
-  const DAY = 24 * 3600 * 1000;
   const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   const monthText = (iso) => { const m = /^(\d{4})-(\d{2})/.exec(String(iso || '')); return m ? `${MONTHS[Number(m[2]) - 1]}/${m[1]}` : null; };
-  const ageDays = (iso, now) => { const at = Date.parse(String(iso || '')); return Number.isFinite(at) ? Math.max(0, Math.round((now - at) / DAY)) : null; };
   /** Compara versões com pontos ("566.14" < "621.14", "14.44.35211" > "14.38"). */
   function compare(a, b) {
     const pa = String(a || '').split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
@@ -130,12 +128,11 @@
   }
   // Drivers que vêm com o Windows têm a data fixa de 21/06/2006: mostrar "jun/2006" assustaria à toa.
   const installedOf = (item) => { const inbox = /^2006-06-21/.test(item.date || ''); return { version: item.version || null, date: inbox ? null : item.date || null, month: inbox ? null : monthText(item.date) }; };
-  /** Estado pela idade, quando o fabricante não tem consulta pública da versão mais recente. */
-  function byAge(item, now, oldDays) {
-    const age = ageDays(item.date, now);
-    if (age !== null && age > oldDays) return { state: 'old', note: `Instalado em ${monthText(item.date)}: provavelmente há versão mais nova.` };
-    return { state: 'check', note: null };
-  }
+  /*
+   * Fabricante sem lista pública da versão mais recente: o app não sabe se há versão nova, então não chuta pela idade
+   * (driver velho pode ser o último que existe). O cartão manda conferir e o botão abre a página certa.
+   */
+  const noLatest = () => ({ state: 'check', note: null });
 
   function videoCards(devices, runtimes, latest, now, support) {
     const gpus = devices.filter((item) => item.cls === 'DISPLAY');
@@ -163,17 +160,17 @@
           }));
           continue;
         }
-        out.push(card({ ...base, ...byAge(item, now, 120), action: { label: 'Site da NVIDIA', url: PAGES.nvidia } }));
+        out.push(card({ ...base, ...noLatest(), action: { label: 'Site da NVIDIA', url: PAGES.nvidia } }));
       } else if (maker === 'AMD') {
         if (runtimes?.amd) base.installed = { ...base.installed, version: `Adrenalin ${runtimes.amd}` };
-        const age = byAge(item, now, 150);
+        const age = noLatest();
         out.push(card({ ...base, ...age, action: { label: 'Site da AMD', url: PAGES.amd }, note: age.note || 'A AMD não publica a versão mais recente para conferência automática; o site oficial detecta a placa.' }));
       } else if (maker === 'Intel') {
         // Vídeo integrado de notebook: muitas vezes só o driver do fabricante do notebook funciona bem.
-        const age = byAge(item, now, 240);
+        const age = noLatest();
         out.push(card({ ...base, ...age, action: mobile && support ? { label: `Suporte ${support.maker}`, url: support.url } : { label: 'Assistente da Intel', url: PAGES.intel }, note: age.note || (mobile ? 'Em notebook, prefira o driver de vídeo do site do fabricante do notebook.' : 'O assistente oficial da Intel detecta a versão certa.') }));
       } else {
-        out.push(card({ ...base, ...byAge(item, now, 365), action: support ? { label: `Suporte ${support.maker}`, url: support.url } : null }));
+        out.push(card({ ...base, ...noLatest(), action: support ? { label: `Suporte ${support.maker}`, url: support.url } : null }));
       }
     }
     if (!real.length && gpus.length) out.push(card({ id: 'video-basico', icon: 'i-gpu', name: 'Vídeo sem driver', purpose: 'O Windows está usando o "Adaptador de Vídeo Básico": sem aceleração, jogo não roda direito.', state: 'missing', action: { label: 'Procurar o driver', url: PAGES.intel } }));
@@ -198,13 +195,13 @@
       // Intel publica os drivers de Wi-Fi/Bluetooth/LAN genéricos (servem em qualquer PC); os outros, o fabricante do PC.
       const action = vendorAction(maker, support, maker === 'Intel' ? 'vendor' : 'support');
       if (generic) return card({ ...base, state: 'generic', note: 'O Windows instalou um driver básico. O do fabricante costuma corrigir quedas e oscilação de ping.', action });
-      return card({ ...base, ...byAge(item, now, 3 * 365), action });
+      return card({ ...base, ...noLatest(), action });
     });
   }
   function audioCards(devices, now, support) {
     return devices.filter((item) => item.cls === 'MEDIA' && !VIRTUAL_AUDIO.test(item.name) && /realtek|conexant|cirrus|idt|via|creative|sound blaster|high definition audio|áudio|audio|smart sound|sonido/i.test(item.name)).slice(0, 4).map((item) => {
       const maker = chipMaker(item);
-      return card({ id: `audio-${item.name}`, icon: 'i-sound', source: item, name: item.name, maker, purpose: 'Som das caixas, fones e microfone.', installed: installedOf(item), ...byAge(item, now, 4 * 365), action: vendorAction(maker, support) });
+      return card({ id: `audio-${item.name}`, icon: 'i-sound', source: item, name: item.name, maker, purpose: 'Som das caixas, fones e microfone.', installed: installedOf(item), ...noLatest(), action: vendorAction(maker, support) });
     });
   }
   function boardCards(devices, now, support) {
@@ -213,19 +210,19 @@
     const maker = chipMaker(parts[0]);
     const newest = [...parts].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
     const action = maker === 'AMD' && support?.kind !== 'notebook' ? { label: 'Chipset no site da AMD', url: PAGES.amd } : vendorAction(maker, support);
-    return [card({ id: 'placa-chipset', icon: 'i-board', source: newest, name: `Chipset ${maker || ''}`.trim(), maker, purpose: `${parts.length} ${parts.length === 1 ? 'componente' : 'componentes'} da placa (gerenciamento de energia, barramentos e sensores).`, installed: installedOf(newest), ...byAge(newest, now, 4 * 365), action, extra: parts.slice(0, 6).map((item) => item.name) })];
+    return [card({ id: 'placa-chipset', icon: 'i-board', source: newest, name: `Chipset ${maker || ''}`.trim(), maker, purpose: `${parts.length} ${parts.length === 1 ? 'componente' : 'componentes'} da placa (gerenciamento de energia, barramentos e sensores).`, installed: installedOf(newest), ...noLatest(), action, extra: parts.slice(0, 6).map((item) => item.name) })];
   }
   function diskCards(devices, now, support) {
     const list = devices.filter((item) => item.cls === 'SCSIADAPTER' || item.cls === 'HDC');
     const vendor = list.filter((item) => !/^microsoft/i.test(item.provider || '') && !/microsoft|storage spaces|virtual|iscsi/i.test(item.name));
-    const out = vendor.slice(0, 3).map((item) => card({ id: `disco-${item.name}`, icon: 'i-disk', source: item, name: item.name, maker: chipMaker(item), purpose: /rst|vmd|raid|optane/i.test(item.name) ? 'Controla os discos pelo Intel RST/VMD ou RAID: sem ele o Windows nem vê o SSD.' : 'Controla os SSDs e HDs.', installed: installedOf(item), ...byAge(item, now, 4 * 365), action: vendorAction(chipMaker(item), support) }));
+    const out = vendor.slice(0, 3).map((item) => card({ id: `disco-${item.name}`, icon: 'i-disk', source: item, name: item.name, maker: chipMaker(item), purpose: /rst|vmd|raid|optane/i.test(item.name) ? 'Controla os discos pelo Intel RST/VMD ou RAID: sem ele o Windows nem vê o SSD.' : 'Controla os SSDs e HDs.', installed: installedOf(item), ...noLatest(), action: vendorAction(chipMaker(item), support) }));
     if (!out.length && list.length) out.push(card({ id: 'disco-windows', icon: 'i-disk', maker: 'Microsoft', name: 'Controladores de disco do Windows', purpose: 'Os SSDs NVMe e SATA usam o driver da Microsoft, que é o recomendado para a maioria deles.', installed: installedOf(list[0]), state: 'ok' }));
     return out;
   }
   function bluetoothCards(devices, now, support) {
     return devices.filter((item) => item.cls === 'BLUETOOTH' && !/enumerator|le generic|rfcomm|device \(|microsoft|avrcp|hands-free|a2dp/i.test(item.name) && /intel|realtek|qualcomm|mediatek|broadcom|bluetooth|wireless/i.test(item.name)).slice(0, 2).map((item) => {
       const maker = chipMaker(item);
-      return card({ id: `bt-${item.name}`, icon: 'i-bt', source: item, name: item.name, maker, purpose: 'Controles, fones e mouses sem fio.', installed: installedOf(item), ...byAge(item, now, 3 * 365), action: vendorAction(maker, support, maker === 'Intel' ? 'vendor' : 'support') });
+      return card({ id: `bt-${item.name}`, icon: 'i-bt', source: item, name: item.name, maker, purpose: 'Controles, fones e mouses sem fio.', installed: installedOf(item), ...noLatest(), action: vendorAction(maker, support, maker === 'Intel' ? 'vendor' : 'support') });
     });
   }
   const PNP_CODES = { 1: 'configuração errada', 3: 'driver corrompido', 10: 'não consegue iniciar', 12: 'sem recursos livres', 14: 'precisa reiniciar', 18: 'precisa reinstalar', 19: 'registro com problema', 21: 'sendo removido', 22: 'desativado', 24: 'não encontrado', 28: 'sem driver', 31: 'driver não carrega', 37: 'driver falhou', 39: 'driver corrompido ou ausente', 43: 'o dispositivo informou um problema', 45: 'desconectado', 52: 'driver sem assinatura válida' };
@@ -298,7 +295,7 @@
       const [icon, purpose] = CLASS_INFO[item.cls] || ['i-driver', 'Dispositivo do PC.'];
       const page = vendor?.drivers || (vendor && support?.maker === vendor.name ? support.url : null) || (vendor ? `https://${vendor.host || `www.${vendor.domain}`}/` : null);
       const by = vendor ? `Driver da ${vendor.name}.` : item.provider ? `Driver de ${item.provider}.` : '';
-      out.push(card({ id: `outro-${item.name}-${item.version}`, icon, source: item, name: item.name, maker: vendor?.name || item.provider || null, purpose: `${purpose} ${by}`.trim(), installed: installedOf(item), ...byAge(item, now, 4 * 365), action: page ? { label: vendor ? `Site da ${vendor.name}` : 'Site do fabricante', url: page } : null }));
+      out.push(card({ id: `outro-${item.name}-${item.version}`, icon, source: item, name: item.name, maker: vendor?.name || item.provider || null, purpose: `${purpose} ${by}`.trim(), installed: installedOf(item), ...noLatest(), action: page ? { label: vendor ? `Site da ${vendor.name}` : 'Site do fabricante', url: page } : null }));
       if (out.length >= 60) break;
     }
     if (Number.isInteger(generic) && generic > 0) out.push(card({ id: 'outros-windows', icon: 'i-win', brand: 'microsoft', plain: true, name: `${generic} ${generic === 1 ? 'dispositivo usa' : 'dispositivos usam'} o driver do próprio Windows`, purpose: 'Portas USB, monitor, teclado, mouse e outros que funcionam com o driver padrão da Microsoft. Não precisam de nada.', state: 'ok' }));
@@ -417,7 +414,8 @@
     offline: 'Sem internet. Tente de novo.', domain: 'O link saiu do site oficial, então parei.', redirects: 'O site redirecionou demais, então parei.',
     'too-big': 'O arquivo veio maior que o esperado, então parei.', hash: 'O arquivo não bateu com o oficial, então apaguei por segurança.',
     signature: 'O arquivo não veio assinado pelo fabricante, então apaguei por segurança.', disk: 'Sem espaço no disco.', http: 'O site do fabricante não respondeu.',
-    file: 'Não consegui gravar o arquivo no disco.'
+    file: 'Não consegui gravar o arquivo no disco.', changed: 'O arquivo mudou depois do download, então apaguei. Baixe de novo.',
+    inner: 'O instalador de dentro do pacote não veio assinado pelo fabricante, então apaguei por segurança.'
   };
   const signerName = (signer) => String(signer || 'fabricante').replace(/\s+(Corporation|Corp\.?|Inc\.?|Ltd\.?)$/i, '');
   function phaseText(item = {}) {
@@ -453,11 +451,22 @@
     return null;
   }
 
+  /*
+   * BIOS nova? Cada fabricante escreve de um jeito (Dell "1.14.0", HP "T70 Ver. 01.15.00", Lenovo "N2IET98W (1.76)"):
+   * compara o primeiro número com pontos de cada lado, só se tiverem o mesmo formato. Na dúvida, não avisa.
+   */
+  function biosNewer(installed, latest) {
+    const pick = (value) => { const m = /\d+(?:\.\d+)+/.exec(String(value || '')); return m ? m[0].split('.').map(Number).join('.') : null; };
+    const a = pick(installed);
+    const b = pick(latest);
+    if (!a || !b || !Oem) return false;
+    return Oem.compareVersions(b, a) === 1;
+  }
   /** O resumo do fabricante do PC para a tela (linha do topo e aviso de BIOS). */
   function oemInfo(oem, runtimes) {
     if (!oem || typeof oem !== 'object') return null;
     const installed = runtimes?.board?.bios || null;
-    const bios = oem.bios?.version ? { version: oem.bios.version, date: oem.bios.date || null, installed, newer: Oem ? Oem.compareToInstalled(installed, { driverVersion: oem.bios.version }) === 'newer' : false } : null;
+    const bios = oem.bios?.version ? { version: oem.bios.version, date: oem.bios.date || null, installed, newer: biosNewer(installed, oem.bios.version) } : null;
     return { oem: oem.oem, label: oem.label || null, at: oem.at || null, error: oem.error || null, bios, disabled: oem.disabled === true, pending: oem.pending === true, noList: oem.noList === true, support: oem.support || null, packages: Array.isArray(oem.packages) ? oem.packages.length : 0 };
   }
 
@@ -512,8 +521,9 @@
     for (const [group, list] of Object.entries(oem.cards)) items[group] = [...list, ...(items[group] || [])];
     const groups = GROUPS.map((group) => ({ ...group, items: items[group.id] || [] })).filter((group) => group.items.length);
     const all = groups.flatMap((group) => group.items);
-    const count = (...states) => all.filter((item) => states.includes(item.state)).length;
-    const summary = { total: all.length, update: count('update'), missing: count('missing', 'problem'), old: count('old', 'generic'), ok: count('ok'), check: count('check', 'ended'), oem: count('oem') };
+    // Cada peça conta uma vez: a que o pacote do fabricante cobre aparece pelo cartão do pacote.
+    const count = (...states) => all.filter((item) => !item.coveredBy && states.includes(item.state)).length;
+    const summary = { total: all.length, update: count('update'), missing: count('missing', 'problem'), old: count('old'), generic: count('generic'), ok: count('ok'), check: count('check', 'ended'), oem: count('oem') };
     return { groups, summary, support, oem: oemInfo(latest.oem, runtimes), online: Boolean(latest?.nvidia || latest?.dotnet || (latest?.oem && !latest.oem.error && !latest.oem.pending && !latest.oem.noList && Array.isArray(latest.oem.packages) && latest.oem.packages.length)), at: data.at || now };
   }
   /** A frase do topo da página. */
@@ -521,12 +531,13 @@
     const parts = [];
     if (summary.update) parts.push(`${summary.update} ${summary.update === 1 ? 'atualização disponível' : 'atualizações disponíveis'}`);
     if (summary.missing) parts.push(`${summary.missing} ${summary.missing === 1 ? 'item faltando' : 'itens faltando'}`);
-    if (summary.old) parts.push(`${summary.old} ${summary.old === 1 ? 'driver antigo' : 'drivers antigos'}`);
+    if (summary.old) parts.push(`${summary.old} ${summary.old === 1 ? 'driver desatualizado' : 'drivers desatualizados'}`);
+    if (summary.generic) parts.push(`${summary.generic} com o driver básico do Windows`);
     if (!parts.length) return summary.total ? 'Tudo em dia' : 'Nenhum driver lido ainda';
     return parts.length === 1 ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : `${parts.slice(0, -1).join(', ').replace(/^./, (c) => c.toUpperCase())} e ${parts[parts.length - 1]}`;
   }
-  const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Antigo', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova', oem: 'Pacote do fabricante disponível' };
+  const STATES = { update: 'Atualização disponível', ok: 'Em dia', missing: 'Falta', problem: 'Com erro', old: 'Desatualizado', generic: 'Driver genérico', check: 'Confira no site', ended: 'Sem versão nova', oem: 'Pacote do fabricante disponível' };
   /** As chaves de ícone que a página vai mostrar (para pedir só essas). */
   const brands = (model) => [...new Set([model?.support?.brand, ...(model?.groups || []).flatMap((group) => group.items.flatMap((item) => [item.brand, item.brandAlt]))].filter(Boolean))];
-  return { build, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  return { build, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });

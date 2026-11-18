@@ -59,6 +59,15 @@ function parseAttrs(body, node) {
 }
 
 /** Lê o XML e devolve o elemento raiz { name, attrs, children, text }. */
+/** O '>' que fecha a tag, pulando o que está entre aspas (um valor de atributo pode ter '>'). Uma passada só. */
+function tagEnd(xml, from) {
+  let quote = 0;
+  for (let j = from; j < xml.length; j += 1) {
+    const c = xml.charCodeAt(j);
+    if (quote) { if (c === quote) quote = 0; } else if (c === 34 || c === 39) quote = c; else if (c === 62) return j;
+  }
+  return -1;
+}
 function parseXml(input, { maxBytes = 30 * 1024 * 1024, maxDepth = 64, maxNodes = 400000 } = {}) {
   let xml = String(input || '');
   if (xml.length > maxBytes) throw new Error('XML: arquivo grande demais.');
@@ -83,7 +92,7 @@ function parseXml(input, { maxBytes = 30 * 1024 * 1024, maxDepth = 64, maxNodes 
     }
     if (xml.startsWith('<?', lt)) { const end = xml.indexOf('?>', lt + 2); if (end < 0) throw new Error('XML: instrução sem fechar.'); i = end + 2; continue; }
     if (xml.startsWith('<!', lt)) throw new Error('XML: DOCTYPE/ENTITY não são aceitos.');
-    const gt = xml.indexOf('>', lt + 1);
+    const gt = tagEnd(xml, lt + 1);
     if (gt < 0) throw new Error('XML: tag sem fechar.');
     const inner = xml.slice(lt + 1, gt);
     if (inner[0] === '/') {

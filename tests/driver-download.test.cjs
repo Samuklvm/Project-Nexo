@@ -79,7 +79,7 @@ test('driver-install: roda uma CÓPIA conferida numa pasta só de administrador 
   const copy = body.indexOf('[System.IO.File]::Copy(');
   const verifyCopy = body.indexOf('Get-AuthenticodeSignature -LiteralPath $dst');
   const run = body.indexOf('[System.Diagnostics.Process]::Start(');
-  assert.ok(point > 0 && point < copy && copy < verifyCopy && verifyCopy < run, 'ponto → copia → confere a cópia → roda a cópia');
+  assert.ok(copy > 0 && copy < verifyCopy && verifyCopy < point && point < run, 'copia → confere a cópia → ponto de restauração → roda a cópia (sem ponto à toa quando a cópia não confere)');
   assert.doesNotMatch(body, /Start-Process/, 'Start-Process espera a árvore toda e interpreta [ ] no caminho');
   assert.match(body, /\$p\.WaitForExit\(\)/);
   assert.match(body, /finally \{[^}]*Remove-Item -LiteralPath \$work -Recurse -Force/);
@@ -631,4 +631,38 @@ test('driver-install: instalador de dentro do pacote não vale assinado só pela
   assert.match(setup, /'ASUSTeK COMPUTER INC\.'/);
   assert.doesNotMatch(setup, /Microsoft/);
   assert.match(body.slice(body.indexOf("-Filter '*.cat'")), /'Microsoft Corporation'/);
+});
+
+test('driver-install: ponto de restauração só depois de conferir o conteúdo; 259, cópia mudada e instalador de dentro viram sinais próprios', () => {
+  const dir = 'C:\\N\\driver-downloads';
+  const zip = E.driverInstallBody({ file: `${dir}\\a.zip`, dir, kind: 'zip', signers: ['ASUSTeK COMPUTER INC.'], sha256: 'ab'.repeat(32), restorePoint: true });
+  const restoreAt = zip.indexOf('SystemRestore');
+  assert.ok(restoreAt > zip.indexOf('Get-FileHash'), 'depois do hash');
+  assert.ok(restoreAt > zip.indexOf('Get-AuthenticodeSignature -LiteralPath $setup'), 'depois de conferir o instalador de dentro');
+  assert.ok(zip.lastIndexOf('SystemRestore') < zip.indexOf('pnputil.exe') || zip.split('SystemRestore').length > 2, 'antes do pnputil também');
+  assert.match(zip, /\$r\.changed = \$true/);
+  assert.match(zip, /\$r\.inner = \$true/);
+  assert.match(zip, /if \(\$r\.code -eq 259\) \{ \$r\.nothing = \$true/);
+  const exe = E.driverInstallBody({ file: `${dir}\\nv.exe`, dir, signers: ['NVIDIA Corporation'], sha256: 'cd'.repeat(32), restorePoint: true });
+  assert.ok(exe.indexOf('SystemRestore') > exe.indexOf('Get-AuthenticodeSignature -LiteralPath $dst'), 'exe: depois de conferir a cópia');
+});
+
+test('instalar: cópia mudada apaga e pede para baixar de novo; instalador de dentro sem assinatura apaga; 259 explica', async () => {
+  for (const [result, error, re] of [[{ ok: false, changed: true, note: 'x' }, 'changed', /mudou depois do download/], [{ ok: false, inner: true, signature: { valid: false }, note: 'x' }, 'inner', /instalador de dentro do pacote/]]) {
+    const { engine, dir } = engineWith({ routes: { [ASUS]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async () => ({ result }) });
+    engine.start('z', { url: ASUS, domains: ['asus.com'], fileName: 'Realtek_Audio.zip', kind: 'zip', signers: ['ASUSTeK COMPUTER INC.'], source: 'asus' });
+    await settle(engine, 'z');
+    const out = await engine.install('z', { restorePoint: false });
+    assert.equal(out.ok, false);
+    assert.match(out.note, re);
+    assert.equal(engine.list().find((i) => i.id === 'z').error, error);
+    assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith('.zip')).length, 0, 'apagou');
+  }
+  const { engine } = engineWith({ routes: { [ASUS]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async () => ({ result: { ok: true, nothing: true, code: 259 } }) });
+  engine.start('n', { url: ASUS, domains: ['asus.com'], fileName: 'Realtek_Audio.zip', kind: 'zip', signers: ['ASUSTeK COMPUTER INC.'], source: 'asus' });
+  await settle(engine, 'n');
+  const out = await engine.install('n', { restorePoint: false });
+  assert.equal(out.ok, false);
+  assert.match(out.note, /já usa um driver igual ou mais novo/);
+  assert.equal(engine.list().find((i) => i.id === 'n').phase, 'ready');
 });
