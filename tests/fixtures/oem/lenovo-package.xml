@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Exemplo resumido do descritor de um pacote do Lenovo System Update: versão, data, regra de detecção (_PnPID e
+     _Driver) e Files/Installer/File com Name, Size e CRC (SHA-256). -->
+<Package id="n32ac12w" name="REALTEKAUDIODRIVER" version="6.0.9600.1" hide="False">
+  <Title default="EN"><Desc id="EN">Realtek Audio Driver for Windows 11 (64-bit) - ThinkPad X1 Carbon Gen 9</Desc></Title>
+  <ReleaseDate>2026-08-01</ReleaseDate>
+  <PackageType type="2" />
+  <DetectInstall>
+    <And>
+      <_PnPID><![CDATA[HDAUDIO\FUNC_01&VEN_10EC&DEV_0287*]]></_PnPID>
+      <_Driver><HardwareID><![CDATA[HDAUDIO\FUNC_01&VEN_10EC&DEV_0287&SUBSYS_17AA22D9]]></HardwareID><Version>6.0.9600.1^</Version></_Driver>
+    </And>
+  </DetectInstall>
+  <Files>
+    <Installer><File><Name>n32ac12w.exe</Name><CRC>5D78D22B9672744DFF73EF810C1A033423DC39DCFC895FB05289F65A8F88C1BF</CRC><Size>384245120</Size></File></Installer>
+    <Readme><File><Name>n32ac12w.txt</Name></File></Readme>
+  </Files>
+</Package>

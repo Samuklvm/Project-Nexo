@@ -1,0 +1,6 @@
+{"Result":{"Obj":[
+ {"Name":"Audio","Files":[{"Id":"a1","Version":"V6.0.9600.1","Title":"Realtek Audio Driver","FileSize":"420.5 MB","ReleaseDate":"2026/05/10","IsRelease":"1","DownloadUrl":{"Global":"https://dlcdnets.asus.com/pub/ASUS/mb/03CHIPSET/Realtek_Audio_6.0.9600.1.zip?model=ROG%20STRIX%20B550-F%20GAMING","China":"https://dlcdnets.asus.com.cn/x.zip"},"SHA256":"0AFD6C310193EB33729649F55CD12991E2D24AF783262FBF7F824D2ED838D8C2","HardwareInfoList":[{"hardwareid":"HDAUDIO\\FUNC_01&VEN_10EC&DEV_1220&SUBSYS_10438797"}]}]},
+ {"Name":"LAN","Files":[{"Id":"l1","Version":"V10.68.0","Title":"Realtek LAN Driver","FileSize":"10 MB","ReleaseDate":"2026/04/01","DownloadUrl":{"Global":"https://dlcdnets.asus.com/pub/ASUS/mb/08WIRELESS/Realtek_LAN.zip"}}]},
+ {"Name":"BIOS","Files":[{"Id":"b1","Version":"3611","Title":"BIOS 3611","DownloadUrl":{"Global":"https://dlcdnets.asus.com/pub/ASUS/mb/BIOS/b.zip"}}]},
+ {"Name":"Chipset","Files":[{"Id":"e1","Version":"V1","Title":"Evil","DownloadUrl":{"Global":"https://evil.example/x.zip"}}]}
+]},"Status":"SUCCESS"}

@@ -4,7 +4,7 @@
     "dell": { "type": "dell-catalog", "index": "https://downloads.dell.com/catalog/CatalogIndexPC.cab" },
     "hp": { "type": "hpia-ref", "base": "https://hpia.hpcloud.hp.com/ref/" },
     "lenovo": { "type": "lenovo-catalog", "base": "https://download.lenovo.com/catalog/" },
-    "asus": { "type": "asus-api", "url": "https://www.asus.com/support/api/product.asmx/GetPDDrivers" },
+    "asus": { "type": "asus-api", "url": "https://rog.asus.com/support/webapi/product/GetPDDrivers" },
     "msi": { "type": "site-only" },
     "gigabyte": { "type": "site-only" },
     "asrock": { "type": "site-only" },

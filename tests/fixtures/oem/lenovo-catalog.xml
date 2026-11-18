@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Exemplo resumido do catálogo do Lenovo System Update para um tipo de máquina (download.lenovo.com/catalog/<tipo>_Win11.xml). -->
+<packages>
+  <package><location>https://download.lenovo.com/pccbbs/mobiles/n32ac12w_2_.xml</location><category>Audio</category><checksum type="md5">0123456789abcdef0123456789abcdef</checksum></package>
+  <package><location>https://download.lenovo.com/pccbbs/mobiles/n32ug10w_2_.xml</location><category>BIOS/UEFI</category></package>
+  <package><location>https://evil.example/x_2_.xml</location><category>Audio</category></package>
+</packages>

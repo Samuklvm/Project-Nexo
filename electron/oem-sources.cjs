@@ -120,4 +120,132 @@ function parseDellCatalog(xml) {
   return out;
 }
 
-module.exports = { REMOTE_LIST, KNOWN, parseSourceList, official, fileNameOf, parseDellIndex, parseDellCatalog };
+/* ---------------- HP (HP Image Assistant: linhas empresariais) ---------------- */
+const HP_RELEASES = { 11: [[26200, '25H2'], [26100, '24H2'], [22631, '23H2'], [22621, '22H2'], [22000, '21H2']], 10: [[19045, '22H2'], [19044, '21H2'], [19043, '21H1'], [0, '2009']] };
+/** <base><código>/<código>_64_<10|11>.0.<versão>.cab, com a versão do Windows deste PC (ou a mais próxima abaixo). */
+function hpRefUrl(base, platform, { build } = {}) {
+  const code = String(platform || '').toUpperCase();
+  if (!/^[0-9A-F]{4}$/.test(code)) return null;
+  const b = Number(build) || 0;
+  const os = b >= 22000 ? 11 : 10;
+  const release = (HP_RELEASES[os].find(([min]) => b >= min) || HP_RELEASES[os][HP_RELEASES[os].length - 1])[1];
+  return official(`${base}${code}/${code}_64_${os}.0.${release}.cab`, Oem.DOMAINS['hpia-ref']);
+}
+const sha256Of = (value) => (/^[0-9a-f]{64}$/i.test(String(value || '').trim()) ? String(value).trim().toLowerCase() : null);
+/** Os SoftPaqs de driver e de BIOS/firmware do arquivo de referência (software e o resto ficam de fora). */
+function parseHpRef(xml) {
+  const root = X.parseXml(xml);
+  const out = [];
+  for (const ui of X.walk(root, 'UpdateInfo')) {
+    const category = X.textOf(ui, 'Category');
+    const driver = /^driver/i.test(category);
+    const bios = /^(bios|firmware)/i.test(category);
+    if (!driver && !bios) continue;
+    const raw = X.textOf(ui, 'Url');
+    const url = official(/^https:\/\//i.test(raw) ? raw : `https://${raw}`, Oem.DOMAINS['hpia-ref']);
+    const file = url && fileNameOf(url);
+    const id = X.textOf(ui, 'Id').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
+    if (!file || !id) continue;
+    const version = text(X.textOf(ui, 'Version'), 40);
+    const size = Number(X.textOf(ui, 'Size'));
+    const sha256 = sha256Of(X.textOf(ui, 'SHA256'));
+    const dash = category.indexOf('-');
+    out.push({
+      id: `hp-${id}`, source: 'hp', title: text(X.textOf(ui, 'Name'), 120) || file.fileName, category: text(dash >= 0 ? category.slice(dash + 1) : category, 40),
+      version, driverVersion: driverVersionOf(version.split(' ')[0]), date: isoDay(X.textOf(ui, 'DateReleased')), url, fileName: file.fileName, kind: file.kind,
+      ...(Number.isFinite(size) && size > 0 ? { size } : {}), ...(sha256 ? { sha256 } : {}),
+      hardwareIds: [...new Set(X.walk(ui, 'DeviceId').map((d) => Oem.normalizeHwid(d.text)).filter(Boolean))].slice(0, 40),
+      signers: Oem.signersFor('hp'), ...(bios ? { bios: true } : {})
+    });
+  }
+  return out;
+}
+
+/* ---------------- Lenovo (Lenovo System Update) ---------------- */
+function lenovoCatalogUrl(base, type, win11) {
+  const t = String(type || '').toUpperCase();
+  return /^[0-9A-Z]{4}$/.test(t) ? official(`${base}${t}_${win11 ? 'Win11' : 'Win10'}.xml`, Oem.DOMAINS['lenovo-catalog']) : null;
+}
+/** Os descritores de pacote do catálogo do tipo de máquina (no máximo 120). */
+function parseLenovoCatalog(xml) {
+  const root = X.parseXml(xml);
+  const out = [];
+  for (const pkg of X.walk(root, 'package')) {
+    const url = official(X.textOf(pkg, 'location'), Oem.DOMAINS['lenovo-catalog']);
+    if (url && /\.xml$/i.test(new URL(url).pathname)) out.push({ url, category: text(X.textOf(pkg, 'category'), 40) });
+    if (out.length >= 120) break;
+  }
+  return out;
+}
+/** Um descritor de pacote da Lenovo (o instalador fica na mesma pasta do descritor). */
+function parseLenovoPackage(xml, descriptorUrl, category = '') {
+  const where = official(descriptorUrl, Oem.DOMAINS['lenovo-catalog']);
+  if (!where) return null;
+  const root = X.parseXml(xml);
+  const type = String(X.kid(root, 'PackageType')?.attrs.type || '');
+  if (type === '1') return null; // aplicativo, não driver
+  const fileNode = X.kid(X.kid(X.kid(root, 'Files'), 'Installer'), 'File');
+  const name = X.textOf(fileNode, 'Name');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$/.test(name)) return null;
+  const url = official(new URL(name, where).href, Oem.DOMAINS['lenovo-catalog']);
+  const file = url && fileNameOf(url);
+  const id = String(root.attrs.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
+  if (!file || !id) return null;
+  const driverVer = X.walk(root, '_Driver').map((d) => driverVersionOf(X.textOf(d, 'Version').replace(/[\^~]+$/, ''))).find(Boolean);
+  const ids = [...X.walk(root, '_PnPID'), ...X.walk(root, 'HardwareID')].map((n) => Oem.normalizeHwid(n.text)).filter(Boolean);
+  const size = Number(X.textOf(fileNode, 'Size'));
+  const sha256 = sha256Of(X.textOf(fileNode, 'CRC'));
+  const bios = type === '3' || type === '4' || /bios|uefi|firmware/i.test(category);
+  return {
+    id: `lenovo-${id}`, source: 'lenovo', title: text((X.walk(root, 'Desc')[0] || {}).text, 120) || file.fileName, category: text(category, 40),
+    version: text(root.attrs.version, 40), driverVersion: driverVer || driverVersionOf(root.attrs.version), date: isoDay(X.textOf(root, 'ReleaseDate')),
+    url, fileName: file.fileName, kind: file.kind, ...(Number.isFinite(size) && size > 0 ? { size } : {}), ...(sha256 ? { sha256 } : {}),
+    hardwareIds: [...new Set(ids)].slice(0, 40), signers: Oem.signersFor('lenovo'), ...(bios ? { bios: true } : {})
+  };
+}
+
+/* ---------------- ASUS / ROG ---------------- */
+function asusUrl(base, model) {
+  const m = text(model, 80);
+  if (!m) return null;
+  return official(`${base}?${new URLSearchParams({ website: 'global', model: m, cpu: m, osid: '52' })}`, Oem.DOMAINS['asus-api']);
+}
+/** Os drivers da consulta da ASUS (BIOS/firmware fora; códigos de hardware quando a ASUS manda). */
+function parseAsus(json) {
+  const out = [];
+  for (const group of Array.isArray(json?.Result?.Obj) ? json.Result.Obj : []) {
+    const category = text(group?.Name, 40);
+    if (!category || /bios|firmware|manual|utilit/i.test(category)) continue;
+    for (const f of Array.isArray(group?.Files) ? group.Files : []) {
+      const url = official(f?.DownloadUrl?.Global, Oem.DOMAINS['asus-api']);
+      const file = url && fileNameOf(url);
+      const id = String(f?.Id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
+      if (!file || !id) continue;
+      const version = text(f?.Version, 40);
+      const sha256 = sha256Of(f?.SHA256 || f?.Sha256);
+      const ids = (Array.isArray(f?.HardwareInfoList) ? f.HardwareInfoList : []).map((h) => Oem.normalizeHwid(h?.hardwareid || h?.HardwareId)).filter(Boolean);
+      out.push({
+        id: `asus-${id}`, source: 'asus', title: text(f?.Title, 120) || file.fileName, category, version, driverVersion: driverVersionOf(version.replace(/^v/i, '')),
+        date: isoDay(String(f?.ReleaseDate || '').replace(/\//g, '-')), url, fileName: file.fileName, kind: file.kind, ...(sha256 ? { sha256 } : {}),
+        hardwareIds: [...new Set(ids)].slice(0, 40), signers: Oem.signersFor('asus')
+      });
+    }
+  }
+  return out;
+}
+
+/* ---------------- Outras marcas: a página de suporte do modelo exato ---------------- */
+function supportUrlFor(id, key, mobile = false) {
+  const k = String(key || '').trim();
+  if (!/^[A-Za-z0-9 ()+._-]{2,80}$/.test(k)) return null;
+  if (id === 'msi' && !mobile) {
+    // "MAG B550 TOMAHAWK (MS-7C91)" → "MAG-B550-TOMAHAWK" (sem regex com retrocesso: o SonarCloud acusa).
+    const cut = k.toUpperCase().indexOf('(MS-');
+    const parts = (cut >= 0 ? k.slice(0, cut) : k).split(/[^A-Za-z0-9]/).filter(Boolean);
+    const slug = parts.join('-');
+    return slug ? `https://www.msi.com/Motherboard/${slug}/support` : null;
+  }
+  return null;
+}
+
+module.exports = { REMOTE_LIST, KNOWN, parseSourceList, official, fileNameOf, parseDellIndex, parseDellCatalog, hpRefUrl, parseHpRef, lenovoCatalogUrl, parseLenovoCatalog, parseLenovoPackage, asusUrl, parseAsus, supportUrlFor };

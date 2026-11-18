@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exemplo resumido do arquivo de referência do HP Image Assistant (raiz <ImagePal>, um por modelo e versão do
+     Windows; developers.hp.com). UpdateInfo com Id, Name, Category, Version ("<driver> A <rev>"), Url sem https,
+     DateReleased, SHA256 e os códigos de hardware que o SoftPaq atende. -->
+<ImagePal>
+  <Solutions>
+    <UpdateInfo>
+      <Id>sp173992</Id>
+      <Name>Realtek High-Definition (HD) Audio Driver</Name>
+      <Category>Driver - Audio</Category>
+      <Version>6.0.9977.1 A 1</Version>
+      <Url>ftp.hp.com/pub/softpaq/sp173501-174000/sp173992.exe</Url>
+      <Size>366001232</Size>
+      <DateReleased>2026-08-14</DateReleased>
+      <SHA256>A0FA0C218D33E45E934B986F6808835D81F40606125336D21720DB69E30E5484</SHA256>
+      <Devices><Device><DeviceId>HDAUDIO\FUNC_01&amp;VEN_10EC&amp;DEV_0236&amp;SUBSYS_103C8870</DeviceId></Device></Devices>
+    </UpdateInfo>
+    <UpdateInfo>
+      <Id>sp150001</Id>
+      <Name>HP Notebook System BIOS Update</Name>
+      <Category>BIOS</Category>
+      <Version>01.18.00 Rev.A</Version>
+      <Url>ftp.hp.com/pub/softpaq/sp150001-150500/sp150001.exe</Url>
+      <DateReleased>2026-09-01</DateReleased>
+      <SHA256>1111111111111111111111111111111111111111111111111111111111111111</SHA256>
+    </UpdateInfo>
+    <UpdateInfo>
+      <Id>sp150002</Id>
+      <Name>HP Support Assistant</Name>
+      <Category>Software - Support</Category>
+      <Version>9.1.0 A 1</Version>
+      <Url>ftp.hp.com/pub/softpaq/sp150001-150500/sp150002.exe</Url>
+    </UpdateInfo>
+    <UpdateInfo>
+      <Id>sp150003</Id>
+      <Name>Fora do domínio</Name>
+      <Category>Driver - Network</Category>
+      <Version>1.0.0.0 A 1</Version>
+      <Url>evil.example/sp150003.exe</Url>
+    </UpdateInfo>
+  </Solutions>
+</ImagePal>
