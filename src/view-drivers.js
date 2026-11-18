@@ -168,22 +168,26 @@
     const oemBox = line ? `<p class="drivers-oem" data-tone="${model.oem.error ? 'warn' : 'good'}">${tile(model.oem.oem, 'i-board', 'do-logo')}<span>${escapeHtml(line)}</span></p>` : '';
     const bios = model.oem?.bios?.newer ? `<div class="drivers-bios"><span class="db-ico">${ico('i-alert')}</span><div><strong>BIOS ${escapeHtml(model.oem.bios.version)} disponível</strong><span>Você tem a ${escapeHtml(model.oem.bios.installed || 'anterior')}. A BIOS não entra no Baixar: atualize pela página de suporte${support?.kind === 'notebook' ? ', com o notebook na tomada' : ''}, sem desligar no meio.</span></div></div>` : '';
     const supportBox = support ? `<div class="drivers-support">${support.brand ? tile(support.brand, 'i-board', 'ds-logo') : ''}<span class="ds-label">${support.kind === 'notebook' ? 'Seu notebook' : support.kind === 'computador' ? 'Seu computador' : 'Sua placa-mãe'}</span><strong>${escapeHtml(`${support.maker}${support.model ? ` ${support.model}` : ''}`)}</strong><span class="ds-hint">Chipset, áudio e rede feitos para ela estão na página de suporte.</span>${bios}<div class="ds-actions"><button class="btn sm" type="button" data-driver-url="${escapeHtml(support.url)}">Página de suporte da ${escapeHtml(support.maker)}</button>${support.model ? `<button class="btn sm ghost" type="button" data-driver-copy="${escapeHtml(support.model)}">Copiar o modelo</button>` : ''}</div></div>` : '';
-    box.innerHTML = `<div class="drivers-status"><h3 class="drivers-headline" data-tone="${tone}">${escapeHtml(D.headline(s))}</h3><p class="drivers-sub">${escapeHtml(`Conferido às ${timeText(model.at)}. ${online}`)}</p>${oemBox}${support ? '' : bios}<p class="drivers-rule">O Nexo baixa só do site oficial de cada fabricante, confere a assinatura de cada arquivo e nunca usa o Windows Update.</p>${restoreToggle()}${toolsRow()}</div>${supportBox}`;
+    box.innerHTML = `<div class="drivers-status"><h3 class="drivers-headline" data-tone="${tone}">${escapeHtml(D.headline(s))}</h3><p class="drivers-sub">${escapeHtml(`Conferido às ${timeText(model.at)}. ${online}`)}</p>${oemBox}${support ? '' : bios}<p class="drivers-rule">O Nexo baixa só do site oficial de cada fabricante, confere a assinatura de cada arquivo e nunca usa o Windows Update. O Catálogo da Microsoft só entra para peça sem driver e sem fabricante conhecido.</p>${restoreToggle()}${toolsRow()}</div>${supportBox}`;
   }
   /** Chips dos grupos (com a contagem do que pede atenção), a busca e o filtro. */
   /** Projeto 5: o céu do topo, uma estrela por driver (clicar leva ao cartão). */
   const SKY_TONES = [['update', 'atualização'], ['missing', 'falta'], ['warn', 'driver básico ou antigo'], ['ok', 'em dia'], ['unknown', 'sem como saber daqui']];
   const STATE_WORD = { update: 'atualização disponível', missing: 'falta', warn: 'pede atenção', ok: 'em dia', unknown: 'confira no site' };
+  let skyFor = null;
   function renderSky() {
     const box = document.getElementById('drivers-sky');
     if (!box) return;
+    // Busca e filtro não mexem no céu: só redesenha quando chega leitura nova (sem piscar).
+    if (skyFor === model && box.innerHTML) return;
+    skyFor = model;
     const sky = model && Nexo.platform !== 'linux' ? D.constellation(model, { width: 1000, height: 150 }) : null;
     box.hidden = !sky?.stars.length;
     if (!sky?.stars.length) { box.innerHTML = ''; return; }
     const count = (tone) => sky.stars.filter((s) => s.tone === tone).length;
     const label = `Constelação dos drivers: ${sky.stars.length} drivers, ${count('update')} com atualização, ${count('missing')} faltando, ${count('ok')} em dia.`;
     const lines = sky.lines.map((l) => `<line class="ds-line" x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}"/>`).join('');
-    const stars = sky.stars.map((st) => `<g class="ds-star" data-tone="${st.tone}" data-driver-jump="${escapeHtml(st.id)}" tabindex="0" role="button" aria-label="${escapeHtml(`${st.name}: ${STATE_WORD[st.tone]}`)}"><circle class="ds-halo" cx="${st.x}" cy="${st.y}" r="${Math.round(st.r * 3.2 * 10) / 10}"/><circle class="ds-core" cx="${st.x}" cy="${st.y}" r="${st.r}"/><title>${escapeHtml(`${st.name} · ${STATE_WORD[st.tone]}`)}</title></g>`).join('');
+    const stars = sky.stars.map((st) => `<g class="ds-star" data-tone="${st.tone}" data-driver-jump="${escapeHtml(st.id)}" tabindex="-1" aria-label="${escapeHtml(`${st.name}: ${st.covered ? 'atendida pelo pacote do fabricante' : STATE_WORD[st.tone]}`)}"><circle class="ds-halo" cx="${st.x}" cy="${st.y}" r="${Math.round(st.r * 3.2 * 10) / 10}"/><circle class="ds-core" cx="${st.x}" cy="${st.y}" r="${st.r}"/><title>${escapeHtml(`${st.name} · ${st.covered ? 'atendida pelo pacote do fabricante' : STATE_WORD[st.tone]}`)}</title></g>`).join('');
     const labels = sky.groups.map((g) => `<text class="ds-label" x="${g.x}" y="${g.y}" text-anchor="middle">${escapeHtml(g.title)}</text>`).join('');
     const legend = SKY_TONES.filter(([tone]) => count(tone)).map(([tone, text]) => `<span data-tone="${tone}"><i></i>${escapeHtml(text)} <b>${count(tone)}</b></span>`).join('');
     box.innerHTML = `<svg class="ds-svg" viewBox="0 0 1000 150" preserveAspectRatio="xMidYMid meet" role="group" aria-label="${escapeHtml(label)}">${lines}${stars}${labels}</svg><div class="ds-legend">${legend}</div>`;
@@ -215,56 +219,51 @@
     }
     const last = backups?.[0];
     const lastLine = backupBusy === 'backup' ? 'Fazendo o backup… (o Windows copia cada driver)' : backupBusy === 'restore' ? 'Restaurando…' : last ? `Último backup: ${new Date(last.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}, ${timeText(last.at)}${Number.isInteger(last.count) ? ` · ${last.count} drivers` : ''}` : 'Nenhum backup ainda';
-    const backup = `<div class="dt-backup"><span class="dt-backup-ico">${ico('i-box')}</span><div class="dt-backup-text"><strong>Backup dos drivers</strong><small>${escapeHtml(lastLine)}</small></div><div class="dt-backup-actions"><button class="btn sm" type="button" data-driver-backup${backupBusy ? ' disabled' : ''}>Fazer backup</button>${last ? `<button class="btn sm ghost" type="button" data-driver-backup-open="${escapeHtml(last.name)}">Abrir</button><button class="btn sm ghost" type="button" data-driver-backup-restore="${escapeHtml(last.name)}"${backupBusy ? ' disabled' : ''}>Restaurar</button>` : ''}</div></div>`;
-    return `<div class="drivers-tools">${update}${backup}</div>`;
+    const backup = `<div class="dt-backup"><span class="dt-backup-ico">${ico('i-box')}</span><div class="dt-backup-text"><strong>Backup dos drivers</strong><small>${escapeHtml(lastLine)}</small></div><div class="dt-backup-actions"><button class="btn sm" type="button" data-driver-backup${backupBusy || bulk ? ' disabled' : ''}>Fazer backup</button>${last ? `<button class="btn sm ghost" type="button" data-driver-backup-open="${escapeHtml(last.name)}">Abrir</button><button class="btn sm ghost" type="button" data-driver-backup-restore="${escapeHtml(last.name)}"${backupBusy || bulk ? ' disabled' : ''}>Restaurar</button>` : ''}</div></div>`;
+    // Todos os backups (não só o último): cada um com abrir e restaurar.
+    const off = backupBusy || bulk ? ' disabled' : '';
+    const when = (b) => `${new Date(b.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}, ${timeText(b.at)}`;
+    const all = (backups || []).length > 1 ? `<details class="dt-list"><summary>Todos os backups <span class="dt-count">${backups.length}</span></summary><ul>${backups.map((b) => `<li><span class="dt-list-when">${escapeHtml(when(b))}</span><span class="dt-list-count">${Number.isInteger(b.count) ? `${b.count} drivers` : ''}</span><button class="btn sm ghost" type="button" data-driver-backup-open="${escapeHtml(b.name)}">Abrir</button><button class="btn sm ghost" type="button" data-driver-backup-restore="${escapeHtml(b.name)}"${off}>Restaurar</button></li>`).join('')}</ul></details>` : '';
+    return `<div class="drivers-tools">${update}${backup}${all}</div>`;
   }
   async function loadBackups() {
     try { backups = await bridge.driverBackups(); } catch { backups = []; }
     renderHero();
   }
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-  /** Baixa tudo (a fila do motor faz 4 por vez) e instala um por vez, na ordem; ponto de restauração só no primeiro. */
+  /** Atualizar tudo: o passo a passo é do NexoDrivers.runBulk; aqui só as ações da tela e o resumo honesto no fim. */
   async function runBulk() {
     const ids = D.updatePlan(model);
     if (!ids.length || bulk) return;
     bulk = { ids, index: 0, current: null, phase: 'download', done: [], failed: [], stop: false };
     renderHero();
-    for (const id of ids) {
-      const now = downloads.get(id);
-      if (!now || now.phase === 'error' || now.phase === 'canceled') {
-        try { const item = await bridge.downloadDriver(id); if (item?.id) { downloads.set(item.id, { ...downloads.get(item.id), ...item }); updateCard(item.id); } } catch { bulk.failed.push(id); }
-      }
-    }
-    let first = true;
-    for (let i = 0; i < ids.length; i += 1) {
-      const id = ids[i];
-      if (bulk.stop) break;
-      bulk.index = i;
-      bulk.current = id;
-      if (bulk.failed.includes(id)) continue;
-      bulk.phase = 'download';
-      renderHero();
-      // Espera este ficar pronto (ou falhar), sem prender a página.
-      for (let wait = 0; wait < 7200; wait += 1) {
-        const ph = downloads.get(id)?.phase;
-        if (ph === 'ready' || ph === 'installed' || ph === 'error' || ph === 'canceled') break;
-        await sleep(500);
-      }
-      if (downloads.get(id)?.phase !== 'ready') { bulk.failed.push(id); continue; }
-      bulk.phase = 'install';
-      renderHero();
-      let result = null;
-      try { result = await bridge.installDriver(id, { restorePoint: restoreOn && first }); } catch (error) { result = { ok: false, note: error?.message }; }
-      first = false;
-      if (result?.restore?.created && result.restore.at) { restoreAt = result.restore.at; store.set(RESTORE_AT_KEY, restoreAt); }
-      if (result?.ok) { bulk.done.push(id); if (result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' }); } else { bulk.failed.push(id); if (result?.note) notes.set(id, { tone: 'warn', text: result.note }); }
-      if (result?.restore && result.restore.ok === false) break; // sem o ponto pedido, não segue instalando
-    }
-    const summary = bulk;
+    const out = await D.runBulk({
+      ids, restoreOn,
+      phaseOf: (id) => downloads.get(id)?.phase,
+      start: async (id) => { const item = await bridge.downloadDriver(id); if (item?.id) { downloads.set(item.id, { ...downloads.get(item.id), ...item }); updateCard(item.id); } },
+      cancel: async (id) => { await bridge.cancelDriverDownload(id); },
+      install: async (id, options) => {
+        const result = await bridge.installDriver(id, options);
+        if (result?.restore?.created && result.restore.at) { restoreAt = result.restore.at; store.set(RESTORE_AT_KEY, restoreAt); }
+        if (result?.ok && result.restart) notes.set(id, { tone: 'warn', text: 'Reinicie o PC para terminar a instalação.' });
+        else if (!result?.ok && result?.note) notes.set(id, { tone: 'warn', text: result.note });
+        if (result?.ok) bulk.done.push(id); else bulk.failed.push(id);
+        return result;
+      },
+      sleep, stopped: () => Boolean(bulk?.stop),
+      onStep: ({ index, id, phase }) => { Object.assign(bulk, { index, current: id, phase }); renderHero(); }
+    }).catch(() => ({ done: bulk.done, failed: bulk.failed, stopped: true }));
     bulk = null;
     await load(true);
-    showToast(summary.failed.length ? `Atualizei ${summary.done.length} de ${summary.ids.length}. Os outros ficaram com o aviso no cartão.` : `Pronto: ${summary.done.length} ${summary.done.length === 1 ? 'driver atualizado' : 'drivers atualizados'}.`);
+    // Instalador cancelado também sai com código 0: só conta o que mudou de verdade na leitura nova.
+    const items = new Map((model?.groups || []).flatMap((g) => g.items).map((i) => [i.id, i]));
+    const really = out.done.filter((id) => notes.get(id)?.text?.startsWith('Reinicie') || D.installOutcome(items.get(id)?.state) === 'updated');
+    for (const id of out.done.filter((x) => !really.includes(x))) notes.set(id, { tone: 'warn', text: 'O instalador fechou, mas a versão continua a mesma. Se você cancelou, é só instalar de novo.' });
+    render();
+    const why = out.declined ? ' Você recusou a permissão de administrador, então parei.' : out.stopped ? ' Parei antes do fim.' : '';
+    showToast(really.length === ids.length ? `Pronto: ${really.length} ${really.length === 1 ? 'driver atualizado' : 'drivers atualizados'}.` : `Atualizei ${really.length} de ${ids.length}.${why} Os outros ficaram com o aviso no cartão.`);
   }
+
   function restoreLine() {
     if (!restoreOn) return 'Instala direto, sem ponto de restauração';
     const at = Date.parse(restoreAt || '');
@@ -289,7 +288,9 @@
     renderSky();
     const view = D.filterModel(model, filter);
     box.innerHTML = view.groups.length ? view.groups.map(group).join('') : `<section class="drivers-group drivers-empty"><strong>${filter.query ? 'Nada com esse nome' : 'Nada pedindo atenção'}</strong><span>${filter.query ? 'Tente outro nome de peça ou de fabricante.' : 'Tudo o que o Nexo consegue saber está em dia. Desligue o filtro para ver todos os drivers.'}</span></section>`;
-    if (celebrate.size) setTimeout(() => { celebrate.clear(); box.querySelectorAll('.driver.celebrate').forEach((li) => li.classList.remove('celebrate')); }, 1700);
+    // Comemoração só com a página aberta (a leitura quieta do começo guarda para quando a pessoa abrir).
+    const visible = box.closest('.view')?.classList.contains('active');
+    if (celebrate.size && visible) setTimeout(() => { celebrate.clear(); box.querySelectorAll('.driver.celebrate').forEach((li) => li.classList.remove('celebrate')); }, 1700);
     if (focus) {
       const target = box.querySelector(`[data-group="${CSS.escape(focus)}"]`);
       focus = null;
@@ -435,27 +436,27 @@
     }
     if (event.target.closest?.('[data-driver-bulk]') && event.target.closest('.drivers-view')) {
       const ids = D.updatePlan(model);
-      const ok = await Nexo.confirm({ title: `Atualizar ${ids.length} ${ids.length === 1 ? 'driver' : 'drivers'}?`, body: `O Nexo baixa tudo do site oficial e abre um instalador por vez, na ordem certa (placa primeiro, vídeo por último).${restoreOn ? ' Antes do primeiro, cria um ponto de restauração.' : ''} Cada instalador abre na sua frente.`, items: ids.map(nameOf).slice(0, 8), confirmLabel: 'Atualizar tudo' });
+      const ok = await Nexo.confirm({ title: `Atualizar ${ids.length} ${ids.length === 1 ? 'item' : 'itens'}?`, body: `O Nexo baixa tudo do site oficial e abre um instalador por vez, na ordem certa (placa primeiro, vídeo por último).${restoreOn ? ' Antes do primeiro, cria um ponto de restauração.' : ''} Cada instalador abre na sua frente.`, items: D.bulkNames(model, ids, 8), confirmLabel: 'Atualizar tudo' });
       if (ok) runBulk().catch(() => { bulk = null; renderHero(); });
       return;
     }
     if (event.target.closest?.('[data-driver-bulk-stop]') && bulk) { bulk.stop = true; renderHero(); return; }
-    if (event.target.closest?.('[data-driver-backup]') && event.target.closest('.drivers-view')) {
+    if (event.target.closest?.('[data-driver-backup]') && event.target.closest('.drivers-view') && !bulk && !backupBusy) {
       backupBusy = 'backup';
       renderHero();
       let r = null;
       try { r = await bridge.backupDrivers(); } catch (error) { r = { ok: false, note: error?.message }; }
       backupBusy = '';
-      showToast(r?.ok ? `Backup feito: ${r.count} drivers guardados em Documentos\\Nexo\\Backup de drivers.` : r?.note || 'O backup não terminou.');
+      showToast(r?.ok ? `Backup feito: ${r.count} drivers guardados.${r.note ? ` ${r.note}` : ''} Use "Abrir" para ver a pasta.` : r?.note || 'O backup não terminou.');
       await loadBackups();
       return;
     }
     const bOpen = event.target.closest?.('[data-driver-backup-open]');
     if (bOpen && bOpen.closest('.drivers-view')) { try { await bridge.openDriverBackup(bOpen.dataset.driverBackupOpen); } catch (error) { showToast(error?.message || 'Não consegui abrir a pasta.'); } return; }
     const bRestore = event.target.closest?.('[data-driver-backup-restore]');
-    if (bRestore && bRestore.closest('.drivers-view')) {
+    if (bRestore && bRestore.closest('.drivers-view') && !bulk && !backupBusy) {
       const name = bRestore.dataset.driverBackupRestore;
-      const ok = await Nexo.confirm({ title: 'Restaurar os drivers deste backup?', body: `O Windows reinstala os drivers guardados em ${name}. Ele só usa os que servem nas peças deste PC; nada é apagado.`, confirmLabel: 'Restaurar' });
+      const ok = await Nexo.confirm({ title: 'Restaurar os drivers deste backup?', body: `O Windows reinstala os drivers guardados em ${name}, só nas peças deste PC; nada é apagado. Restaurar não volta versão: se uma peça já tem driver igual ou mais novo, ela fica como está.`, confirmLabel: 'Restaurar' });
       if (!ok) return;
       backupBusy = 'restore';
       renderHero();
@@ -463,6 +464,7 @@
       try { r = await bridge.restoreDriverBackup(name); } catch (error) { r = { ok: false, note: error?.message }; }
       backupBusy = '';
       showToast(r?.ok ? (r.restart ? 'Drivers restaurados. Reinicie o PC para terminar.' : 'Drivers restaurados.') : r?.note || 'A restauração não terminou.');
+      if (r?.nothing) { await loadBackups(); return; }
       await load(true);
       return;
     }
@@ -521,7 +523,9 @@
     searchTimer = setTimeout(() => { filter.query = String(event.target.value || '').slice(0, 80); if (model) render(); }, 120);
   });
   // A bolinha da barra lateral: uma leitura quieta um minuto depois de abrir o app (com cache, sem pressa).
-  if (Nexo.platform !== 'linux') setTimeout(() => { if (!model && !loading) load(false); }, 60000);
+  // Não roda durante uma sessão gravada (medição de jogo): tenta de novo a cada 5 minutos.
+  const quietScan = () => { if (model || loading) return; if (Nexo.recording?.()) { setTimeout(quietScan, 5 * 60000); return; } load(false); };
+  if (Nexo.platform !== 'linux') setTimeout(quietScan, 60000);
   /** Abre a página de Drivers num grupo (os botões de correção da análise usam). */
   Nexo.openDrivers = (groupId = null) => { focus = groupId; Nexo.go('drivers'); if (model) render(); };
 })();

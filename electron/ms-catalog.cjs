@@ -74,9 +74,12 @@ function parseSearch(html) {
   return out;
 }
 /** O driver mais novo para Windows 10/11 (classificação "Drivers", nunca firmware nem Windows Server). */
-function pickRow(rows) {
+// Nunca ARM (o Nexo roda em PC x64). Com a versão do Windows: PC com Windows 10 não pega linha só de Windows 11.
+function pickRow(rows, { build } = {}) {
+  const win10 = Number.isInteger(build) && build > 0 && build < 22000;
   const ok = (Array.isArray(rows) ? rows : []).filter((r) => /^drivers\b/i.test(r.classification) && !/firmware/i.test(r.classification)
-    && /windows (10|11)/i.test(r.products) && !/server/i.test(r.products) && r.date);
+    && /windows (10|11)/i.test(r.products) && !/server/i.test(r.products) && r.date
+    && !/\barm(64)?\b/i.test(`${r.title} ${r.products}`) && (!win10 || /windows 10/i.test(r.products)));
   ok.sort((a, b) => b.date.localeCompare(a.date));
   return ok[0] || null;
 }
@@ -111,6 +114,20 @@ function searchTerm(hwids) {
   }
   return null;
 }
+/** Primeiro o código completo (com SUBSYS, que acha o driver do modelo exato), depois o curto. Nunca REV. */
+function searchTerms(hwids) {
+  const short = searchTerm(hwids);
+  if (!short) return [];
+  for (const raw of Array.isArray(hwids) ? hwids : []) {
+    const id = String(raw || '').toUpperCase();
+    const slash = id.indexOf('\\');
+    if (slash < 1) continue;
+    const tokens = id.slice(slash + 1).split('&');
+    const sub = tokens.find((t) => /^SUBSYS_[0-9A-F]{8}$/.test(t));
+    if (sub && `${id.slice(0, slash)}\\${tokens.filter((t) => !/^(SUBSYS|REV)_/.test(t)).join('&')}` === short) return [`${short}&${sub}`, short];
+  }
+  return [short];
+}
 function dialogBody(id) {
   if (!GUID.test(String(id || ''))) throw new Error('id do catálogo inválido.');
   return `updateIDs=${encodeURIComponent(JSON.stringify([{ size: 0, languages: '', uidInfo: id, updateID: id }]))}`;
@@ -119,31 +136,35 @@ function dialogBody(id) {
 function createMsCatalog({ fetchText, now = () => Date.now(), limitMs = LIMIT_MS } = {}) {
   const cache = new Map(); // termo → { at, ttl, value: info|null }
   const inflight = new Map();
-  async function find(term) {
-    const rows = parseSearch(await fetchText(`${SEARCH}${encodeURIComponent(term)}`, { hosts: SITE_HOSTS }));
-    const best = pickRow(rows);
+  async function find(terms, build) {
+    let best = null;
+    for (const term of terms) {
+      best = pickRow(parseSearch(await fetchText(`${SEARCH}${encodeURIComponent(term)}`, { hosts: SITE_HOSTS })), { build });
+      if (best) break;
+    }
     if (!best) return null;
     const url = parseDownload(await fetchText(DIALOG, { method: 'POST', body: dialogBody(best.id), hosts: SITE_HOSTS }));
     return url ? { title: best.title, version: best.version, date: best.date, size: best.size, url } : null;
   }
-  function start(term) {
+  function start(term, terms, build) {
     if (inflight.has(term)) return;
     let timer = null;
     const limit = new Promise((done) => { timer = setTimeout(() => done({ failed: true }), limitMs); });
-    const job = Promise.race([find(term).then((info) => ({ info }), () => ({ failed: true })), limit])
+    const job = Promise.race([find(terms, build).then((info) => ({ info }), () => ({ failed: true })), limit])
       .then((r) => { clearTimeout(timer); cache.set(term, { at: now(), ttl: r.failed ? FAIL_TTL : TTL, value: r.failed ? null : r.info }); })
       .finally(() => inflight.delete(term));
     inflight.set(term, job);
   }
   /** { pending, items: { chave da peça: { title, version, date, size, url } } } para as peças pedidas. */
-  function lookup(devices) {
+  function lookup(devices, { build } = {}) {
     const items = {};
     let pending = false;
     for (const device of (Array.isArray(devices) ? devices : []).slice(0, MAX_DEVICES)) {
-      const term = searchTerm(device?.hwids);
+      const terms = searchTerms(device?.hwids);
+      const term = terms[0];
       if (!term || !device.key) continue;
       const hit = cache.get(term);
-      if (!hit || now() - hit.at >= hit.ttl) start(term);
+      if (!hit || now() - hit.at >= hit.ttl) start(term, terms, build);
       if (!hit) { pending = true; continue; }
       if (hit.value) items[device.key] = hit.value;
     }
@@ -153,4 +174,4 @@ function createMsCatalog({ fetchText, now = () => Date.now(), limitMs = LIMIT_MS
   return { lookup, settled };
 }
 
-module.exports = { createMsCatalog, parseSearch, pickRow, parseDownload, searchTerm, dialogBody, FILE_HOSTS, SITE_HOSTS };
+module.exports = { createMsCatalog, parseSearch, pickRow, parseDownload, searchTerm, searchTerms, dialogBody, FILE_HOSTS, SITE_HOSTS };

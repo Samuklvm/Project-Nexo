@@ -4,6 +4,8 @@
   const MAX_SECONDS = 4 * 3600;
   const bridge = desktopBridge;
   let rec = null;
+  // Outras páginas perguntam antes de rodar trabalho pesado (ex.: a leitura quieta dos drivers).
+  Nexo.recording = () => Boolean(rec);
   let starting = false; // evita duas gravações ao mesmo tempo (clique duplo, ou jogo abrindo enquanto a caixa de diálogo está aberta)
   let timers = [];
   let stopProbeListener = null;

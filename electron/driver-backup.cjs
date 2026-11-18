@@ -23,31 +23,71 @@ function insideRoot(dir, root) {
   return Boolean(rel) && !rel.includes('\\') && validName(rel);
 }
 
+/** A raiz dos backups: Documentos\Nexo\..., menos quando Documentos está no OneDrive ou na rede (aí, a pasta do usuário). */
+function backupRootFor({ documents, home } = {}) {
+  const docs = String(documents || '');
+  const synced = !docs || docs.startsWith('\\\\') || /\\onedrive( - [^\\]+)?(\\|$)/i.test(docs);
+  return win.join(synced ? String(home || '') : docs, 'Nexo', 'Backup de drivers');
+}
+// Recusa atalho de pasta (junção/link) na raiz, na pasta do Nexo e na do backup: o administrador não segue um caminho trocado.
+const noReparse = (dirs) => String.raw`
+  foreach ($p in @(${dirs.map(psQuote).join(', ')})) {
+    if ((Test-Path -LiteralPath $p) -and (((Get-Item -LiteralPath $p -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) { $r.note = 'a pasta de backups é um atalho, então parei'; ${WRITE}; return }
+  }`;
+const chain = (dir, root) => [win.dirname(win.resolve(root)), win.resolve(root), win.resolve(dir)];
+
 function driverBackupBody({ dest, root } = {}) {
   if (!insideRoot(dest, root)) throw new Error('Backup fora da pasta de backups do Nexo.');
   return String.raw`
-$r = @{ ok = $false; code = $null; count = 0; note = '' }
-try {
+$r = @{ ok = $false; code = $null; count = 0; partial = $false; note = '' }
+& {
+try {${noReparse(chain(dest, root))}
   New-Item -ItemType Directory -Force -Path ${psQuote(dest)} | Out-Null
   $null = & pnputil.exe /export-driver * ${psQuote(dest)}
   $r.code = [int]$LASTEXITCODE
   $r.count = @(Get-ChildItem -LiteralPath ${psQuote(dest)} -Filter '*.inf' -File -Recurse -ErrorAction SilentlyContinue).Count
-  $r.ok = ($r.code -eq 0) -and ($r.count -gt 0)
+  # Código diferente de 0 com drivers na pasta: o Windows exportou quase tudo (algum driver protegido ficou de fora).
+  $r.ok = ($r.count -gt 0)
+  $r.partial = $r.ok -and ($r.code -ne 0)
   if (-not $r.ok) { $r.note = "o Windows não exportou os drivers (código $($r.code))" }
 } catch { $r.note = $_.Exception.Message }
-${WRITE}`;
+${WRITE}
+}`;
 }
 function driverRestoreBody({ dir, root } = {}) {
   if (!insideRoot(dir, root)) throw new Error('Restauração fora da pasta de backups do Nexo.');
   return String.raw`
-$r = @{ ok = $false; code = $null; note = '' }
-try {
-  $null = & pnputil.exe /add-driver (Join-Path ${psQuote(dir)} '*.inf') /subdirs /install
+$r = @{ ok = $false; code = $null; nothing = $false; note = '' }
+& {
+$work = Join-Path (Join-Path $env:SystemRoot 'Temp') ('Nexo-restore-' + [guid]::NewGuid().ToString('N'))
+try {${noReparse(chain(dir, root))}
+  # Copia para uma pasta que só o sistema e os administradores mexem: ninguém troca um arquivo depois da conferência.
+  $acl = New-Object System.Security.AccessControl.DirectorySecurity
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($sidText in @('S-1-5-18', 'S-1-5-32-544')) {
+    $sid = New-Object System.Security.Principal.SecurityIdentifier($sidText)
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+  }
+  [System.IO.Directory]::CreateDirectory($work, $acl) | Out-Null
+  $src = (Resolve-Path -LiteralPath ${psQuote(dir)}).ProviderPath
+  foreach ($f in @(Get-ChildItem -LiteralPath $src -File -Recurse -Force | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 })) {
+    $to = Join-Path $work $f.FullName.Substring($src.Length).TrimStart('\')
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $to) | Out-Null
+    [System.IO.File]::Copy($f.FullName, $to, $false)
+  }
+  $cats = @(Get-ChildItem -LiteralPath $work -Filter '*.cat' -File -Recurse)
+  if ($cats.Count -eq 0) { $r.note = 'o backup não tem drivers assinados'; ${WRITE}; return }
+  foreach ($cat in $cats) {
+    if ((Get-AuthenticodeSignature -LiteralPath $cat.FullName).Status -ne 'Valid') { $r.note = "um driver do backup não está mais assinado ($($cat.Name)), então parei"; ${WRITE}; return }
+  }
+  $null = & pnputil.exe /add-driver (Join-Path $work '*.inf') /subdirs /install
   $r.code = [int]$LASTEXITCODE
-  $r.ok = @(0, 3010, 259) -contains $r.code
-  if (-not $r.ok) { $r.note = "o Windows recusou a restauração (código $($r.code))" }
-} catch { $r.note = $_.Exception.Message }
-${WRITE}`;
+  $r.ok = @(0, 3010) -contains $r.code
+  if ($r.code -eq 259) { $r.nothing = $true }
+  elseif (-not $r.ok) { $r.note = "o Windows recusou a restauração (código $($r.code))" }
+} catch { $r.note = $_.Exception.Message } finally { if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue } }
+${WRITE}
+}`;
 }
 
 function createDriverBackups({ fs, path, root, elevate, openPath = async () => '', now = () => Date.now() } = {}) {
@@ -74,7 +114,7 @@ function createDriverBackups({ fs, path, root, elevate, openPath = async () => '
     }
     const count = Number.isInteger(r.count) ? r.count : 0;
     await fs.writeFile(path.join(dest, META), JSON.stringify({ at: now(), count })).catch(() => {});
-    return { ok: true, name, count, note: '' };
+    return { ok: true, name, count, note: r.partial ? 'O Windows não deixou copiar alguns drivers (os protegidos do sistema); o resto está no backup.' : '' };
   }
   async function list() {
     const names = (await fs.readdir(base()).catch(() => [])).filter(validName);
@@ -100,6 +140,7 @@ function createDriverBackups({ fs, path, root, elevate, openPath = async () => '
     try { answer = await elevate('driver-restore', { dir, root: base() }); } catch (error) { return { ok: false, restart: false, note: String(error?.message || 'Não consegui restaurar.').slice(0, 200) }; }
     if (answer?.declined) return { ok: false, restart: false, note: 'Você recusou a permissão de administrador.' };
     const r = answer?.result;
+    if (r?.nothing) return { ok: false, restart: false, nothing: true, note: 'Nada mudou: o Windows já usa esses drivers ou versões mais novas (restaurar não volta versão).' };
     if (!r?.ok) return { ok: false, restart: false, note: String(r?.note || 'A restauração não terminou.').slice(0, 200) };
     return { ok: true, restart: r.code === 3010, note: '' };
   }
@@ -111,4 +152,4 @@ function createDriverBackups({ fs, path, root, elevate, openPath = async () => '
   return { create, list, restore, open };
 }
 
-module.exports = { createDriverBackups, driverBackupBody, driverRestoreBody, stampName, validName, insideRoot };
+module.exports = { createDriverBackups, backupRootFor, driverBackupBody, driverRestoreBody, stampName, validName, insideRoot };

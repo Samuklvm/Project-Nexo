@@ -1836,6 +1836,15 @@ body.lite .opt-nova, body.lite .opt-comet { display: none; }
 .dt-backup-text strong { display: block; font-size: 13px; font-weight: 620; color: #e6edff; }
 .dt-backup-text small { display: block; margin-top: 1px; font-size: 12px; color: var(--dv-ink); font-variant-numeric: tabular-nums; }
 .dt-backup-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.dt-list { flex: 1 1 100%; border-radius: 14px; background: rgba(255, 255, 255, 0.02); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.dt-list > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 12.5px; font-weight: 600; color: var(--mist); }
+.dt-list > summary::-webkit-details-marker { display: none; }
+.dt-list > summary::before { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.18s ease; }
+.dt-list[open] > summary::before { transform: rotate(45deg); }
+.dt-list ul { margin: 0; padding: 0 8px 8px; list-style: none; display: grid; gap: 4px; }
+.dt-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: rgba(150, 175, 255, 0.04); }
+.dt-list-when { font-size: 12.5px; color: #e6edff; font-variant-numeric: tabular-nums; }
+.dt-list-count { font-size: 12px; color: var(--dv-ink); font-variant-numeric: tabular-nums; }
 @media (max-width: 1100px) { .dt-backup { grid-template-columns: auto minmax(0, 1fr); } .dt-backup-actions { grid-column: 1 / -1; justify-content: flex-start; } }
 @media (prefers-reduced-motion: reduce) { .dt-bar b { transition: none; } }
 .driver.skeleton-row { display: block; padding: 10px 0; }

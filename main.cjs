@@ -1454,8 +1454,19 @@ const catalogFetchText = async (url, { method = 'GET', body = null, hosts = [] }
   const response = await net.fetch(url, { method, signal: withTimeout(30000), redirect: 'follow', ...(method === 'POST' ? { body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } : {}) });
   if (!allowed(response.url || url)) throw new Error('Redirecionou para fora do Catálogo da Microsoft.');
   if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
-  const text = await response.text();
-  return text.slice(0, 3 * 1024 * 1024);
+  // Lê aos pedaços e para em 3 MB (uma página gigante nunca vai inteira para a memória).
+  const reader = response.body?.getReader?.();
+  if (!reader) return (await response.text()).slice(0, 3 * 1024 * 1024);
+  const parts = [];
+  let size = 0;
+  while (size < 3 * 1024 * 1024) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    size += value.byteLength;
+  }
+  reader.cancel().catch(() => {});
+  return Buffer.concat(parts.map((p) => Buffer.from(p))).subarray(0, 3 * 1024 * 1024).toString('utf8');
 };
 const driversPage = DriversPage.createDrivers({ runPowerShellCode, fileIcon: driverFileIcon, fetchBytes: oemFetchBytes, fetchText: catalogFetchText, fs,
   // Vizinha da pasta de downloads de drivers (LOCALAPPDATA), calculada na hora: o .cab só é aberto ali dentro.
@@ -1542,7 +1553,7 @@ registerIpcHandler('drivers:show-file', async (_event, id) => {
 if (process.platform === 'win32') setTimeout(() => { driverDownloads.cleanup().catch(() => {}); }, 30000).unref?.();
 // Backup dos drivers (parte 4): Documentos\Nexo\Backup de drivers, pelo pnputil, com administrador.
 const driverBackups = require('./electron/driver-backup.cjs').createDriverBackups({
-  fs: require('node:fs/promises'), path, root: () => path.join(app.getPath('documents'), 'Nexo', 'Backup de drivers'),
+  fs: require('node:fs/promises'), path, root: () => require('./electron/driver-backup.cjs').backupRootFor({ documents: app.getPath('documents'), home: app.getPath('home') }),
   elevate: (task, args) => elevate(task, args), openPath: (dir) => shell.openPath(dir)
 });
 registerIpcHandler('drivers:backup', async () => (process.platform === 'win32' ? driverBackups.create() : { ...ONLY_WINDOWS }));

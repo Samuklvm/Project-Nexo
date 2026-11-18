@@ -678,3 +678,12 @@ test('driver-install: .cab do Catálogo da Microsoft (só Microsoft) instala pel
   assert.doesNotMatch(body, /'setup\.exe'/);
   assert.match(body, /pnputil\.exe \/add-driver/);
 });
+
+test('driver do Catálogo que o Windows não usou: diz que não serve nesta peça', async () => {
+  const { engine } = engineWith({ routes: { [ASUS]: { headers: { 'content-length': '3000' }, chunks: chunks(BODY) } }, elevate: async () => ({ result: { ok: true, nothing: true, code: 259 } }) });
+  engine.start('c', { url: ASUS, domains: ['asus.com'], fileName: 'catalogo-abcd-1234.cab', kind: 'cab', signers: ['Microsoft Corporation'], source: 'catalog' });
+  await settle(engine, 'c');
+  const out = await engine.install('c', { restorePoint: false });
+  assert.equal(out.ok, false);
+  assert.match(out.note, /não serve nesta peça/);
+});
