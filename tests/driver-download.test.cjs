@@ -622,3 +622,13 @@ test('driver-install: pacote zip confere o hash da cópia, abre, procura o insta
   assert.match(exe, /Get-FileHash -LiteralPath \$dst -Algorithm SHA256/);
   assert.doesNotMatch(exe, /Expand-Archive|pnputil/);
 });
+
+
+test('driver-install: instalador de dentro do pacote não vale assinado só pela Microsoft (o .cat vale)', () => {
+  const dir = 'C:\\N\\driver-downloads';
+  const body = E.driverInstallBody({ file: `${dir}\\a.zip`, dir, kind: 'zip', signers: ['ASUSTeK COMPUTER INC.', 'Microsoft Corporation'], sha256: 'ab'.repeat(32) });
+  const setup = body.slice(body.indexOf('if ($setup) {'), body.indexOf('} else {', body.indexOf('if ($setup) {')));
+  assert.match(setup, /'ASUSTeK COMPUTER INC\.'/);
+  assert.doesNotMatch(setup, /Microsoft/);
+  assert.match(body.slice(body.indexOf("-Filter '*.cat'")), /'Microsoft Corporation'/);
+});

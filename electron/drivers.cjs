@@ -262,9 +262,9 @@ function iconSources(runtimes) {
   return out;
 }
 
-function createDrivers({ runPowerShellCode, fetchJson, fetchBytes = null, fs = null, catalogDir = null, fileIcon = null, now = () => Date.now(), platform = process.platform } = {}) {
+function createDrivers({ runPowerShellCode, fetchJson, fetchBytes = null, fs = null, catalogDir = null, oemLimitMs, fileIcon = null, now = () => Date.now(), platform = process.platform } = {}) {
   // Catálogo oficial do fabricante do PC (Dell, HP, Lenovo, ASUS...): só quando o app injeta rede, disco e pasta.
-  const oemCatalogs = OemCatalogs.createOemCatalogs({ fetchBytes, runPowerShellCode, fs, catalogDir, now });
+  const oemCatalogs = OemCatalogs.createOemCatalogs({ fetchBytes, runPowerShellCode, fs, catalogDir, now, ...(oemLimitMs ? { limitMs: oemLimitMs } : {}) });
   const iconCache = new Map(); // caminho → data: URL (ou null)
   async function localIcons(runtimes) {
     if (!fileIcon) return {};
@@ -328,7 +328,9 @@ function createDrivers({ runPowerShellCode, fetchJson, fetchBytes = null, fs = n
     const icons = await localIcons(runtimes);
     return { platform, devices: devices || [], others: others || [], genericDevices: genericDevices || [], generic, runtimes, latest, icons, at: now() };
   }
-  return { scan };
+  // A busca do fabricante do PC roda em segundo plano; isto espera ela terminar (a tela pergunta de novo depois).
+  const oemSettled = () => (oemCatalogs ? oemCatalogs.settled() : Promise.resolve());
+  return { scan, oemSettled };
 }
 
 module.exports = { expandCabScript: OemCatalogs.expandCabScript, createDrivers, parseDotnetRelease, dotnetReleaseUrl, NV_LINES_NOTEBOOK, iconSources, iconPath, ALL_DRIVERS_SCRIPT, RUNTIMES_SCRIPT, parseRuntimes, parseAllDrivers, parseNvidia, parseDotnet, nvidiaUrl, nvidiaLine, officialLink, NV_ENDPOINT, DOTNET_INDEX };

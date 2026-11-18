@@ -390,12 +390,14 @@ test('drivers: guarda os códigos de hardware de cada peça e o modelo exato do 
 const fixtureOem = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', 'oem', name));
 const AUDIO_ID = 'HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295&SUBSYS_10280BEB';
 const DELL_BOARD = { maker: 'Dell Inc.', product: '0XYZ', systemMaker: 'Dell Inc.', model: 'XPS 15 9530', mobile: true, sku: '0BEB', version: '', bios: '1.10.0' };
-function oemSvc({ board = DELL_BOARD, fetchBytes, org = 'Dell Inc.', clock } = {}) {
+/** Leitura + espera a busca do fabricante (que roda em segundo plano) + leitura de novo. */
+const full = async (svc, opts) => { await svc.scan(opts); await svc.oemSettled(); return svc.scan(opts); };
+function oemSvc({ board = DELL_BOARD, fetchBytes, org = 'Dell Inc.', clock, devices, oemLimitMs } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-cat-'));
   const calls = { net: [], ps: [] };
   let t = NOW;
   const svc = Main.createDrivers({
-    platform: 'win32', now: clock || (() => t), catalogDir: dir, fs: require('node:fs/promises'),
+    platform: 'win32', now: clock || (() => t), catalogDir: dir, fs: require('node:fs/promises'), ...(oemLimitMs ? { oemLimitMs } : {}),
     fetchJson: async () => { throw new Error('offline'); },
     fetchBytes: async (url, opts) => { calls.net.push(url); return fetchBytes(url, opts); },
     runPowerShellCode: async (script) => {
@@ -407,7 +409,7 @@ function oemSvc({ board = DELL_BOARD, fetchBytes, org = 'Dell Inc.', clock } = {
         if (ok) { fs.mkdirSync(m[2], { recursive: true }); fs.copyFileSync(m[1], path.join(m[2], 'Catalog.xml')); }
         return { stdout: JSON.stringify({ status: 'Valid', org, code: ok ? 0 : -1 }) };
       }
-      if (script.includes('Win32_PnPSignedDriver | Where-Object')) return { stdout: JSON.stringify({ devices: [{ ...dev('Realtek Audio', 'MEDIA', 'Realtek', '6.0.9500.1', '2025-01-10'), hwids: [AUDIO_ID] }], others: [], generic: 0, genericDevices: [] }) };
+      if (script.includes('Win32_PnPSignedDriver | Where-Object')) return { stdout: JSON.stringify({ devices: devices || [{ ...dev('Realtek Audio', 'MEDIA', 'Realtek', '6.0.9500.1', '2025-01-10'), hwids: [AUDIO_ID] }], others: [], generic: 0, genericDevices: [] }) };
       return { stdout: JSON.stringify({ os: { build: 22631 }, board }) };
     }
   });
@@ -430,7 +432,7 @@ test('oem: sem fabricante identificado não busca nada', async () => {
 
 test('oem: Dell completo (índice → catálogo), só pacotes que casam, BIOS à parte e cache de 6 h', async () => {
   const { svc, calls, tick } = oemSvc({ fetchBytes: dellNet() });
-  const r = await svc.scan();
+  const r = await full(svc);
   const oem = r.latest.oem;
   assert.equal(oem.oem, 'dell');
   assert.equal(oem.key, '0BEB');
@@ -444,13 +446,13 @@ test('oem: Dell completo (índice → catálogo), só pacotes que casam, BIOS à
   await svc.scan({ force: true });
   assert.equal(calls.net.length, n, 'segunda leitura dentro de 6 h não vai à rede');
   tick(2 * 3600 * 1000);
-  await svc.scan({ force: true });
+  await full(svc, { force: true });
   assert.ok(calls.net.length > n, 'depois de 6 h busca de novo');
 });
 
 test('oem: .cab assinado por outra empresa não é lido', async () => {
   const { svc } = oemSvc({ fetchBytes: dellNet(), org: 'Evil Corp' });
-  const oem = (await svc.scan()).latest.oem;
+  const oem = (await full(svc)).latest.oem;
   assert.equal(oem.error.stage, 'signature');
   assert.equal(oem.error.source, 'dell');
   assert.deepEqual(oem.packages, []);
@@ -459,10 +461,10 @@ test('oem: .cab assinado por outra empresa não é lido', async () => {
 test('oem: lista remota inválida usa a local; "disabled" desliga a fonte', async () => {
   const url = 'https://raw.githubusercontent.com/Samuklvm/Project-Nexo/main/docs/drivers/fontes.json';
   const bad = oemSvc({ fetchBytes: dellNet({ [url]: () => Buffer.from('{"sources": 3}') }) });
-  assert.deepEqual((await bad.svc.scan()).latest.oem.packages.map((p) => p.id), ['dell-R1VKP']);
+  assert.deepEqual((await full(bad.svc)).latest.oem.packages.map((p) => p.id), ['dell-R1VKP']);
   const local = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'drivers', 'fontes.json'), 'utf8'));
   const off = oemSvc({ fetchBytes: dellNet({ [url]: () => Buffer.from(JSON.stringify({ ...local, disabled: ['dell'] })) }) });
-  const oem = (await off.svc.scan()).latest.oem;
+  const oem = (await full(off.svc)).latest.oem;
   assert.equal(oem.disabled, true);
   assert.deepEqual(oem.packages, []);
   assert.equal(off.calls.net.filter((u) => u.includes('dell.com')).length, 0);
@@ -470,7 +472,7 @@ test('oem: lista remota inválida usa a local; "disabled" desliga a fonte', asyn
 
 test('oem: erro de rede no índice vira erro com etapa e a leitura local continua inteira', async () => {
   const { svc } = oemSvc({ fetchBytes: dellNet({ 'https://downloads.dell.com/catalog/CatalogIndexPC.cab': () => { throw new Error('ECONNRESET'); } }) });
-  const r = await svc.scan();
+  const r = await full(svc);
   assert.deepEqual(r.latest.oem.error, { source: 'dell', stage: 'index', code: 'network' });
   assert.equal(r.devices.length, 1);
   assert.equal(r.runtimes.board.sku, '0BEB');
@@ -558,7 +560,7 @@ test('oem: downloadFor devolve o plano com assinantes da Dell e das peças, md5 
   const model = D.build(oemData(), NOW);
   const plan = D.downloadFor(model, 'oem-dell-R1VKP');
   assert.equal(plan.url, DELL_PKGS.find((p) => p.id === 'dell-R1VKP').url);
-  assert.deepEqual(plan.domains, ['dell.com']);
+  assert.deepEqual(plan.domains, ['downloads.dell.com', 'dl.dell.com']);
   assert.equal(plan.kind, 'exe');
   assert.equal(plan.source, 'dell');
   assert.ok(plan.signers.includes('Dell Inc.') && plan.signers.includes('Realtek Semiconductor Corp.'));
@@ -582,4 +584,79 @@ test('oem: texto das peças atendidas (até 3 nomes e "e mais N")', () => {
   assert.equal(D.coversText(['A', 'B', 'C', 'D', 'E']), 'Atualiza: A, B, C e mais 2');
   assert.equal(D.coversText([]), '');
   assert.equal(D.phaseText({ phase: 'ready', signer: null }), '✓ Baixado e conferido');
+});
+
+
+/* ---- Correções da revisão final ---- */
+const HP_BOARD = { maker: 'HP', product: '8A4F', systemMaker: 'HP', model: 'OMEN 16', mobile: true, sku: '', version: '', bios: 'F.12' };
+const http = (status) => () => { const e = new Error(`HTTP ${status}`); e.status = status; throw e; };
+const hpNet = (routes) => async (url) => {
+  if (url.endsWith('fontes.json')) return Buffer.from(fs.readFileSync(path.join(__dirname, '..', 'docs', 'drivers', 'fontes.json')));
+  if (routes[url]) return routes[url]();
+  return http(404)();
+};
+const REF = (rel) => `https://hpia.hpcloud.hp.com/ref/8A4F/8A4F_64_11.0.${rel}.cab`;
+
+test('oem: modelo sem lista do fabricante (404) não é "fonte fora do ar" nem vigia', async () => {
+  const { svc } = oemSvc({ board: HP_BOARD, org: 'HP Inc.', fetchBytes: hpNet({}) });
+  const oem = (await full(svc)).latest.oem;
+  assert.equal(oem.error, undefined);
+  assert.equal(oem.noList, true);
+  assert.match(D.oemLine(oem, NOW), /não publica lista de drivers para este modelo/);
+});
+
+test('oem: HP tenta o release de baixo quando o do PC ainda não existe', async () => {
+  const { svc, calls } = oemSvc({ board: HP_BOARD, org: 'HP Inc.', fetchBytes: hpNet({ [REF('23H2')]: () => fixtureOem('hp-ref.xml') }) });
+  const oem = (await full(svc)).latest.oem;
+  assert.equal(oem.error, undefined);
+  assert.equal(oem.noList, undefined);
+  assert.ok(calls.net.includes(REF('23H2')));
+});
+
+test('oem: falha de servidor (500) continua sendo "fonte fora do ar"', async () => {
+  const { svc } = oemSvc({ board: HP_BOARD, org: 'HP Inc.', fetchBytes: hpNet({ [REF('23H2')]: http(500) }) });
+  const oem = (await full(svc)).latest.oem;
+  assert.deepEqual(oem.error, { source: 'hp', stage: 'index', code: 'network' });
+});
+
+test('oem: Dell sem o código deste PC no índice = sem lista, não erro', async () => {
+  const { svc } = oemSvc({ board: { ...DELL_BOARD, sku: '0FFF' }, fetchBytes: dellNet() });
+  const oem = (await full(svc)).latest.oem;
+  assert.equal(oem.error, undefined);
+  assert.equal(oem.noList, true);
+});
+
+test('oem: a leitura não espera a busca do fabricante; busca lenta demais vira erro de tempo', async () => {
+  const { svc } = oemSvc({ fetchBytes: () => new Promise(() => {}), oemLimitMs: 40 });
+  const first = await svc.scan();
+  assert.equal(first.devices.length, 1, 'a página abre com a leitura local');
+  assert.equal(first.latest.oem.pending, true);
+  assert.match(D.oemLine(first.latest.oem, NOW), /lendo a lista oficial da Dell/);
+  await svc.oemSettled();
+  const after = (await svc.scan()).latest.oem;
+  assert.equal(after.pending, undefined);
+  assert.equal(after.error.code, 'timeout');
+});
+
+test('oem: catálogo .cab assinado pela Microsoft (ou por fabricante de peça) não vale como da Dell', async () => {
+  for (const org of ['Microsoft Corporation', 'Realtek Semiconductor Corp.']) {
+    const { svc } = oemSvc({ fetchBytes: dellNet(), org });
+    const oem = (await full(svc)).latest.oem;
+    assert.equal(oem.error?.stage, 'signature', org);
+  }
+});
+
+test('oem: peça com driver básico da Microsoft ganha o pacote do fabricante (não compara versão entre fabricantes)', () => {
+  const data = oemData({ extra: [] });
+  data.devices[0] = { ...dev('Realtek Audio', 'MEDIA', 'Microsoft', '10.0.22621.1', '2022-05-06'), hwids: [AUDIO_ID] };
+  const pkg = cardsOf(D.build(data, NOW)).find((c) => c.id === 'oem-dell-R1VKP');
+  assert.ok(pkg, 'tem o cartão');
+  assert.equal(pkg.state, 'update');
+});
+
+test('oem: aviso de BIOS ignora firmware (Thunderbolt, SSD)', async () => {
+  const xml = fixtureOem('dell-catalog.xml').toString('utf8').replace('<ComponentType value="BIOS" />', '<ComponentType value="FRMW" />');
+  const { svc } = oemSvc({ fetchBytes: dellNet({ 'https://downloads.dell.com/FOLDER12345678M/1/0BEB_Catalog.cab': () => Buffer.from(xml) }) });
+  const r = await full(svc);
+  assert.equal(r.latest.oem.bios, undefined);
 });

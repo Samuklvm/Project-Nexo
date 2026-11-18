@@ -19,7 +19,8 @@ function official(value, domains) {
   try {
     const url = new URL(String(value || ''));
     const host = url.hostname.toLowerCase();
-    return url.protocol === 'https:' && !url.username && !url.password && !url.port && domains.some((d) => host === d || host.endsWith(`.${d}`)) ? url.href : null;
+    // Servidor exato: subdomínio de um servidor oficial não vale (um subdomínio esquecido não vira fonte de driver).
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port && domains.includes(host) ? url.href : null;
   } catch { return null; }
 }
 const text = (value, max = 120) => String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max);
@@ -114,7 +115,7 @@ function parseDellCatalog(xml) {
       id: `dell-${id}`, source: 'dell', title: displayOf(sc) || file.fileName, category: text(X.textOf(X.kid(sc, 'Category') || sc, 'Display'), 40),
       version: text(sc.attrs.dellVersion, 20), driverVersion: driverVersionOf(sc.attrs.vendorVersion), date: isoDay(sc.attrs.dateTime || sc.attrs.releaseDate),
       url, fileName: file.fileName, kind: file.kind, ...(Number.isFinite(size) && size > 0 ? { size } : {}), ...(md5 ? { md5 } : {}),
-      hardwareIds: [...new Set(hardwareIds)].slice(0, 40), signers: Oem.signersFor('dell'), ...(type === 'DRVR' ? {} : { bios: true })
+      hardwareIds: [...new Set(hardwareIds)].slice(0, 40), signers: Oem.signersFor('dell'), ...(type === 'BIOS' ? { bios: true } : type === 'FRMW' ? { firmware: true } : {})
     });
   }
   return out;
@@ -131,6 +132,16 @@ function hpRefUrl(base, platform, { build } = {}) {
   const release = (HP_RELEASES[os].find(([min]) => b >= min) || HP_RELEASES[os][HP_RELEASES[os].length - 1])[1];
   return official(`${base}${code}/${code}_64_${os}.0.${release}.cab`, Oem.DOMAINS['hpia-ref']);
 }
+/** O release do Windows deste PC e os dois de baixo (a HP às vezes ainda não publicou o mais novo). */
+function hpRefCandidates(base, platform, { build } = {}) {
+  const code = String(platform || '').toUpperCase();
+  if (!/^[0-9A-F]{4}$/.test(code)) return [];
+  const b = Number(build) || 0;
+  const os = b >= 22000 ? 11 : 10;
+  const list = HP_RELEASES[os];
+  const start = Math.max(0, list.findIndex(([min]) => b >= min));
+  return list.slice(start, start + 3).map(([, rel]) => official(`${base}${code}/${code}_64_${os}.0.${rel}.cab`, Oem.DOMAINS['hpia-ref'])).filter(Boolean);
+}
 const sha256Of = (value) => (/^[0-9a-f]{64}$/i.test(String(value || '').trim()) ? String(value).trim().toLowerCase() : null);
 /** Os SoftPaqs de driver e de BIOS/firmware do arquivo de referência (software e o resto ficam de fora). */
 function parseHpRef(xml) {
@@ -139,8 +150,9 @@ function parseHpRef(xml) {
   for (const ui of X.walk(root, 'UpdateInfo')) {
     const category = X.textOf(ui, 'Category');
     const driver = /^driver/i.test(category);
-    const bios = /^(bios|firmware)/i.test(category);
-    if (!driver && !bios) continue;
+    const bios = /^bios/i.test(category);
+    const firmware = /^firmware/i.test(category);
+    if (!driver && !bios && !firmware) continue;
     const raw = X.textOf(ui, 'Url');
     const url = official(/^https:\/\//i.test(raw) ? raw : `https://${raw}`, Oem.DOMAINS['hpia-ref']);
     const file = url && fileNameOf(url);
@@ -155,7 +167,7 @@ function parseHpRef(xml) {
       version, driverVersion: driverVersionOf(version.split(' ')[0]), date: isoDay(X.textOf(ui, 'DateReleased')), url, fileName: file.fileName, kind: file.kind,
       ...(Number.isFinite(size) && size > 0 ? { size } : {}), ...(sha256 ? { sha256 } : {}),
       hardwareIds: [...new Set(X.walk(ui, 'DeviceId').map((d) => Oem.normalizeHwid(d.text)).filter(Boolean))].slice(0, 40),
-      signers: Oem.signersFor('hp'), ...(bios ? { bios: true } : {})
+      signers: Oem.signersFor('hp'), ...(bios ? { bios: true } : firmware ? { firmware: true } : {})
     });
   }
   return out;
@@ -195,12 +207,14 @@ function parseLenovoPackage(xml, descriptorUrl, category = '') {
   const ids = [...X.walk(root, '_PnPID'), ...X.walk(root, 'HardwareID')].map((n) => Oem.normalizeHwid(n.text)).filter(Boolean);
   const size = Number(X.textOf(fileNode, 'Size'));
   const sha256 = sha256Of(X.textOf(fileNode, 'CRC'));
-  const bios = type === '3' || type === '4' || /bios|uefi|firmware/i.test(category);
+  // Tipo 3 = BIOS; tipo 4 = firmware (Thunderbolt, SSD, dock...): firmware nunca vira o aviso de BIOS.
+  const bios = type === '3' || /bios|uefi/i.test(category);
+  const firmware = !bios && (type === '4' || /firmware/i.test(category));
   return {
     id: `lenovo-${id}`, source: 'lenovo', title: text((X.walk(root, 'Desc')[0] || {}).text, 120) || file.fileName, category: text(category, 40),
     version: text(root.attrs.version, 40), driverVersion: driverVer || driverVersionOf(root.attrs.version), date: isoDay(X.textOf(root, 'ReleaseDate')),
     url, fileName: file.fileName, kind: file.kind, ...(Number.isFinite(size) && size > 0 ? { size } : {}), ...(sha256 ? { sha256 } : {}),
-    hardwareIds: [...new Set(ids)].slice(0, 40), signers: Oem.signersFor('lenovo'), ...(bios ? { bios: true } : {})
+    hardwareIds: [...new Set(ids)].slice(0, 40), signers: Oem.signersFor('lenovo'), ...(bios ? { bios: true } : firmware ? { firmware: true } : {})
   };
 }
 
@@ -248,4 +262,4 @@ function supportUrlFor(id, key, mobile = false) {
   return null;
 }
 
-module.exports = { REMOTE_LIST, KNOWN, parseSourceList, official, fileNameOf, parseDellIndex, parseDellCatalog, hpRefUrl, parseHpRef, lenovoCatalogUrl, parseLenovoCatalog, parseLenovoPackage, asusUrl, parseAsus, supportUrlFor };
+module.exports = { REMOTE_LIST, KNOWN, parseSourceList, official, fileNameOf, parseDellIndex, parseDellCatalog, hpRefUrl, hpRefCandidates, parseHpRef, lenovoCatalogUrl, parseLenovoCatalog, parseLenovoPackage, asusUrl, parseAsus, supportUrlFor };

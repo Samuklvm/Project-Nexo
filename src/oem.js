@@ -13,10 +13,11 @@
   else root.NexoOem = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   const DOMAINS = Object.freeze({
-    'dell-catalog': Object.freeze(['dell.com']),
-    'hpia-ref': Object.freeze(['hp.com', 'hpcloud.hp.com']),
-    'lenovo-catalog': Object.freeze(['lenovo.com']),
-    'asus-api': Object.freeze(['asus.com', 'asus.com.cn'])
+    // Servidores exatos (não qualquer subdomínio): a lista remota e os catálogos só apontam para estes.
+    'dell-catalog': Object.freeze(['downloads.dell.com', 'dl.dell.com']),
+    'hpia-ref': Object.freeze(['hpia.hpcloud.hp.com', 'ftp.hp.com']),
+    'lenovo-catalog': Object.freeze(['download.lenovo.com']),
+    'asus-api': Object.freeze(['rog.asus.com', 'www.asus.com', 'dlcdnets.asus.com'])
   });
   const SIGNERS = Object.freeze({
     dell: Object.freeze(['Dell Inc', 'Dell Inc.', 'Dell Technologies']),
@@ -85,7 +86,12 @@
     const pkg = normalizeHwid(packageId);
     if (!dev || !pkg) return 0;
     const star = pkg.indexOf('*');
-    if (star >= 0) return star === pkg.length - 1 && pkg.length > 6 && dev.startsWith(pkg.slice(0, -1)) ? 2 : 0;
+    // Curinga (Lenovo) só no fim e depois de um código de dispositivo completo: vale como VEN&DEV.
+    if (star >= 0) {
+      const prefix = pkg.slice(0, -1);
+      const whole = splitHwid(prefix).tokens.some((token) => /^(DEV|PID)_[0-9A-F]{4}$/.test(token));
+      return star === pkg.length - 1 && whole && dev.startsWith(prefix) ? 1 : 0;
+    }
     const d = splitHwid(dev);
     const p = splitHwid(pkg);
     if (d.bus !== p.bus || !p.tokens.every((token) => d.tokens.includes(token))) return 0;
@@ -109,12 +115,31 @@
   }
 
   /* ---------------- Casamento pacote ↔ peça ---------------- */
-  // Pacotes sem códigos (ASUS): categoria do pacote ↔ classe do dispositivo, e o fabricante da peça no título.
-  const CATEGORY = { MEDIA: /audio|sound/i, NET: /\blan\b|ethernet|wireless|wlan|wi-?fi|network/i, BLUETOOTH: /bluetooth/i, SYSTEM: /chipset|serial io|management engine|\bme\b|system/i, HDC: /sata|raid|storage|\brst\b|nvme/i, SCSIADAPTER: /sata|raid|storage|\brst\b|nvme/i };
+  /*
+   * Pacotes sem códigos (ASUS): a CATEGORIA do pacote precisa ser a da classe do dispositivo (lista exata), o fabricante
+   * da peça precisa estar no título, na rede Wi-Fi e cabo não se misturam, e no chipset/armazenamento o título precisa
+   * falar da peça (Serial IO, Management Engine...). Na dúvida não casa: fica o botão do site.
+   */
+  const CATEGORY = { MEDIA: ['audio', 'sound'], NET: ['lan', 'wireless', 'wlan', 'wifi', 'wi-fi', 'network', 'networking'], BLUETOOTH: ['bluetooth'], SYSTEM: ['chipset'], HDC: ['sata', 'raid', 'storage', 'rst', 'nvme'], SCSIADAPTER: ['sata', 'raid', 'storage', 'rst', 'nvme'] };
+  const WIRELESS = /wi-?fi|wireless|wlan|802\.11/i;
+  const STOP = new Set(['driver', 'drivers', 'intel', 'amd', 'realtek', 'for', 'windows', 'and', 'the', 'with', 'version', 'x64', '64', 'bit', 'r', 'tm', 'utility', 'package', 'legacy', 'whql']);
+  const words = (value) => String(value || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1 && !STOP.has(w));
   function byCategory(device, pkg) {
-    const re = CATEGORY[String(device.cls || '').toUpperCase()];
+    const cls = String(device.cls || '').toUpperCase();
+    const allowed = CATEGORY[cls];
+    const category = String(pkg.category || '').trim().toLowerCase();
+    const title = String(pkg.title || '');
     const maker = String(device.maker || '').split(/[\s(]/)[0].toLowerCase();
-    return re && maker.length > 2 && re.test(`${pkg.category || ''} ${pkg.title || ''}`) && String(pkg.title || '').toLowerCase().includes(maker) ? 1 : 0;
+    if (!allowed || !allowed.includes(category) || maker.length < 3 || !title.toLowerCase().includes(maker)) return 0;
+    if (cls === 'NET') {
+      const pkgWireless = ['wireless', 'wlan', 'wifi', 'wi-fi'].includes(category) || WIRELESS.test(title);
+      if (pkgWireless !== WIRELESS.test(String(device.name || ''))) return 0;
+    }
+    if (cls === 'SYSTEM' || cls === 'HDC' || cls === 'SCSIADAPTER') {
+      const name = new Set(words(device.name));
+      if (!words(title).some((w) => w !== maker && name.has(w))) return 0;
+    }
+    return 1;
   }
   function rankFor(device, pkg) {
     const ids = Array.isArray(pkg.hardwareIds) ? pkg.hardwareIds : [];
@@ -124,15 +149,18 @@
     return best;
   }
   const dateOf = (pkg) => { const t = Date.parse(pkg?.date || ''); return Number.isFinite(t) ? t : 0; };
+  const noIds = (pkg) => !Array.isArray(pkg.hardwareIds) || !pkg.hardwareIds.length;
   function better(a, b) {
     if (a.rank !== b.rank) return a.rank > b.rank;
+    // Casados só por categoria podem ser produtos diferentes: aí vale a data, nunca a versão de um contra o outro.
+    if (noIds(a.pkg) && noIds(b.pkg)) return dateOf(a.pkg) > dateOf(b.pkg);
     const cmp = compareVersions(a.pkg.driverVersion, b.pkg.driverVersion);
     if (cmp) return cmp > 0;
     return dateOf(a.pkg) > dateOf(b.pkg);
   }
   /** Para cada peça (menos vídeo), o melhor pacote; devolve [{ pkg, devices }] na ordem dos pacotes. */
   function matchPackages(devices, packages) {
-    const list = (Array.isArray(packages) ? packages : []).filter((p) => p && !p.bios);
+    const list = (Array.isArray(packages) ? packages : []).filter((p) => p && !p.bios && !p.firmware);
     const chosen = new Map();
     for (const device of Array.isArray(devices) ? devices : []) {
       if (!device || String(device.cls || '').toUpperCase() === 'DISPLAY') continue;

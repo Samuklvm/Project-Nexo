@@ -82,6 +82,10 @@ function driverInstallBody({ file, dir, signer, signers, kind, sha256 = null, re
   const type = kind === undefined ? ext : kind;
   if (type !== ext) throw new Error('O tipo do arquivo não confere.');
   const archive = ARCHIVE_KINDS.has(type);
+  // O instalador de dentro do pacote precisa ser do fabricante do PC ou da peça: assinado só pela Microsoft não vale
+  // (qualquer programa da Microsoft renomeado para setup.exe passaria). A Microsoft continua valendo no .cat (WHQL).
+  const inner = list.filter((name) => !/^Microsoft /.test(name));
+  if (archive && !inner.length) throw new Error('Assinante não permitido.');
   const hash = /^[0-9a-f]{64}$/i.test(String(sha256 || '')) ? String(sha256).toUpperCase() : null;
   if (archive && !hash) throw new Error('Pacote sem hash para conferir.');
   const restore = restorePoint === true ? String.raw`
@@ -111,7 +115,7 @@ ${launchCore('$dst', '$work')}` : String.raw`
   $setup = $null
   foreach ($n in @('setup.exe', 'AsusSetup.exe', 'install.exe')) { $c = Join-Path $root $n; if (Test-Path -LiteralPath $c -PathType Leaf) { $setup = $c; break } }
   if ($setup) {
-${Sig.signatureCoreFor('$setup', list)}
+${Sig.signatureCoreFor('$setup', inner)}
     $r.signature = @{ valid = $sig.valid; signer = $sig.org; status = $sig.status }
     if (-not $sig.valid) { $r.note = 'assinatura não confere'; ${WRITE_RESULT}; return }
     $r.method = 'setup'

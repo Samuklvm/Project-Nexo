@@ -306,6 +306,7 @@
   }
 
   /* ---------------- Pacotes do fabricante do PC ---------------- */
+  const INBOX = /^microsoft\b/i;
   const OEM_TYPE = { dell: 'dell-catalog', hp: 'hpia-ref', lenovo: 'lenovo-catalog', asus: 'asus-api' };
   const OEM_NAME = { dell: 'Dell', hp: 'HP', lenovo: 'Lenovo', asus: 'ASUS', msi: 'MSI', gigabyte: 'GIGABYTE', asrock: 'ASRock', acer: 'Acer' };
   const GROUP_OF = { MEDIA: 'audio', NET: 'rede', BLUETOOTH: 'bluetooth', HDC: 'disco', SCSIADAPTER: 'disco', SYSTEM: 'placa' };
@@ -332,9 +333,12 @@
     if (!Oem || !oem || !Array.isArray(oem.packages) || !oem.packages.length || !OEM_TYPE[oem.oem]) return out;
     const parts = [...devices, ...missing.map((item) => ({ ...item, cls: item.cls || 'MISSING', missing: true }))];
     for (const { pkg, devices: hits } of Oem.matchPackages(parts, oem.packages)) {
-      const top = newestInstalled(hits);
+      // Driver básico do Windows (da Microsoft) tem numeração própria (10.0.x): não dá para comparar com o do
+      // fabricante, e o do fabricante é justamente o que a peça precisa. Conta como peça sem driver do fabricante.
+      const real = hits.filter((item) => !item.missing && !INBOX.test(String(item.provider || '')));
+      const top = newestInstalled(real) || newestInstalled(hits);
       const allMissing = hits.every((item) => item.missing);
-      const verdict = allMissing ? 'newer' : Oem.compareToInstalled(top?.version, pkg);
+      const verdict = real.length ? Oem.compareToInstalled(newestInstalled(real)?.version, pkg) : 'newer';
       if (verdict === 'same' || verdict === 'older') continue;
       const state = verdict === 'newer' ? 'update' : 'oem';
       const group = allMissing ? 'semdriver' : GROUP_OF[String(hits[0].cls || '').toUpperCase()] || 'outros';
@@ -454,7 +458,7 @@
     if (!oem || typeof oem !== 'object') return null;
     const installed = runtimes?.board?.bios || null;
     const bios = oem.bios?.version ? { version: oem.bios.version, date: oem.bios.date || null, installed, newer: Oem ? Oem.compareToInstalled(installed, { driverVersion: oem.bios.version }) === 'newer' : false } : null;
-    return { oem: oem.oem, label: oem.label || null, at: oem.at || null, error: oem.error || null, bios, disabled: oem.disabled === true, support: oem.support || null, packages: Array.isArray(oem.packages) ? oem.packages.length : 0 };
+    return { oem: oem.oem, label: oem.label || null, at: oem.at || null, error: oem.error || null, bios, disabled: oem.disabled === true, pending: oem.pending === true, noList: oem.noList === true, support: oem.support || null, packages: Array.isArray(oem.packages) ? oem.packages.length : 0 };
   }
 
   const clock = (at) => { const d = new Date(at); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -463,6 +467,8 @@
     if (!oem || !oem.oem) return '';
     const who = OEM_NAME[oem.oem] || 'fabricante';
     const head = `Seu PC: ${oem.label || who}`;
+    if (oem.pending) return `${head} · lendo a lista oficial da ${who}…`;
+    if (oem.noList) return `${head} · a ${who} não publica lista de drivers para este modelo; use a página de suporte`;
     if (oem.disabled) return `${head} · os pacotes da ${who} estão pausados por enquanto; o botão abre a página de suporte`;
     if (oem.error?.stage === 'signature') return `${head} · a lista da ${who} não passou na conferência da assinatura, então ignorei por segurança`;
     if (oem.error) return `${head} · fonte da ${who} fora do ar agora; tentando de novo mais tarde`;
@@ -508,7 +514,7 @@
     const all = groups.flatMap((group) => group.items);
     const count = (...states) => all.filter((item) => states.includes(item.state)).length;
     const summary = { total: all.length, update: count('update'), missing: count('missing', 'problem'), old: count('old', 'generic'), ok: count('ok'), check: count('check', 'ended'), oem: count('oem') };
-    return { groups, summary, support, oem: oemInfo(latest.oem, runtimes), online: Boolean(latest?.nvidia || latest?.dotnet || (latest?.oem && !latest.oem.error)), at: data.at || now };
+    return { groups, summary, support, oem: oemInfo(latest.oem, runtimes), online: Boolean(latest?.nvidia || latest?.dotnet || (latest?.oem && !latest.oem.error && !latest.oem.pending && !latest.oem.noList && Array.isArray(latest.oem.packages) && latest.oem.packages.length)), at: data.at || now };
   }
   /** A frase do topo da página. */
   function headline(summary) {

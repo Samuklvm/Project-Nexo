@@ -140,3 +140,31 @@ test('outras marcas: página de suporte do modelo exato quando o formato é conh
   assert.equal(S.supportUrlFor('asrock', 'B650M Pro RS'), null);
   assert.equal(S.supportUrlFor('msi', '../../x'), null);
 });
+
+
+/* ---- Correções da revisão final ---- */
+test('hp: endereços da referência do release do PC para baixo (até 3)', () => {
+  assert.deepEqual(S.hpRefCandidates('https://hpia.hpcloud.hp.com/ref/', '8870', { build: 26200 }), [
+    'https://hpia.hpcloud.hp.com/ref/8870/8870_64_11.0.25H2.cab',
+    'https://hpia.hpcloud.hp.com/ref/8870/8870_64_11.0.24H2.cab',
+    'https://hpia.hpcloud.hp.com/ref/8870/8870_64_11.0.23H2.cab'
+  ]);
+  assert.deepEqual(S.hpRefCandidates('https://hpia.hpcloud.hp.com/ref/', 'zz', { build: 26200 }), []);
+});
+test('firmware separado da BIOS (Dell FRMW, HP Firmware, Lenovo tipo 4)', () => {
+  const xml = fixture('dell-catalog.xml').replace('<ComponentType value="BIOS" />', '<ComponentType value="FRMW" />');
+  const fw = S.parseDellCatalog(xml).find((p) => p.firmware);
+  assert.ok(fw, 'FRMW vira firmware');
+  assert.equal(fw.bios, undefined);
+  const hp = S.parseHpRef(fixture('hp-ref.xml').replace('<Category>BIOS</Category>', '<Category>Firmware</Category>'));
+  assert.equal(hp.find((p) => p.id === 'hp-sp150001').firmware, true);
+  assert.equal(hp.find((p) => p.id === 'hp-sp150001').bios, undefined);
+  const lv = S.parseLenovoPackage(fixture('lenovo-package.xml').replace('<PackageType type="2" />', '<PackageType type="4" />'), 'https://download.lenovo.com/x_2_.xml', 'Thunderbolt');
+  assert.equal(lv.firmware, true);
+  assert.equal(lv.bios, undefined);
+});
+test('lista de fontes: subdomínio que não é o servidor oficial exato é recusado', () => {
+  const list = S.parseSourceList({ version: 1, sources: { hp: { type: 'hpia-ref', base: 'https://evil.hp.com/ref/' }, dell: { type: 'dell-catalog', index: 'https://downloads.dell.com/catalog/CatalogIndexPC.cab' } }, disabled: [] });
+  assert.equal(list.sources.hp, undefined);
+  assert.ok(list.sources.dell);
+});

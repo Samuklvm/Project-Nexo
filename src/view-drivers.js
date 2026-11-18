@@ -223,7 +223,31 @@
       loading = false;
       if (button) button.disabled = false;
       render();
+      watchOem(true);
     }
+  }
+  /*
+   * A lista do fabricante do PC chega em segundo plano: a página abre com o que já tem e pergunta de novo a cada 4 s
+   * (no máximo 2 min) até a lista chegar; aí os cartões dos pacotes aparecem.
+   */
+  let oemTimer = null;
+  let oemTries = 0;
+  function watchOem(reset = false) {
+    clearTimeout(oemTimer);
+    if (reset) oemTries = 0;
+    if (!model?.oem?.pending || oemTries >= 30) return;
+    oemTries += 1;
+    oemTimer = setTimeout(async () => {
+      if (loading) { watchOem(); return; }
+      try {
+        const data = await bridge.scanDrivers({ force: false });
+        model = D.build(data, Date.now());
+        localLogos = { ...localLogos, ...Object.fromEntries(Object.entries(data?.icons || {}).filter(([, value]) => typeof value === 'string' && /^data:image\/png;base64,/.test(value))) };
+        render();
+        if (!model.oem?.pending) loadLogos();
+      } catch { /* tenta de novo na próxima volta */ }
+      watchOem();
+    }, 4000);
   }
 
   document.addEventListener('click', async (event) => {

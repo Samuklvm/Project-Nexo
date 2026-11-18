@@ -1427,12 +1427,13 @@ const driverFileIcon = async (file) => {
   return image && !image.isEmpty() ? image.toDataURL() : null;
 };
 /** Catálogo do fabricante: HTTPS, só no domínio oficial (conferido de novo depois de redirecionar) e com limite de tamanho. */
-const oemFetchBytes = async (url, { maxBytes = 30 * 1024 * 1024, domains = [] } = {}) => {
+const oemFetchBytes = async (url, { maxBytes = 30 * 1024 * 1024, domains = [], timeoutMs = 60000 } = {}) => {
   const { official } = require('./electron/oem-sources.cjs');
   if (!official(url, domains)) throw new Error('Endereço fora do site oficial.');
-  const response = await net.fetch(url, { signal: withTimeout(120000), redirect: 'follow' });
+  const response = await net.fetch(url, { signal: withTimeout(Math.min(Math.max(Number(timeoutMs) || 60000, 5000), 120000)), redirect: 'follow' });
   if (!official(response.url || url, domains)) throw new Error('Redirecionou para fora do site oficial.');
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  // O código HTTP vai junto: 404 no arquivo do modelo quer dizer "o fabricante não tem lista para ele", não "fora do ar".
+  if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
   if (Number(response.headers.get('content-length')) > maxBytes) throw new Error('Arquivo grande demais.');
   const chunks = [];
   let total = 0;

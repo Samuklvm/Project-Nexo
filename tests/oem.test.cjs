@@ -75,7 +75,9 @@ test('oem: código de hardware normalizado e nível de casamento', () => {
   assert.equal(O.hwidRank(dev, 'PCI\\VEN_8086&DEV_A0F0&SUBSYS_0B001028'), 0, 'SUBSYS de outro modelo nunca');
   assert.equal(O.hwidRank(dev, 'PCI\\VEN_8086&DEV_A0F0&REV_20'), 2);
   assert.equal(O.hwidRank(dev, 'PCI\\VEN_8086&DEV_A0F0'), 1);
-  assert.equal(O.hwidRank('HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295&SUBSYS_10280A6F', 'HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295*'), 2);
+  assert.equal(O.hwidRank('HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295&SUBSYS_10280A6F', 'HDAUDIO\\FUNC_01&VEN_10EC&DEV_0295*'), 1, 'curinga vale como VEN&DEV');
+  assert.equal(O.hwidRank(dev, 'PCI\\VEN_8086*'), 0, 'curinga só com o fabricante casaria toda peça Intel');
+  assert.equal(O.hwidRank(dev, 'PCI\\VEN_8086&DEV_A0*'), 0, 'curinga no meio do código do dispositivo não vale');
   assert.equal(O.hwidRank('PCI\\VEN_8086&DEV_A0F0', 'PCI\\VEN_8086&DEV_A0F1'), 0);
   assert.equal(O.hwidRank('PCI\\VEN_8086&DEV_A0F0', 'PCI\\VEN_8086*DEV'), 0, 'curinga só no fim');
 });
@@ -124,10 +126,50 @@ test('oem: compara a versão do driver número a número; formato diferente = un
 });
 
 test('oem: domínios e assinantes fixos', () => {
-  assert.deepEqual(O.DOMAINS['dell-catalog'], ['dell.com']);
-  assert.ok(O.DOMAINS['hpia-ref'].includes('hp.com'));
+  assert.deepEqual(O.DOMAINS['dell-catalog'], ['downloads.dell.com', 'dl.dell.com'], 'servidores exatos, não qualquer subdomínio');
+  assert.deepEqual(O.DOMAINS['hpia-ref'], ['hpia.hpcloud.hp.com', 'ftp.hp.com']);
+  assert.deepEqual(O.DOMAINS['lenovo-catalog'], ['download.lenovo.com']);
+  assert.deepEqual(O.DOMAINS['asus-api'], ['rog.asus.com', 'www.asus.com', 'dlcdnets.asus.com']);
+  assert.deepEqual(O.SIGNERS.dell, ['Dell Inc', 'Dell Inc.', 'Dell Technologies']);
   assert.ok(O.signersFor('dell').includes('Dell Inc'));
   assert.ok(O.signersFor('dell').includes('Realtek Semiconductor Corp.'));
   assert.ok(O.signersFor('asus').includes('ASUSTeK COMPUTER INC.'));
   assert.deepEqual(O.signersFor('nada'), []);
+});
+
+
+/* ---- Correções da revisão final ---- */
+const nic = (name, extra) => ({ name, cls: 'NET', maker: 'Intel', version: '1.0.0.0', date: '2024-01-01', hwids: [], ...extra });
+const asusPkg = (id, title, category, driverVersion, date) => ({ id, source: 'asus', title, category, version: driverVersion, driverVersion, date, url: `https://dlcdnets.asus.com/${id}.zip`, fileName: `${id}.zip`, kind: 'zip', hardwareIds: [], signers: [] });
+test('oem (ASUS): Wi-Fi, cabo e Bluetooth da Intel ficam cada um com o seu pacote', () => {
+  const wifi = nic('Intel(R) Wi-Fi 6 AX210 160MHz');
+  const lan = nic('Intel(R) Ethernet Controller I225-V');
+  const bt = { ...nic('Intel(R) Wireless Bluetooth(R)'), cls: 'BLUETOOTH' };
+  const out = O.matchPackages([wifi, lan, bt], [
+    asusPkg('bt', 'Intel Wireless Bluetooth Driver', 'BlueTooth', '23.90.0.1', '2026-09-01'),
+    asusPkg('wl', 'Intel Wi-Fi Driver', 'Wireless', '23.80.0.4', '2026-08-01'),
+    asusPkg('lan', 'Intel LAN Driver', 'LAN', '1.1.4.43', '2026-05-01')
+  ]);
+  const owner = (name) => out.find((m) => m.devices.some((d) => d.name === name))?.pkg.id;
+  assert.equal(owner(wifi.name), 'wl');
+  assert.equal(owner(lan.name), 'lan');
+  assert.equal(owner(bt.name), 'bt');
+});
+test('oem (ASUS): no chipset, o pacote precisa falar da peça; empate por categoria vai pela data', () => {
+  const serial = { name: 'Intel(R) Serial IO I2C Host Controller - 7AF8', cls: 'SYSTEM', maker: 'Intel', version: '30.100.2221.20', hwids: [] };
+  const me = { name: 'Intel(R) Management Engine Interface #1', cls: 'SYSTEM', maker: 'Intel', version: '2406.5.5.0', hwids: [] };
+  const smbus = { name: 'Intel(R) SMBus - 7AA3', cls: 'SYSTEM', maker: 'Intel', version: '10.1.1.1', hwids: [] };
+  const out = O.matchPackages([serial, me, smbus], [
+    asusPkg('me', 'Intel Management Engine Interface Driver', 'Chipset', '2433.6.1.0', '2026-07-01'),
+    asusPkg('sio', 'Intel Serial IO Driver', 'Chipset', '30.100.2405.44', '2026-08-01')
+  ]);
+  const owner = (name) => out.find((m) => m.devices.some((d) => d.name === name))?.pkg.id;
+  assert.equal(owner(serial.name), 'sio');
+  assert.equal(owner(me.name), 'me');
+  assert.equal(owner(smbus.name), undefined, 'sem pacote que fale da peça, fica o botão do site');
+  const two = O.matchPackages([nic('Intel(R) Wi-Fi 6E AX211')], [asusPkg('novo', 'Intel Wi-Fi Driver', 'Wireless', '22.1.0.1', '2026-10-01'), asusPkg('velho', 'Intel Wi-Fi Driver (legacy)', 'Wireless', '23.0.0.1', '2025-01-01')]);
+  assert.equal(two[0].pkg.id, 'novo', 'por categoria não compara versão de produtos diferentes');
+});
+test('oem: firmware não casa com peça', () => {
+  assert.deepEqual(O.matchPackages([audio], [pkg({ id: 'fw', firmware: true })]), []);
 });
