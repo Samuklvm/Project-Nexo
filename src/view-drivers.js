@@ -34,6 +34,9 @@
   const HISTORY_KEY = 'nexo-drivers-history';
   let history = (() => { try { return JSON.parse(store.get(HISTORY_KEY) || '{}') || {}; } catch { return {}; } })();
   let gameNames = null;
+  // Projeto 4: filtro "só o que precisa de atenção" (lembrado) e a busca.
+  const ATTENTION_KEY = 'nexo-drivers-attention';
+  const filter = { attention: store.get(ATTENTION_KEY) === '1', query: '' };
   const LIVE = new Set(['queued', 'downloading', 'verifying']);
   // Componente: o ícone do próprio programa instalado é o certo; fabricante: o do site oficial, e o do PC na falta dele.
   const COMPONENTS = new Set(['vs', 'dotnet', 'physx', 'directx', 'vulkan']);
@@ -167,6 +170,19 @@
     const supportBox = support ? `<div class="drivers-support">${support.brand ? tile(support.brand, 'i-board', 'ds-logo') : ''}<span class="ds-label">${support.kind === 'notebook' ? 'Seu notebook' : support.kind === 'computador' ? 'Seu computador' : 'Sua placa-mãe'}</span><strong>${escapeHtml(`${support.maker}${support.model ? ` ${support.model}` : ''}`)}</strong><span class="ds-hint">Chipset, áudio e rede feitos para ela estão na página de suporte.</span>${bios}<div class="ds-actions"><button class="btn sm" type="button" data-driver-url="${escapeHtml(support.url)}">Página de suporte da ${escapeHtml(support.maker)}</button>${support.model ? `<button class="btn sm ghost" type="button" data-driver-copy="${escapeHtml(support.model)}">Copiar o modelo</button>` : ''}</div></div>` : '';
     box.innerHTML = `<div class="drivers-status"><h3 class="drivers-headline" data-tone="${tone}">${escapeHtml(D.headline(s))}</h3><p class="drivers-sub">${escapeHtml(`Conferido às ${timeText(model.at)}. ${online}`)}</p>${oemBox}${support ? '' : bios}<p class="drivers-rule">O Nexo baixa só do site oficial de cada fabricante, confere a assinatura de cada arquivo e nunca usa o Windows Update.</p>${restoreToggle()}${toolsRow()}</div>${supportBox}`;
   }
+  /** Chips dos grupos (com a contagem do que pede atenção), a busca e o filtro. */
+  function renderBar() {
+    const bar = document.getElementById('drivers-bar');
+    if (!bar) return;
+    bar.hidden = !model || Nexo.platform === 'linux';
+    const dot = document.getElementById('drivers-nav-indicator');
+    if (dot) dot.hidden = !D.navDot(model);
+    if (!model) return;
+    const chips = document.getElementById('drivers-chips');
+    if (chips) chips.innerHTML = D.chips(D.filterModel(model, filter)).map((c) => `<button class="db-chip" type="button" data-driver-chip="${escapeHtml(c.id)}">${ico(c.icon)}<span>${escapeHtml(c.title)}</span>${c.attention ? `<b class="db-chip-alert">${c.attention}</b>` : `<b>${c.count}</b>`}</button>`).join('');
+    const att = document.getElementById('drivers-attention');
+    if (att) { att.checked = filter.attention; att.closest('.switch')?.classList.toggle('on', filter.attention); }
+  }
   const nameOf = (id) => model?.groups.flatMap((g) => g.items).find((i) => i.id === id)?.name || 'driver';
   /** Atualizar tudo + backup: a faixa de ferramentas do topo. */
   function toolsRow() {
@@ -252,7 +268,9 @@
       box.innerHTML = loading ? `<section class="drivers-group loading" aria-hidden="true">${'<div class="driver skeleton-row"><span class="skeleton"></span><span class="skeleton short"></span></div>'.repeat(4)}</section>` : '';
       return;
     }
-    box.innerHTML = model.groups.map(group).join('');
+    renderBar();
+    const view = D.filterModel(model, filter);
+    box.innerHTML = view.groups.length ? view.groups.map(group).join('') : `<section class="drivers-group drivers-empty"><strong>${filter.query ? 'Nada com esse nome' : 'Nada pedindo atenção'}</strong><span>${filter.query ? 'Tente outro nome de peça ou de fabricante.' : 'Tudo o que o Nexo consegue saber está em dia. Desligue o filtro para ver todos os drivers.'}</span></section>`;
     if (celebrate.size) setTimeout(() => { celebrate.clear(); box.querySelectorAll('.driver.celebrate').forEach((li) => li.classList.remove('celebrate')); }, 1700);
     if (focus) {
       const target = box.querySelector(`[data-group="${CSS.escape(focus)}"]`);
@@ -391,6 +409,12 @@
       }
       return;
     }
+    const chip = event.target.closest?.('[data-driver-chip]');
+    if (chip && chip.closest('.drivers-view')) {
+      const target = groupsBox()?.querySelector(`.drivers-group[data-group="${CSS.escape(chip.dataset.driverChip)}"]`);
+      target?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      return;
+    }
     if (event.target.closest?.('[data-driver-bulk]') && event.target.closest('.drivers-view')) {
       const ids = D.updatePlan(model);
       const ok = await Nexo.confirm({ title: `Atualizar ${ids.length} ${ids.length === 1 ? 'driver' : 'drivers'}?`, body: `O Nexo baixa tudo do site oficial e abre um instalador por vez, na ordem certa (placa primeiro, vídeo por último).${restoreOn ? ' Antes do primeiro, cria um ponto de restauração.' : ''} Cada instalador abre na sua frente.`, items: ids.map(nameOf).slice(0, 8), confirmLabel: 'Atualizar tudo' });
@@ -452,6 +476,20 @@
   bridge.driverDownloads?.().then((list) => { for (const item of list || []) if (item?.id) downloads.set(item.id, item); if (model) render(); }).catch(() => {});
   document.getElementById('drivers-refresh')?.addEventListener('click', () => { asked = new Set(Object.keys(logos)); load(true); });
   Nexo.on('view', (view) => { if (view === 'drivers') load(false); });
+  // Filtro e busca (projeto 4): só redesenha a lista, o campo de busca não perde o foco.
+  document.addEventListener('change', (event) => {
+    if (event.target?.id !== 'drivers-attention') return;
+    filter.attention = event.target.checked;
+    store.set(ATTENTION_KEY, filter.attention ? '1' : '0');
+    if (model) render();
+  });
+  let searchTimer = null;
+  document.getElementById('drivers-search')?.addEventListener('input', (event) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { filter.query = String(event.target.value || '').slice(0, 80); if (model) render(); }, 120);
+  });
+  // A bolinha da barra lateral: uma leitura quieta um minuto depois de abrir o app (com cache, sem pressa).
+  if (Nexo.platform !== 'linux') setTimeout(() => { if (!model && !loading) load(false); }, 60000);
   /** Abre a página de Drivers num grupo (os botões de correção da análise usam). */
   Nexo.openDrivers = (groupId = null) => { focus = groupId; Nexo.go('drivers'); if (model) render(); };
 })();
