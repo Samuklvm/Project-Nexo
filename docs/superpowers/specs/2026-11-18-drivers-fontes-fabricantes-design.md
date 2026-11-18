@@ -1,6 +1,6 @@
 # Drivers: fontes dos fabricantes de PC e placa-mãe (projeto 2, parte 1 de 4)
 
-Data: 18/11/2026 · Versão alvo: a próxima depois da 0.11.4 · Status: construído na branch `feat/drivers-fontes` (revisão final em andamento)
+Data: 18/11/2026 · Versão alvo: a próxima depois da 0.11.4 · Status: na `main` desde 18/11/2026 (revisado; falta conferir os formatos no Windows)
 
 ## Por que
 
@@ -269,3 +269,8 @@ Tudo acima foi feito; o que mudou em relação ao desenho:
 - Vigia com o nome `fonte-de-driver` (padrão dos vigias da 0.11.4), no máximo 1 aviso por fonte por dia.
 - Os formatos de cada fonte foram montados pela documentação e por ferramentas que leem essas listas; falta conferir no
   Windows (lista no `pendente-proxima-versao.md`).
+- Depois da revisão final: modelo sem lista (404) não é "fonte fora do ar"; a busca roda em segundo plano (limite de
+  90 s); peça com driver básico da Microsoft ganha o pacote; ASUS por categoria exata (Wi-Fi, cabo e Bluetooth separados);
+  catálogo só assinado pelo próprio fabricante do PC; servidores exatos; firmware fora do aviso de BIOS.
+- Pedido do Samuel: o app não chuta mais pela idade do driver ("provavelmente há versão mais nova"). Sem lista do
+  fabricante, o cartão diz "Confira no site"; o topo conta só o que o app sabe, cada peça uma vez.
