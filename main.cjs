@@ -1529,18 +1529,94 @@ const driverDownloads = require('./electron/driver-download.cjs').createDriverDo
 });
 const ONLY_WINDOWS = Object.freeze({ ok: false, note: 'Só no Windows.' });
 const cardId = (id) => { if (typeof id !== 'string' || !id || id.length > 200) throw new Error('Cartão inválido.'); return id; };
-registerIpcHandler('drivers:download', async (_event, id) => {
+/*
+ * Driver da AMD: o servidor dela só libera download que começa no amd.com. Abre a página oficial numa janela com
+ * sessão própria (sandbox, sem preload, só amd.com). Vídeo: escondida, clica no botão oficial de download (instalador
+ * de detecção automática); se não achar em 30 s, a janela aparece. Chipset: visível, para escolher a placa-mãe.
+ */
+const AmdSite = require('./electron/amd-site.cjs');
+let amdSite = null;
+function openAmdSite(id, plan, auto) {
+  if (amdSite) { try { amdSite.close(); } catch { /* já fechou */ } }
+  const { session } = require('electron');
+  const ses = session.fromPartition('nexo-amd-site');
+  const hidden = AmdSite.hiddenFor(id);
+  const win = new BrowserWindow({
+    show: !hidden, parent: mainWindow || undefined, width: 1180, height: 820, backgroundColor: '#0b1020', autoHideMenuBar: true,
+    title: 'Site da AMD: o Nexo instala o driver que você baixar aqui',
+    webPreferences: { session: ses, sandbox: true, contextIsolation: true, nodeIntegration: false, devTools: false, spellcheck: false }
+  });
+  let started = false;
+  let dlItem = null;
+  let timer = null;
+  let poll = null;
+  const stopTimers = () => { clearTimeout(timer); clearInterval(poll); };
+  const close = () => { stopTimers(); ses.removeListener('will-download', onDownload); try { dlItem?.cancel(); } catch { /* já terminou */ } if (!win.isDestroyed()) win.destroy(); if (amdSite?.win === win) amdSite = null; };
+  const reveal = () => { stopTimers(); if (!win.isDestroyed() && !started) { win.show(); win.focus(); } };
+  function onDownload(_event, item, contents) {
+    if (contents !== win.webContents) return;
+    const url = item.getURL();
+    const name = item.getFilename();
+    if (started || !AmdSite.allowedDownload(url, name)) { item.cancel(); return; }
+    started = true;
+    stopTimers();
+    dlItem = item;
+    const target = path.join(DRIVER_DOWNLOADS_DIR(), name);
+    require('fs').mkdirSync(DRIVER_DOWNLOADS_DIR(), { recursive: true });
+    item.setSavePath(target);
+    if (!win.isDestroyed()) win.hide();
+    item.on('updated', () => driverDownloads.progress(id, item.getReceivedBytes(), item.getTotalBytes()));
+    item.once('done', (_e, state) => {
+      ses.removeListener('will-download', onDownload);
+      dlItem = null;
+      if (state === 'completed') driverDownloads.arrived(id, { file: target, url, profile: AmdSite.profileFor(name) }).catch(() => {});
+      else driverDownloads.failed(id, state === 'cancelled' ? 'canceled' : 'offline');
+      if (!win.isDestroyed()) win.destroy();
+      if (amdSite?.win === win) amdSite = null;
+    });
+  }
+  ses.on('will-download', onDownload);
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (AmdSite.allowedNav(url)) win.loadURL(url).catch(() => {});
+    else if (/^https:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => { if (!AmdSite.allowedNav(url)) event.preventDefault(); });
+  win.webContents.on('will-redirect', (event, url) => { if (!AmdSite.allowedNav(url)) event.preventDefault(); });
+  win.on('closed', () => { stopTimers(); if (!started) driverDownloads.failed(id, 'canceled'); if (amdSite?.win === win) amdSite = null; });
+  if (hidden) {
+    timer = setTimeout(reveal, AmdSite.HIDDEN_MS);
+    win.webContents.on('did-finish-load', () => {
+      if (poll || started) return;
+      let tries = 0;
+      poll = setInterval(() => {
+        tries += 1;
+        if (started || win.isDestroyed()) { clearInterval(poll); return; }
+        win.webContents.executeJavaScript(AmdSite.PICK_SCRIPT, true).then((href) => { if (href) clearInterval(poll); }).catch(() => {});
+        if (tries >= 20) clearInterval(poll);
+      }, 1500);
+    });
+    win.webContents.on('did-fail-load', (_e, code) => { if (code !== -3) reveal(); });
+  }
+  amdSite = { win, close };
+  win.loadURL(AmdSite.PAGE).catch(() => reveal());
+  return driverDownloads.external(id, plan, { auto, cancel: close });
+}
+registerIpcHandler('drivers:download', async (_event, id, options = {}) => {
   cardId(id);
   if (process.platform !== 'win32') return { ...ONLY_WINDOWS };
   const plan = DriverRules.downloadFor(lastDriversModel, id);
   if (!plan) throw new Error('Este driver não tem download direto.');
-  return driverDownloads.start(id, plan);
+  // "Baixar e instalar": o motor instala sozinho quando o arquivo fica pronto (com ou sem ponto, como a chave manda).
+  const auto = options?.install === true ? { restorePoint: options?.restorePoint === true } : null;
+  if (plan.via === 'amd-site') return openAmdSite(id, plan, auto);
+  return driverDownloads.start(id, plan, { auto });
 });
 registerIpcHandler('drivers:cancel', async (_event, id) => (process.platform === 'win32' ? driverDownloads.cancel(cardId(id)) : { ...ONLY_WINDOWS }));
 registerIpcHandler('drivers:install', async (_event, id, options = {}) => {
   cardId(id);
   if (process.platform !== 'win32') return { ...ONLY_WINDOWS };
-  return driverDownloads.install(id, { restorePoint: options?.restorePoint === true });
+  return driverDownloads.install(id, { restorePoint: options?.restorePoint === true, window: options?.window === true });
 });
 registerIpcHandler('drivers:downloads', async () => (process.platform === 'win32' ? driverDownloads.list() : []));
 registerIpcHandler('drivers:show-file', async (_event, id) => {
