@@ -326,7 +326,7 @@
     const { signer, ...rest } = base;
     return { ...rest, signers: Oem.signersFor(oem), kind: pkg.kind, source: oem,
       ...(pkg.sha256 ? { sha256: pkg.sha256 } : {}), ...(oem === 'dell' && pkg.md5 ? { md5: pkg.md5 } : {}), ...(size ? { size } : {}),
-      label: [primary ? 'Baixar' : 'Baixar mesmo assim', OEM_NAME[oem], size].filter(Boolean).join(' · ') };
+      label: [primary ? 'Baixar e instalar' : 'Instalar mesmo assim', OEM_NAME[oem], size].filter(Boolean).join(' · ') };
   }
   /** { cards: { grupo: [cartão] }, covered: Map(nome da peça → id do cartão) }. */
   function oemCards(oem, devices, missing) {
@@ -423,10 +423,16 @@
     if (!safe) return null;
     const size = extra.size || null;
     // Já em dia: dá para reinstalar, mas o botão fica discreto (não convida a baixar 1 GB à toa).
-    const verb = extra.reinstall ? 'Reinstalar' : 'Baixar';
+    const verb = extra.reinstall ? 'Reinstalar' : 'Baixar e instalar';
     return { url: safe, domains, fileName, signer, ...(extra.sha512 ? { sha512: extra.sha512 } : {}), ...(size ? { size } : {}), primary: !extra.reinstall, label: size ? `${verb} · ${size}` : verb };
   };
   function downloadOf(item, latest, runtimes) {
+    // AMD: o servidor dela só libera download que começa no amd.com. A página da AMD abre dentro do Nexo, a pessoa clica
+    // no Download dela (o aceite da licença) e o Nexo confere a assinatura e instala.
+    if (item.maker === 'AMD' && (item.id.startsWith('video-') || (item.id === 'placa-chipset' && runtimes?.board?.mobile !== true))) {
+      const need = item.state === 'missing' || item.state === 'generic';
+      return { via: 'amd-site', url: PAGES.amd, domains: ['amd.com'], signers: ['Advanced Micro Devices, Inc.'], kind: 'exe', primary: need, label: 'Baixar e instalar pelo site da AMD', silent: item.id.startsWith('video-') ? 'amd' : 'detect' };
+    }
     if (item.id.startsWith('video-') && item.maker === 'NVIDIA' && (item.state === 'update' || item.state === 'ok')) {
       const line = nvidiaLine(item.name);
       if (line !== 'modern' && line !== 'legacy') return null;
@@ -447,7 +453,7 @@
       const base = dl(fromCatalog.url, CATALOG_HOSTS, `catalogo-${tag}.cab`, null);
       if (!base) return null;
       const { signer, ...rest } = base;
-      return { ...rest, signers: ['Microsoft Corporation'], kind: 'cab', label: 'Baixar do Catálogo da Microsoft' };
+      return { ...rest, signers: ['Microsoft Corporation'], kind: 'cab', label: 'Instalar do Catálogo da Microsoft' };
     }
     const perif = /^perif-(\w+)$/.exec(item.id);
     if (perif) {
@@ -456,15 +462,15 @@
       const base = dl(p.file.url, p.file.domains, p.file.fileName, null, { reinstall: true });
       if (!base) return null;
       const { signer, ...rest } = base;
-      return { ...rest, signers: [...p.file.signers], label: `Baixar o ${p.name}` };
+      return { ...rest, signers: [...p.file.signers], label: `Instalar o ${p.name}` };
     }
     const vcOld = /^vc-(2005|2008|2010|2012|2013)$/.exec(item.id);
-    if (vcOld) { const plan = dl(VC_OLD[vcOld[1]], ['download.microsoft.com'], `vcredist-${vcOld[1]}-x86.exe`, SIGNER.microsoft, { reinstall: true }); return plan && { ...plan, label: 'Baixar da Microsoft' }; }
+    if (vcOld) { const plan = dl(VC_OLD[vcOld[1]], ['download.microsoft.com'], `vcredist-${vcOld[1]}-x86.exe`, SIGNER.microsoft, { reinstall: true }); return plan && { ...plan, label: 'Instalar da Microsoft' }; }
     // Peça Intel sem pacote do fabricante do PC: o assistente oficial da Intel (vídeo de notebook fica com o fabricante).
     if (item.maker === 'Intel' && INTEL_CARD.test(item.id) && !(item.id.startsWith('video-') && runtimes?.board?.mobile === true) && !hasApp(runtimes, /Driver & Support Assistant/i)) {
       const known = item.state === 'generic' || item.state === 'missing';
       const plan = dl(INTEL_DSA.url, INTEL_DSA.domains, INTEL_DSA.fileName, 'Intel Corporation', { reinstall: !known });
-      return plan && { ...plan, label: 'Baixar o assistente da Intel' };
+      return plan && { ...plan, label: 'Instalar o assistente da Intel' };
     }
     if (item.id === 'directx9' && item.state === 'missing') return dl(PAGES.directxFile, MS_DOMAINS, 'dxwebsetup.exe', SIGNER.microsoft);
     const net = /^dotnet-(\d+\.\d+)$/.exec(item.id);
@@ -474,6 +480,29 @@
       return dl(file.url, ['microsoft.com', 'dot.net'], `windowsdesktop-runtime-${file.version}-win-x64.exe`, SIGNER.microsoft, { sha512: file.sha512 });
     }
     return null;
+  }
+  /*
+   * O perfil de instalação sem janela de cada plano (nome da tabela de electron/silent-install.cjs; o processo principal
+   * confere de novo). null = não roda instalador (pacote só com .inf, como o do Catálogo).
+   */
+  function silentFor(plan) {
+    if (!plan) return null;
+    if (plan.silent !== undefined) return plan.silent;
+    const name = String(plan.fileName || '');
+    const kind = plan.kind || name.split('.').pop().toLowerCase();
+    if (kind === 'cab' && Array.isArray(plan.signers) && plan.signers.every((s) => /^Microsoft /.test(s))) return null;
+    if (kind === 'msi') return 'msi';
+    if (kind === 'zip' || kind === 'cab') return 'detect';
+    if (plan.source === 'dell') return 'dell';
+    if (plan.source === 'hp') return 'hp';
+    if (plan.source === 'lenovo') return 'inno';
+    if (/^nvidia-\d/.test(name)) return 'nvidia';
+    if (/^vc_redist\./.test(name) || /^windowsdesktop-runtime-/.test(name)) return 'burn';
+    const vc = /^vcredist-(\d{4})-x86\.exe$/.exec(name);
+    if (vc) return Number(vc[1]) >= 2012 ? 'burn' : `vc${vc[1]}`;
+    if (name === 'lghub_installer.exe') return 'lghub';
+    if (name === 'dxwebsetup.exe') return 'dxweb';
+    return 'detect';
   }
   /* ---------------- Textos do download (barra e fases) ---------------- */
   const MB = 1024 * 1024;
@@ -662,6 +691,7 @@
       if (by && !item.id.startsWith('video-')) { item.coveredBy = by; item.action = null; item.download = null; }
     }
     for (const [group, list] of Object.entries(oem.cards)) items[group] = [...list, ...(items[group] || [])];
+    for (const list of Object.values(items)) for (const item of list) if (item.download) item.download = { ...item.download, silent: silentFor(item.download) };
     // Ordem guiada: em cada grupo, o que precisa de ação primeiro (a ordem de antes vale no empate).
     const groups = GROUPS.map((group) => ({ ...group, items: sortItems(items[group.id] || []) })).filter((group) => group.items.length);
     const all = groups.flatMap((group) => group.items);
@@ -813,5 +843,5 @@
     const names = ids.map((id) => { const item = items.get(id); if (!item) return 'driver'; return item.download?.fileName === 'Intel-Driver-and-Support-Assistant-Installer.exe' ? 'Assistente da Intel (programa da Intel que atualiza os drivers Intel)' : item.name; });
     return names.length > max ? [...names.slice(0, max), `e mais ${names.length - max}`] : names;
   }
-  return { build, runBulk, bulkNames, constellation, sortItems, needsAttention, filterModel, chips, navDot, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  return { build, silentFor, runBulk, bulkNames, constellation, sortItems, needsAttention, filterModel, chips, navDot, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });

@@ -27,7 +27,8 @@ const PROFILES = Object.freeze({
   nsis: P(['/S'], 45, OK),
   msi: P(['/qn', '/norestart'], 45, { ...OK_REBOOT, 1641: 'restart' }),
   installshield: P(['/s', '/v"/qn REBOOT=ReallySuppress"'], 45, OK_REBOOT),
-  lghub: P(['--silent'], 30, OK)
+  lghub: P(['--silent'], 30, OK),
+  dxweb: P(['/Q'], 30, OK)
 });
 /** Tipos que o `detect` sabe reconhecer pelo conteúdo do .exe. */
 const DETECTABLE = Object.freeze(new Set(['burn', 'inno', 'nsis', 'installshield']));

@@ -197,7 +197,7 @@ test('drivers: cada cartão sabe qual arquivo oficial baixar (e só o certo para
   const desk = D.build(data, NOW);
   const gpu = find(desk, /^video-NVIDIA/);
   assert.equal(gpu.state, 'update');
-  assert.deepEqual(gpu.download, { url: 'https://us.download.nvidia.com/Windows/621.14/x.exe', domains: ['nvidia.com'], fileName: 'nvidia-621.14.exe', signer: 'NVIDIA Corporation', size: '1.04 GB', primary: true, label: 'Baixar · 1.04 GB' });
+  assert.deepEqual(gpu.download, { url: 'https://us.download.nvidia.com/Windows/621.14/x.exe', domains: ['nvidia.com'], fileName: 'nvidia-621.14.exe', signer: 'NVIDIA Corporation', size: '1.04 GB', primary: true, label: 'Baixar e instalar · 1.04 GB', silent: 'nvidia' });
   assert.equal(find(desk, /^video-Intel/).download.url, 'https://dsadata.intel.com/installer', 'vídeo Intel de desktop: o assistente oficial da Intel');
   const vc86 = find(desk, /^vc-x86$/);
   assert.equal(vc86.state, 'missing');
@@ -516,7 +516,7 @@ test('oem: áudio Realtek casado vira cartão do pacote Dell no grupo Áudio, co
   assert.equal(pkg.latest.version, '6.0.9600.1');
   assert.deepEqual(pkg.covers, ['Realtek Audio']);
   assert.equal(pkg.download.primary, true);
-  assert.match(pkg.download.label, /^Baixar · Dell/);
+  assert.match(pkg.download.label, /^Baixar e instalar · Dell/);
   assert.equal(model.summary.update, 1);
   assert.equal(D.STATES.oem, 'Pacote do fabricante disponível');
 });
@@ -1009,4 +1009,52 @@ test('constelação: grupo grande ganha estrelas menores (não vira um borrão)'
   const big = Math.max(...sky.stars.filter((s) => s.group === 'outros').map((s) => s.r));
   const small = sky.stars.find((s) => s.id === 'r').r;
   assert.ok(big < small, `${big} < ${small}`);
+});
+
+/* ---------------- Instalação sem janela: cada plano com o seu perfil ---------------- */
+const planOf = (model, id) => model.groups.flatMap((g) => g.items).find((i) => i.id === id)?.download;
+test('silencioso: cada fonte ganha o seu perfil e o botão diz "Baixar e instalar"', () => {
+  const model = D.build(sample(), NOW);
+  const nv = model.groups.flatMap((g) => g.items).find((i) => i.maker === 'NVIDIA' && i.id.startsWith('video-')).download;
+  assert.equal(nv.silent, 'nvidia');
+  assert.match(nv.label, /^Baixar e instalar/);
+  assert.equal(planOf(model, 'vc-x86').silent, 'burn');
+  assert.equal(planOf(model, 'perif-logitech').silent, 'lghub');
+  assert.match(planOf(model, 'perif-logitech').label, /^Instalar o /);
+  for (const year of ['2005', '2008', '2010']) { const p = planOf(model, `vc-${year}`); if (p) assert.equal(p.silent, `vc${year}`); }
+  for (const year of ['2012', '2013']) { const p = planOf(model, `vc-${year}`); if (p) assert.equal(p.silent, 'burn'); }
+  const intel = model.groups.flatMap((g) => g.items).find((i) => i.download?.fileName === 'Intel-Driver-and-Support-Assistant-Installer.exe');
+  if (intel) assert.equal(intel.download.silent, 'detect');
+  for (const item of model.groups.flatMap((g) => g.items)) if (item.download) assert.ok(item.download.silent === null || ['nvidia', 'amd', 'burn', 'vc2005', 'vc2008', 'vc2010', 'dell', 'hp', 'inno', 'nsis', 'msi', 'installshield', 'lghub', 'dxweb', 'detect'].includes(item.download.silent), `${item.id}: ${item.download.silent}`);
+});
+test('silencioso: pacote do fabricante do PC (Dell /s, HP /s, Lenovo Inno, zip pelo detect)', () => {
+  const model = D.build(oemData(), NOW);
+  const pkg = model.groups.flatMap((g) => g.items).find((i) => i.id.startsWith('oem-dell-'));
+  assert.equal(pkg.download.silent, 'dell');
+  const silentFor = (oem, kind) => D.silentFor({ source: oem, kind, fileName: `x.${kind}` });
+  assert.equal(silentFor('hp', 'exe'), 'hp');
+  assert.equal(silentFor('lenovo', 'exe'), 'inno');
+  assert.equal(silentFor('asus', 'zip'), 'detect');
+  assert.equal(silentFor('dell', 'msi'), 'msi');
+});
+test('silencioso: pacote do Catálogo não roda instalador (pnputil já é sem janela)', () => {
+  assert.equal(D.silentFor({ kind: 'cab', fileName: 'catalogo-abcd-1234.cab', signers: ['Microsoft Corporation'] }), null);
+});
+test('AMD: vídeo e chipset (desktop) ganham "Baixar e instalar pelo site da AMD"', () => {
+  const data = sample();
+  data.devices = data.devices.filter((d) => !/NVIDIA|Intel\(R\) Management/.test(d.name));
+  data.devices.push(dev('AMD Radeon RX 7800 XT', 'DISPLAY', 'Advanced Micro Devices, Inc.', '32.0.21025.1024', '2025-09-01', '1002:747E'));
+  data.devices.push(dev('AMD GPIO Controller', 'SYSTEM', 'Advanced Micro Devices, Inc', '2.2.0.130', '2023-01-01'));
+  const model = D.build(data, NOW);
+  const all = model.groups.flatMap((g) => g.items);
+  const gpu = all.find((i) => i.maker === 'AMD' && i.id.startsWith('video-'));
+  assert.equal(gpu.download.via, 'amd-site');
+  assert.match(gpu.download.label, /site da AMD/);
+  assert.deepEqual(gpu.download.signers, ['Advanced Micro Devices, Inc.']);
+  assert.equal(gpu.download.silent, 'amd');
+  const chip = all.find((i) => i.id === 'placa-chipset');
+  assert.equal(chip.download?.via, 'amd-site');
+  data.runtimes.board.mobile = true;
+  const nb = D.build(data, NOW).groups.flatMap((g) => g.items).find((i) => i.id === 'placa-chipset');
+  assert.equal(nb.download?.via, undefined, 'notebook: chipset vem do fabricante do notebook');
 });
