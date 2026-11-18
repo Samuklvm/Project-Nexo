@@ -6,6 +6,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.5: drivers do fabricante do seu PC
+- Aviso: esta versão ainda não tem assinatura digital; a assinatura chega numa atualização futura. O aviso e os passos para abrir o Nexo continuam nas notas e no README.
+- Novo: drivers oficiais do fabricante do PC na página de Drivers (Windows): o Nexo identifica o modelo exato (Dell pelo código do sistema, HP pelo código da placa, Lenovo pelo tipo de máquina, ASUS pelo modelo) e lê a lista oficial da Dell, HP, Lenovo e ASUS/ROG; cada pacote que serve para uma peça vira um cartão "Pacote oficial" com Baixar, escolhido pelo código de hardware mais específico; peças sem driver ou com o driver básico do Windows viram atualização; vídeo continua sempre com NVIDIA/AMD/Intel; BIOS nova só vira aviso com a página de suporte; MSI, GIGABYTE, ASRock e Acer abrem a página de suporte; a lista é lida em segundo plano e o topo mostra o PC, quando a lista foi conferida e quando a fonte está fora do ar ou o modelo não tem lista.
+- Melhoria: sem chute pela idade do driver: sem versão publicada pelo fabricante, o cartão diz "Confira no site"; o título do topo conta só o que o app sabe, cada peça uma vez.
+- Melhoria: instalação mais segura: ponto de restauração só depois de conferir o pacote; listas da Dell e da HP só abertas com a assinatura do fabricante; só HTTPS e servidores oficiais exatos (também depois de redirecionar); .zip e .cab abertos numa pasta só de administrador, com o instalador assinado pelo fabricante do PC ou da peça, e sem instalador só com o catálogo (.cat) todo assinado; o arquivo instalado é conferido contra o baixado (SHA-256); quando o Windows já usa um driver igual ou mais novo, o app diz que nada mudou.
+- Melhoria: a lista de fontes dos fabricantes fica no GitHub (docs/drivers/fontes.json), com cópia no app, para desligar uma fonte sem lançar versão nova; vigia novo "fonte-de-driver" avisa o criador quando a lista de um fabricante falha (no máximo uma vez por fonte por dia).
+
 ### 0.11.4: flores, código aberto e drivers com um clique
 - Aviso: esta versão ainda não tem assinatura digital; a assinatura já foi pedida e chega numa atualização futura. O aviso e os passos para abrir o Nexo continuam nas notas e no README.
 - Novo: o Nexo é código aberto, sob a GPL-3.0 (LICENSE e NOTICE.md); nome e ícone reservados à versão oficial; pull requests aceitos com os termos de contribuição.
@@ -135,6 +142,13 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.5: drivers from your PC maker
+- Notice: this version is not digitally signed yet; the signature arrives in a future update. The notice and the steps to open Nexo stay in the notes and in the README.
+- New: official drivers from the PC maker on the Drivers page (Windows): Nexo identifies the exact model (Dell by system ID, HP by board ID, Lenovo by machine type, ASUS by model) and reads the official list from Dell, HP, Lenovo and ASUS/ROG; every package that fits a part becomes an "Official package" card with Download, picked by the most specific hardware ID; parts with no driver or with Windows' basic driver become updates; graphics always stay with NVIDIA/AMD/Intel; a newer BIOS is only a notice with the support page; MSI, GIGABYTE, ASRock and Acer open the support page; the list loads in the background and the top shows the PC, when the list was checked and when the source is down or the model has no list.
+- Improvement: no guessing from the driver's age: with no version published by the maker, the card says "Check the website"; the headline only counts what the app knows, each part once.
+- Improvement: safer installs: restore point only after the package is checked; Dell and HP lists only opened with the maker's signature; HTTPS and exact official servers only (also after redirects); .zip and .cab opened in an admin-only folder, with the installer signed by the PC or part maker, and with no installer only when the whole catalog (.cat) is signed; the installed file is checked against the downloaded one (SHA-256); when Windows already uses the same or a newer driver, the app says nothing changed.
+- Improvement: the maker source list lives on GitHub (docs/drivers/fontes.json), with a copy in the app, so a source can be switched off without a new release; new "fonte-de-driver" watcher tells the creator when a maker's list fails (at most once per source per day).
 
 ### 0.11.4: flowers, open source and one-click drivers
 - Notice: this version is not digitally signed yet; the signature has been requested and arrives in a future update. The notice and the steps to open Nexo stay in the notes and in the README.

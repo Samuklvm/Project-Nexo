@@ -8,6 +8,21 @@
   root.NexoNovidades = {
     versions: [
       {
+        version: '0.11.5', date: '2026-11-18', emoji: '🏭', title: 'Drivers do fabricante do seu PC',
+        tagline: 'A página de Drivers conhece o seu PC pelo modelo exato e baixa os pacotes oficiais do fabricante dele com um clique. E parou de chutar.',
+        sections: [
+          { emoji: '✨', title: 'Novidades', tone: 'new', items: [
+            { emoji: '🏭', title: 'Drivers do fabricante do seu PC', text: 'O Nexo identifica o modelo exato do seu PC e lê a lista oficial de drivers da Dell, HP, Lenovo e ASUS/ROG. Cada pacote que serve para uma peça vira um cartão "Pacote oficial" com o botão Baixar.' },
+            { emoji: '🧬', title: 'BIOS nova só como aviso', text: 'Quando sai uma BIOS nova, o quadro do PC avisa e leva à página de suporte. O Nexo nunca baixa BIOS, e o vídeo continua sempre com NVIDIA, AMD ou Intel.' }
+          ] },
+          { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
+            { emoji: '🎯', title: 'Sem chute', text: 'Quando o fabricante não publica a versão mais recente, o cartão diz "Confira no site" em vez de adivinhar pela idade do driver. O topo da página conta só o que o Nexo sabe.' },
+            { emoji: '🛡️', title: 'Instalação mais segura', text: 'Listas e pacotes só do fabricante, assinados e por HTTPS; o Nexo confere que o arquivo instalado é o mesmo que baixou e cria o ponto de restauração só depois de conferir o pacote.' },
+            { emoji: '🔏', title: 'Assinatura digital a caminho', text: 'A assinatura do Nexo chega numa atualização futura. Até lá, o Windows pode avisar ao instalar; as notas da versão explicam como abrir.' }
+          ] }
+        ]
+      },
+      {
         version: '0.11.4', date: '2026-11-18', emoji: '🌸', title: 'Flores, código aberto e drivers com um clique',
         tagline: 'O Nexo agora é código aberto e baixa o driver oficial certo para o seu PC com um clique. E o fundo virou um campo de flores azuis sob o céu do Nexo.',
         sections: [
