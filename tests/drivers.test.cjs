@@ -198,7 +198,7 @@ test('drivers: cada cartão sabe qual arquivo oficial baixar (e só o certo para
   const gpu = find(desk, /^video-NVIDIA/);
   assert.equal(gpu.state, 'update');
   assert.deepEqual(gpu.download, { url: 'https://us.download.nvidia.com/Windows/621.14/x.exe', domains: ['nvidia.com'], fileName: 'nvidia-621.14.exe', signer: 'NVIDIA Corporation', size: '1.04 GB', primary: true, label: 'Baixar · 1.04 GB' });
-  assert.equal(find(desk, /^video-Intel/).download, null, 'Intel ainda abre o site (projeto 2)');
+  assert.equal(find(desk, /^video-Intel/).download.url, 'https://dsadata.intel.com/installer', 'vídeo Intel de desktop: o assistente oficial da Intel');
   const vc86 = find(desk, /^vc-x86$/);
   assert.equal(vc86.state, 'missing');
   assert.equal(vc86.download.fileName, 'vc_redist.x86.exe');
@@ -685,4 +685,67 @@ test('BIOS: compara também o jeito da HP e da Lenovo de numerar', () => {
 test('download: erros novos do pacote têm texto próprio', () => {
   assert.match(D.phaseText({ phase: 'error', error: 'changed' }), /mudou depois do download/);
   assert.match(D.phaseText({ phase: 'error', error: 'inner' }), /instalador de dentro do pacote/);
+});
+
+/* ---------------- Projeto 2, parte 2: fabricantes de peça ---------------- */
+test('parte 2: peças Intel sem pacote do PC ganham o assistente oficial da Intel (e não quando ele já está instalado)', () => {
+  const model = D.build(sample(), NOW);
+  const all = model.groups.flatMap((g) => g.items);
+  const wifi = all.find((i) => i.name === 'Intel(R) Wi-Fi 6E AX211 160MHz');
+  const plan = D.downloadFor(model, wifi.id);
+  assert.equal(plan.url, 'https://dsadata.intel.com/installer');
+  assert.deepEqual(plan.domains, ['dsadata.intel.com', 'downloadmirror.intel.com']);
+  assert.equal(plan.fileName, 'Intel-Driver-and-Support-Assistant-Installer.exe');
+  assert.equal(plan.signer, 'Intel Corporation');
+  assert.match(plan.label, /assistente da Intel/);
+  assert.equal(plan.primary, true, 'driver básico do Windows: o Nexo sabe que vale trocar');
+  const bt = all.find((i) => i.name === 'Intel(R) Wireless Bluetooth(R)');
+  assert.equal(D.downloadFor(model, bt.id).primary, false, 'sem lista para comparar: botão discreto');
+  const data = sample();
+  data.runtimes.uninstall.push({ name: 'Intel® Driver & Support Assistant', version: '25.6.1' });
+  const withDsa = D.build(data, NOW);
+  const wifi2 = withDsa.groups.flatMap((g) => g.items).find((i) => i.name === wifi.name);
+  assert.equal(wifi2.download, null);
+  assert.match(wifi2.note, /assistente da Intel já está instalado/);
+});
+
+test('parte 2: periférico Logitech sem o G HUB ganha o programa oficial; com ele instalado, em dia', () => {
+  const model = D.build(sample(), NOW);
+  const card = model.groups.find((g) => g.id === 'outros').items.find((i) => i.id === 'perif-logitech');
+  assert.ok(card, 'tem o cartão do G HUB');
+  assert.equal(card.state, 'check');
+  assert.equal(card.download.url, 'https://download01.logi.com/web/ftp/pub/techsupport/gaming/lghub_installer.exe');
+  assert.equal(card.download.primary, false);
+  assert.ok(card.download.signers.includes('Logitech Inc'));
+  const data = sample();
+  data.runtimes.uninstall.push({ name: 'Logitech G HUB', version: '2026.6.981214' });
+  const ok = D.build(data, NOW).groups.find((g) => g.id === 'outros').items.find((i) => i.id === 'perif-logitech');
+  assert.equal(ok.state, 'ok');
+  assert.equal(ok.download, null);
+  assert.match(ok.note, /se atualiza sozinho/);
+  const razer = sample();
+  razer.others.push(dev('Razer DeathAdder V3', 'MOUSE', 'Razer Inc', '1.0', '2024-01-01', '1532:00B2'));
+  const r = D.build(razer, NOW).groups.find((g) => g.id === 'outros').items.find((i) => i.id === 'perif-razer');
+  assert.equal(r.download, null, 'Razer: sem link estável, abre o site');
+  assert.match(r.action.url, /razer\.com/);
+});
+
+test('parte 2: Visual C++ antigo que falta vira cartão com Baixar oficial da Microsoft (32 bits)', () => {
+  const model = D.build(sample(), NOW);
+  const jogos = model.groups.find((g) => g.id === 'jogos').items;
+  assert.ok(!jogos.some((i) => i.id === 'vc-2010'), '2010 já instalado');
+  const c2013 = jogos.find((i) => i.id === 'vc-2013');
+  assert.ok(c2013);
+  assert.equal(c2013.download.url, 'https://download.microsoft.com/download/C/C/2/CC2DF5F8-4454-44B4-802D-5EA68D086676/vcredist_x86.exe');
+  assert.equal(c2013.download.fileName, 'vcredist-2013-x86.exe');
+  assert.equal(c2013.download.signer, 'Microsoft Corporation');
+  assert.equal(c2013.download.primary, false, 'só se um jogo pedir');
+  assert.ok(jogos.find((i) => i.id === 'vc-2005').download.url.startsWith('https://download.microsoft.com/download/8/B/4/8B42259F-5D70-43F4-AC2E-4B208FD8D66A/'));
+});
+
+test('parte 2: a leitura do PC traz os programas dos periféricos e o assistente da Intel', () => {
+  assert.match(Main.RUNTIMES_SCRIPT, /Logitech G HUB/);
+  assert.match(Main.RUNTIMES_SCRIPT, /SteelSeries GG/);
+  assert.match(Main.RUNTIMES_SCRIPT, /Driver & Support Assistant|Driver . Support Assistant/);
+  assert.match(Main.RUNTIMES_SCRIPT, /HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall/);
 });

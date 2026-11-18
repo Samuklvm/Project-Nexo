@@ -14,7 +14,9 @@ const path = require('node:path');
 const Oem = require('../src/oem.js');
 
 const SIGNERS = Object.freeze({ nvidia: 'NVIDIA Corporation', microsoft: 'Microsoft Corporation' });
-const ALLOWED = new Set([...Object.values(SIGNERS), ...Object.values(Oem.SIGNERS).flat(), ...Oem.PART_SIGNERS]);
+// Programas oficiais dos periféricos gamer (Logitech G HUB, SteelSeries GG): cada nome só vale para o próprio programa.
+const PERIPHERAL_SIGNERS = Object.freeze(['Logitech Inc', 'Logitech Inc.', 'Logitech', 'SteelSeries ApS']);
+const ALLOWED = new Set([...Object.values(SIGNERS), ...Object.values(Oem.SIGNERS).flat(), ...Oem.PART_SIGNERS, ...PERIPHERAL_SIGNERS]);
 const listOf = (signers) => (Array.isArray(signers) ? signers : [signers]).filter((name) => typeof name === 'string' && name);
 /** Um nome, ou uma lista não vazia em que todos os nomes são conhecidos do app. */
 const allowedSigner = (signers) => {
