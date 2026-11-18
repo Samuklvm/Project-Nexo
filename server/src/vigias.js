@@ -39,7 +39,7 @@ export async function vigias(env, { dias = 7, agora = Date.now() } = {}) {
     if (group.count > item.exemploN) { item.exemplo = group.message; item.exemploN = group.count; }
     byVigia.set(group.vigia, item);
   }
-  const list = [...byVigia.values()].map(({ installs, versions, exemploN, ...rest }) => ({ ...rest, pcs: installs.size, versoes: [...versions].sort() }))
+  const list = [...byVigia.values()].map(({ installs, versions, exemploN, ...rest }) => ({ ...rest, pcs: installs.size, versoes: [...versions].sort((a, b) => a.localeCompare(b, 'en', { numeric: true })) }))
     .sort((a, b) => b.pcs - a.pcs || b.ocorrencias - a.ocorrencias || a.vigia.localeCompare(b.vigia));
   return { dias, vigias: list, total: { grupos: bySig.size, avisosAbertos: Number(abertos?.n) || 0 } };
 }

@@ -114,3 +114,13 @@ test('relatórios de erro: até 60 envios por dia por instalação (o app tenta 
   for (let i = 0; i < 48; i += 1) last = await send(env.call, 'install-daily-0000001', '0.11.4', [{ signature: sig(), message: `aviso ${'x'.repeat(i % 5)}`, context: ctx('tela-travada') }]);
   assert.equal(last.status, 200);
 });
+
+test('vigias: versões em ordem de versão (0.11.9 antes de 0.11.10), não de texto', async () => {
+  const env = h.setup();
+  const s1 = sig();
+  for (const [id, version] of [['install-ord-00000001', '0.11.10'], ['install-ord-00000002', '0.11.9']]) {
+    await send(env.call, id, version, [{ signature: s1, message: 'Os sensores de temperatura pararam de responder', context: ctx('sensores-sumiram') }]);
+  }
+  const res = await env.call('GET', '/painel/api/vigias?dias=7', { cookie: await env.panelCookie() });
+  assert.deepEqual(res.data.vigias[0].versoes, ['0.11.9', '0.11.10']);
+});
