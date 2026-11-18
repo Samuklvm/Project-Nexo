@@ -250,7 +250,7 @@
     for (const year of old.filter((y) => !years.has(y))) {
       out.push(card({ id: `vc-${year}`, icon: 'i-box', brand: 'vs', brandAlt: 'microsoft', name: `Visual C++ ${year} (32 bits)`, maker: 'Microsoft', purpose: `Só instale se um jogo antigo pedir (erro de MSVCR${VC_DLL[year]}.dll ou MSVCP${VC_DLL[year]}.dll).`, state: 'check', action: { label: 'Página da Microsoft', url: PAGES.vcOld } }));
     }
-    out.push(card({ id: 'vc-antigos', icon: 'i-box', brand: 'vs', brandAlt: 'microsoft', name: 'Visual C++ antigos (2005 a 2013)', maker: 'Microsoft', purpose: 'Jogos antigos ainda pedem estas versões. Instale só a que um jogo pedir.', installed: have.length ? { version: have.join(', ') } : null, state: have.length === old.length ? 'ok' : 'check', note: have.length < old.length ? `Faltam: ${old.filter((year) => !years.has(year)).join(', ')}.` : null, action: { label: 'Página da Microsoft', url: PAGES.vcOld } }));
+    out.push(card({ id: 'vc-antigos', icon: 'i-box', brand: 'vs', brandAlt: 'microsoft', name: 'Visual C++ antigos (2005 a 2013)', maker: 'Microsoft', purpose: have.length < old.length ? 'Jogos antigos ainda pedem estas versões. As que faltam têm cartão próprio logo abaixo; instale só a que um jogo pedir.' : 'Jogos antigos ainda pedem estas versões, e todas estão instaladas.', installed: have.length ? { version: have.join(', ') } : null, state: have.length === old.length ? 'ok' : 'check', note: null, action: { label: 'Página da Microsoft', url: PAGES.vcOld } }));
     const dx = runtimes.dx || {};
     const dxOk = dx.d3dx9 && dx.xinput13;
     out.push(card({ id: 'directx9', icon: 'i-game', brand: 'directx', brandAlt: 'microsoft', name: 'DirectX 9 (componentes antigos)', maker: 'Microsoft', purpose: 'O Windows já traz o DirectX 12, mas jogos mais antigos (e alguns novos) pedem peças do DirectX 9, como d3dx9_43.dll e XInput 1.3.', installed: dxOk ? { version: 'instalado' } : null, state: dxOk ? 'ok' : 'missing', note: dxOk ? null : `Falta${!dx.d3dx9 && !dx.xinput13 ? 'm d3dx9_43.dll e xinput1_3.dll' : !dx.d3dx9 ? ' d3dx9_43.dll' : ' xinput1_3.dll'}.`, action: { label: dxOk ? 'Instalador da Microsoft' : 'Instalar da Microsoft', url: PAGES.directx } }));
@@ -339,7 +339,8 @@
       const real = hits.filter((item) => !item.missing && !INBOX.test(String(item.provider || '')));
       const top = newestInstalled(real) || newestInstalled(hits);
       const allMissing = hits.every((item) => item.missing);
-      const verdict = real.length ? Oem.compareToInstalled(newestInstalled(real)?.version, pkg) : 'newer';
+      // Se alguma peça atendida está sem driver, o pacote é necessário de qualquer jeito.
+      const verdict = real.length && !hits.some((item) => item.missing) ? Oem.compareToInstalled(newestInstalled(real)?.version, pkg) : 'newer';
       if (verdict === 'same' || verdict === 'older') continue;
       const state = verdict === 'newer' ? 'update' : 'oem';
       const group = allMissing ? 'semdriver' : GROUP_OF[String(hits[0].cls || '').toUpperCase()] || 'outros';
@@ -384,11 +385,12 @@
     { key: 'razer', vid: '1532', name: 'Razer Synapse', maker: 'Razer', app: /razer synapse/i, page: 'https://www.razer.com/synapse-4' },
     { key: 'corsair', vid: '1B1C', name: 'CORSAIR iCUE', maker: 'Corsair', app: /\bicue\b/i, page: 'https://www.corsair.com/us/en/s/downloads' }
   ];
+  // Só peça USB/HID (mouse, teclado, fone): um código PCI com o mesmo número não é periférico.
+  const PERIPHERAL_CLASS = new Set(['MOUSE', 'KEYBOARD', 'HIDCLASS', 'USB', 'USBDEVICE', 'AUDIOENDPOINT']);
   const vidOf = (item) => {
+    for (const h of Array.isArray(item?.hwids) ? item.hwids : []) { const m = /^(?:USB|HID)\\VID_([0-9A-F]{4})/i.exec(String(h)); if (m) return m[1].toUpperCase(); }
     const ids = String(item?.ids || '');
-    if (/^[0-9A-F]{4}:/.test(ids)) return ids.slice(0, 4);
-    for (const h of Array.isArray(item?.hwids) ? item.hwids : []) { const m = /VID_([0-9A-F]{4})/i.exec(String(h)); if (m) return m[1].toUpperCase(); }
-    return null;
+    return /^[0-9A-F]{4}:/.test(ids) && PERIPHERAL_CLASS.has(String(item?.cls || '').toUpperCase()) ? ids.slice(0, 4) : null;
   };
   function peripheralCards(devices, runtimes) {
     const vids = new Set(devices.map(vidOf).filter(Boolean));
@@ -573,13 +575,16 @@
 
   /** O modelo inteiro da página. */
   /* ---------------- Projeto 3: jogos e histórico ---------------- */
+  const EDITION = new Set(['edition', 'deluxe', 'ultimate', 'complete', 'definitive', 'remastered', 'enhanced', 'anniversary', 'goty', 'game', 'of', 'the', 'year', 'gold', 'standard', 'premium', 'directors', 'director', 's', 'cut', 'digital', 'collectors', 'collector', 'launch']);
   const gameKey = (name) => String(name || '').toLowerCase().replace(/[™®©]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
   /** Os jogos Game Ready da NVIDIA que estão na biblioteca de jogos desta pessoa. */
   function gameReadyFor(list, games) {
     const all = (Array.isArray(list) ? list : []).filter((g) => typeof g === 'string' && g).slice(0, 8);
     if (!all.length) return null;
     const mine = (Array.isArray(games) ? games : []).map(gameKey).filter((k) => k.length > 2);
-    const yours = all.filter((g) => { const k = gameKey(g); return mine.some((m) => m === k || m.startsWith(`${k} `) || k.startsWith(`${m} `)); });
+    // Mesmo jogo = mesmo nome, ou o mesmo nome + palavras de edição ("Ultimate Edition", "GOTY"). Outro jogo da série não vale.
+    const sameGame = (a, b) => { if (a === b) return true; const [short, long] = a.length < b.length ? [a, b] : [b, a]; return long.startsWith(`${short} `) && long.slice(short.length + 1).split(' ').every((w) => EDITION.has(w)); };
+    const yours = all.filter((g) => { const k = gameKey(g); return mine.some((m) => sameGame(m, k)); });
     return { all, yours };
   }
   const joinNames = (names) => (names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`);
@@ -591,7 +596,9 @@
   const HISTORY_MAX = 6;
   /** Guarda a versão de cada driver a cada leitura; devolve o histórico novo e os cartões cuja versão mudou agora. */
   function trackHistory(history, model, now = Date.now()) {
-    const out = { ...(history && typeof history === 'object' ? history : {}) };
+    // Só os drivers que existem nesta leitura (o que saiu do PC sai do histórico).
+    const present = new Set((model?.groups || []).flatMap((g) => g.items || []).map((i) => i?.id).filter(Boolean));
+    const out = Object.fromEntries(Object.entries(history && typeof history === 'object' ? history : {}).filter(([id]) => present.has(id)));
     const changed = [];
     for (const group of model?.groups || []) {
       for (const item of group.items || []) {
@@ -600,7 +607,9 @@
         const list = Array.isArray(out[item.id]) ? out[item.id].filter((h) => h && typeof h.v === 'string') : [];
         const last = list[list.length - 1];
         if (last?.v === v) continue;
-        if (last) changed.push(item.id);
+        // Comemora quando sobe (ou quando a numeração não compara); versão que desce só vai para o histórico.
+        const numeric = /^\d+(\.\d+)+$/.test(v) && /^\d+(\.\d+)+$/.test(last?.v || '');
+        if (last && !(numeric && compare(v, last.v) < 0)) changed.push(item.id);
         out[item.id] = [...list, { v, at: now }].slice(-HISTORY_MAX);
       }
     }
@@ -728,6 +737,7 @@
   function constellation(model, { width = 1000, height = 160 } = {}) {
     const groups = (model?.groups || []).map((g) => ({ ...g, items: g.items.filter((i) => !i.plain) })).filter((g) => g.items.length);
     if (!groups.length) return { groups: [], stars: [], lines: [] };
+    const byId = new Map((model?.groups || []).flatMap((g) => g.items).map((i) => [i.id, i]));
     const top = 8;
     const bottom = height - 28;
     const cy = (top + bottom) / 2;
@@ -748,8 +758,12 @@
         const dist = reach * Math.sqrt((j + 0.6) / n) * (0.75 + unit(seed + 1) * 0.25);
         const x = Math.min(Math.max(cx + Math.cos(angle) * dist, cx - slot / 2 + 6, 8), cx + slot / 2 - 6, width - 8);
         const y = Math.min(Math.max(cy + Math.sin(angle) * dist * 0.9, top), bottom);
-        const tone = TONE[item.coveredBy ? 'ok' : item.state] || 'unknown';
-        return { id: item.id, name: item.name, state: item.state, group: group.id, tone, x: r1(x), y: r1(y), r: r1(Math.min(5, SIZE[tone] + unit(seed + 2) * 0.6)) };
+        // Grupo cheio: estrelas menores (até 55%) para não virar um borrão.
+        const shrink = Math.max(0.55, Math.min(1, 6 / Math.sqrt(Math.max(1, group.items.length) * 3)));
+        // Peça coberta pelo pacote do fabricante: a cor do pacote (é ele que diz se há o que fazer).
+        const pkg = item.coveredBy ? byId.get(item.coveredBy) : null;
+        const tone = TONE[pkg ? pkg.state : item.state] || 'unknown';
+        return { id: item.id, name: item.name, state: item.state, group: group.id, tone, ...(pkg ? { covered: true } : {}), x: r1(x), y: r1(y), r: r1(Math.min(5, (SIZE[tone] + unit(seed + 2) * 0.6) * shrink)) };
       });
       const path = [...stars].sort((a, b) => a.x - b.x);
       for (let k = 1; k < path.length; k += 1) out.lines.push({ group: group.id, x1: path[k - 1].x, y1: path[k - 1].y, x2: path[k].x, y2: path[k].y });
@@ -758,5 +772,46 @@
     });
     return out;
   }
-  return { build, constellation, sortItems, needsAttention, filterModel, chips, navDot, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
+  /*
+   * "Atualizar tudo", o passo a passo (a tela só injeta as ações): baixa tudo (o motor faz 4 por vez), espera cada um
+   * ficar pronto sem limite de tempo e instala um por vez, na ordem. O ponto de restauração é pedido até ser criado
+   * (instalação que falhou antes de criar não conta). Recusa do administrador ou ponto que falhou param tudo; parar
+   * cancela os downloads que sobraram.
+   */
+  const LIVE_PHASES = new Set(['queued', 'downloading', 'verifying']);
+  async function runBulk({ ids, phaseOf, start, cancel, install, sleep, restoreOn = false, stopped = () => false, onStep = () => {} }) {
+    const out = { done: [], failed: [], stopped: false, declined: false };
+    for (const id of ids) {
+      const ph = phaseOf(id);
+      if (!ph || ph === 'error' || ph === 'canceled') { try { await start(id); } catch { out.failed.push(id); } }
+    }
+    let needPoint = restoreOn;
+    const cancelRest = async (from) => { for (const id of ids.slice(from)) if (LIVE_PHASES.has(phaseOf(id))) await cancel(id).catch(() => {}); };
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i];
+      if (stopped()) { out.stopped = true; await cancelRest(i); break; }
+      if (out.failed.includes(id)) continue;
+      onStep({ index: i, id, phase: 'download' });
+      while (LIVE_PHASES.has(phaseOf(id)) && !stopped()) await sleep(500);
+      const ph = phaseOf(id);
+      if (ph === 'installed') { out.done.push(id); continue; }
+      if (ph !== 'ready') { if (stopped()) { out.stopped = true; await cancelRest(i); break; } out.failed.push(id); continue; }
+      onStep({ index: i, id, phase: 'install' });
+      let result = null;
+      try { result = await install(id, { restorePoint: needPoint }); } catch (error) { result = { ok: false, note: error?.message }; }
+      if (result?.restore?.ok) needPoint = false;
+      if (result?.ok) out.done.push(id); else out.failed.push(id);
+      out.last = result;
+      if (result?.declined) { out.declined = true; await cancelRest(i + 1); break; }
+      if (result?.restore && result.restore.ok === false) { out.stopped = true; await cancelRest(i + 1); break; }
+    }
+    return out;
+  }
+  /** Os nomes para o "Atualizar tudo?" (o assistente da Intel dito com todas as letras), no máximo `max` e "e mais N". */
+  function bulkNames(model, ids, max = 8) {
+    const items = new Map((model?.groups || []).flatMap((g) => g.items).map((i) => [i.id, i]));
+    const names = ids.map((id) => { const item = items.get(id); if (!item) return 'driver'; return item.download?.fileName === 'Intel-Driver-and-Support-Assistant-Installer.exe' ? 'Assistente da Intel (programa da Intel que atualiza os drivers Intel)' : item.name; });
+    return names.length > max ? [...names.slice(0, max), `e mais ${names.length - max}`] : names;
+  }
+  return { build, runBulk, bulkNames, constellation, sortItems, needsAttention, filterModel, chips, navDot, gameReadyText, trackHistory, historyText, updatePlan, biosNewer, oemLine, coversText, OEM_NAME, downloadFor, keepsZone, installOutcome, progressText, phaseText, headline, brands, vendorOf, compare, nvidiaVersion, nvidiaLine, supportPage, chipMaker, monthText, GROUPS, STATES, PAGES };
 });

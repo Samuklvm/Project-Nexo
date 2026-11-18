@@ -366,7 +366,12 @@ function createDriverDownloads({ request, fs, path, crypto, dir, runPowerShell, 
     }
     if (restore && !restore.ok) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, note: `O ponto de restauração não foi criado: ${String(restore.note || 'o Windows não criou').slice(0, 160)}.` }; }
     // pnputil 259: nenhuma peça precisou do driver (o Windows já usa um igual ou mais novo). Não é "Instalado".
-    if (result.nothing === true) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, note: 'O Windows já usa um driver igual ou mais novo para essas peças; nada mudou.' }; }
+    if (result.nothing === true) {
+      setPhase(item, 'ready');
+      // Pacote só da Microsoft (Catálogo): achado pelo código da peça, mas o Windows não usou em nenhuma.
+      const catalog = item.plan.signers.every((s) => /^Microsoft /.test(s));
+      return { ok: false, restart: false, declined: false, restore, note: catalog ? 'Esse driver do Catálogo da Microsoft não serve nesta peça (o Windows não usou em nenhuma). Nada mudou.' : 'O Windows já usa um driver igual ou mais novo para essas peças; nada mudou.' };
+    }
     if (!result.ok) { setPhase(item, 'ready'); return { ok: false, restart: false, declined: false, restore, note: String(result.note || 'O instalador fechou sem terminar.').slice(0, 200) }; }
     const index = await readIndex();
     index[path.basename(item.file)] = now();

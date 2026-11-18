@@ -895,3 +895,118 @@ test('projeto 5: constelação com uma estrela por driver, uma constelação por
   assert.deepEqual(xs, [...xs].sort((a, b) => a - b), 'constelações da esquerda para a direita');
   assert.deepEqual(D.constellation(null, { width: 1000, height: 160 }), { groups: [], stars: [], lines: [] });
 });
+
+test('projeto 3: versão que desce (reinstalou um mais velho) entra no histórico mas não comemora', () => {
+  const m = (v) => ({ groups: [{ items: [{ id: 'a', installed: { version: v } }] }] });
+  const h1 = D.trackHistory({}, m('621.14'), NOW).history;
+  const down = D.trackHistory(h1, m('566.14'), NOW + 1);
+  assert.deepEqual(down.changed, []);
+  assert.deepEqual(down.history.a.map((x) => x.v), ['621.14', '566.14']);
+  assert.deepEqual(D.trackHistory(down.history, m('630.01'), NOW + 2).changed, ['a']);
+  assert.deepEqual(D.trackHistory(h1, m('Adrenalin 26.1'), NOW + 3).changed, ['a'], 'formato que não compara: mudou é mudou');
+});
+
+/* ---------------- Correções da revisão final (drivers-tudo) ---------------- */
+function bulkFake({ phases, results = {}, ready = [] } = {}) {
+  const phase = { ...phases };
+  const log = [];
+  return {
+    log, phase,
+    deps: {
+      phaseOf: (id) => phase[id],
+      start: async (id) => { log.push(['start', id]); phase[id] = ready.includes(id) ? 'ready' : 'downloading'; },
+      cancel: async (id) => { log.push(['cancel', id]); phase[id] = 'canceled'; },
+      install: async (id, opts) => { log.push(['install', id, opts.restorePoint]); const r = results[id] || { ok: true, restore: opts.restorePoint ? { ok: true, created: true } : null }; return typeof r === 'function' ? r(opts) : r; },
+      // Um download termina por volta (o resto continua baixando).
+      sleep: async () => { const id = Object.keys(phase).find((k) => phase[k] === 'downloading'); if (id) phase[id] = 'ready'; }
+    }
+  };
+}
+test('atualizar tudo: ponto de restauração só some depois de criado; recusa do administrador para tudo', async () => {
+  const f = bulkFake({ phases: { a: undefined, b: undefined, c: undefined }, results: { a: { ok: false, restore: null, note: 'assinatura' } } });
+  const out = await D.runBulk({ ids: ['a', 'b', 'c'], restoreOn: true, ...f.deps });
+  assert.deepEqual(f.log.filter((l) => l[0] === 'install').map((l) => [l[1], l[2]]), [['a', true], ['b', true], ['c', false]], 'b ainda pede o ponto (o de a não foi criado)');
+  assert.deepEqual(out.done, ['b', 'c']);
+  assert.deepEqual(out.failed, ['a']);
+  const g = bulkFake({ phases: { a: undefined, b: undefined }, results: { a: { ok: false, declined: true } } });
+  const out2 = await D.runBulk({ ids: ['a', 'b'], restoreOn: true, ...g.deps });
+  assert.equal(out2.declined, true);
+  assert.deepEqual(g.log.filter((l) => l[0] === 'install').map((l) => l[1]), ['a'], 'não pede administrador de novo');
+  assert.ok(g.log.some((l) => l[0] === 'cancel' && l[1] === 'b'), 'cancela o download que sobrou');
+});
+test('atualizar tudo: já instalado conta como feito, parar cancela o que falta, sem limite de tempo para download lento', async () => {
+  const f = bulkFake({ phases: { a: 'installed', b: undefined, c: undefined } });
+  let stop = false;
+  const out = await D.runBulk({ ids: ['a', 'b', 'c'], restoreOn: false, ...f.deps, install: async (id, o) => { stop = true; return f.deps.install(id, o); }, stopped: () => stop });
+  assert.deepEqual(out.done, ['a', 'b']);
+  assert.equal(out.stopped, true);
+  assert.ok(f.log.some((l) => l[0] === 'cancel' && l[1] === 'c'));
+  let ticks = 0;
+  const slow = bulkFake({ phases: { a: undefined } });
+  const res = await D.runBulk({ ids: ['a'], restoreOn: false, ...slow.deps, sleep: async () => { ticks += 1; if (ticks > 9000) slow.phase.a = 'ready'; } });
+  assert.deepEqual(res.done, ['a'], 'esperou o download lento terminar');
+});
+test('atualizar tudo: nomes do confirmar com "+N" e o assistente da Intel dito com todas as letras', () => {
+  const model = D.build(sample(), NOW);
+  const ids = D.updatePlan(model);
+  const names = D.bulkNames(model, ids, 3);
+  assert.ok(names.length <= 4);
+  if (ids.length > 3) assert.match(names[names.length - 1], /^e mais \d+$/);
+  const intel = model.groups.flatMap((g) => g.items).find((i) => i.download?.fileName === 'Intel-Driver-and-Support-Assistant-Installer.exe' && i.download.primary);
+  if (intel) assert.ok(D.bulkNames(model, [intel.id], 3)[0].includes('Assistente da Intel'));
+});
+
+test('Game Ready: não quebra nome de jogo com "and"/"&" e só diz "você tem" com o mesmo jogo', () => {
+  const nv = (notes) => Main.parseNvidia({ Success: '1', IDS: [{ downloadInfo: { ...nvInfo.IDS[0].downloadInfo, ReleaseNotes: encodeURIComponent(`<b>Game Ready for ${notes}</b>`) } }] }).gameReady;
+  assert.deepEqual(nv('Indiana Jones and the Great Circle'), ['Indiana Jones and the Great Circle']);
+  assert.deepEqual(nv('Ratchet &amp; Clank: Rift Apart'), ['Ratchet & Clank: Rift Apart']);
+  assert.deepEqual(nv('Warhammer 40,000: Dawn of War IV &amp; Where Winds Meet'), ['Warhammer 40,000: Dawn of War IV', 'Where Winds Meet']);
+  assert.deepEqual(nv('Alpha, Beta and Gamma'), ['Alpha', 'Beta', 'Gamma']);
+  const data = sample();
+  data.latest.nvidia.modern.gameReady = ['Call of Duty: Black Ops 7', 'DOOM: The Dark Ages', 'Cyberpunk 2077', 'Hades II'];
+  const gpu = D.build(data, NOW, { games: ['Call of Duty', 'DOOM', 'Cyberpunk 2077 Ultimate Edition', 'Hades'] }).groups.find((g) => g.id === 'video').items.find((i) => i.maker === 'NVIDIA');
+  assert.deepEqual(gpu.gameReady.yours, ['Cyberpunk 2077'], 'edição do mesmo jogo vale; outro jogo da série, não');
+});
+
+test('constelação: peça coberta pelo pacote fica com a cor do pacote, não "em dia"', () => {
+  const model = D.build(oemData({ installed: '6.0.1.9500.1' }), NOW);
+  const sky = D.constellation(model, { width: 1000, height: 160 });
+  const audio = sky.stars.find((s) => s.id === 'audio-Realtek Audio');
+  assert.equal(audio.tone, 'unknown', 'pacote em estado neutro: estrela apagada');
+  assert.equal(audio.covered, true);
+  const upd = D.constellation(D.build(oemData(), NOW), { width: 1000, height: 160 }).stars.find((s) => s.id === 'audio-Realtek Audio');
+  assert.equal(upd.tone, 'update');
+});
+test('pacote que cobre peça sem driver é sempre atualização (mesmo junto de peça com driver)', () => {
+  const data = oemData({ installed: '6.0.1.9500.1', missing: [{ name: 'Audio sem driver', code: 28, ids: '10EC:0295', hwids: [AUDIO_ID] }] });
+  const pkg = cardsOf(D.build(data, NOW)).find((c) => c.id === 'oem-dell-R1VKP');
+  assert.equal(pkg.state, 'update');
+});
+test('periférico: só conta peça USB/HID (código PCI com o mesmo número não vale)', () => {
+  const data = sample();
+  data.others = [dev('Placa PCI estranha', 'SYSTEM', 'Foo', '1', '2024-01-01', '046D:1234')];
+  data.genericDevices = [];
+  assert.equal(D.build(data, NOW).groups.find((g) => g.id === 'outros')?.items.find((i) => i.id === 'perif-logitech'), undefined);
+});
+test('Visual C++ antigos: o resumo não repete os que faltam (eles têm cartão próprio)', () => {
+  const card = D.build(sample(), NOW).groups.find((g) => g.id === 'jogos').items.find((i) => i.id === 'vc-antigos');
+  assert.equal(card.note, null);
+  assert.match(card.purpose, /cartão próprio|logo abaixo|abaixo/);
+});
+test('histórico: some o driver que não existe mais', () => {
+  const h = { velho: [{ v: '1.0', at: 1 }], a: [{ v: '2.0', at: 1 }] };
+  const out = D.trackHistory(h, { groups: [{ items: [{ id: 'a', installed: { version: '2.0' } }] }] }, NOW);
+  assert.deepEqual(Object.keys(out.history), ['a']);
+});
+test('leitura do PC: programas dos periféricos vêm antes do resto da lista de programas', () => {
+  const s = Main.RUNTIMES_SCRIPT;
+  assert.match(s, /Select-Object -First 80/);
+  assert.match(s, /Sort-Object/);
+});
+test('constelação: grupo grande ganha estrelas menores (não vira um borrão)', () => {
+  const items = Array.from({ length: 30 }, (_, i) => ({ id: `x${i}`, name: `X ${i}`, state: 'ok' }));
+  const sky = D.constellation({ groups: [{ id: 'outros', title: 'Outros', items }, { id: 'rede', title: 'Rede', items: [{ id: 'r', name: 'R', state: 'ok' }] }] }, { width: 1000, height: 160 });
+  const big = Math.max(...sky.stars.filter((s) => s.group === 'outros').map((s) => s.r));
+  const small = sky.stars.find((s) => s.id === 'r').r;
+  assert.ok(big < small, `${big} < ${small}`);
+});

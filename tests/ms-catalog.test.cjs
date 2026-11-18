@@ -57,7 +57,7 @@ test('catálogo: busca em segundo plano, cache de 24 h e erro não quebra nada',
   const done = cat.lookup([dev]);
   assert.equal(done.pending, false);
   assert.deepEqual(done.items[dev.key], { title: 'Fabricante X - Other hardware - Leitor', version: '1.3.0.0', date: '2026-09-16', size: '1.2 MB', url: 'https://catalog.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0b1c2d3e-aaaa-bbbb-cccc-1234567890ab/leitor_1.3.0.0_x64.cab' });
-  assert.equal(calls[0][0], 'https://www.catalog.update.microsoft.com/Search.aspx?q=PCI%5CVEN_1B21%26DEV_1242');
+  assert.equal(calls[0][0], 'https://www.catalog.update.microsoft.com/Search.aspx?q=PCI%5CVEN_1B21%26DEV_1242%26SUBSYS_86751043', 'código completo primeiro');
   assert.equal(calls[1][1], 'POST');
   const n = calls.length;
   t += 23 * 3600 * 1000;
@@ -69,4 +69,26 @@ test('catálogo: busca em segundo plano, cache de 24 h e erro não quebra nada',
   await broken.settled();
   assert.deepEqual(broken.lookup([dev]).items, {});
   assert.deepEqual(C.createMsCatalog({ now: () => t, fetchText: async () => '' }).lookup([]), { pending: false, items: {} });
+});
+
+/* ---- correções da revisão final ---- */
+test('catálogo: nunca ARM64, e PC com Windows 10 não pega linha só de Windows 11', () => {
+  const rows = [
+    { id: 'a', title: 'Foo ARM64 driver', products: 'Windows 11 Client, version 24H2 and later, Servicing Drivers', classification: 'Drivers (Other Hardware)', date: '2026-10-01', version: '3' },
+    { id: 'b', title: 'Foo driver', products: 'Windows 11 Client, version 24H2 and later, Servicing Drivers', classification: 'Drivers (Other Hardware)', date: '2026-09-01', version: '2' },
+    { id: 'c', title: 'Foo driver', products: 'Windows 10 and later drivers', classification: 'Drivers (Other Hardware)', date: '2025-01-01', version: '1' }
+  ];
+  assert.equal(C.pickRow(rows, { build: 26100 }).id, 'b');
+  assert.equal(C.pickRow(rows, { build: 19045 }).id, 'c');
+  assert.equal(C.pickRow(rows).id, 'b', 'sem a versão do Windows: o mais novo que não é ARM');
+});
+test('catálogo: tenta primeiro o código completo (com SUBSYS, sem REV) e depois o curto', async () => {
+  assert.deepEqual(C.searchTerms(['PCI\\VEN_ABCD&DEV_1234&SUBSYS_00011028&REV_02', 'PCI\\VEN_ABCD&DEV_1234&SUBSYS_00011028', 'PCI\\VEN_ABCD&DEV_1234']), ['PCI\\VEN_ABCD&DEV_1234&SUBSYS_00011028', 'PCI\\VEN_ABCD&DEV_1234']);
+  const asked = [];
+  const cat = C.createMsCatalog({ fetchText: async (url) => { asked.push(decodeURIComponent(url)); return '<table></table>'; } });
+  cat.lookup([{ key: 'k', hwids: ['PCI\\VEN_ABCD&DEV_1234&SUBSYS_00011028&REV_02'] }], { build: 26100 });
+  await cat.settled();
+  assert.equal(asked.length, 2);
+  assert.match(asked[0], /SUBSYS_00011028/);
+  assert.doesNotMatch(asked[1], /SUBSYS/);
 });

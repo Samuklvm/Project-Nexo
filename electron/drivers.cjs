@@ -31,7 +31,8 @@ function VC($arch) {
 # Runtimes, e os programas oficiais que atualizam drivers (assistente da Intel, G HUB, GG, Synapse, iCUE, AMD).
 $un = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
   Where-Object { [string]$_.DisplayName -match 'Visual C\+\+ .*Redistributable|PhysX|Logitech G HUB|SteelSeries GG|Razer Synapse|iCUE|Driver & Support Assistant|AMD Software' } |
-  ForEach-Object { @{ name = [string]$_.DisplayName; version = [string]$_.DisplayVersion } } | Select-Object -First 40)
+  Sort-Object { if ([string]$_.DisplayName -match 'Visual C\+\+') { 1 } else { 0 } } |
+  ForEach-Object { @{ name = [string]$_.DisplayName; version = [string]$_.DisplayVersion } } | Select-Object -First 80)
 # Programas instalados com ícone (DisplayIcon): o ícone de verdade de cada componente e de cada fabricante vem daqui.
 $apps = @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' |
   Where-Object { $_.DisplayName -and $_.DisplayIcon } |
@@ -152,7 +153,7 @@ function parseRuntimes(stdout) {
     os: { build: Number.isInteger(build) && build > 0 ? build : null, name: text(raw.os?.name, 60), display: text(raw.os?.display, 12) },
     board: { maker: text(raw.board?.maker, 60), product: text(raw.board?.product, 60), systemMaker: text(raw.board?.systemMaker, 60), model: text(raw.board?.model, 80), mobile: raw.board?.mobile === true, sku: text(raw.board?.sku, 20), version: text(raw.board?.version, 80), bios: text(raw.board?.bios, 40) },
     vc: { x64: version(raw.vc?.x64), x86: version(raw.vc?.x86), arm64: version(raw.vc?.arm64) },
-    uninstall: asList(raw.uninstall).slice(0, 40).map((item) => ({ name: text(item?.name, 120), version: version(item?.version) })).filter((item) => item.name),
+    uninstall: asList(raw.uninstall).slice(0, 80).map((item) => ({ name: text(item?.name, 120), version: version(item?.version) })).filter((item) => item.name),
     dx: { d3dx9: raw.dx?.d3dx9 === true, xinput13: raw.dx?.xinput13 === true, x3daudio: raw.dx?.x3daudio === true },
     netfx: Number.isInteger(raw.netfx) && raw.netfx > 0 ? raw.netfx : null,
     desktop: [...new Set(asList(raw.desktop).map((item) => version(item)).filter(Boolean))].slice(0, 16),
@@ -200,7 +201,22 @@ function gameReadyOf(raw) {
   const stops = ['</b>', '<br', '</p>', '. '].map((s) => rest.toLowerCase().indexOf(s)).filter((i) => i >= 0);
   if (stops.length) rest = rest.slice(0, Math.min(...stops));
   const clean = rest.replace(/<[^>]{0,200}>/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').slice(0, 400);
-  return clean.split(/\s+&\s+|,\s+|\s+and\s+/).map((name) => text(name, 60)).filter((name) => name.length > 1).slice(0, 8);
+  // Separa por ", " e pelo último " & "/" and ", só quando os dois lados parecem nomes de jogo (começam com maiúscula ou
+  // número e o da esquerda tem mais de uma palavra): "Ratchet & Clank" e "Indiana Jones and the Great Circle" ficam inteiros.
+  const parts = clean.split(/,\s+/).map((p) => p.trim()).filter(Boolean);
+  const out = [];
+  parts.forEach((part, i) => {
+    const last = i === parts.length - 1;
+    const amp = part.lastIndexOf(' & ');
+    const and = part.lastIndexOf(' and ');
+    const cut = last ? Math.max(amp, and) : -1;
+    const left = cut > 0 ? part.slice(0, cut).trim() : '';
+    const right = cut > 0 ? part.slice(cut + (cut === amp ? 3 : 5)).trim() : '';
+    const looksLikeTitle = (t) => /^[A-Z0-9]/.test(t);
+    if (left && right && looksLikeTitle(right) && (parts.length > 1 || left.includes(' '))) out.push(left, right);
+    else out.push(part.replace(/^(?:and|&)\s+/, ''));
+  });
+  return out.map((name) => text(name, 60)).filter((name) => name.length > 1).slice(0, 8);
 }
 function parseNvidia(json) {
   const info = json?.IDS?.[0]?.downloadInfo;
@@ -349,7 +365,7 @@ function createDrivers({ runPowerShellCode, fetchJson, fetchText = null, fetchBy
         const covered = new Set(Oem.matchPackages(runtimes?.missing || [], latest.oem?.packages || []).flatMap((m) => m.devices));
         const orphans = (runtimes?.missing || []).filter((m) => m.code === 28 && !covered.has(m) && !Vendors.vendorOf({ name: m.name, ids: m.ids }))
           .map((m) => ({ key: `${m.name}-${m.ids || ''}`, hwids: m.hwids }));
-        if (orphans.length) latest.catalog = msCatalog.lookup(orphans);
+        if (orphans.length) latest.catalog = msCatalog.lookup(orphans, { build: runtimes?.os?.build });
       }
     }
     const icons = await localIcons(runtimes);
