@@ -13,6 +13,7 @@
         sections: [
           { emoji: '✨', title: 'Novidades', tone: 'new', items: [
             { emoji: '⬇️', title: 'Drivers com um clique', text: 'O Nexo baixa o driver oficial certo para o seu PC (NVIDIA, Visual C++, DirectX e .NET), com barra de progresso e fila, confere a assinatura do fabricante e abre o instalador oficial, com ponto de restauração opcional numa chave no topo da página.' },
+            { emoji: '📊', title: 'Contagem de uso anônima', text: 'Agora dá para saber quantas pessoas usam o Nexo, sem nada pessoal: só um "este PC abriu hoje" por dia, com um código embaralhado. Você pode desligar em Ajustes > Privacidade e dados.' },
             { emoji: '🌸', title: 'Fundo novo, animado', text: 'Um campo de flores azuis que brilham sob o céu do Nexo, com capim balançando, pétalas no vento e vaga-lumes. Pausa com o app fora de foco e fica parado no Modo Leve, com movimento reduzido ou com um papel de parede seu.' },
             { emoji: '💙', title: 'O Nexo agora é código aberto', text: 'O código do Nexo é livre, sob a licença GPL-3.0: qualquer pessoa pode ler, estudar e ajudar a melhorar.' }
           ] },
