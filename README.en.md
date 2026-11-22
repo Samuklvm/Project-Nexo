@@ -169,4 +169,20 @@ Nexo Device Care is **free and open source software**, under the **GPL-3.0**. Yo
 - [For developers](docs/DEVELOPMENT.md): run, test, build installers and publish versions
 - [Architecture](docs/ARQUITETURA.md) · [Game connections](docs/CONEXOES.md) · [Security](SECURITY.md)
 
+
+<a href="https://peerpush.com/p/nexo-device-care-project-nexo"
+  target="_blank"
+  rel="noopener"
+>
+  <img
+    src="https://peerpush.com/p/nexo-device-care-project-nexo/badge.png"
+    alt="Nexo device care (Project nexo) on PeerPush"
+    width="230"
+    height="65"
+    loading="lazy"
+    style="width: 230px; height: auto;"
+  />
+</a>
+
+
 <p align="center"><sub>Made in Brazil · Recommendations are heuristics and do not guarantee a performance gain on every PC.</sub></p>
