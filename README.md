@@ -168,11 +168,6 @@ O Nexo Device Care é **software livre e de código aberto**, sob a **GPL-3.0**.
 - [Arquitetura](docs/ARQUITETURA.md) · [Conexões de jogos](docs/CONEXOES.md) · [Segurança](SECURITY.md)
 
 <p align="center"><sub>Feito no Brasil · As recomendações são heurísticas e não garantem ganho de desempenho em todos os PCs.</sub></p>
-
-
-  target="_blank"
-  rel="noopener"
->
   <img
     src="https://peerpush.com/p/nexo-device-care-project-nexo/badge.png"
     alt="Nexo device care (Project nexo) on PeerPush"
