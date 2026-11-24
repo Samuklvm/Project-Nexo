@@ -87,18 +87,19 @@ test('deep:false nunca devolve medir nem intervir', () => {
   const hs = dois();
   const r = P.choose(hs, priors(hs), ctx({ deep: false }));
   assert.ok(!r.action || !['medir', 'intervir'].includes(r.action.type));
-  assert.ok(r.need);
+  assert.deepEqual(r, { stop: 'ritmo' });
 });
 
 test('onBattery nunca devolve intervir', () => {
   const hs = [hyp('A>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'sobe')]), hyp('B>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'igual')])];
-  assert.ok(!P.choose(hs, priors(hs), ctx({ onBattery: true })).action);
+  assert.deepEqual(P.choose(hs, priors(hs), ctx({ onBattery: true })), { stop: 'bateria' });
 });
 
 test('activeToday = 3 não devolve medir nem intervir', () => {
   const hs = dois();
   const r = P.choose(hs, priors(hs), ctx({ activeToday: 3 }));
   assert.ok(!r.action || !['medir', 'intervir'].includes(r.action.type));
+  assert.deepEqual(r, { stop: 'orcamento' });
 });
 
 test('nada que separe devolve need com as hipóteses empatadas', () => {
@@ -126,4 +127,16 @@ test('pedir + intervir exige aprovação; sozinho não', () => {
 test('sem ação permitida e orçamento do dia gasto devolve stop orcamento', () => {
   const hs = [hyp('A>s', 0.5, [pred('medir', 'bench:b', 'desce')]), hyp('B>s', 0.5, [pred('medir', 'bench:b', 'igual')])];
   assert.deepEqual(P.choose(hs, priors(hs), ctx({ activeToday: 3 })), { stop: 'orcamento' });
+});
+
+test('só intervir útil: activeToday 3 espera (orcamento); observar não espera (need)', () => {
+  const hs = [hyp('A>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'sobe')]), hyp('B>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'igual')])];
+  assert.deepEqual(P.choose(hs, priors(hs), ctx({ activeToday: 3 })), { stop: 'orcamento' });
+  assert.ok(P.choose(hs, priors(hs), ctx({ permission: 'observar', deep: false })).need);
+});
+
+test('ritmo vence bateria e orçamento no empate; ganho maior decide o motivo', () => {
+  const hs = [hyp('A>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'sobe')]), hyp('B>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'igual')])];
+  assert.deepEqual(P.choose(hs, priors(hs), ctx({ deep: false, onBattery: true, activeToday: 3 })), { stop: 'ritmo' });
+  assert.deepEqual(P.choose(hs, priors(hs), ctx({ onBattery: true, activeToday: 3 })), { stop: 'bateria' });
 });

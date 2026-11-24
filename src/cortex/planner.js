@@ -16,6 +16,7 @@
   const MIN_GAIN = 0.05;
   const MAX_ACTIVE_PER_DAY = 3;
   const RISK_ORDER = { nenhum: 0, baixo: 1, moderado: 2, alto: 3 };
+  const STOP_RANK = { ritmo: 0, bateria: 1, orcamento: 2 }; // precedência quando o ganho empata
   const TIE = 0.05; // diferença de crença abaixo da qual duas hipóteses contam como empatadas
 
   let knobs = null;
@@ -89,6 +90,7 @@
     return (near.length >= 2 ? near : rows.slice(0, 2)).map((r) => r.key);
   }
 
+  /** -> { action, needsApproval } | { need: { between, reason } } | { stop: 'ritmo'|'orcamento'|'bateria' } */
   function choose(hyps, beliefs, ctx) {
     const c = ctx || {};
     const bel = beliefs || {};
@@ -96,28 +98,28 @@
     const maxRisk = RISK_ORDER[c.maxRisk] !== undefined ? RISK_ORDER[c.maxRisk] : RISK_ORDER.baixo;
     const spent = (c.activeToday || 0) >= MAX_ACTIVE_PER_DAY;
 
-    const allowed = actionsFor(hyps).filter((a) => {
-      if (done.has(idOf(a.type, a.target))) return false;
-      if ((a.type === 'medir' || a.type === 'intervir') && (!c.deep || spent)) return false;
-      if (a.type === 'intervir') {
-        if (c.permission === 'observar' || c.onBattery) return false;
-        if (RISK_ORDER[a.risk] > maxRisk) return false;
-      }
-      return true;
-    });
-
     let best = null;
-    for (const a of allowed) {
+    let blocked = null; // melhor ação útil bloqueada só por ora (ritmo, bateria ou orçamento do dia)
+    const better = (score, id, cur) => !cur || score > cur.score + 1e-12 || (Math.abs(score - cur.score) <= 1e-12 && id < cur.id);
+    for (const a of actionsFor(hyps)) {
+      const id = idOf(a.type, a.target);
+      if (done.has(id)) continue;
+      // Permissão e teto de risco não passam com o tempo: a ação conta como inexistente.
+      if (a.type === 'intervir' && (c.permission === 'observar' || RISK_ORDER[a.risk] > maxRisk)) continue;
       const gain = expectedGain(a, hyps, bel);
       if (gain < MIN_GAIN) continue;
+      const heavy = a.type === 'medir' || a.type === 'intervir';
+      const why = heavy && !c.deep ? 'ritmo' : a.type === 'intervir' && c.onBattery ? 'bateria' : heavy && spent ? 'orcamento' : null;
       const score = gain / a.cost;
-      if (!best || score > best.score + 1e-12 || (Math.abs(score - best.score) <= 1e-12 && idOf(a.type, a.target) < idOf(best.action.type, best.action.target))) best = { action: a, score };
+      if (why) {
+        const rank = STOP_RANK[why];
+        if (!blocked || gain > blocked.gain + 1e-12 || (Math.abs(gain - blocked.gain) <= 1e-12 && rank < STOP_RANK[blocked.why])) blocked = { why, gain };
+      } else if (better(score, id, best)) best = { action: a, score, id };
     }
     if (best) return { action: best.action, needsApproval: best.action.type === 'intervir' && c.permission === 'pedir' };
-
-    // Nada permitido separa as hipóteses: com o orçamento do dia gasto e sem ação alguma à mão, para; senão pede ajuda.
-    if (!allowed.length && spent) return { stop: 'orcamento' };
-    return { need: { between: tied(hyps, bel), reason: 'Nenhum passo permitido agora separa estas explicações; falta um dado novo (ou liberar uma medição) para decidir entre elas.' } };
+    // Há passo útil, só que não agora: espera, em vez de dar a investigação por não resolvida.
+    if (blocked) return { stop: blocked.why };
+    return { need: { between: tied(hyps, bel), reason: 'Nenhum passo permitido separa estas explicações; falta um dado novo (ou liberar uma medição) para decidir entre elas.' } };
   }
 
   return { COST, MIN_GAIN, actionsFor, expectedGain, choose };
