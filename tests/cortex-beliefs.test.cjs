@@ -146,3 +146,36 @@ test('update não muta a entrada e completa chaves ausentes com o prior', () => 
   assert.equal(Object.keys(b).length, 3);
   assert.ok(Math.abs(sum(b) - 1) < 1e-9);
 });
+
+// Muitas alternativas: a vencedora também vale com crença >= FLOOR e >= RELATIVE vezes a segunda (desconhecida conta).
+const many = () => [
+  hyp('A>clock_queda', 0.2, [pred('lembrar', 'x', 'presente'), pred('medir', 'bench:b', 'desce')]),
+  hyp('B>clock_queda', 0.2, [pred('lembrar', 'x', 'ausente')]),
+  hyp('C>clock_queda', 0.2, [pred('lembrar', 'y', 'presente')]),
+  hyp('D>clock_queda', 0.2, [pred('lembrar', 'z', 'presente')]),
+  hyp('desconhecida>clock_queda', 0.2, [], 'desconhecida'),
+];
+const exp = [out('medir', 'bench:b', 'desce', true)];
+
+test('RELATIVE e FLOOR exportados com os valores do controlador', () => {
+  assert.equal(B.RELATIVE, 3);
+  assert.equal(B.FLOOR, 0.5);
+  assert.equal(B.SUPPORT, 0.8);
+});
+
+test('vencedora relativa: >= 0.5 e >= 3x a segunda leva a apoiada (com teste) ou correlacionada (sem teste)', () => {
+  const b = { 'A>clock_queda': 0.55, 'B>clock_queda': 0.15, 'C>clock_queda': 0.1, 'D>clock_queda': 0.05, 'desconhecida>clock_queda': 0.15 };
+  assert.deepEqual(B.verdict(many(), b, exp), { status: 'apoiada', winner: 'A>clock_queda', refuted: [] });
+  const sem = B.verdict(many(), b, [out('lembrar', 'x', 'presente', true)]);
+  assert.equal(sem.status, 'correlacionada');
+  assert.equal(sem.winner, 'A>clock_queda');
+});
+
+test('vencedora relativa exige o piso e a folga: 0.45 não basta; 0.6 contra desconhecida 0.25 não basta', () => {
+  const piso = { 'A>clock_queda': 0.45, 'B>clock_queda': 0.14, 'C>clock_queda': 0.14, 'D>clock_queda': 0.14, 'desconhecida>clock_queda': 0.13 };
+  assert.equal(B.verdict(many(), piso, exp).status, 'aberta');
+  const folga = { 'A>clock_queda': 0.6, 'B>clock_queda': 0.05, 'C>clock_queda': 0.05, 'D>clock_queda': 0.05, 'desconhecida>clock_queda': 0.25 };
+  const v = B.verdict(many(), folga, exp);
+  assert.equal(v.status, 'aberta', 'a segunda conta mesmo sendo a desconhecida');
+  assert.equal(v.winner, null);
+});

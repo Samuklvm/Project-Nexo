@@ -4,6 +4,8 @@
  * afirmar algo. Só um experimento significativo (medir/intervir) leva a "apoiada": lembrar e esperar, por mais que
  * se repitam, só chegam a "correlacionada".
  *
+ * Vencedora: a hipótese mais forte (fora a desconhecida) com crença >= SUPPORT, ou >= FLOOR e >= RELATIVE vezes a segunda.
+ *
  * Puro: sem disco, sem relógio. Outcome.observed === 'interrompido' (teste cortado porque a pessoa voltou) não
  * conta para nada. "nao-resolvido" é decidido pelo motor, não aqui.
  */
@@ -18,6 +20,10 @@
   const NEUTRAL = 0.5;
   const SUPPORT = 0.8;
   const REFUTE = 0.05;
+  // Com muitas alternativas a crença quase nunca passa de SUPPORT: também vale a vencedora que tem pelo menos FLOOR e
+  // RELATIVE vezes a crença da segunda colocada (qualquer hipótese, inclusive a desconhecida).
+  const RELATIVE = 3;
+  const FLOOR = 0.5;
 
   const counts = (o) => !!o && o.observed !== 'interrompido';
   const sameStep = (p, o) => p.action === o.action && p.target === o.target;
@@ -67,11 +73,13 @@
       if (h.source === 'desconhecida' || !(h.predictions || []).length) continue;
       if (!best || belief(h) > belief(best)) best = h;
     }
-    if (!best || belief(best) < SUPPORT) return { status: 'aberta', winner: null, refuted };
+    const second = Math.max(0, ...list.filter((h) => h !== best).map(belief));
+    const leads = best && (belief(best) >= SUPPORT || (belief(best) >= FLOOR && belief(best) >= RELATIVE * second));
+    if (!leads) return { status: 'aberta', winner: null, refuted };
 
     const experimental = seen.some((o) => o.significant && isTest(o) && relation(best, o) === 'bate');
     return { status: experimental ? 'apoiada' : 'correlacionada', winner: best.key, refuted };
   }
 
-  return { update, verdict, SUPPORT, REFUTE };
+  return { update, verdict, SUPPORT, REFUTE, RELATIVE, FLOOR };
 });
