@@ -18,9 +18,10 @@
  * Ritmo: no leve checa a cada 60 s e só consulta o primeiro plano com o PC parado há 10 min; no profundo checa a
  * ociosidade a cada 5 s e o primeiro plano a cada 30 s. Leve: grava, abre/anexa, forja, lembra (consultas com limite) e
  * pensa, 1 passo por investigação. Profundo: também mede e intervém, minera correlações 1x/dia, faz a cópia de
- * segurança e a limpeza da câmera, e guarda referências dos testes (meta 'cortex.ref.<teste>', uma por tique, só de
- * testes que nenhuma investigação aberta vai medir). Medir = 5 rodadas contra a referência; sem referência (ou com mais
- * de 30 dias) as rodadas viram a referência e o resultado é 'sem-referencia' (o motor grava 'invalido', sem prova).
+ * segurança e a limpeza da câmera, e guarda referências dos testes (meta 'cortex.ref.<teste>', no máximo uma por tique
+ * e só num tique sem outro passo andando, só de testes que nenhuma investigação aberta vai medir). Medir = 5 rodadas contra a referência; sem referência (ou com mais
+ * de 30 dias) as rodadas viram a referência e o resultado é 'sem-referencia' (o motor grava 'invalido', sem prova, e
+ * não conta como feito: o mesmo teste é refeito depois, já com a referência).
  * cancelActive(): o lab/benchmark/análise da pessoa corta o teste do Cortex. A fila de anomalias de eventos gravados
  * sobrevive a reiniciar (meta 'cortex.ultima-anomalia').
  * Configuração { permission, maxRisk, chosen } em memory.setMeta('cortex.config') e num registro 'ajuste' a cada escolha
@@ -623,16 +624,18 @@ function createCortex(deps = {}) {
       }
       if (deep()) await call('profundo', daily, null);
       const ids = await call('retomar', () => engine.resume(), []);
+      let worked = false; // algum passo andou: a referência espera um tique sem mais nada a fazer
       for (const inv of ids) {
         if (await busy()) break;
         const status = await call('passo', () => engine.step(inv), null);
         if (status && status !== lastStatus.get(inv) && status !== 'falha-gravacao') changed.add(inv);
         if (status === 'falha-gravacao') log('passo', `a memória não gravou um passo (investigação ${inv})`);
+        if (status === 'continua') worked = true;
         if (status === 'concluida') lastStatus.delete(inv);
         else if (status) lastStatus.set(inv, status);
       }
       safe('mapa', syncMap, null);
-      await call('referencia', buildReference, null);
+      if (!worked) await call('referencia', buildReference, null);
     } catch (e) {
       log('tique', e);
     } finally {

@@ -347,7 +347,10 @@ test('referências no profundo: só dos testes que nenhuma investigação aberta
   t.cortex.observeEvent(lentidao(T0)); // investigação de cpu: mede bench:multi e bench:single
   await t.cortex.tick();
   await goDeep(t);
+  // Tique com passo de investigação andando: nada de referência (só quando não há mais nada a fazer).
   await t.cortex.tick();
+  assert.deepEqual(t.env.bench, [], 'fez referência num tique que ainda tinha passo');
+  assert.ok(await tickUntil(t, () => t.env.bench.length > 0), 'nunca fez referência');
   const refs = ['single', 'multi', 'disk', 'memory', 'frames'].filter((b) => t.memory.getMeta(`cortex.ref.${b}`));
   assert.ok(refs.length >= 1, 'nenhuma referência no profundo');
   assert.ok(!refs.includes('multi') && !refs.includes('single'), `referência de teste com investigação aberta: ${refs}`);

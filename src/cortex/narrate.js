@@ -9,6 +9,7 @@
  *   action    'lembrar' | 'esperar' | 'medir' | 'intervir'
  *   expect    'sobe' | 'desce' | 'igual' | 'presente' | 'ausente' | 'antes' | 'depois'
  *   observed  os de expect, mais 'interrompido' (teste cortado porque a pessoa voltou; não conta como evidência).
+ *             e 'sem-referencia' (medir sem a medida de referência do teste: ela foi guardada agora e o teste é refeito).
  *             Qualquer outro valor é narrado como "não consegui classificar", sem afirmar nada.
  * Prediction = { action, target, expect }.
  * Outcome    = { action, target, observed, significant } (significant: false = diferença pequena, pesa pouco).
@@ -111,6 +112,9 @@
       if (!o) return 'Terminei um passo, mas não consegui registrar o que vi.';
       if (o.observed === 'interrompido') {
         return `Parei o teste de ${name(o.target)} porque você voltou; esse teste não conta como evidência e eu refaço depois.`;
+      }
+      if (o.observed === 'sem-referencia') {
+        return `Ainda não tinha a medida de referência de ${name(o.target)}: esta medição virou a referência, e eu meço de novo depois para comparar.`;
       }
       const p = s.prediction;
       const weak = o.significant === false ? ' A diferença foi pequena, então pesa pouco.' : '';

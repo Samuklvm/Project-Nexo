@@ -450,3 +450,31 @@ test('app morre entre a prova e a crença: um motor novo refaz a crença e segue
   assert.equal(kinds(store, 'crenca', inv).filter((c) => c.ref === exp.id).length, 1, 'crença do primeiro resultado refeita');
   assert.deepEqual(kinds(store, 'conclusao', inv)[0].data.verdict, ref.verdict);
 });
+
+test('medir sem referência ainda: experimento invalido que NÃO conta como feito; o mesmo teste é refeito e aí vale', async () => {
+  const store = memoryStore();
+  // O primeiro medir (seja qual for o teste) ainda não tem referência; depois, a máquina responde de verdade.
+  let first = null;
+  const once = (target) => () => { if (!first) { first = target; return { observed: 'sem-referencia', significant: false }; } return { observed: 'desce', significant: true }; };
+  const act = heatAct({ 'medir:bench:single': once('bench:single'), 'medir:bench:multi': once('bench:multi') });
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: deep(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  const seen = await untilDone(engine, inv);
+  assert.equal(seen[seen.length - 1], 'concluida');
+  assert.ok(first, 'nunca mediu');
+  const order = act.calls.filter((c) => c.startsWith('medir:'));
+  assert.deepEqual(order.slice(0, 2), [`medir:${first}`, `medir:${first}`], order.join(', '));
+  const exps = kinds(store, 'experimento', inv).map((r) => r.data);
+  assert.ok(exps.some((e) => e.status === 'invalido' && e.detail === 'sem-referencia'));
+  assert.ok(exps.some((e) => e.status === 'feito' && e.action.target === first));
+  // Sem prova para o invalido; a frase é a do narrador para "sem referência".
+  assert.equal(kinds(store, 'prova', inv).filter((p) => p.data.outcome && p.data.outcome.observed === 'sem-referencia').length, 0);
+  assert.ok(kinds(store, 'pensamento', inv).some((p) => /referência/.test(p.data.text)));
+  // Outro invalido continua contando como feito (não repete).
+  const store2 = memoryStore();
+  const act2 = heatAct({ 'medir:bench:single': { observed: 'xyz', significant: false }, 'medir:bench:multi': { observed: 'xyz', significant: false } });
+  const engine2 = E.createEngine({ store: store2, map: heatMap(), act: act2, ctx: deep(), now: () => T0 });
+  const inv2 = await engine2.open(anomaly());
+  await untilDone(engine2, inv2);
+  for (const b of ['bench:single', 'bench:multi']) assert.ok(act2.calls.filter((c) => c === `medir:${b}`).length <= 1, act2.calls.join(', '));
+});

@@ -11,7 +11,8 @@
  *   hipotese      Hypothesis do forjador
  *   crenca        { beliefs }                               prev = crença anterior, ref = experimento que a mudou
  *   experimento   { action, status, outcome?, detail? }     status: feito | interrompido | esperando | invalido | falhou
- *                                                           (o resultado de uma espera aponta para ela em prev)
+ *                                                           (o resultado de uma espera aponta para ela em prev;
+ *                                                           invalido com detail 'sem-referencia' não conta como feito)
  *   prova         { outcome, anomaly? } (ref = experimento) ou { kind: 'repeticao', anomaly } (a lentidão repetiu)
  *   pedido        { action, status: 'pendente' }; a resposta é outro pedido { action, status: aprovado|negado }, ref = pedido
  *   pensamento    { step, text, pause? }                    frase do narrador (passos no formato do narrate.js)
@@ -44,6 +45,9 @@
   const ALL = 100000; // teto de registros de um tipo lidos de uma investigação
   const SUSPECTS = 3; // suspeitas narradas ao abrir (além da "fora do que eu meço")
   const COUNTED = new Set(['feito', 'invalido', 'falhou']); // a ação conta como feita (interrompido não conta)
+  // Exceção: medir sem a referência do teste ainda (o Cortex acabou de guardá-la) não conta: o teste pode ser refeito.
+  const NO_REFERENCE = 'sem-referencia';
+  const counted = (d) => COUNTED.has(d.status) && !(d.status === 'invalido' && d.detail === NO_REFERENCE);
   const PAUSE = {
     ritmo: 'o próximo passo é um teste pesado, e esse eu só faço com o computador parado',
     bateria: 'o computador está na bateria, então o ajuste fica para depois',
@@ -115,7 +119,7 @@
         beliefs: repaired.beliefs,
         crencaId: repaired.crencaId,
         outcomes: exps.filter((r) => r.data.status === 'feito').map((r) => r.data.outcome),
-        done: exps.filter((r) => COUNTED.has(r.data.status)).map((r) => idOf(r.data.action.type, r.data.action.target)),
+        done: exps.filter((r) => counted(r.data)).map((r) => idOf(r.data.action.type, r.data.action.target)),
         waiting: exps.filter((r) => r.data.status === 'esperando' && !resolved.has(r.id)).pop() || null,
         pending: asks.filter((r) => r.ref == null && !answered.has(r.id)).pop() || null,
         approved,

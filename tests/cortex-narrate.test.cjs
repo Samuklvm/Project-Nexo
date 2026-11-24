@@ -121,3 +121,11 @@ test('resultado com observed fora do vocabulário não afirma nada', () => {
   assert.ok(s.includes(SIGNALS['bench:single'].label));
   assert.doesNotMatch(N.say({ type: 'resultado', outcome: out('medir', 'bench:single', undefined, true) }), /bateu/i);
 });
+
+test('medir sem referência ainda tem frase própria (sem "não consegui classificar")', () => {
+  const s = N.say({ type: 'resultado', outcome: out('medir', 'bench:single', 'sem-referencia', false) });
+  assert.match(s, /referência/);
+  assert.ok(s.includes(SIGNALS['bench:single'].label), s);
+  assert.doesNotMatch(s, /não consegui classificar/);
+  assert.doesNotMatch(s, BANIDAS);
+});
