@@ -170,3 +170,79 @@ test('consulta de um dia em 500 mil minutos < 200 ms', () => {
   assert.ok(ms < 200, `levou ${ms.toFixed(1)} ms`);
   memory.close();
 });
+
+// ---- falhas de disco/trava: nada se perde em silêncio e nada derruba quem chama ----
+const { DatabaseSync } = require('node:sqlite');
+
+function travar(dir) {
+  const outro = new DatabaseSync(path.join(dir, 'memoria.db'));
+  outro.exec('BEGIN IMMEDIATE'); // segura a escrita
+  return { soltar() { outro.exec('ROLLBACK'); outro.close(); } };
+}
+
+test('flush que falha devolve o lote à fila e tenta de novo depois', () => {
+  const { memory, dir } = open({ busyMs: 30 });
+  const trava = travar(dir);
+  memory.addMinute(minute(T0 - 2 * MIN));
+  memory.addMachine({ a: 1 });
+  assert.doesNotThrow(() => memory.flush());
+  const h = memory.health();
+  assert.equal(h.ok, false);
+  assert.ok(h.lastError);
+  trava.soltar();
+  memory.flush();
+  assert.equal(memory.minutes({ from: 0, to: T0 }).length, 1);
+  assert.equal(memory._db.prepare('SELECT COUNT(*) n FROM maquina').get().n, 1);
+  assert.equal(memory.health().ok, true);
+  // o retrato igual continua sem duplicar depois da recuperação
+  memory.addMachine({ a: 1 });
+  memory.flush();
+  assert.equal(memory._db.prepare('SELECT COUNT(*) n FROM maquina').get().n, 1);
+  memory.close();
+});
+
+test('escritas síncronas não lançam com o banco travado', () => {
+  const { memory, dir } = open({ busyMs: 30 });
+  const trava = travar(dir);
+  assert.equal(memory.addEvent({ kind: 'k', at: T0, data: {} }), -1);
+  assert.equal(memory.record('pensamento', { data: {} }), -1);
+  assert.doesNotThrow(() => memory.camera.put('s', [{ t: T0 }]));
+  assert.doesNotThrow(() => memory.setMeta('a', 'b'));
+  assert.deepEqual(memory.importLegacy({ history: [minute(T0 - MIN)] }), { imported: 0 });
+  assert.doesNotThrow(() => memory.minutes({ from: 0, to: T0 }));
+  assert.equal(memory.health().ok, false);
+  trava.soltar();
+  assert.ok(memory.record('pensamento', { data: {} }) > 0);
+  assert.equal(memory.health().ok, true);
+  memory.close();
+});
+
+test('banco travado na abertura não é tratado como corrompido', async () => {
+  const { memory, dir, clock } = open();
+  memory.record('pensamento', { data: { t: 1 } });
+  await memory.backupDaily();
+  memory.close();
+  const outro = new DatabaseSync(path.join(dir, 'memoria.db'));
+  outro.exec('PRAGMA journal_mode=DELETE');
+  outro.exec('BEGIN EXCLUSIVE');
+  const r = createMemory({ dir, now: () => clock.t, busyMs: 30 });
+  outro.exec('ROLLBACK'); outro.close();
+  assert.equal(r.ok, false);
+  assert.ok(!fs.readdirSync(dir).some((f) => /corrompido/.test(f)), 'não pode renomear');
+  const r2 = createMemory({ dir, now: () => clock.t });
+  assert.equal(r2.ok, true, r2.error);
+  assert.equal(r2.memory.latest('pensamento', {}).data.t, 1);
+  r2.memory.close();
+});
+
+test('erro que não é corrupção (não abre) deixa o arquivo quieto', async () => {
+  const { memory, dir, clock } = open();
+  await memory.backupDaily();
+  memory.close();
+  fs.rmSync(path.join(dir, 'memoria.db'));
+  fs.mkdirSync(path.join(dir, 'memoria.db')); // pasta no lugar do arquivo: não abre
+  const r = createMemory({ dir, now: () => clock.t });
+  assert.equal(r.ok, false);
+  assert.ok(fs.statSync(path.join(dir, 'memoria.db')).isDirectory());
+  assert.ok(!fs.readdirSync(dir).some((f) => /corrompido/.test(f)));
+});

@@ -45,35 +45,46 @@ function rowOf(r) {
   return r ? { id: r.id, at: r.at, kind: r.kind, inv: r.inv, ref: r.ref, prev: r.prev, data: parse(r.data) } : null;
 }
 
-function abrir(file) {
+/** Corrupção de verdade (SQLITE_CORRUPT=11, SQLITE_NOTADB=26). Trava, disco cheio ou permissão NÃO são corrupção. */
+function ehCorrupcao(e) {
+  if (!e) return false;
+  if (e.corrompido || e.errcode === 11 || e.errcode === 26) return true;
+  return /not a database|malformed|disk image is malformed|file is encrypted/i.test(String(e.message || ''));
+}
+
+function abrir(file, busyMs) {
   const { DatabaseSync } = require('node:sqlite');
-  const db = new DatabaseSync(file);
+  const db = new DatabaseSync(file, { timeout: busyMs });
   try {
+    db.exec(`PRAGMA busy_timeout=${busyMs}`);
     db.exec('PRAGMA journal_mode=WAL');
     db.exec('PRAGMA synchronous=NORMAL');
     db.exec(SCHEMA);
     db.exec(TRIGGERS);
     if (db.prepare('PRAGMA user_version').get().user_version < 1) db.exec('PRAGMA user_version = 1');
-    db.prepare('SELECT COUNT(*) FROM sqlite_master').get();
+    const qc = db.prepare('PRAGMA quick_check').get();
+    if (qc && Object.values(qc)[0] !== 'ok') { const err = new Error(`quick_check falhou: ${Object.values(qc)[0]}`); err.corrompido = true; throw err; }
   } catch (e) { try { db.close(); } catch { /* já estava ruim */ } throw e; }
   return db;
 }
 
-function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 200 * 1024 * 1024 } = {}) {
+function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 200 * 1024 * 1024, busyMs = 2000 } = {}) {
   if (!dir) return { ok: false, error: 'sem pasta' };
   const file = path.join(dir, 'memoria.db');
   const pastaBackup = path.join(dir, 'backups');
   let db;
   try {
     fs.mkdirSync(dir, { recursive: true });
-    try { db = abrir(file); } catch (e) {
+    try { db = abrir(file, busyMs); } catch (e) {
+      // só corrupção de verdade vai para a quarentena; trava/disco cheio/permissão devolvem erro e deixam o arquivo quieto
+      if (!ehCorrupcao(e)) return { ok: false, error: `memória não abriu: ${e.message}` };
       // arquivo estragado: se houver backup, guarda o estragado de lado e volta com o backup mais novo
       const backups = fs.existsSync(pastaBackup) ? fs.readdirSync(pastaBackup).filter((f) => /^memoria-.*\.db$/.test(f)).sort() : [];
       if (!backups.length) return { ok: false, error: `memória ilegível: ${e.message}` };
       fs.renameSync(file, path.join(dir, `memoria.corrompido-${now()}.db`));
       for (const ext of ['-wal', '-shm']) fs.rmSync(file + ext, { force: true });
       fs.copyFileSync(path.join(pastaBackup, backups[backups.length - 1]), file);
-      db = abrir(file);
+      db = abrir(file, busyMs);
     }
   } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
 
@@ -82,6 +93,20 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
   let fechado = false;
   let filaMinutos = [];
   let filaMaquina = [];
+  // estado degradado: falhas de escrita (disco cheio, trava) não derrubam o app, ficam aqui para quem chama consultar
+  const saude = { ok: true, lastError: null, lastErrorAt: null, failures: 0 };
+  const FILA_MAX_MINUTOS = 20000; // ~2 semanas de minutos; passando disso descarta os mais antigos da fila
+  const FILA_MAX_MAQUINA = 200;
+  const falhou = (e) => { saude.ok = false; saude.failures += 1; saude.lastError = String((e && e.message) || e); saude.lastErrorAt = now(); };
+  const deuCerto = () => { saude.ok = true; };
+  /** Roda uma escrita sem lançar: devolve `fallback` se falhar e registra o erro na saúde. */
+  function seguro(fn, fallback) {
+    try { const r = fn(); deuCerto(); return r; } catch (e) { falhou(e); return fallback; }
+  }
+  /** Leitura que não lança; não "cura" a saúde (só uma escrita que funciona faz isso). */
+  function leitura(fn, fallback) {
+    try { return fn(); } catch (e) { falhou(e); return fallback; }
+  }
   const ultimoRetrato = db.prepare('SELECT data FROM maquina ORDER BY id DESC LIMIT 1').get();
   let ultimoCanon = ultimoRetrato ? canonico(parse(ultimoRetrato.data)) : null;
 
@@ -106,45 +131,57 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
     return Number(r.changes);
   }
 
+  /** Grava a fila numa transação. Nunca lança: se falhar, o lote volta para a frente da fila e o timer tenta de novo. */
   function flush() {
     if (timer) { clearTimeout(timer); timer = null; }
     if (fechado || (!filaMinutos.length && !filaMaquina.length)) return;
     const minutos = filaMinutos; const maquinas = filaMaquina;
     filaMinutos = []; filaMaquina = [];
-    transacao(() => {
-      for (const m of minutos) inserirMinuto(m, 'vivo');
-      for (const s of maquinas) sql.maquina.run(s.at, s.json);
-    });
+    try {
+      transacao(() => {
+        for (const m of minutos) inserirMinuto(m, 'vivo');
+        for (const s of maquinas) sql.maquina.run(s.at, s.json);
+      });
+      if (maquinas.length) ultimoCanon = maquinas[maquinas.length - 1].canon; // só vale depois do commit
+      deuCerto();
+    } catch (e) {
+      filaMinutos = minutos.concat(filaMinutos).slice(-FILA_MAX_MINUTOS);
+      filaMaquina = maquinas.concat(filaMaquina).slice(-FILA_MAX_MAQUINA);
+      falhou(e);
+      agendar();
+    }
   }
   function agendar() {
     if (timer || fechado) return;
-    timer = setTimeout(() => { timer = null; try { flush(); } catch { /* tenta de novo no próximo ciclo */ } }, flushAtual);
+    timer = setTimeout(() => { timer = null; flush(); }, flushAtual);
     if (timer.unref) timer.unref();
   }
 
   function addMinute(m) {
     if (!m || !Number.isFinite(Number(m.t)) || Number(m.t) > now() + FUTURO_MAX) return;
     filaMinutos.push({ ...m, t: Math.floor(Number(m.t)) });
+    if (filaMinutos.length > FILA_MAX_MINUTOS) filaMinutos.shift();
     agendar();
   }
 
+  /** Devolve o id, ou -1 se a gravação falhou (veja health()). */
   function addEvent({ kind, at, data }) {
-    const r = sql.evento.run(Number.isFinite(Number(at)) ? Number(at) : now(), String(kind), JSON.stringify(data ?? {}));
-    return Number(r.lastInsertRowid);
+    return seguro(() => Number(sql.evento.run(Number.isFinite(Number(at)) ? Number(at) : now(), String(kind), JSON.stringify(data ?? {})).lastInsertRowid), -1);
   }
 
   function addMachine(snapshot) {
     const c = canonico(snapshot);
-    if (c === ultimoCanon) return;
-    ultimoCanon = c;
-    filaMaquina.push({ at: now(), json: JSON.stringify(snapshot) });
+    const ref = filaMaquina.length ? filaMaquina[filaMaquina.length - 1].canon : ultimoCanon; // último enfileirado, ou o último gravado
+    if (c === ref) return;
+    filaMaquina.push({ at: now(), json: JSON.stringify(snapshot), canon: c });
+    if (filaMaquina.length > FILA_MAX_MAQUINA) filaMaquina.shift();
     agendar();
   }
 
+  /** Devolve o id, ou -1 se a gravação falhou (tipo desconhecido continua sendo erro de programação e lança). */
   function record(kind, { inv, ref, prev, data } = {}) {
     if (!KINDS.includes(kind)) throw new Error(`tipo de registro desconhecido: ${kind}`);
-    const r = sql.registro.run(now(), kind, inv ?? null, ref ?? null, prev ?? null, JSON.stringify(data ?? {}));
-    return Number(r.lastInsertRowid);
+    return seguro(() => Number(sql.registro.run(now(), kind, inv ?? null, ref ?? null, prev ?? null, JSON.stringify(data ?? {})).lastInsertRowid), -1);
   }
 
   function latest(kind, { inv, ref } = {}) {
@@ -165,8 +202,8 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
 
   function minutes({ from, to, limit = 2000 } = {}) {
     flush();
-    return db.prepare('SELECT * FROM minutos WHERE t>=? AND t<=? ORDER BY t LIMIT ?')
-      .all(from ?? 0, to ?? Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(limit))).map((r) => ({ ...r }));
+    return leitura(() => db.prepare('SELECT * FROM minutos WHERE t>=? AND t<=? ORDER BY t LIMIT ?')
+      .all(from ?? 0, to ?? Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(limit))).map((r) => ({ ...r })), []);
   }
 
   function events({ from, to, kind, limit = 200 } = {}) {
@@ -179,27 +216,27 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
   const camera = {
     put(sessionId, samples) {
       if (!Array.isArray(samples) || !samples.length) return;
-      transacao(() => { for (const s of samples) sql.camera.run(String(sessionId), Number.isFinite(Number(s && s.t)) ? Number(s.t) : now(), JSON.stringify(s)); });
+      seguro(() => transacao(() => { for (const s of samples) sql.camera.run(String(sessionId), Number.isFinite(Number(s && s.t)) ? Number(s.t) : now(), JSON.stringify(s)); }), null);
     },
     /** Copia o trecho da câmera para a memória eterna (registro 'trecho'): a câmera pode ser podada, o trecho não. */
     cite(sessionId, from, to) {
-      const samples = db.prepare('SELECT data FROM camera WHERE session=? AND t>=? AND t<=? ORDER BY t').all(String(sessionId), from, to).map((r) => parse(r.data));
+      const samples = leitura(() => db.prepare('SELECT data FROM camera WHERE session=? AND t>=? AND t<=? ORDER BY t').all(String(sessionId), from, to).map((r) => parse(r.data)), null);
+      if (!samples) return -1;
       return record('trecho', { data: { session: String(sessionId), from, to, samples } });
     },
     /** Apaga sessões inteiras, das mais antigas para as mais novas, até a câmera caber no teto. */
     prune() {
-      const total = () => db.prepare('SELECT COALESCE(SUM(LENGTH(data)),0) n FROM camera').get().n;
-      let n = total();
+      let n = leitura(() => db.prepare('SELECT COALESCE(SUM(LENGTH(data)),0) n FROM camera').get().n, 0);
       if (n <= cameraMaxBytes) return;
       const sessoes = db.prepare('SELECT session, MIN(t) ini, SUM(LENGTH(data)) bytes FROM camera GROUP BY session ORDER BY ini').all();
       const del = db.prepare('DELETE FROM camera WHERE session=?');
-      transacao(() => {
+      seguro(() => transacao(() => {
         for (const s of sessoes) {
           if (n <= cameraMaxBytes) break;
           del.run(s.session);
           n -= s.bytes;
         }
-      });
+      }), null);
     },
   };
 
@@ -222,6 +259,7 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
   /** Traz o histórico do formato antigo (history.json / brain.json). Roda uma vez só: o resto vira 0. */
   function importLegacy({ history, brain } = {}) {
     flush();
+    return seguro(() => {
     if (sql.getMeta.get('legado_importado')) return { imported: 0 };
     let imported = 0;
     transacao(() => {
@@ -232,6 +270,7 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
       sql.setMeta.run('legado_importado', String(now()));
     });
     return { imported };
+    }, { imported: 0 });
   }
 
   function sizeBytes() {
@@ -245,7 +284,10 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
       addMinute, addEvent, addMachine, record, latest, list, minutes, events, camera, backupDaily, importLegacy, sizeBytes, flush,
       setFlushMs(ms) { flushAtual = Math.max(1, Number(ms) || flushAtual); },
       getMeta(key) { const r = sql.getMeta.get(String(key)); return r ? r.value : null; },
-      setMeta(key, value) { sql.setMeta.run(String(key), value == null ? null : String(value)); },
+      /** false se a gravação falhou (veja health()). */
+      setMeta(key, value) { return seguro(() => { sql.setMeta.run(String(key), value == null ? null : String(value)); return true; }, false); },
+      /** Estado de saúde: { ok, lastError, lastErrorAt, failures, queued }. ok=false enquanto a última escrita falhou. */
+      health() { return { ...saude, queued: filaMinutos.length + filaMaquina.length }; },
       close() {
         if (fechado) return;
         try { flush(); } finally { fechado = true; if (timer) clearTimeout(timer); db.close(); }
