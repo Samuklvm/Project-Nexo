@@ -4,7 +4,7 @@
  *
  * Começa leve. Vai a profundo só depois de `confirmChecks` checagens seguidas com ociosidade >= `enterIdleSec` e jogo
  * confirmado como ausente (`gameInForeground === false`; `null` = não deu para saber, conta como jogo). Volta a leve na
- * primeira checagem com ociosidade < `exitIdleSec` ou com jogo em primeiro plano; esse retorno só vale no profundo (no
+ * primeira checagem com ociosidade < `exitIdleSec`, com jogo em primeiro plano ou sem saber se há jogo (`null`); esse retorno só vale no profundo (no
  * leve, ociosidade baixa apenas zera o contador). Ociosidade inválida (NaN, negativa, ausente, não numérica) conta como
  * pessoa presente: leve e contador zerado.
  *
@@ -40,16 +40,16 @@
         streak = 0;
         return go('leve', 'jogo em primeiro plano');
       }
+      if (gameInForeground !== false) {
+        streak = 0;
+        return go('leve', 'não deu para ver se tem jogo aberto');
+      }
       if (current === 'profundo') {
         if (idleSec < exitIdleSec) {
           streak = 0;
           return go('leve', 'você voltou');
         }
         return go('profundo', `${parado(idleSec)}, sem jogo aberto`);
-      }
-      if (gameInForeground !== false) {
-        streak = 0;
-        return go('leve', 'não deu para saber se há jogo aberto');
       }
       if (idleSec < enterIdleSec) {
         streak = 0;

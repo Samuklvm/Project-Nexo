@@ -142,10 +142,12 @@ test('opções: enterIdleSec e confirmChecks personalizados', () => {
   assert.equal(idle(r2, 20).state, 'leve');
 });
 
-test('no profundo, gameInForeground null (leitura falhou) não derruba o profundo; só jogo confirmado derruba', () => {
+test('no profundo, gameInForeground null (não deu para ver) volta a leve na mesma checagem', () => {
   const r = createRhythm();
   idle(r, MIN11); idle(r, MIN11);
   const c = idle(r, MIN11, null);
-  assert.equal(c.state, 'profundo');
-  assert.equal(c.changed, false);
+  assert.equal(c.state, 'leve');
+  assert.equal(c.changed, true);
+  assert.equal(c.reason, 'não deu para ver se tem jogo aberto');
+  assert.equal(r.state(), 'leve');
 });
