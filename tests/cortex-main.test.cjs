@@ -541,6 +541,17 @@ test('memória que não abre: Cortex desligado (tudo no-op) e o erro vai para o 
   assert.match(logs[0].message, /disco cheio/);
 });
 
+test('importLegacy: ok:true com a contagem; segunda vez ok com 0; Cortex desligado ou memória falhando devolve ok:false (para a tela tentar de novo)', () => {
+  const t = setup();
+  const history = Array.from({ length: 5 }, (_, i) => ({ t: T0 - (i + 2) * MIN, cpu: 20, mem: 40, disk: 3, gpu: null, temp: 50 }));
+  assert.deepEqual(t.cortex.importLegacy({ history, brain: { v: 1 } }), { ok: true, imported: 5 });
+  assert.deepEqual(t.cortex.importLegacy({ history, brain: { v: 1 } }), { ok: true, imported: 0 });
+  const off = Cortex.createCortex({ memory: { ok: false, error: 'memória não abriu' }, rhythm: createRhythm(), log: () => {}, now: () => T0 });
+  assert.deepEqual(off.importLegacy({ history }), { ok: false });
+  const broken = setup({ memory: { ok: true, memory: { ...t.memory, importLegacy: () => { throw new Error('banco travado'); } } } });
+  assert.equal(broken.cortex.importLegacy({ history }).ok, false);
+});
+
 test('exceção dentro do Cortex não sobe: vai para o registro e o tique segue', async () => {
   const t = setup();
   const broken = Cortex.createCortex({

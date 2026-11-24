@@ -225,6 +225,16 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     labPreflight: async () => ({ platform: 'win32', onBattery: false, tempC: 47, cpuLoad: 9, pending: false, knobs: Object.fromEntries(NexoLab.SPACE.map((knob) => [knob.id, { available: knob.id !== 'boostpol', current: knob.values[0] }])) }),
     cancelLab: async () => { cancelled = true; return { ok: true }; }, recoverLab: async () => ({ recovered: false }), onLabRecovered: () => () => {},
     onLabEvent: (cb) => { listeners.lab.add(cb); return () => listeners.lab.delete(cb); },
+    // Cortex (prévia): memória vazia e configuração padrão; a Task 11 acrescenta investigações de exemplo.
+    cortexMinute: async () => ({ ok: true }), cortexEvent: async () => ({ ok: true }), cortexSession: async () => ({ ok: true }),
+    cortexImportLegacy: async () => ({ ok: true, imported: 0 }),
+    cortexList: async () => [], cortexGet: async () => null,
+    cortexStats: async () => ({ ativo: true, ritmo: 'leve', motivo: 'prévia no navegador', memoria: { bytes: 0, saude: { ok: true } }, investigacoes: { abertas: 0, aguardando: 0, concluidas: 0 }, ativosHoje: 0, testando: null, config: { permission: 'observar', maxRisk: 'baixo', chosen: false, recommended: 'observar', iaLocal: false } }),
+    cortexSettings: async () => ({ permission: 'observar', maxRisk: 'baixo', chosen: false, recommended: 'observar', iaLocal: false }),
+    cortexSetSettings: async () => ({ ok: false, reason: 'Na prévia do navegador o Cortex não guarda configurações.' }),
+    cortexApprove: async () => ({ ok: false }), cortexDeny: async () => ({ ok: false }),
+    cortexRhythm: async () => ({ state: 'leve', reason: 'prévia no navegador', at: Date.now(), testando: null }),
+    onCortexUpdate: () => () => {},
     adoptLab: async () => ({ guid: 'x', name: 'Nexo — Ajustado (simulado)', before: { guid: 'a', name: 'Equilibrado' } }),
     // Prévia: o motor de verdade (src/lab.js) com um PC simulado, rápido, para ver a interface como ela é.
     runLab: async (options) => {

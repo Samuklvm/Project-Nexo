@@ -44,8 +44,11 @@
     };
   }
 
-  /** Cria o aprendizado local (médias por hora da semana, lentidões e programas recorrentes) a partir do que foi salvo. */
-  function create(saved) {
+  /**
+   * Cria o aprendizado local (médias por hora da semana, lentidões e programas recorrentes) a partir do que foi salvo.
+   * `onEpisode(episódio)` (opcional) é chamado quando uma lentidão fecha; o que ele lançar não derruba o aprendizado.
+   */
+  function create(saved, { onEpisode } = {}) {
     const state = emptyState();
     if (saved && saved.v === 1) {
       for (const metric of METRICS) {
@@ -116,6 +119,7 @@
         culprit: votes[0]?.[0] || null
       };
       state.episodes.push(episode);
+      if (typeof onEpisode === 'function') { try { onEpisode({ ...episode }); } catch (_) { /* quem escuta não pode quebrar o aprendizado */ } }
       if (episode.culprit) {
         const entry = state.ledger[episode.culprit] || { events: 0, minutes: 0, last: 0 };
         entry.events += 1; entry.minutes += episode.minutes; entry.last = endT;

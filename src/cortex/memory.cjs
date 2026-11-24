@@ -260,7 +260,7 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
   function importLegacy({ history, brain } = {}) {
     flush();
     return seguro(() => {
-    if (sql.getMeta.get('legado_importado')) return { imported: 0 };
+    if (sql.getMeta.get('legado_importado')) return { ok: true, imported: 0 };
     let imported = 0;
     transacao(() => {
       for (const m of Array.isArray(history) ? history : []) {
@@ -269,8 +269,8 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
       if (brain && typeof brain === 'object') record('ajuste', { data: { origem: 'legado', brain } });
       sql.setMeta.run('legado_importado', String(now()));
     });
-    return { imported };
-    }, { imported: 0 });
+    return { ok: true, imported };
+    }, { ok: false, imported: 0 });
   }
 
   function sizeBytes() {

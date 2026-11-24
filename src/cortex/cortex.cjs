@@ -542,8 +542,10 @@ function createCortex(deps = {}) {
   function importLegacy(data) {
     return safe('importar', () => {
       const d = data && typeof data === 'object' ? data : {};
-      return memory.importLegacy({ history: Array.isArray(d.history) ? d.history.slice(-20000) : [], brain: d.brain && typeof d.brain === 'object' ? d.brain : null });
-    }, { imported: 0 });
+      const r = memory.importLegacy({ history: Array.isArray(d.history) ? d.history.slice(-20000) : [], brain: d.brain && typeof d.brain === 'object' ? d.brain : null });
+      // ok:false = a memória falhou (a tela tenta de novo na próxima abertura); ok:true com 0 = nada novo a importar.
+      return r && r.ok === true ? { ok: true, imported: Number(r.imported) || 0 } : { ok: false };
+    }, { ok: false });
   }
 
   // ---------- ritmo ----------
@@ -798,7 +800,7 @@ function disabled(reason) {
   const nothing = () => undefined;
   return {
     ativo: false,
-    observeMinute: nothing, observeEvent: nothing, observeSession: nothing, importLegacy: () => ({ imported: 0 }),
+    observeMinute: nothing, observeEvent: nothing, observeSession: nothing, importLegacy: () => ({ ok: false }),
     tick: async () => {}, checkRhythm: async () => ({ state: 'leve', changed: false, reason: 'Cortex desligado' }), start: async () => {}, stop: nothing, cancelActive: () => false,
     settings: () => ({ ...DEFAULT_CONFIG }), setSettings: () => ({ ok: false, reason: 'O Cortex está desligado: a memória dele não abriu.' }),
     approve: () => false, deny: () => false, list: () => [], get: () => null,

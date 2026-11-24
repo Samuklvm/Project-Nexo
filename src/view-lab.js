@@ -213,9 +213,20 @@
     return 'Nada mudou acima do ruído neste PC';
   }
 
+  /** Cortex: o resultado vira eventos do mapa (ajuste → teste). Só o que o Cortex lê: ajuste, teste, veredito e confiança. */
+  function feedCortexLab(result) {
+    try {
+      const arms = (Array.isArray(result?.arms) ? result.arms : []).map((arm) => ({ knob: arm.knob, value: arm.value, verdict: arm.verdict, compositeDelta: arm.compositeDelta ?? null,
+        results: Object.fromEntries(Object.entries(arm.results || {}).map(([bench, r]) => [bench, { verdict: r?.verdict, confidence: r?.confidence, deltaPct: r?.deltaPct ?? null }])) }));
+      const verdict = result?.combination?.verdict || (result?.status === 'completed' ? 'sem-diferenca' : 'inconclusivo');
+      Promise.resolve(bridge?.cortexEvent?.({ kind: 'lab', at: Date.now(), data: { status: result?.status || null, arms, verdict, goal: options.goal } })).catch(() => {});
+    } catch { /* sem ponte: nada acontece */ }
+  }
+
   /** Fecha a sessão de risco: guarda a evidência, registra no Diário e mostra o resultado. */
   function finishRun(result, mem) {
     live = null;
+    feedCortexLab(result);
     result.combos = Array.isArray(result.combos) ? result.combos : [];
     const runs = [{ at: result.startedAt || Date.now(), headline: headlineOf(result), verdict: result.combination?.verdict || (result.status === 'completed' ? 'sem-diferenca' : 'inconclusivo'), arms: result.arms.length, combos: result.combos.length, autonomy: result.autonomy, adopted: Boolean(result.adopted) }, ...mem.runs];
     saveMemory({ evidence: result.evidence || mem.evidence, tabu: result.tabu || mem.tabu, runs });

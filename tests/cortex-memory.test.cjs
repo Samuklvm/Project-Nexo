@@ -208,7 +208,7 @@ test('escritas síncronas não lançam com o banco travado', () => {
   assert.equal(memory.record('pensamento', { data: {} }), -1);
   assert.doesNotThrow(() => memory.camera.put('s', [{ t: T0 }]));
   assert.doesNotThrow(() => memory.setMeta('a', 'b'));
-  assert.deepEqual(memory.importLegacy({ history: [minute(T0 - MIN)] }), { imported: 0 });
+  assert.deepEqual(memory.importLegacy({ history: [minute(T0 - MIN)] }), { ok: false, imported: 0 });
   assert.doesNotThrow(() => memory.minutes({ from: 0, to: T0 }));
   assert.equal(memory.health().ok, false);
   trava.soltar();

@@ -7,7 +7,16 @@
   const RANGES = { '5m': 5 * MIN, '30m': 30 * MIN, '24h': 24 * 60 * MIN, '7d': 7 * 24 * 60 * MIN };
   const IGNORED = /^(idle|system|powershell|pwsh|nexo.*|conhost|registry|memory compression|secure system)$/i;
 
-  const brain = NexoBrain.create(readJSON(Nexo.keys.brain, null));
+  /* Cortex (o cérebro novo, no processo principal): tudo daqui é "mandou e esqueceu". Sem ponte (navegador/prévia) nada
+     acontece; erro de ponte nunca chega à tela e nada espera resposta. */
+  const feedCortex = (method, payload) => {
+    try {
+      const sent = desktopBridge?.[method]?.(payload);
+      if (sent && typeof sent.then === 'function') return sent.then((result) => result, () => null);
+    } catch { /* a ponte do Cortex nunca derruba a tela */ }
+    return Promise.resolve(null);
+  };
+  const brain = NexoBrain.create(readJSON(Nexo.keys.brain, null), { onEpisode: (episode) => { feedCortex('cortexEvent', { kind: 'lentidao', at: episode.end, data: episode }); } });
   const FUTURE_TOLERANCE = 5 * MIN;
   let live = [];
   let history = loadHistory();
@@ -236,10 +245,12 @@
     // Clock do minuto: a média (as leituras já são a média dos núcleos); a régua vem do próprio cérebro.
     const clock = avg('cpuClock');
     const cpuTemp = [committed.cpuSensorTemperature, committed.acpiTemperature].find(plausible) ?? null;
-    brain.ingest({
+    const minute = {
       t: now, cpu: committed.cpu, mem: committed.memory, disk: committed.disk, gpu: committed.gpu,
       temp: hottest(committed), cpuTemp, clock, clockRatio: brain.clockRatio(clock), culprit
-    });
+    };
+    brain.ingest(minute);
+    feedCortex('cortexMinute', minute);
     persist();
     Nexo.emit('learned');
   }
@@ -260,6 +271,18 @@
     if (!brainOk || !historyOk) setText('diagnosis-learning-status', brainOk ? 'O espaço local encheu: o histórico mais antigo foi descartado para o aprendizado continuar.' : 'O aprendizado local não pôde ser salvo agora (espaço cheio); a análise atual continua disponível.');
     if (!brainOk || !historyOk) console.warn('[armazenamento] cota local cheia', { cerebro: brainOk, historico: historyOk });
   }
+
+  /* Importa o histórico e o aprendizado do cérebro antigo para a memória do Cortex, uma vez. A marca só vale com
+     ok:true; se falhar (ou o Cortex estiver desligado), tenta de novo na próxima abertura. */
+  (function importLegacyOnce() {
+    try {
+      if (!desktopBridge?.cortexImportLegacy || localStorage.getItem(Nexo.keys.cortexImported)) return;
+      const rows = history.map((s) => ({ t: s.timestamp, cpu: s.cpu, mem: s.memory, disk: s.disk, gpu: s.gpu, temp: hottest(s) }));
+      feedCortex('cortexImportLegacy', { history: rows, brain: brain.serialize() }).then((result) => {
+        if (result && result.ok === true) { try { localStorage.setItem(Nexo.keys.cortexImported, String(Date.now())); } catch { /* sem armazenamento: tenta de novo depois */ } }
+      });
+    } catch { /* o Cortex não pode atrapalhar a abertura */ }
+  })();
 
   Nexo.on('snapshot', (snapshot) => {
     const now = Date.now();
