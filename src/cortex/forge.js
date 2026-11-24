@@ -6,6 +6,10 @@
  * Puro: sem disco, sem relógio. Nenhuma lista fixa por sintoma: tudo vem de map.causesOf().
  * Alvos das previsões: lembrar → id de sinal (presente/ausente); esperar → o sintoma; medir → bench:<id>;
  * intervir → ajuste:<id> (efeito no bench ligado).
+ *
+ * Prediction.expect: 'sobe' | 'desce' | 'igual' (variação), 'presente' | 'ausente' (o sinal aparece ou não) e
+ * 'antes' | 'depois' (precedência: 'antes' = o sinal começou a subir antes do sintoma, dentro da janela da anomalia;
+ * 'depois' = depois dele ou junto). 'antes' é o que separa duas causas que aparecem juntas: vale a que se mexeu primeiro.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -26,11 +30,20 @@
   const isBench = (id) => typeof id === 'string' && id.startsWith('bench:');
 
   /** Previsões de uma causa vinda do mapa: ela aparece, o sintoma sobe e, se o caminho passa por teste/ajuste, mede/mexe. */
-  function causePredictions(cause, symptom, nodes) {
-    const out = [pred('lembrar', cause, 'presente'), pred('esperar', symptom, 'sobe')];
-    for (const id of nodes) {
-      if (isBench(id)) out.push(pred('medir', id, 'desce'));
-      else if (isAction(id)) out.push(pred('intervir', id, 'sobe'));
+  function causePredictions(cause, symptom, nodes, map) {
+    const out = [pred('lembrar', cause, 'presente'), pred('lembrar', cause, 'antes'), pred('esperar', symptom, 'sobe')];
+    // Mesma regra do caminho e da vizinhança da causa: causa em ação derruba o teste (medir 'desce') e mexer no
+    // ajuste ligado a ela mexe nela (intervir 'sobe'; o peso das arestas é sempre positivo, então o sentido não inverte).
+    const linked = new Set(nodes);
+    for (const e of map ? map.edges() : []) {
+      if (map.state(e.id) === 'derrubada') continue;
+      if (e.from === cause) linked.add(e.to);
+      else if (e.to === cause) linked.add(e.from);
+    }
+    const seen = new Set();
+    for (const id of linked) {
+      const p = isBench(id) ? pred('medir', id, 'desce') : isAction(id) ? pred('intervir', id, 'sobe') : null;
+      if (p && !seen.has(id)) { seen.add(id); out.push(p); }
     }
     return out;
   }
@@ -87,12 +100,12 @@
     for (const c of mapCandidates(symptom, map)) {
       const nodes = c.edges.flatMap((e) => [e.from, e.to]).filter((id) => id !== symptom);
       add({ key: keyOf(c.cause, symptom), cause: c.cause, symptom, via: c.edges.map((e) => e.id), prior: 0, source: 'mapa',
-        predictions: causePredictions(c.cause, symptom, nodes) }, c.raw);
+        predictions: causePredictions(c.cause, symptom, nodes, map) }, c.raw);
     }
     for (const e of (extra && extra.correlations) || []) {
       if (!e || e.to !== symptom || e.from === 'rotina') continue;
       add({ key: keyOf(e.from, symptom), cause: e.from, symptom, via: [e.id], prior: 0, source: 'correlacao',
-        predictions: causePredictions(e.from, symptom, [e.from]) }, (Number(e.weight) || 0.3) * CORRELATION_DECAY);
+        predictions: causePredictions(e.from, symptom, [e.from], map) }, (Number(e.weight) || 0.3) * CORRELATION_DECAY);
     }
 
     // Rotina: a variação normal desta hora. Prevê o oposto das causas: elas ausentes, o sintoma igual ao de costume.
@@ -105,7 +118,7 @@
       const n = neighbourCandidate(symptom, map);
       const cause = n ? n.cause : 'programa_pesado';
       add({ key: keyOf(cause, symptom), cause, symptom, via: n ? [n.edge.id] : [], prior: 0, source: 'mapa',
-        predictions: causePredictions(cause, symptom, [cause]) }, FALLBACK_RAW);
+        predictions: causePredictions(cause, symptom, [cause], map) }, FALLBACK_RAW);
     }
 
     const total = raw.reduce((s, r) => s + r.weight, 0) || 1;

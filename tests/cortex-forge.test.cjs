@@ -101,3 +101,31 @@ test('módulo sem switch nem lista fixa por sintoma: só causesOf', () => {
     assert.ok(!new RegExp(`['"\`]${id}['"\`]`).test(src), `id de sinal fixo no módulo: ${id}`);
   }
 });
+
+test('hipóteses de causa se distinguem entre si: "antes" na própria causa e previsões além de presente', () => {
+  const hs = F.forge(anomaly('travadas'), R.createMap(R.seedEdges()));
+  const causal = hs.filter((h) => h.source === 'mapa' || h.source === 'correlacao');
+  assert.ok(causal.length >= 2);
+  for (const h of causal) assert.ok(h.predictions.some((p) => p.action === 'lembrar' && p.target === h.cause && p.expect === 'antes'), h.key);
+  assert.ok(by(hs, 'rotina')[0].predictions.every((p) => p.expect !== 'antes' && p.expect !== 'depois'));
+  const sig = (h) => new Set(h.predictions.map((p) => `${p.action}|${p.target}|${p.expect}`));
+  const extras = causal.map((h) => [...sig(h)].filter((s) => !s.endsWith('|presente')));
+  assert.ok(extras.some((a) => extras.some((b) => a !== b && a.some((s) => !b.includes(s)))), 'ao menos duas diferem além de presente');
+  // nenhuma causa é dada como ausente por outra causa (co-ocorrência é normal)
+  for (const h of causal) assert.ok(!h.predictions.some((p) => p.expect === 'ausente'));
+});
+
+test('ajuste ligado à causa vira previsão de intervir só para aquela causa', () => {
+  const map = R.createMap([
+    { id: 'ajuste:k>cpu', from: 'ajuste:k', to: 'cpu', type: 'afeta', weight: 0.5, origem: 'semente' },
+    edge('cpu', 'sym'), edge('disk', 'sym')]);
+  const hs = F.forge(anomaly('sym'), map);
+  const has = (h) => h.predictions.some((p) => p.action === 'intervir' && p.target === 'ajuste:k');
+  assert.ok(has(hs.find((h) => h.cause === 'cpu')));
+  assert.ok(!has(hs.find((h) => h.cause === 'disk')));
+  // aresta no outro sentido (causa -> bench) também conta
+  const m2 = R.createMap([{ id: 'cpu>bench:single', from: 'cpu', to: 'bench:single', type: 'afeta', weight: 0.5, origem: 'semente' }, edge('cpu', 'sym'), edge('disk', 'sym')]);
+  const h2 = F.forge(anomaly('sym'), m2);
+  assert.ok(h2.find((h) => h.cause === 'cpu').predictions.some((p) => p.action === 'medir' && p.target === 'bench:single'));
+  assert.ok(!h2.find((h) => h.cause === 'disk').predictions.some((p) => p.target === 'bench:single'));
+});
