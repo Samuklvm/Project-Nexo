@@ -28,6 +28,14 @@ test('semente: tem as arestas gerais e uma por ajuste do laboratório', () => {
     ['cpu', 'travadas'], ['clock_queda', 'cpu'], ['gpu', 'quadros_ruins'], ['disk', 'travadas']]) {
     assert.ok(has(from, to), `falta ${from}→${to}`);
   }
+  // Causa → teste do lab: com a causa em ação o teste cai, então o laboratório consegue provar causas que não são ajuste.
+  for (const [from, to] of [['temp_cpu', 'bench:single'], ['temp_cpu', 'bench:multi'], ['programa_pesado', 'bench:multi'],
+    ['disk', 'bench:disk'], ['mem', 'bench:memory'], ['gpu', 'bench:frames']]) {
+    const e = has(from, to);
+    assert.ok(e, `falta ${from}→${to}`);
+    assert.equal(e.type, 'afeta');
+    assert.equal(e.origem, 'semente');
+  }
   const epp = has('ajuste:perfepp', 'bench:single');
   assert.ok(epp);
   assert.equal(epp.type, 'afeta');

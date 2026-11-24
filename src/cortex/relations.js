@@ -54,12 +54,20 @@
     ['disk', 'travadas', 'causa', 0.5],
     ['gpu', 'quadros_ruins', 'causa', 0.7],
     ['temp', 'quadros_ruins', 'causa', 0.4],
-    ['rotina', 'programa_pesado', 'explica', 0.4]
+    ['rotina', 'programa_pesado', 'explica', 0.4],
+    // Causa → teste do lab ("afeta", como ajuste → teste): com a causa em ação o teste cai. É o que deixa o laboratório
+    // provar por experimento uma causa que não é ajuste (medir 'desce' na previsão do forjador).
+    ['temp_cpu', 'bench:single', 'afeta', 0.6],
+    ['temp_cpu', 'bench:multi', 'afeta', 0.6],
+    ['programa_pesado', 'bench:multi', 'afeta', 0.6],
+    ['disk', 'bench:disk', 'afeta', 0.7],
+    ['mem', 'bench:memory', 'afeta', 0.5],
+    ['gpu', 'bench:frames', 'afeta', 0.6]
   ];
   const edgeId = (from, to) => `${from}>${to}`;
   const makeEdge = (from, to, type, weight, origem, extra = {}) => ({ id: edgeId(from, to), from, to, type, weight, origem, ...extra });
 
-  /** Arestas iniciais: as gerais mais uma "ajuste → teste" para cada teste que o ajuste do laboratório afeta. */
+  /** Arestas iniciais: as gerais (inclusive causa → teste do lab) mais uma "ajuste → teste" para cada teste que o ajuste do laboratório afeta. */
   function seedEdges() {
     const edges = GENERAL.map(([from, to, type, weight]) => makeEdge(from, to, type, weight, 'semente'));
     const seen = new Set(edges.map((e) => e.id));

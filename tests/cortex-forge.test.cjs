@@ -62,8 +62,9 @@ test('sem causa no mapa: com 1 correlação injetada dá 3; sem correlação com
   const none = F.forge(anomaly('temp_cpu'), map);
   assert.ok(none.length >= 3);
   const near = none.find((h) => h.source === 'mapa');
-  assert.equal(near.cause, 'cpu');
-  assert.deepEqual(near.via, ['clock_queda>cpu']);
+  // Vizinho mais forte: temp_cpu toca bench:multi, onde o programa pesado também pesa (0.6, acima de clock_queda>cpu 0.5).
+  assert.equal(near.cause, 'programa_pesado');
+  assert.deepEqual(near.via, ['programa_pesado>bench:multi']);
   assert.ok(near.prior < by(none, 'rotina')[0].prior, 'prior baixo');
   assert.ok(Math.abs(sum(none) - 1) < 1e-9);
 });
