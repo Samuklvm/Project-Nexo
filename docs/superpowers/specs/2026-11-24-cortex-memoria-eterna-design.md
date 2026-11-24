@@ -71,11 +71,10 @@ As hipóteses **não** podem estar escritas como uma lista fixa de respostas por
 
 ## Restrições
 
-- Electron 45 (Node 22). Interface com `sandbox: true` e `contextIsolation`: o Cortex e o banco moram no **processo
+- Electron 45 (Node 24 no processo principal). Interface com `sandbox: true` e `contextIsolation`: o Cortex e o banco moram no **processo
   principal**; a interface fala com ele por IPC (`registerIpcHandler`, como o resto do app).
-- Banco: **SQLite embutido do Node (`node:sqlite`)**, sem módulo nativo novo. **Verificar no primeiro passo do plano**
-  que o Electron 45 expõe `node:sqlite` no processo principal. Se não expuser, cair para `better-sqlite3` (já
-  compilado para Electron pelo `electron-builder`); último recurso, arquivos só de acréscimo (JSON por linha).
+- Banco: **SQLite embutido do Node (`node:sqlite`)**, sem módulo nativo novo. **Verificado em 24/11/2026:** o Electron 45.2.3
+  traz o Node 24.22 com `DatabaseSync` e `backup`; o Node 22 dos testes também.
 - Grátis e local: nada sai do PC nesta parte (a Constelação, na parte 5, é que decide o que compartilhar).
 - App sem assinatura: a v0 não cria executáveis, scripts nem processos novos.
 - Windows e Linux (o lab já tem espaço próprio para Linux).
@@ -226,7 +225,7 @@ tests/cortex-*.test.cjs + tests/fixtures/pcs-simulados/
 
 ## Decisões tomadas pelo Claude (o Samuel pode mudar)
 
-- Banco `node:sqlite` no processo principal, com plano B (`better-sqlite3`) e plano C (arquivos só de acréscimo).
+- Banco `node:sqlite` no processo principal (sem dependência nova).
 - Depósito "câmera lenta" circular de alguns dias para os dados de 1 s e o quadro a quadro.
 - Cópia de segurança diária, guardando as 3 últimas.
 - Chave de permissão própria do Cortex (só observar / pedir antes / sozinho com o PC parado e só risco baixo), com
@@ -246,7 +245,6 @@ de informação, conteúdo da semente do mapa e o layout do Caderno.
 
 ## Riscos
 
-- `node:sqlite` indisponível no Electron 45 → plano B/C (verificar no passo 1).
 - O lab hoje escolhe os ajustes sozinho; testar só os ajustes pedidos exige mudar a API do `lab.js`. Está liberado
   reestruturar, mas o modo atual do lab (que a pessoa usa pela tela) não pode quebrar (`tests/lab.test.cjs`).
 - Correlações falsas em excesso → a escada de estados e a regra "só experimento apoia" seguram isso; os PCs
