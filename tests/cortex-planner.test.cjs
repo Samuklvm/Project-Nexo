@@ -49,11 +49,24 @@ test('expectedGain: presente e antes na mesma ação contam como resultados dist
   assert.ok(P.expectedGain({ type: 'lembrar', target: 'x' }, hs, priors(hs)) > 0.9);
 });
 
-test('expectedGain: hipótese sem previsão fica espalhada e separa menos', () => {
-  const hs = [hyp('A>s', 0.5, [pred('medir', 'bench:b', 'desce')]), hyp('B>s', 0.5, [pred('medir', 'bench:b', 'igual')]), hyp('C>s', 0, [])];
-  const comC = [{ ...hs[0], prior: 0.4 }, { ...hs[1], prior: 0.4 }, { ...hs[2], prior: 0.2 }];
-  const g = P.expectedGain({ type: 'medir', target: 'bench:b' }, comC, priors(comC));
-  assert.ok(g > 0 && g < 1.5);
+test('expectedGain: hipótese sem previsão fica espalhada (valor exato 0.8 bit)', () => {
+  const hs = [hyp('A>s', 0.4, [pred('medir', 'bench:b', 'desce')]), hyp('B>s', 0.4, [pred('medir', 'bench:b', 'igual')]), hyp('C>s', 0.2, [])];
+  // H(0.4, 0.4, 0.2) - H(0.8, 0.2) = 0.8
+  assert.ok(Math.abs(P.expectedGain({ type: 'medir', target: 'bench:b' }, hs, priors(hs)) - 0.8) < 1e-9);
+});
+
+test('expectedGain: hipótese com dois expect no mesmo alvo reparte por igual (valor exato)', () => {
+  const hs = [hyp('A>s', 0.5, [pred('lembrar', 'x', 'presente'), pred('lembrar', 'x', 'antes')]), hyp('B>s', 0.5, [pred('lembrar', 'x', 'presente')])];
+  // resultado presente (0.75): posterior (1/3, 2/3); antes (0.25): certeza. 1 - 0.75 * H(1/3, 2/3)
+  const esperado = 1 - 0.75 * (Math.log2(3) - 2 / 3);
+  assert.ok(Math.abs(P.expectedGain({ type: 'lembrar', target: 'x' }, hs, priors(hs)) - esperado) < 1e-9);
+});
+
+test('expectedGain: crenças desiguais dão a entropia delas (valor exato)', () => {
+  const hs = [hyp('A>s', 0.5, [pred('medir', 'bench:b', 'desce')]), hyp('B>s', 0.5, [pred('medir', 'bench:b', 'igual')])];
+  const crencas = { 'A>s': 0.75, 'B>s': 0.25 };
+  const esperado = -(0.75 * Math.log2(0.75) + 0.25 * Math.log2(0.25));
+  assert.ok(Math.abs(P.expectedGain({ type: 'medir', target: 'bench:b' }, hs, crencas) - esperado) < 1e-9);
 });
 
 test('entre lembrar que não separa e medir que separa, escolhe medir', () => {
@@ -139,4 +152,27 @@ test('ritmo vence bateria e orçamento no empate; ganho maior decide o motivo', 
   const hs = [hyp('A>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'sobe')]), hyp('B>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'igual')])];
   assert.deepEqual(P.choose(hs, priors(hs), ctx({ deep: false, onBattery: true, activeToday: 3 })), { stop: 'ritmo' });
   assert.deepEqual(P.choose(hs, priors(hs), ctx({ onBattery: true, activeToday: 3 })), { stop: 'bateria' });
+});
+
+test('permissão ausente, nula ou desconhecida nunca deixa intervir passar; só sozinho é autônomo', () => {
+  const hs = [hyp('A>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'sobe')]), hyp('B>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'igual')])];
+  for (const permission of [undefined, null, 'Pedir', 'SOZINHO', '', 'qualquer']) {
+    const r = P.choose(hs, priors(hs), ctx({ permission }));
+    assert.ok(!r.action, `permission=${String(permission)} -> ${JSON.stringify(r)}`);
+    assert.ok(r.need);
+  }
+  const semCampo = ctx(); delete semCampo.permission;
+  assert.ok(!P.choose(hs, priors(hs), semCampo).action);
+  assert.equal(P.choose(hs, priors(hs), ctx({ permission: 'pedir' })).needsApproval, true);
+  assert.equal(P.choose(hs, priors(hs), ctx({ permission: 'sozinho' })).needsApproval, false);
+});
+
+test('ação permitida mais fraca roda antes de pausar por uma mais forte bloqueada', () => {
+  const hs = [hyp('A>s', 0.34, [pred('lembrar', 'x', 'presente'), pred('medir', 'bench:b', 'desce')]),
+    hyp('B>s', 0.33, [pred('lembrar', 'x', 'ausente'), pred('medir', 'bench:b', 'igual')]),
+    hyp('C>s', 0.33, [pred('lembrar', 'x', 'ausente'), pred('medir', 'bench:b', 'sobe')])];
+  const b = priors(hs);
+  assert.ok(P.expectedGain({ type: 'medir', target: 'bench:b' }, hs, b) > P.expectedGain({ type: 'lembrar', target: 'x' }, hs, b));
+  const r = P.choose(hs, b, ctx({ deep: false }));
+  assert.equal(r.action.type, 'lembrar');
 });

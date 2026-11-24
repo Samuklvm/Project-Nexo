@@ -17,6 +17,8 @@
   const MAX_ACTIVE_PER_DAY = 3;
   const RISK_ORDER = { nenhum: 0, baixo: 1, moderado: 2, alto: 3 };
   const STOP_RANK = { ritmo: 0, bateria: 1, orcamento: 2 }; // precedência quando o ganho empata
+  // Só estas duas permissões liberam intervir; ausente, nula ou desconhecida valem como 'observar' (nunca abre sozinho).
+  const AUTONOMY = new Set(['pedir', 'sozinho']);
   const TIE = 0.05; // diferença de crença abaixo da qual duas hipóteses contam como empatadas
 
   let knobs = null;
@@ -105,7 +107,7 @@
       const id = idOf(a.type, a.target);
       if (done.has(id)) continue;
       // Permissão e teto de risco não passam com o tempo: a ação conta como inexistente.
-      if (a.type === 'intervir' && (c.permission === 'observar' || RISK_ORDER[a.risk] > maxRisk)) continue;
+      if (a.type === 'intervir' && (!AUTONOMY.has(c.permission) || RISK_ORDER[a.risk] > maxRisk)) continue;
       const gain = expectedGain(a, hyps, bel);
       if (gain < MIN_GAIN) continue;
       const heavy = a.type === 'medir' || a.type === 'intervir';
@@ -116,6 +118,7 @@
         if (!blocked || gain > blocked.gain + 1e-12 || (Math.abs(gain - blocked.gain) <= 1e-12 && rank < STOP_RANK[blocked.why])) blocked = { why, gain };
       } else if (better(score, id, best)) best = { action: a, score, id };
     }
+    // Uma ação permitida e útil (ganho >= MIN_GAIN) roda antes de pausar por outra mais forte que está bloqueada por ora.
     if (best) return { action: best.action, needsApproval: best.action.type === 'intervir' && c.permission === 'pedir' };
     // Há passo útil, só que não agora: espera, em vez de dar a investigação por não resolvida.
     if (blocked) return { stop: blocked.why };
