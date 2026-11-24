@@ -15,7 +15,8 @@
  *     emit       (canal, dados) => void   ('cortex:update' quando uma investigação ou o ritmo muda)
  *     log        ({ source: 'cortex', level, message, context: { etapa } }) => void
  *
- * Ritmo: no leve checa a cada 60 s e só consulta o primeiro plano com o PC parado há 10 min; no profundo checa a
+ * Ritmo: no leve checa a cada 60 s e só consulta o primeiro plano com o PC parado há 10 min (depois de "tem jogo" ou
+ * "não sei", espera 10 min para perguntar de novo, até a pessoa mexer); no profundo checa a
  * ociosidade a cada 5 s e o primeiro plano a cada 30 s. Leve: grava, abre/anexa, forja, lembra (consultas com limite) e
  * pensa, 1 passo por investigação. Profundo: também mede e intervém, minera correlações 1x/dia, faz a cópia de
  * segurança e a limpeza da câmera, e guarda referências dos testes (meta 'cortex.ref.<teste>', no máximo uma por tique
@@ -48,6 +49,9 @@ const FLUSH_MS = { leve: 60000, profundo: 5000 }; // leve: lotes maiores, disco 
 const BENCH_ROUNDS = 5;
 const REF_MAX_AGE = 30 * DAY; // referência mais velha que isso é refeita
 const FG_DEEP_MS = 30000; // no profundo, o primeiro plano (PowerShell) só a cada 30 s; a ociosidade pega a volta antes
+// No leve, depois de "tem jogo" ou "não sei", 10 min sem perguntar de novo: a ociosidade do Windows ignora o controle,
+// e quem joga com ele parece parado o tempo todo (a consulta pesaria a cada minuto durante o jogo).
+const FG_LEVE_BACKOFF_MS = 10 * MIN;
 const QUEUE_KINDS = ['lentidao', 'sessao']; // eventos que viram anomalia (e são relidos depois de reiniciar)
 const MINE_DAYS = 14;
 const QUEUE_MAX = 50;
@@ -548,18 +552,22 @@ function createCortex(deps = {}) {
   safe('ritmo', () => memory.setFlushMs(FLUSH_MS.leve), null);
 
   let lastGame = { value: null, at: -Infinity };
+  let leveBackoffUntil = 0;
   async function checkRhythm() {
     try {
       const idle = Number(await idleSec());
       const validIdle = Number.isFinite(idle) && idle >= 0;
       // Com a pessoa usando o PC (leve e pouco parado) nem consulta o primeiro plano: o ritmo fica leve de todo jeito.
       let game = false;
-      const ask = deep() ? now() - lastGame.at >= FG_DEEP_MS : validIdle && idle >= ENTER_IDLE_SEC;
+      if (!deep() && !(validIdle && idle >= ENTER_IDLE_SEC)) leveBackoffUntil = 0; // a pessoa mexeu: zera a espera
+      const parked = !deep() && validIdle && idle >= ENTER_IDLE_SEC;
+      const ask = deep() ? now() - lastGame.at >= FG_DEEP_MS : parked && now() >= leveBackoffUntil;
       if (ask) {
         try { game = await gameInForeground(); } catch (e) { log('primeiro-plano', e, 'aviso'); game = null; }
         if (game !== true && game !== false) game = null;
         lastGame = { value: game, at: now() };
-      } else if (deep()) game = lastGame.value; // entre consultas, vale a última (a ociosidade pega a volta da pessoa)
+        if (!deep()) leveBackoffUntil = game === false ? 0 : now() + FG_LEVE_BACKOFF_MS;
+      } else if (deep() || parked) game = lastGame.value; // entre consultas, vale a última
       const r = rhythm.check({ idleSec: validIdle ? idle : NaN, gameInForeground: game });
       lastRhythm = { state: r.state, reason: r.reason, at: now() };
       if (r.changed) onRhythmChange(r);

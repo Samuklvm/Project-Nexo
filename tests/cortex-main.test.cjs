@@ -204,8 +204,9 @@ test('IA local aceita: padrão "sozinho" com teto baixo e recomendação "sozinh
   await t.cortex.tick();
   assert.equal(t.memory.list('investigacao', { limit: 10 }).length, 0);
   assert.deepEqual(t.env.lab, []);
-  // Profundo: o lab roda, só no risco baixo.
+  // Profundo: o lab roda, só no risco baixo. (Depois de "tem jogo", o primeiro plano só é consultado de novo em 10 min.)
   t.env.busy = false;
+  t.clock.t += 10 * MIN;
   await goDeep(t);
   const o = await t.cortex._act(action, { inv: 1, symptom: 'bench:burst' });
   assert.equal(o.observed, 'sobe');
@@ -567,4 +568,74 @@ test('aprovar e negar pedidos pelo Cortex: só respondem quando há pedido pende
   assert.equal(s.ritmo, 'leve');
   assert.equal(s.investigacoes.abertas, 1);
   assert.ok(s.memoria.bytes > 0);
+});
+
+test('controle no jogo (a ociosidade do Windows ignora o gamepad): no leve, primeiro plano no máximo 1x a cada 10 min; nunca bench nem lab', async () => {
+  const t = setup();
+  t.cortex.setSettings({ permission: 'sozinho' });
+  t.cortex.observeEvent(lentidao(T0));
+  t.env.idle = 1200;
+  t.env.game = true;
+  for (let i = 0; i < 30; i++) { // 30 min, uma checagem por minuto
+    t.clock.t = T0 + i * MIN;
+    await t.cortex.checkRhythm();
+    await t.cortex.tick();
+  }
+  assert.equal(t.env.gameCalls, 3, `consultas em 30 min: ${t.env.gameCalls}`);
+  assert.equal(t.cortex.rhythm().state, 'leve');
+  assert.deepEqual(t.env.bench, []);
+  assert.deepEqual(t.env.lab, []);
+  // "Não sei" (null) também espera 10 min; mexer no teclado zera a espera.
+  const u = setup();
+  u.env.idle = 900; u.env.game = null;
+  await u.cortex.checkRhythm();
+  u.clock.t += MIN; await u.cortex.checkRhythm();
+  assert.equal(u.env.gameCalls, 1);
+  u.clock.t += MIN; u.env.idle = 3; await u.cortex.checkRhythm();
+  u.clock.t += MIN; u.env.idle = 900; await u.cortex.checkRhythm();
+  assert.equal(u.env.gameCalls, 2);
+  // Sem jogo (false): sem espera, a segunda checagem confirma e entra no profundo.
+  const w = setup();
+  w.env.idle = 900; w.env.game = false;
+  await w.cortex.checkRhythm();
+  w.clock.t += MIN; await w.cortex.checkRhythm();
+  assert.equal(w.env.gameCalls, 2);
+  assert.equal(w.cortex.rhythm().state, 'profundo');
+});
+
+test('host: ocupado inclui a otimização da pessoa (e lab, benchmark, análise profunda, teste com reinício)', async () => {
+  const { createBusy } = require('../electron/cortex-host.cjs');
+  const s = { lab: false, opt: false, bench: false, deep: false, reboot: false };
+  const busy = createBusy({ labRunning: () => s.lab, optRunning: () => s.opt, benchActive: () => s.bench, deepRunning: () => s.deep, rebootActive: async () => { if (s.reboot === 'erro') throw new Error('x'); return s.reboot; } });
+  assert.equal(await busy(), false);
+  for (const k of ['lab', 'opt', 'bench', 'deep', 'reboot']) {
+    s[k] = true;
+    assert.equal(await busy(), true, k);
+    s[k] = false;
+  }
+  s.reboot = 'erro';
+  assert.equal(await busy(), false, 'leitura do teste com reinício que falha não trava o Cortex');
+});
+
+test('host: com a sonda de sessão mandando amostras recentes, o primeiro plano vem dela (sem abrir PowerShell)', async () => {
+  const { createGameInForeground } = require('../electron/cortex-host.cjs');
+  let clock = 1000000;
+  let last = null;
+  let queries = 0;
+  const game = createGameInForeground({ now: () => clock, lastProbe: () => last, query: async () => { queries += 1; return false; } });
+  // Sem amostra: consulta.
+  assert.equal(await game(), false);
+  assert.equal(queries, 1);
+  // Amostra de 20 s atrás com jogo: usa a amostra.
+  last = { at: clock - 20000, sample: { fg: { isGame: true } } };
+  assert.equal(await game(), true);
+  last = { at: clock - 20000, sample: { fg: { isGame: false } } };
+  assert.equal(await game(), false);
+  last = { at: clock - 20000, sample: { fg: null } };
+  assert.equal(await game(), null, 'amostra sem primeiro plano = não sei');
+  assert.equal(queries, 1);
+  // Amostra velha (> 60 s): volta a consultar.
+  last = { at: clock - 61000, sample: { fg: { isGame: true } } };
+  assert.equal(await game(), false);
+  assert.equal(queries, 2);
 });

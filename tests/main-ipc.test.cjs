@@ -69,6 +69,21 @@ test('Cortex: os 12 canais existem e cortex:stats responde', async () => {
   assert.ok(['observar', 'pedir', 'sozinho'].includes((await call('cortex:settings')).permission));
 });
 
+test('Cortex: o que a pessoa começa (lab, benchmark, análise, otimização, correção, conferência pós-reinício, teste com reinício) corta o teste dele; a otimização conta como ocupado', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8').replace(/\r\n/g, '\n');
+  const bodyOf = (channel) => {
+    const at = main.indexOf(`registerIpcHandler('${channel}'`);
+    assert.ok(at >= 0, channel);
+    const next = main.indexOf('registerIpcHandler(', at + 10);
+    return main.slice(at, next < 0 ? undefined : next);
+  };
+  for (const channel of ['lab:run', 'bench:cpu', 'analysis:deep-run', 'opt:run', 'opt:fix', 'opt:after-boot-run', 'reboot:start']) {
+    assert.match(bodyOf(channel), /await yieldCortex\(\)/, `${channel} não corta o teste do Cortex`);
+  }
+  assert.match(main, /createBusy\(\{[^}]*optRunning: \(\) => optState\.running/, 'a otimização não conta como ocupado');
+  assert.match(main, /createGameInForeground\(\{[^}]*lastProbe/, 'o primeiro plano não usa a sonda');
+});
+
 test('rejeita chamadas vindas de outra origem', async () => {
   await assert.rejects(async () => handlers.get('cleanup:scan')({ senderFrame: { url: 'https://exemplo.com' } }), /Origem não autorizada/);
 });

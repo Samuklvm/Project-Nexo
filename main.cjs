@@ -1292,7 +1292,10 @@ const sendToWindow = (channel, payload) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
 };
 const probeMatch = Object.assign((exePath) => library.matchPath(exePath), { byName: (name) => library.matchName(name) });
-const probe = IS_LINUX ? createLinuxProbe({ linux, emit: (sample) => sendToWindow('session:probe', sample), match: probeMatch }) : createProbe({ emit: (sample) => sendToWindow('session:probe', sample), match: probeMatch });
+// A última amostra da sonda também serve ao Cortex ("tem jogo aberto?") sem abrir outro PowerShell.
+let lastProbeSample = null;
+const onProbeSample = (sample) => { lastProbeSample = { at: Date.now(), sample }; sendToWindow('session:probe', sample); };
+const probe = IS_LINUX ? createLinuxProbe({ linux, emit: onProbeSample, match: probeMatch }) : createProbe({ emit: onProbeSample, match: probeMatch });
 const MANGO_DIR = () => path.join(app.getPath('userData'), 'mangohud');
 const fpsRunner = IS_LINUX ? createMangoRunner({ fs, path, dir: MANGO_DIR(), emit: (channel, payload) => sendToWindow(channel, payload) }) : createFpsRunner({ emit: (channel, payload) => sendToWindow(channel, payload) });
 
@@ -2527,13 +2530,12 @@ async function cortexLabRun(options) {
   } finally { labState.running = false; labState.signal = null; cortexLab.signal = null; }
 }
 /** Lab da pessoa, teste de desempenho, análise profunda ou teste com reinício rodando: o Cortex não pesa junto. */
-async function cortexBusy() {
-  return labState.running || Boolean(activeBench) || deepAnalysis.isRunning() || await rebootTest.active().catch(() => false);
-}
+const { createBusy, createGameInForeground } = require('./electron/cortex-host.cjs');
+const cortexBusy = createBusy({ labRunning: () => labState.running, optRunning: () => optState.running, benchActive: () => Boolean(activeBench), deepRunning: () => deepAnalysis.isRunning(), rebootActive: () => rebootTest.active() });
 /** No Linux o teste do lab só tem single/multi/burst: os outros não são medidos (em vez de medir outro no lugar). */
 const cortexBench = (mode) => (IS_LINUX && !['single', 'multi', 'burst'].includes(mode) ? Promise.reject(new Error(`o teste "${mode}" não existe no Linux`)) : labSystem.bench(mode));
 /** Uma consulta do primeiro plano, com o mesmo detector das sessões; erro lança (o Cortex registra e conta como "não sei"). */
-async function cortexGameInForeground() {
+async function cortexQueryForeground() {
   if (IS_LINUX) return foregroundIsGame({ fg: await linux.foreground() }, probeMatch);
   if (process.platform !== 'win32') return null;
   const { code, stdout } = await runPowerShellCode(FOREGROUND_SCRIPT, 15000);
@@ -2541,6 +2543,7 @@ async function cortexGameInForeground() {
   const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop();
   return foregroundIsGame(line ? JSON.parse(line) : null, probeMatch);
 }
+const cortexGameInForeground = createGameInForeground({ lastProbe: () => lastProbeSample, query: cortexQueryForeground });
 async function startCortex() {
   const opened = createCortexMemory({ dir: path.join(app.getPath('userData'), 'cortex') });
   cortexMemory = opened.ok ? opened.memory : null;
@@ -2686,6 +2689,7 @@ registerIpcHandler('opt:run', async (_event, options) => {
 registerIpcHandler('opt:fix', async (_event, options) => {
   if (process.platform !== 'win32') throw new Error('A correção automática funciona no Windows.');
   if (optState.running) throw new Error('A otimização está rodando; espere ela terminar.');
+  await yieldCortex();
   const ids = (Array.isArray(options?.ids) ? options.ids : []).slice(0, 60).map((value) => String(value).slice(0, 80));
   if (!optState.plan || Date.now() - optState.plan.at > PLAN_TTL_MS) await buildOptimizerPlan({});
   const stored = optState.plan;
@@ -2738,6 +2742,7 @@ async function pendingAfterBoot() {
 registerIpcHandler('opt:after-boot', async () => pendingAfterBoot());
 registerIpcHandler('opt:after-boot-run', async () => {
   if (optState.running) throw new Error('A otimização já está rodando.');
+  await yieldCortex();
   const pending = await pendingAfterBoot();
   if (!pending) throw new Error('Não há ajuste esperando reinício para conferir.');
   const store = await optimizerSystem.loadStore();
