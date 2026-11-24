@@ -1,0 +1,253 @@
+# Cortex v0 + Memória eterna (parte 1 de 6 do cérebro do Nexo)
+
+**Pedido do Samuel:** um Nexo que entenda o PC "como uma IA", e não um app de avisos e ajustes manjados. Ele deve
+criar os próprios testes e métodos, desconfiar das próprias conclusões, não aceitar "chegou no limite físico" sem
+provar, e melhorar o próprio jeito de aprender. A inspiração é o Mahoraga: adaptação, não força bruta.
+A visão foi construída numa conversa com o ChatGPT (19/11/2026) e as decisões de lá valem como decididas aqui.
+
+**Ordem das 6 partes (decidida):** 1. Memória eterna + Cortex v0 → 2. Oficina de ferramentas (o Nexo inventa
+instrumentos, com sandbox e núcleo de segurança) → 3. IA local opcional → 4. Arena de evolução → 5. Constelação
+(Nexos conversando) → 6. Vila. Este documento cobre só a parte 1.
+
+## Por que esta parte vem primeiro
+
+Hoje o `brain.js` **observa** (rotina em 168 faixas, lentidões, culpados) e o `lab.js` **testa** (espaço fechado e
+reversível, UCB, A/B contra o ruído, tabu, volta tudo no fim), mas **um não conversa com o outro**: nenhum dos dois
+levanta hipóteses, escolhe o teste que separa explicações ou guarda uma conclusão. E o Nexo **esquece de propósito**:
+7 dias de histórico (`store.js`), no máximo 120 lentidões por 30 dias e 60 culpados (`brain.js`), tudo no
+armazenamento do navegador. Sem memória permanente e sem ciclo de investigação, as partes 2 a 6 não têm onde se apoiar.
+
+## Marco de pronto (o mesmo combinado com o ChatGPT)
+
+A partir de uma anomalia real (uma lentidão, uma sessão de jogo com travadas, um resultado surpreendente do lab), o
+Nexo, **sem IA nenhuma**:
+
+1. formula **pelo menos 3 hipóteses concorrentes**, sempre incluindo "causa que eu ainda não sei medir";
+2. escolhe a medição ou o teste que **mais separa** as hipóteses (ganho de informação ÷ custo);
+3. executa (olhando a memória, esperando a repetição, rodando um teste do lab ou um ajuste do lab);
+4. guarda uma **conclusão reaproveitável** com estado honesto: suspeita, correlacionada, apoiada ou derrubada;
+5. diz **"não achei"** quando não achou, e registra o que faltou medir.
+
+As hipóteses **não** podem estar escritas como uma lista fixa de respostas por sintoma.
+
+## Objetivos
+
+1. **Memória eterna** no alcance que o Samuel escolheu (opção A, 24/11/2026): fica para sempre, intacto, tudo que o
+   Nexo pensou, testou, concluiu e conversou, mais as medições por minuto. Do quadro a quadro dos jogos e dos rastros
+   pesados ficam para sempre os **resumos** e os **trechos exatos que serviram de prova** de alguma conclusão.
+2. **Cortex v0**: o ciclo anomalia → hipóteses → plano → execução → atualização → conclusão, rodando no processo
+   principal, sem travar nada.
+3. **Mapa de relações do PC** que o Cortex usa para pensar e que **aprende**: confirma, derruba e cria relações novas
+   a partir dos dados desta máquina.
+4. **Pensamento registrado**: cada passo do Cortex vira uma frase em português simples, guardada para sempre.
+5. **Caderno do Cortex** na interface: investigações em andamento e concluídas, com hipóteses, testes, provas e
+   conclusão.
+6. **Lugar reservado para a IA local** (parte 3): uma interface definida e vazia, que o Cortex consulta se existir.
+7. **Banco de PCs simulados** nos testes automáticos, para medir se o Cortex acerta causas conhecidas.
+
+## Não-objetivos (ficam para as próximas partes)
+
+- Inventar e rodar ferramentas novas (parte 2). Na v0, o Cortex só **registra a necessidade** de um instrumento
+  quando não consegue separar hipóteses; isso vira a fila de entrada da Oficina.
+- IA local, arena de evolução, Constelação, Vila.
+- Sensores novos de baixo nível (ETW, DPC/ISR, I/O por processo). A v0 usa só o que o Nexo já mede.
+- Substituir o `brain.js` ou o `store.js`. Eles continuam funcionando; o Cortex lê deles.
+- **Liberdade de reestruturar (Samuel, 24/11/2026):** o construtor pode mudar a estrutura inteira do laboratório e as
+  APIs internas do app (IPC, `lab.js`, `lab-system.cjs`, `preload.cjs`) se isso deixar o Cortex melhor, desde que as
+  funções que a pessoa já usa continuem funcionando e os testes existentes continuem passando (ou sejam atualizados
+  junto, com o mesmo rigor).
+
+## Anti-objetivos (fracasso mesmo que "funcione")
+
+- Afirmar melhora ou causa sem passar do ruído medido (regra de ouro do `experiment.js`).
+- Usar "provavelmente" ou chutar. O Cortex diz o estado (suspeita, correlacionada, apoiada, derrubada, não sei).
+- Pesar no PC: nada de raciocínio pesado durante jogo, nada de travar a interface, nada de gravação em disco a cada
+  segundo no banco eterno.
+- Mexer em qualquer coisa fora do espaço fechado do laboratório (na v0), ou sem a autorização que o lab já exige.
+- Apagar memória, sozinho ou a pedido. Nenhuma tabela eterna tem prazo de validade e **não existe botão para apagar a
+  memória eterna** (decisão do Samuel, 24/11/2026). O botão "Apagar aprendizado" que já existe continua zerando **só**
+  o cérebro antigo (`brain.js` e histórico de 7 dias no armazenamento local).
+- Hipóteses de enfeite: cada uma tem previsões testáveis, senão não entra.
+
+## Restrições
+
+- Electron 45 (Node 22). Interface com `sandbox: true` e `contextIsolation`: o Cortex e o banco moram no **processo
+  principal**; a interface fala com ele por IPC (`registerIpcHandler`, como o resto do app).
+- Banco: **SQLite embutido do Node (`node:sqlite`)**, sem módulo nativo novo. **Verificar no primeiro passo do plano**
+  que o Electron 45 expõe `node:sqlite` no processo principal. Se não expuser, cair para `better-sqlite3` (já
+  compilado para Electron pelo `electron-builder`); último recurso, arquivos só de acréscimo (JSON por linha).
+- Grátis e local: nada sai do PC nesta parte (a Constelação, na parte 5, é que decide o que compartilhar).
+- App sem assinatura: a v0 não cria executáveis, scripts nem processos novos.
+- Windows e Linux (o lab já tem espaço próprio para Linux).
+- Testes no padrão do repositório: `node --test tests/*.test.cjs`, módulos UMD puros testáveis fora do Electron.
+
+## Jeitos considerados
+
+| Jeito | O que é | Ganha | Perde |
+|---|---|---|---|
+| **A) Cortex por cima do que existe** ✅ | `src/cortex/` com memória SQLite, forjador de hipóteses, planejador; o `lab.js` vira o braço | Entrega o marco logo, reaproveita tudo que funciona | O mapa de relações começa com uma semente escrita por nós (o Cortex aprende a confirmar, derrubar e criar relações, mas não nasce do zero) |
+| B) Arena primeiro | Simulador de PCs e provas secretas antes do Cortex | Impossível o cérebro "se achar" | Semanas sem nada novo no app |
+| C) Oficina primeiro | Começar pelas ferramentas inventadas | A parte mais "uau" | Sem cérebro, ninguém pede ferramenta; é a parte que mais chama atenção de antivírus, o pior começo para um app sem assinatura |
+
+**Escolhido pelo Samuel: A**, com um pedaço do B dentro dela (PCs simulados nos testes automáticos).
+
+## Como funciona
+
+### Peças
+
+```
+src/cortex/
+  memory.cjs      memória eterna (só processo principal; SQLite)
+  relations.js    mapa de relações do PC: semente + o que esta máquina provou
+  forge.js        forjador de hipóteses (puro)
+  planner.js      planejador por ganho de informação (puro)
+  beliefs.js      atualização de crença e regras de conclusão (puro)
+  narrate.js      transforma cada passo em frase em português (puro, sem IA)
+  cortex.cjs      o ciclo: recebe anomalias, investiga, chama o lab, grava tudo
+  mind.js         lugar reservado da IA local: interface vazia (parte 3)
+src/view-cortex.js  Caderno do Cortex (interface)
+tests/cortex-*.test.cjs + tests/fixtures/pcs-simulados/
+```
+
+### 1. Memória eterna (`memory.cjs`)
+
+- Arquivo `memoria.db` na pasta de dados do Nexo (`app.getPath('userData')/cortex/`), em modo WAL.
+- **Só acréscimo** nas tabelas eternas: nada é sobrescrito; uma mudança de estado vira uma linha nova que aponta para
+  a anterior. Assim dá para responder "o que o Nexo achava disso em março?".
+- Tabelas eternas (nomes indicativos; o detalhe fica para o plano):
+  - `minutos`: a amostra por minuto que o `store.js` já monta (cpu, memória, disco, gpu, temperaturas, clock, culpado).
+    Uns 30 MB por ano.
+  - `maquina`: retratos do hardware, drivers e sistema ao longo do tempo (para saber "o que mudou").
+  - `eventos`: lentidões fechadas pelo `brain.js`, resumos de sessões (`NexoSession`/`bottleneck`), resultados do lab,
+    instalações de driver, atualizações do Nexo e do Windows que o app já detecta.
+  - `investigacoes`, `hipoteses`, `crencas` (histórico de confiança de cada hipótese), `experimentos`, `provas`,
+    `conclusoes`, `relacoes` (arestas do mapa com contagens por máquina), `pensamentos` (o diário do raciocínio),
+    `necessidades` (instrumentos que faltaram; fila da Oficina).
+  - `trechos`: cópia exata dos dados crus que uma prova citou (as amostras de 1 s ou os quadros daquele intervalo).
+- **Câmera lenta** (não eterna): as amostras de 1 s das sessões e o quadro a quadro ficam num depósito circular de
+  alguns dias. Antes de sair do depósito, viram resumo eterno; qualquer trecho citado por uma prova já foi copiado
+  para `trechos`. Tamanho do depósito: escolha do construtor, com teto em MB.
+- Gravação em lote (fila em memória, uma transação a cada poucos segundos), para não pesar.
+- **Cópia de segurança**: uma cópia diária do banco (API de backup do SQLite), guardando as 3 últimas, para um
+  arquivo corrompido não apagar a memória.
+- **Migração na primeira abertura:** importar os 7 dias de histórico e o estado do `brain.js` que estão no armazenamento
+  local, marcados como "importado". Depois disso o `store.js` também manda cada minuto para o banco.
+- A tela mostra quanto a memória ocupa.
+- **Lembrar** (`recall`): consultas estruturadas (por sintoma, componente, período, programa, relação). É por aqui que
+  a IA local da parte 3 vai ler a memória; trocar de modelo não perde nada, porque a memória é do Nexo, não do modelo.
+
+### 2. Mapa de relações (`relations.js`)
+
+- Um grafo de **sinais** (cpu, clock, temperatura da CPU, memória, faltas de página, disco, GPU ocupada, quadros
+  ruins, ajustes do lab, programas, drivers, eventos) ligados por relações do tipo "A pode causar B",
+  "A pode explicar B", "o ajuste K afeta o teste T".
+- **Semente**: relações gerais e conhecidas de PC (calor → queda de clock; programa pesado → CPU alta; memória cheia →
+  faltas de página → travadas; e o campo `affects` de cada ajuste do `lab-space.js`). A semente diz o que **pode**
+  existir, nunca o que existe nesta máquina.
+- Cada relação tem, **por máquina**, uma escada de estado: semente → observada → correlacionada → suspeita →
+  apoiada por experimento | derrubada. Só experimento leva a "apoiada"; correlação sozinha nunca vira explicação.
+- **Relações novas, fora da semente**: o Cortex procura, nos minutos e eventos guardados, sinais que andam juntos (com
+  atraso de 0 a alguns minutos) e que nenhuma relação conhecida explica. Isso vira uma relação "correlacionada" nova,
+  que entra como hipótese candidata. É assim que ele passa a pensar coisas que nós não escrevemos.
+
+### 3. Forjador de hipóteses (`forge.js`)
+
+- **Entradas que abrem uma investigação:** uma lentidão fechada pelo `brain.js`; um achado de sessão (travadas,
+  gargalo); um resultado do lab fora do esperado; ou **curiosidade**: um padrão sem explicação (desvio grande da rotina
+  ou uma correlação nova), mesmo sem incomodar ninguém.
+- **Saída:** no mínimo 3 hipóteses concorrentes, cada uma com **previsões** ("se for H, então a medição M mostra Z").
+  Vêm de três fontes: o caminho de volta no mapa (do sintoma às causas possíveis), as relações novas correlacionadas
+  e a hipótese fixa **"causa fora do que eu consigo medir hoje"**.
+- A confiança inicial vem do peso da semente, ajustado pelo histórico desta máquina (o que já foi apoiado ou derrubado
+  aqui).
+
+### 4. Planejador (`planner.js`)
+
+- Ações possíveis, da mais barata para a mais cara:
+  1. **olhar a memória** (grátis): o padrão já aconteceu antes? com que outros sinais?
+  2. **esperar a repetição** com gravação detalhada de 1 s (barato; não mexe em nada);
+  3. **medir** com um teste do lab sem alterar nada;
+  4. **intervir** com um ajuste do espaço fechado do lab, medido A/B contra o ruído.
+- Escolhe a ação de maior **ganho esperado de informação ÷ custo** (tempo, risco, incômodo), respeitando: o nível de
+  risco que a pessoa liberou no lab; nada durante jogo; um orçamento diário de testes ativos.
+- Se nenhuma ação disponível separa as hipóteses que sobraram, o Cortex registra uma **necessidade de instrumento**
+  ("preciso relacionar X com Y numa escala que não meço") e encerra honestamente.
+
+### 5. Execução
+
+- Medir e intervir passam pelo `lab.js` e pelos testes que já existem, com as mesmas guardas (temperatura, bateria,
+  erros do Windows) e a mesma volta ao estado original. O lab ganha uma opção para testar **só os ajustes pedidos**
+  pelo Cortex.
+- **Autorização:** o Cortex tem uma chave própria no Caderno (o modo do lab só existe na tela do lab, não fica
+  guardado): **Só observar** (padrão; olha a memória, espera repetir e mede, sem alterar nada), **Pedir antes**
+  (pede no Caderno antes de cada ajuste, até o risco que a pessoa escolher) e **Sozinho com o PC parado** (exige a frase
+  `ENTENDO O RISCO`, como o lab, e fica limitado a ajustes de risco baixo). "PC parado" = 10 min sem uso.
+- Tudo que for alterado entra também no Diário de alterações (`journal.js`), como hoje.
+
+### 6. Crença e conclusão (`beliefs.js`)
+
+- Cada resultado atualiza a confiança das hipóteses conforme as previsões se confirmaram ou não. O ruído é sempre
+  levado em conta, com as regras do `experiment.js`.
+- **Concluir:** uma hipótese passa de um limiar **e** tem prova experimental → "apoiada". Uma hipótese cuja previsão
+  falhou de forma clara → "derrubada". Sem prova experimental, o máximo é "correlacionada".
+- **Não achei:** acabaram as ações úteis ou o orçamento → conclusão "não resolvido", listando o que foi descartado e o
+  que faltou medir.
+- Uma conclusão **pode ser reaberta** se dados novos a contradizerem; a anterior continua guardada.
+
+### 7. Pensamento registrado (`narrate.js`)
+
+- Frases em português montadas a partir dos dados estruturados, sem IA: "Notei que o clock caiu 3 vezes hoje à noite.
+  Suspeito de calor, de plano de energia ou de algo que ainda não meço. O teste que mais separa calor de plano é ...,
+  porque ...". Tudo vai para `pensamentos`, para sempre.
+- Se a IA local existir (parte 3), ela pode reescrever as frases de um jeito mais natural, mas o dado de base continua
+  sendo o estruturado.
+
+### 8. Caderno do Cortex (interface)
+
+- Lista de investigações (abertas, aguardando autorização, concluídas, não resolvidas). Cada uma mostra a pergunta,
+  as hipóteses com estado e confiança, os testes feitos, as provas (com o trecho guardado) e a linha do tempo dos
+  pensamentos.
+- Também mostra quanto a memória ocupa, as relações que esta máquina já provou e a fila de "instrumentos que faltaram".
+- Visual no padrão do Nexo (noite, vidro e aurora, neon, mais a estética de fantasia sombria). Onde ele mora e o
+  layout ficam para o construtor (ver "Decisões tomadas pelo Claude").
+
+### 9. Lugar da IA local (`mind.js`)
+
+- Interface definida e vazia: `mind.available()`, `mind.proposeHypotheses(contexto)`, `mind.narrate(passo)`.
+  Na v0, `available()` devolve `false`. O Cortex nunca depende dela.
+
+### 10. PCs simulados (testes)
+
+- Fixtures com máquinas inventadas cuja causa a gente conhece: programa que pesa em certas horas; calor que derruba o
+  clock; ajuste do lab que melhora a latência de verdade; disco cheio; e uma máquina **só com ruído**, sem causa.
+- Critérios de aceite (escolha do Claude): causa verdadeira entre as 3 primeiras hipóteses em ≥ 90% dos casos;
+  conclusão "apoiada" correta em ≥ 70%; **zero** conclusões "apoiada" na máquina só com ruído; e "não resolvido" no
+  caso cuja causa não é medível.
+
+## Decisões tomadas pelo Claude (o Samuel pode mudar)
+
+- Banco `node:sqlite` no processo principal, com plano B (`better-sqlite3`) e plano C (arquivos só de acréscimo).
+- Depósito "câmera lenta" circular de alguns dias para os dados de 1 s e o quadro a quadro.
+- Cópia de segurança diária, guardando as 3 últimas.
+- Chave de permissão própria do Cortex (só observar / pedir antes / sozinho com o PC parado e só risco baixo), com
+  "só observar" de padrão.
+- Orçamento diário: no máximo 3 ações ativas (medir ou intervir) por dia.
+- Falhas do próprio Cortex (banco que não abre, investigação que travou, migração que falhou) vão para o registro de
+  erros que já existe (`electron/error-log.cjs`), e daí para o servidor como qualquer outro erro do app. Os dados do
+  PC e da memória continuam sem sair.
+- Critérios de aceite dos PCs simulados (90% / 70% / zero falso / "não resolvido").
+- O Caderno do Cortex entra como uma seção nova dentro da página de Análise (que na 0.12 vai se fundir com a
+  Otimização), e não como página própria.
+
+## Fica para o construtor
+
+Esquema exato das tabelas, limiares de crença, tamanho da câmera lenta, valores do orçamento, fórmula exata de ganho
+de informação, conteúdo da semente do mapa e o layout do Caderno.
+
+## Riscos
+
+- `node:sqlite` indisponível no Electron 45 → plano B/C (verificar no passo 1).
+- O lab hoje escolhe os ajustes sozinho; testar só os ajustes pedidos exige mudar a API do `lab.js`. Está liberado
+  reestruturar, mas o modo atual do lab (que a pessoa usa pela tela) não pode quebrar (`tests/lab.test.cjs`).
+- Correlações falsas em excesso → a escada de estados e a regra "só experimento apoia" seguram isso; os PCs
+  simulados medem.
