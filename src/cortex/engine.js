@@ -22,12 +22,6 @@
  * step(inv) → 'continua' | 'aguardando' (pedido de autorização) | 'esperando-repetir' (esperar sem resultado ainda) |
  *             'pausada' (o planejador mandou esperar: ritmo leve, bateria, orçamento) | 'concluida'.
  *
- * Prova da suspeita: o planejador só escolhe passos que separam hipóteses; um teste que só a suspeita prevê (medir,
- * intervir) não separa nada no cálculo dele. Quando ele não tem mais o que fazer, o motor tenta a prova experimental das
- * suspeitas ainda de pé, da mais forte para a mais fraca, contra a alternativa "se não for ela, o teste fica igual" —
- * pelo mesmo planejador, então permissão, risco, ritmo, bateria e orçamento valem do mesmo jeito. Só sem nenhuma prova
- * possível a investigação termina em "não resolvido".
- *
  * Puro em relação ao mundo: disco é a loja, relógio é `now`, ações são `act`.
  */
 (function (root, factory) {
@@ -239,23 +233,6 @@
       return absorb(s, a, outcome, null);
     }
 
-    /** Prova experimental das suspeitas ainda de pé (ver cabeçalho). Devolve uma escolha do planejador ou null. */
-    function proveSuspects(s, c) {
-      const done = new Set(c.done);
-      for (const h of ranked(s)) {
-        if (h.source === 'desconhecida') continue;
-        const b = belief(s, h);
-        if (b < Beliefs.REFUTE) break;
-        const tests = (h.predictions || []).filter((p) => isTest(p.action) && p.expect !== 'igual' && !done.has(idOf(p.action, p.target)));
-        if (!tests.length) continue;
-        const rival = { key: `${h.key}#outra`, cause: 'outra', symptom: h.symptom, via: [], prior: 1 - b, source: 'contraprova',
-          predictions: tests.map((p) => ({ action: p.action, target: p.target, expect: 'igual' })) };
-        const r = Planner.choose([h, rival], { [h.key]: b, [rival.key]: 1 - b }, c);
-        if (r.action || r.stop) return r;
-      }
-      return null;
-    }
-
     function giveUp(s, need) {
       const v = Beliefs.verdict(s.hyps, s.beliefs, s.outcomes);
       const between = need.between || [];
@@ -290,12 +267,8 @@
 
       const base = (typeof ctx === 'function' ? ctx() : ctx) || {};
       const c = { ...base, done: [...(base.done || []), ...s.done, ...s.denied] };
-      let choice = Planner.choose(s.hyps, s.beliefs, c);
-      if (choice.need) {
-        const proof = proveSuspects(s, c);
-        if (!proof) return giveUp(s, choice.need);
-        choice = proof;
-      }
+      const choice = Planner.choose(s.hyps, s.beliefs, c);
+      if (choice.need) return giveUp(s, choice.need);
       if (choice.stop) return pause(s, choice.stop);
       const a = choice.action;
       if (choice.needsApproval && !s.approved.has(idOf(a.type, a.target))) return ask(s, a);

@@ -52,20 +52,14 @@ test('toda investigação termina com uma conclusão (nenhuma fica rodando para 
   for (const r of all) assert.equal(r.last, 'concluida', `${r.name}/${r.seed} parou em ${r.last}`);
 });
 
-// Critérios que o motor sozinho não alcança com o forjador, o mapa-semente e as crenças de hoje (Tasks 2–4): ficam
-// como TODO (rodam e mostram os números, sem derrubar o `npm test`) até o controlador decidir a correção. Diagnóstico
-// no relatório da Task 7: sem aresta causa → teste do lab, só as hipóteses de ajuste têm previsão experimental; e as 40
-// hipóteses de ajuste empatadas em bench:latency ficam abaixo do ganho mínimo do planejador.
-const UPSTREAM = 'depende de mudança no forjador/semente/crenças (ver relatório da Task 7)';
-
-test('causa verdadeira entre as 3 primeiras hipóteses em >= 90% das máquinas com causa medível', { todo: UPSTREAM }, async (t) => {
+test('causa verdadeira entre as 3 primeiras hipóteses em >= 90% das máquinas com causa medível', async (t) => {
   const all = (await runs).filter(measurable);
   const hits = all.filter((r) => r.rank >= 1 && r.rank <= 3).length;
   t.diagnostic(`${hits}/${all.length} = ${pct(hits, all.length)}%`);
   assert.ok(hits / all.length >= 0.9, `${hits}/${all.length}`);
 });
 
-test('apoiada correta em >= 70% das máquinas com causa medível', { todo: UPSTREAM }, async (t) => {
+test('apoiada correta em >= 70% das máquinas com causa medível', async (t) => {
   const all = (await runs).filter(measurable);
   const hits = all.filter((r) => r.status === 'apoiada' && r.winner === r.truth).length;
   t.diagnostic(`${hits}/${all.length} = ${pct(hits, all.length)}%`);
