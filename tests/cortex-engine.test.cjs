@@ -269,8 +269,9 @@ test('teste interrompido: experimento interrompido, sem prova, crença igual, e 
 
 test('nada separa as explicações: necessidade + conclusão não resolvido', async () => {
   const store = memoryStore();
-  // Mapa vazio: o forjador só tem a rotina, o programa pesado genérico e a desconhecida; nada aparece em lugar nenhum.
-  const act = async (a) => ({ action: a.type, target: a.target, observed: a.type === 'lembrar' ? 'ausente' : 'igual', significant: false });
+  // Mapa vazio: o forjador só tem a rotina, o programa pesado genérico e a desconhecida. Nada aparece na memória e o
+  // sintoma volta de leve: cada pista fraca puxa para um lado, e ninguém fica na frente.
+  const act = async (a) => ({ action: a.type, target: a.target, observed: a.type === 'lembrar' ? 'ausente' : 'sobe', significant: false });
   const engine = E.createEngine({ store, map: R.createMap([]), act, ctx: deep(), now: () => T0 });
   const inv = await engine.open(anomaly('travadas'));
   const seen = await untilDone(engine, inv);
@@ -281,9 +282,36 @@ test('nada separa as explicações: necessidade + conclusão não resolvido', as
   assert.equal(typeof need[0].data.reason, 'string');
   const end = kinds(store, 'conclusao', inv)[0].data;
   assert.equal(end.verdict.status, 'nao-resolvido');
+  assert.equal(end.verdict.winner, null, 'sem vencedora: não resolvido sem ninguém');
   assert.ok(Array.isArray(end.verdict.refuted));
-  assert.ok(Array.isArray(end.missing));
-  assert.ok(kinds(store, 'pensamento', inv).some((p) => p.data.step.type === 'necessidade'));
+  // Tudo o que o programa pesado previa já foi olhado: não dá para dizer "faltou medir" dele.
+  assert.deepEqual(need[0].data.missing, []);
+  assert.deepEqual(end.missing, []);
+  assert.equal(need[0].data.outside, true, 'o que falta está fora do que eu meço');
+  const said = kinds(store, 'pensamento', inv).filter((p) => ['necessidade', 'conclusao'].includes(p.data.step.type)).map((p) => p.data.text);
+  assert.match(said[0], /fora do que eu consigo medir/);
+  assert.doesNotMatch(said.join(' '), /Programa pesado/);
+});
+
+test('sem passo novo mas com vencedora correlacionada: conclui correlacionada e diz o que falta para provar', async () => {
+  const store = memoryStore();
+  // Só calor → clock no mapa (sem teste do lab ligado): a memória e a espera apontam o calor, mas não há experimento.
+  const act = heatAct();
+  const engine = E.createEngine({ store, map: R.createMap([edge('temp_cpu', 'clock_queda')]), act, ctx: deep(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  const seen = await untilDone(engine, inv);
+  assert.equal(seen[seen.length - 1], 'concluida');
+  assert.ok(!act.calls.some((c) => /^(medir|intervir):/.test(c)));
+  const end = kinds(store, 'conclusao', inv)[0].data.verdict;
+  assert.equal(end.status, 'correlacionada');
+  assert.equal(end.winner, 'temp_cpu>clock_queda');
+  const need = kinds(store, 'necessidade', inv);
+  assert.equal(need.length, 1);
+  assert.equal(need[0].data.goal, 'apoiada', 'a necessidade é a prova que faltou');
+  assert.deepEqual(need[0].data.between, ['temp_cpu>clock_queda']);
+  assert.deepEqual(need[0].data.missing, [], 'nenhum teste do lab mede o calor neste mapa');
+  assert.match(kinds(store, 'pensamento', inv).find((p) => p.data.step.type === 'necessidade').data.text, /teste/);
+  assert.ok(!engine.mapEvents(inv).some((e) => e.kind === 'experimento-a-favor'), 'correlacionada não é prova');
 });
 
 test('não conclui apoiada se um teste forte contradiz a vencedora', async () => {
@@ -310,4 +338,115 @@ test('hipótese derrubada por teste forte gera experimento-contra na ligação d
   const end = kinds(store, 'conclusao', inv)[0].data.verdict;
   assert.ok(end.refuted.includes('temp_cpu>clock_queda'), JSON.stringify(end));
   assert.ok(engine.mapEvents(inv).some((e) => e.kind === 'experimento-contra' && e.edgeId === 'temp_cpu>clock_queda'));
+});
+
+// ---------- gravação que falha e app que morre entre gravações ----------
+
+/** Loja que devolve -1 (como memory.record com disco cheio) quando `fails(kind, data, opts, n)` diz que sim. */
+function flaky(fails) {
+  const store = memoryStore();
+  let n = 0;
+  let on = true;
+  const record = store.record;
+  store.record = (kind, opts = {}) => {
+    n++;
+    if (on && fails(kind, opts.data || {}, opts, n)) return -1;
+    return record(kind, opts);
+  };
+  store.heal = () => { on = false; };
+  return store;
+}
+
+async function reference() {
+  const store = memoryStore();
+  const act = heatAct();
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: deep(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  await untilDone(engine, inv);
+  return { calls: act.calls, verdict: kinds(store, 'conclusao', inv)[0].data.verdict };
+}
+
+test('crença não grava: o passo para (falha-gravacao) e a próxima leitura refaz a crença, sem repetir a ação', async () => {
+  const ref = await reference();
+  let once = true;
+  const store = flaky((kind, data, opts) => kind === 'crenca' && opts.ref != null && once && !(once = false));
+  const act = heatAct();
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: deep(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  assert.equal(await engine.step(inv), 'falha-gravacao');
+  const exp = kinds(store, 'experimento', inv);
+  assert.equal(exp.length, 1);
+  assert.equal(kinds(store, 'crenca', inv).filter((c) => c.ref === exp[0].id).length, 0);
+  assert.equal(kinds(store, 'pensamento', inv).filter((p) => p.data.step.type === 'resultado').length, 0, 'parou antes de narrar');
+  await untilDone(engine, inv);
+  assert.deepEqual(act.calls, ref.calls, 'a ação não foi refeita nem contada duas vezes');
+  const fixed = kinds(store, 'crenca', inv).filter((c) => c.ref === exp[0].id);
+  assert.equal(fixed.length, 1, 'crença refeita, uma vez só');
+  const chain = kinds(store, 'crenca', inv);
+  assert.ok(chain.slice(1).every((c, i) => c.prev === chain[i].id), 'cada crença aponta para a anterior');
+  assert.deepEqual(kinds(store, 'conclusao', inv)[0].data.verdict, ref.verdict);
+});
+
+test('experimento não grava: o passo para e a ação é refeita (a evidência entra uma vez só)', async () => {
+  let once = true;
+  const store = flaky((kind, data) => kind === 'experimento' && data.status === 'feito' && once && !(once = false));
+  const act = heatAct();
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: deep(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  assert.equal(await engine.step(inv), 'falha-gravacao');
+  assert.equal(kinds(store, 'experimento', inv).length, 0);
+  assert.equal(kinds(store, 'prova', inv).length, 0, 'nada gravado depois da falha');
+  assert.equal(kinds(store, 'crenca', inv).length, 1);
+  await untilDone(engine, inv);
+  const first = act.calls[0];
+  assert.equal(act.calls.filter((c) => c === first).length, 2, 'refeita');
+  assert.equal(kinds(store, 'experimento', inv).filter((r) => `${r.data.action.type}:${r.data.action.target}` === first).length, 1);
+  assert.equal(kinds(store, 'conclusao', inv)[0].data.verdict.status, 'apoiada');
+});
+
+test('pedido, necessidade e conclusão que não gravam também param o passo', async () => {
+  const store = flaky((kind) => kind === 'conclusao');
+  const engine = E.createEngine({ store, map: heatMap(), act: heatAct(), ctx: deep(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  const seen = await untilDone(engine, inv);
+  assert.equal(seen[seen.length - 1], 'falha-gravacao');
+  assert.equal(kinds(store, 'relacao', inv).length, 0, 'sem conclusão, sem eventos do mapa');
+  store.heal();
+  assert.equal(await engine.step(inv), 'concluida');
+  assert.equal(kinds(store, 'conclusao', inv).length, 1);
+
+  const asks = flaky((kind) => kind === 'pedido');
+  const map = R.createMap([edge('ajuste:perfepp', 'bench:single', 0.6, 'afeta')]);
+  const act = async (a) => ({ action: a.type, target: a.target, observed: a.type === 'intervir' || a.type === 'esperar' ? 'sobe' : a.target === 'ajuste:perfepp' ? 'antes' : a.type === 'medir' ? 'igual' : 'ausente', significant: a.type !== 'medir' });
+  const e2 = E.createEngine({ store: asks, map, act, ctx: deep({ permission: 'pedir' }), now: () => T0 });
+  const inv2 = await e2.open(anomaly('bench:single'));
+  const r2 = await untilDone(e2, inv2);
+  assert.equal(r2[r2.length - 1], 'falha-gravacao', 'sem o pedido gravado, não diz que está aguardando');
+  assert.equal(e2.approve(inv2), false);
+});
+
+test('app morre entre a prova e a crença: um motor novo refaz a crença e segue igual à corrida sem queda', async () => {
+  const ref = await reference();
+  const store = memoryStore();
+  const record = store.record;
+  let crash = true;
+  store.record = (kind, opts) => {
+    if (crash && kind === 'crenca' && opts && opts.ref != null) { crash = false; throw new Error('o app fechou'); }
+    return record(kind, opts);
+  };
+  const first = heatAct();
+  const a = E.createEngine({ store, map: heatMap(), act: first, ctx: deep(), now: () => T0 });
+  const inv = await a.open(anomaly());
+  await a.step(inv).catch(() => {});
+  assert.equal(kinds(store, 'experimento', inv).length, 1);
+  assert.equal(kinds(store, 'prova', inv).length, 1);
+
+  const second = heatAct();
+  const b = E.createEngine({ store, map: heatMap(), act: second, ctx: deep(), now: () => T0 });
+  assert.deepEqual(await b.resume(), [inv]);
+  await untilDone(b, inv);
+  assert.deepEqual([...first.calls, ...second.calls], ref.calls);
+  const exp = kinds(store, 'experimento', inv)[0];
+  assert.equal(kinds(store, 'crenca', inv).filter((c) => c.ref === exp.id).length, 1, 'crença do primeiro resultado refeita');
+  assert.deepEqual(kinds(store, 'conclusao', inv)[0].data.verdict, ref.verdict);
 });

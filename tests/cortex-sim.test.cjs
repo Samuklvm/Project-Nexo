@@ -32,7 +32,9 @@ async function investigate(pc) {
     name: pc.name, seed: pc.seed, truth: pc.truth, last, steps, calls: pc.calls.length,
     status: end ? end.data.verdict.status : 'sem-conclusao', winner: end ? end.data.verdict.winner : null,
     rank: pc.truth ? ranking.indexOf(pc.truth) + 1 : null, top3: ranking.slice(0, 3),
-    need: !!store.latest('necessidade', { inv }), tests: pc.calls.filter((c) => /^(medir|intervir):/.test(c)).length
+    need: !!store.latest('necessidade', { inv }), needData: (store.latest('necessidade', { inv }) || {}).data || null,
+    said: store.list('pensamento', { inv, limit: 1000 }).filter((p) => ['necessidade', 'conclusao'].includes(p.data.step.type)).map((p) => p.data.text),
+    tests: pc.calls.filter((c) => /^(medir|intervir):/.test(c)).length
   };
 }
 
@@ -78,6 +80,11 @@ test('causa invisível termina em não resolvido, com um registro de necessidade
   for (const r of hidden) {
     assert.equal(r.status, 'nao-resolvido', `semente ${r.seed}`);
     assert.ok(r.need, `semente ${r.seed}: sem necessidade`);
+    // Honesto: tudo o que as causas conhecidas previam já foi olhado; o que falta está fora do que o Nexo mede.
+    assert.equal(r.needData.outside, true, `semente ${r.seed}: ${JSON.stringify(r.needData)}`);
+    assert.deepEqual(r.needData.missing, [], `semente ${r.seed}: faltou medir o que já foi medido`);
+    assert.match(r.said.join(' '), /fora do que eu consigo medir/);
+    assert.doesNotMatch(r.said.join(' '), /Faltou medir “/);
   }
 });
 
