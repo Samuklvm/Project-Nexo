@@ -103,3 +103,21 @@ test('ids desconhecidos e passos malformados não quebram', () => {
   assert.equal(typeof N.say(null), 'string');
   assert.equal(typeof N.say({ type: 'suspeito' }), 'string');
 });
+
+test('pedido fica bem formado com ou sem pontuação no texto', () => {
+  for (const text of ['abra o jogo', 'abra o jogo.', 'abra o jogo!']) {
+    const s = N.say({ type: 'pedido', text, signal: 'temp_cpu', minutes: 2 });
+    assert.doesNotMatch(s, /\.\.|[.!?] para|[.!?] \(/, s);
+    assert.ok(s.includes('abra o jogo'));
+    assert.ok(s.includes(SIGNALS.temp_cpu.label));
+  }
+  assert.doesNotMatch(N.say({ type: 'pedido', text: 'abra o jogo.' }), /\.\./);
+});
+
+test('resultado com observed fora do vocabulário não afirma nada', () => {
+  const s = N.say({ type: 'resultado', outcome: out('medir', 'bench:single', 'xyz', true), prediction: pred('medir', 'bench:single', 'desce') });
+  assert.match(s, /não consegui classificar/i);
+  assert.doesNotMatch(s, /muda de um jeito|bateu com|cai|sobe/i);
+  assert.ok(s.includes(SIGNALS['bench:single'].label));
+  assert.doesNotMatch(N.say({ type: 'resultado', outcome: out('medir', 'bench:single', undefined, true) }), /bateu/i);
+});

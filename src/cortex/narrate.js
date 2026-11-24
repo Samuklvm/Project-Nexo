@@ -5,14 +5,24 @@
  * Puro: sem disco, sem relógio. Tom amigável e honesto: nada de "provavelmente", "talvez seja", "deve ser" ou
  * "com certeza" — o que é suspeita fica como suspeita e só um experimento vira afirmação.
  *
+ * Vocabulários (os mesmos do forjador e das crenças):
+ *   action    'lembrar' | 'esperar' | 'medir' | 'intervir'
+ *   expect    'sobe' | 'desce' | 'igual' | 'presente' | 'ausente' | 'antes' | 'depois'
+ *   observed  os de expect, mais 'interrompido' (teste cortado porque a pessoa voltou; não conta como evidência).
+ *             Qualquer outro valor é narrado como "não consegui classificar", sem afirmar nada.
+ * Prediction = { action, target, expect }.
+ * Outcome    = { action, target, observed, significant } (significant: false = diferença pequena, pesa pouco).
+ * verdict    = { status, winner, refuted }: status 'apoiada' | 'correlacionada' | 'aberta' | 'nao-resolvido'
+ *              ('nao-resolvido' vem do motor, não de beliefs.js); winner e refuted são chaves "causa>sintoma".
+ *
  * Passos aceitos (step.type):
- *   notei        { signal, value?, symptom? }
- *   suspeito     { hypothesis, belief? }
- *   plano        { prediction }                      (Prediction do forjador)
- *   resultado    { outcome, prediction? }            (Outcome das crenças)
- *   conclusao    { verdict, missing? }               (verdict: status/winner/refuted; missing: o que faltou medir)
+ *   notei        { signal, value?, symptom? }        (value: número; symptom: id de sinal)
+ *   suspeito     { hypothesis, belief? }             (hypothesis do forjador; belief entre 0 e 1)
+ *   plano        { prediction }
+ *   resultado    { outcome, prediction? }
+ *   conclusao    { verdict, missing? }               (missing: lista de ids de sinal que faltou medir)
  *   necessidade  { signal?, reason? }
- *   pedido       { text?, signal?, minutes? }
+ *   pedido       { text?, signal?, minutes? }        (text: o pedido no imperativo, com ou sem ponto final)
  *   ritmo        { state: 'leve' | 'profundo', reason? }
  *   interrompido { target? }                         (teste cortado porque a pessoa voltou; não conta como evidência)
  * Um id de sinal que o mapa não conhece aparece como está, sem quebrar.
@@ -40,6 +50,7 @@
     const u = unitOf(id);
     return `${num(value)}${u ? (u === '%' ? '%' : ` ${u}`) : ''}`;
   };
+  const VOCAB = ['sobe', 'desce', 'igual', 'presente', 'ausente', 'antes', 'depois'];
   const causeOf = (key) => str(key).split('>')[0];
   const ending = (s) => (/[.!?]$/.test(s) ? s : `${s}.`);
   const percent = (b) => (finite(b) ? `${Math.round(b * 100)}%` : '');
@@ -87,9 +98,7 @@
       if (!p) return 'Vou montar um jeito de testar isso.';
       const t = name(p.target);
       switch (p.action) {
-        case 'lembrar': return p.expect === 'antes'
-          ? `Vou conferir no meu histórico se ${expectation('lembrar', p.target, 'antes')}.`
-          : `Vou conferir no meu histórico se ${expectation('lembrar', p.target, p.expect)}.`;
+        case 'lembrar': return `Vou conferir no meu histórico se ${expectation('lembrar', p.target, p.expect)}.`;
         case 'esperar': return `Vou ficar de olho: se a suspeita estiver certa, ${expectation('esperar', p.target, p.expect)}.`;
         case 'medir': return `Vou medir ${t}: se a suspeita estiver certa, ${expectation('medir', p.target, p.expect)}.`;
         case 'intervir': return `Vou mexer em ${t} e ver o que acontece: se a suspeita estiver certa, ${expectation('intervir', p.target, p.expect)}.`;
@@ -105,13 +114,11 @@
       }
       const p = s.prediction;
       const weak = o.significant === false ? ' A diferença foi pequena, então pesa pouco.' : '';
+      if (!VOCAB.includes(o.observed)) return `Fiz o passo em ${name(o.target)}, mas não consegui classificar o que vi, então não tiro conclusão disso.`;
       const seen = expectation(o.action, o.target, o.observed);
       if (!p) return `Resultado: ${seen}.${weak}`;
       const hit = p.expect === o.observed;
       const lead = hit ? 'Bateu com o que eu esperava' : 'Não bateu com o que eu esperava';
-      if (o.observed === 'depois' && p.expect === 'antes') {
-        return `${lead}: ${name(o.target)} só subiu depois do sintoma, ou junto com ele.${weak}`;
-      }
       return `${lead}: ${seen}.${weak}`;
     },
 
@@ -146,7 +153,7 @@
     pedido(s) {
       const sig = s.signal ? ` para olhar ${name(s.signal)}` : '';
       const mins = finite(s.minutes) ? ` (uns ${num(s.minutes)} min)` : '';
-      const text = str(s.text) || 'me ajude com um teste';
+      const text = (str(s.text) || 'me ajude com um teste').trim().replace(/[.!?…]+$/, '');
       return `Um pedido: ${text}${sig}${mins}. Só assim consigo continuar.`;
     },
 
