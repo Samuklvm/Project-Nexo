@@ -81,5 +81,5 @@
     return { status: experimental ? 'apoiada' : 'correlacionada', winner: best.key, refuted };
   }
 
-  return { update, verdict, SUPPORT, REFUTE, RELATIVE, FLOOR };
+  return { update, verdict, relation, SUPPORT, REFUTE, RELATIVE, FLOOR };
 });

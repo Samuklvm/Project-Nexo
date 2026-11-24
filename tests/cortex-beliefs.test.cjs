@@ -179,3 +179,10 @@ test('vencedora relativa exige o piso e a folga: 0.45 não basta; 0.6 contra des
   assert.equal(v.status, 'aberta', 'a segunda conta mesmo sendo a desconhecida');
   assert.equal(v.winner, null);
 });
+
+test('relation exportada: bate, erra ou null (a mesma regra usada por update e verdict)', () => {
+  const [A] = hyps();
+  assert.equal(B.relation(A, out('lembrar', 'x', 'presente')), 'bate');
+  assert.equal(B.relation(A, out('medir', 'bench:b', 'igual')), 'erra');
+  assert.equal(B.relation(A, out('medir', 'bench:z', 'igual')), null);
+});
