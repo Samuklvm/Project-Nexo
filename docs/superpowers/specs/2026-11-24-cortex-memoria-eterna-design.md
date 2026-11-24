@@ -35,12 +35,12 @@ As hipóteses **não** podem estar escritas como uma lista fixa de respostas por
 1. **Memória eterna** no alcance que o Samuel escolheu (opção A, 24/11/2026): fica para sempre, intacto, tudo que o
    Nexo pensou, testou, concluiu e conversou, mais as medições por minuto. Do quadro a quadro dos jogos e dos rastros
    pesados ficam para sempre os **resumos** e os **trechos exatos que serviram de prova** de alguma conclusão.
-2. **Cortex v0**: o ciclo anomalia → hipóteses → plano → execução → atualização → conclusão, rodando no processo
+2. **Cortex v0** com **ritmo leve e profundo**: o ciclo anomalia → hipóteses → plano → execução → atualização → conclusão, rodando no processo
    principal, sem travar nada.
 3. **Mapa de relações do PC** que o Cortex usa para pensar e que **aprende**: confirma, derruba e cria relações novas
    a partir dos dados desta máquina.
 4. **Pensamento registrado**: cada passo do Cortex vira uma frase em português simples, guardada para sempre.
-5. **Caderno do Cortex** na interface: investigações em andamento e concluídas, com hipóteses, testes, provas e
+5. **Página do Cortex** na interface (página própria na barra lateral): investigações em andamento e concluídas, com hipóteses, testes, provas e
    conclusão.
 6. **Lugar reservado para a IA local** (parte 3): uma interface definida e vazia, que o Cortex consulta se existir.
 7. **Banco de PCs simulados** nos testes automáticos, para medir se o Cortex acerta causas conhecidas.
@@ -52,7 +52,8 @@ As hipóteses **não** podem estar escritas como uma lista fixa de respostas por
 - IA local, arena de evolução, Constelação, Vila.
 - Sensores novos de baixo nível (ETW, DPC/ISR, I/O por processo). A v0 usa só o que o Nexo já mede.
 - Substituir o `brain.js` ou o `store.js`. Eles continuam funcionando; o Cortex lê deles.
-- **Liberdade de reestruturar (Samuel, 24/11/2026):** o construtor pode mudar a estrutura inteira do laboratório e as
+- **Liberdade de reestruturar (Samuel, 24/11/2026; vale para quem desenvolve, o Claude, e não vira opção para quem
+  usa o app):** o construtor pode mudar a estrutura inteira do laboratório e as
   APIs internas do app (IPC, `lab.js`, `lab-system.cjs`, `preload.cjs`) se isso deixar o Cortex melhor, desde que as
   funções que a pessoa já usa continuem funcionando e os testes existentes continuem passando (ou sejam atualizados
   junto, com o mesmo rigor).
@@ -104,9 +105,30 @@ src/cortex/
   narrate.js      transforma cada passo em frase em português (puro, sem IA)
   cortex.cjs      o ciclo: recebe anomalias, investiga, chama o lab, grava tudo
   mind.js         lugar reservado da IA local: interface vazia (parte 3)
-src/view-cortex.js  Caderno do Cortex (interface)
+  rhythm.js       ritmo leve/profundo (puro)
+src/view-cortex.js  página do Cortex (interface)
 tests/cortex-*.test.cjs + tests/fixtures/pcs-simulados/
 ```
+
+### 0. Ritmo do Cortex: leve e profundo (pedido do Samuel, 24/11/2026)
+
+O Cortex nunca para, mas muda de ritmo conforme a pessoa está ou não usando o PC.
+
+- **Ritmo leve** (a pessoa está usando o PC, jogando etc.): **coleta e pensa de forma reduzida**. Continua gravando os
+  minutos e as lentidões na memória (em lotes maiores, para gravar no disco o mínimo), abre investigações, forja
+  hipóteses, consulta a memória com consultas pequenas e escreve os pensamentos. Não roda nada pesado: nada de testes
+  do lab, nada de ajustes, nada de busca de correlações, nada de cópia de segurança.
+- **Ritmo profundo** (a pessoa está inativa há um tempo **e não há jogo aberto em primeiro plano**): faz o trabalho
+  pesado: medir, intervir (conforme a chave de permissão), buscar correlações novas, cópia de segurança e limpeza da
+  câmera lenta. Jogo em primeiro plano com a pessoa parada conta como "só deu uma saidinha" ou cena do jogo: fica no
+  leve.
+- **Entrar no profundo:** pelo menos 10 min sem teclado/mouse (`powerMonitor.getSystemIdleTime()`) **e** nenhum jogo em
+  primeiro plano (o mesmo detector das sessões: `electron/probe.cjs` + `NexoSession.classifyForeground`, consultado
+  só quando o PC já está parado), confirmado em duas checagens seguidas. Na bateria, não intervém.
+- **Voltar na hora:** no profundo, checa a cada poucos segundos; mexeu no teclado/mouse ou apareceu jogo em primeiro
+  plano → volta ao leve **imediatamente** e cancela a ação em andamento (o lab já devolve tudo ao original quando
+  cancela). Um teste interrompido não vale como resultado: fica registrado como "interrompido" e é refeito depois.
+- O ritmo atual aparece na página do Cortex.
 
 ### 1. Memória eterna (`memory.cjs`)
 
@@ -168,7 +190,7 @@ tests/cortex-*.test.cjs + tests/fixtures/pcs-simulados/
   3. **medir** com um teste do lab sem alterar nada;
   4. **intervir** com um ajuste do espaço fechado do lab, medido A/B contra o ruído.
 - Escolhe a ação de maior **ganho esperado de informação ÷ custo** (tempo, risco, incômodo), respeitando: o nível de
-  risco que a pessoa liberou no lab; nada durante jogo; um orçamento diário de testes ativos.
+  risco liberado na chave de permissão; medir e intervir só no ritmo profundo; um orçamento diário de testes ativos.
 - Se nenhuma ação disponível separa as hipóteses que sobraram, o Cortex registra uma **necessidade de instrumento**
   ("preciso relacionar X com Y numa escala que não meço") e encerra honestamente.
 
@@ -177,10 +199,10 @@ tests/cortex-*.test.cjs + tests/fixtures/pcs-simulados/
 - Medir e intervir passam pelo `lab.js` e pelos testes que já existem, com as mesmas guardas (temperatura, bateria,
   erros do Windows) e a mesma volta ao estado original. O lab ganha uma opção para testar **só os ajustes pedidos**
   pelo Cortex.
-- **Autorização:** o Cortex tem uma chave própria no Caderno (o modo do lab só existe na tela do lab, não fica
+- **Autorização:** o Cortex tem uma chave própria na página do Cortex (o modo do lab só existe na tela do lab, não fica
   guardado): **Só observar** (padrão; olha a memória, espera repetir e mede, sem alterar nada), **Pedir antes**
-  (pede no Caderno antes de cada ajuste, até o risco que a pessoa escolher) e **Sozinho com o PC parado** (exige a frase
-  `ENTENDO O RISCO`, como o lab, e fica limitado a ajustes de risco baixo). "PC parado" = 10 min sem uso.
+  (pede na página do Cortex antes de cada ajuste, até o risco que a pessoa escolher) e **Sozinho com o PC parado** (exige a frase
+  `ENTENDO O RISCO`, como o lab, e fica limitado a ajustes de risco baixo). "PC parado" = ritmo profundo (seção 0).
 - Tudo que for alterado entra também no Diário de alterações (`journal.js`), como hoje.
 
 ### 6. Crença e conclusão (`beliefs.js`)
@@ -201,14 +223,19 @@ tests/cortex-*.test.cjs + tests/fixtures/pcs-simulados/
 - Se a IA local existir (parte 3), ela pode reescrever as frases de um jeito mais natural, mas o dado de base continua
   sendo o estruturado.
 
-### 8. Caderno do Cortex (interface)
+### 8. Página do Cortex (interface)
 
+- **Página própria na barra lateral** (pedido do Samuel, 24/11/2026): a casa da nova IA, de todas as integrações,
+  funções e mecânicas dela. As próximas partes (Oficina, IA local, Arena, Constelação) também moram aqui. As outras
+  páginas podem usar o Cortex (por exemplo, a Análise mostra um cartão com a investigação em andamento e leva para a
+  página), mas a parte principal é esta.
+- Mostra o ritmo atual (leve ou profundo) e a chave de permissão.
 - Lista de investigações (abertas, aguardando autorização, concluídas, não resolvidas). Cada uma mostra a pergunta,
   as hipóteses com estado e confiança, os testes feitos, as provas (com o trecho guardado) e a linha do tempo dos
   pensamentos.
 - Também mostra quanto a memória ocupa, as relações que esta máquina já provou e a fila de "instrumentos que faltaram".
-- Visual no padrão do Nexo (noite, vidro e aurora, neon, mais a estética de fantasia sombria). Onde ele mora e o
-  layout ficam para o construtor (ver "Decisões tomadas pelo Claude").
+- Visual no padrão do Nexo (noite, vidro e aurora, neon, mais a estética de fantasia sombria). O layout fica para o
+  construtor.
 
 ### 9. Lugar da IA local (`mind.js`)
 
@@ -235,13 +262,13 @@ tests/cortex-*.test.cjs + tests/fixtures/pcs-simulados/
   erros que já existe (`electron/error-log.cjs`), e daí para o servidor como qualquer outro erro do app. Os dados do
   PC e da memória continuam sem sair.
 - Critérios de aceite dos PCs simulados (90% / 70% / zero falso / "não resolvido").
-- O Caderno do Cortex entra como uma seção nova dentro da página de Análise (que na 0.12 vai se fundir com a
-  Otimização), e não como página própria.
+- Ritmo profundo depois de 10 min parado e sem jogo em primeiro plano (duas checagens seguidas); na bateria, sem
+  intervenções.
 
 ## Fica para o construtor
 
 Esquema exato das tabelas, limiares de crença, tamanho da câmera lenta, valores do orçamento, fórmula exata de ganho
-de informação, conteúdo da semente do mapa e o layout do Caderno.
+de informação, conteúdo da semente do mapa e o layout da página do Cortex.
 
 ## Riscos
 

@@ -10,7 +10,8 @@ honesto (ou "não achei").
 **Architecture:** módulos puros e UMD em `src/cortex/` (mapa de relações, forjador, crença, planejador, narrador e o
 motor de investigação com dependências injetadas), testados contra PCs simulados. A memória (`node:sqlite`) e a
 orquestração moram no processo principal (`src/cortex/memory.cjs`, `src/cortex/cortex.cjs`), ligadas ao `main.cjs`
-por IPC. A interface alimenta o Cortex (minutos, lentidões, sessões, lab) e mostra o Caderno na página de Análise.
+por IPC, com um ritmo leve (pessoa usando o PC: coleta e pensa pouco) e um profundo (pessoa parada e sem jogo em
+primeiro plano: testa, intervém, busca correlações). A interface alimenta o Cortex (minutos, lentidões, sessões, lab) e mostra tudo numa página própria do Cortex.
 
 **Tech Stack:** Electron 45 (Node 24 no principal), `node:sqlite` (`DatabaseSync` e `backup`), `node:test` (Node 22 nos
 testes), JavaScript sem dependências novas.
@@ -28,8 +29,11 @@ testes), JavaScript sem dependências novas.
 - Nunca escrever "provavelmente", "talvez seja", "deve ser" em textos do Cortex. Estados permitidos:
   `suspeita`, `correlacionada`, `apoiada`, `derrubada`, `nao-resolvido`.
 - "Apoiada" só com prova de teste (`medir` ou `intervir`) cujo resultado passou do ruído (`NexoExperiment`).
-- Intervenção só dentro do espaço fechado do laboratório; nunca com o PC em uso (ocioso ≥ 10 min por
-  `powerMonitor.getSystemIdleTime()`); no máximo **3 ações ativas (`medir`/`intervir`) por dia**.
+- Intervenção só dentro do espaço fechado do laboratório. `medir`/`intervir`, busca de correlações, backup e poda só
+  no **ritmo profundo**: ≥ 10 min sem uso (`powerMonitor.getSystemIdleTime() >= 600`) **e** sem jogo em primeiro
+  plano, em 2 checagens seguidas; volta ao leve na hora em que a pessoa mexe ou um jogo aparece, cancelando a ação.
+  No máximo **3 ações ativas por dia**; na bateria, nada de `intervir`.
+- A página do Cortex é **própria, na barra lateral** (`data-view="cortex"`), e não uma seção da Análise.
 - Nada sai do PC; falhas do Cortex vão para `errorLog.record({ source: 'cortex', ... })`.
 - Textos públicos (política de privacidade) em PT e EN. **Nada de CHANGELOG**: anotar em
   `claude/pendente-proxima-versao.md` (doc do projeto).
@@ -38,13 +42,14 @@ testes), JavaScript sem dependências novas.
 ## Review Focus
 
 1. **Banco corrompido, travado ou disco cheio:** o Cortex se desliga sozinho, registra o erro e o app segue normal;
-   na abertura seguinte tenta a cópia de segurança mais recente (Task 1 e Task 8).
+   na abertura seguinte tenta a cópia de segurança mais recente (Task 1 e Task 9).
 2. **App fechado no meio de uma investigação:** na abertura seguinte a investigação continua de onde parou, só
    lendo os registros (Task 7).
 3. **A mesma lentidão repetindo muitas vezes:** vira prova nova da investigação aberta, não dezenas de investigações
    (Task 7).
-4. **Pessoa começa a jogar com um teste na fila:** ação ativa nunca começa sem ociosidade; se a ociosidade acabar
-   antes de começar, fica para depois (Task 6 e Task 8).
+4. **Pessoa volta no meio de um teste, ou começa a jogar com um teste na fila:** ação ativa nunca começa fora do
+   ritmo profundo; se a pessoa mexe durante o teste, ele é cancelado na hora, o lab devolve tudo e o resultado fica
+   "interrompido", sem virar prova (Task 6, 8 e 9).
 5. **Anos de memória:** consultas sempre por intervalo e com limite; um dia de minutos entre 500 mil linhas responde
    em < 200 ms (Task 1).
 
@@ -74,7 +79,8 @@ testes), JavaScript sem dependências novas.
   - `memory.backupDaily() -> Promise<string|null>` (arquivo criado ou `null` se já houve hoje); guarda as 3 últimas em
     `dir/backups/`.
   - `memory.importLegacy({ history: MinuteRow[], brain: object }) -> { imported: number }` (idempotente via `meta`).
-  - `memory.sizeBytes() -> number`, `memory.flush()`, `memory.close()`, `memory.getMeta(key)`, `memory.setMeta(key, value)`.
+  - `memory.setFlushMs(ms: number)` (o ritmo leve usa 30000; o profundo, 4000),
+    `memory.sizeBytes() -> number`, `memory.flush()`, `memory.close()`, `memory.getMeta(key)`, `memory.setMeta(key, value)`.
   - `latest/list/minutes/events` são a API de "lembrar" do spec: é por elas que a IA local (parte 3) vai ler a memória.
 
 - [ ] **Step 1: Write the failing tests** em `tests/cortex-memory.test.cjs` (pasta temporária por teste):
@@ -204,13 +210,13 @@ testes), JavaScript sem dependências novas.
   - `actionsFor(hyps) -> Action[]` (uma por alvo distinto nas previsões, sem repetir).
   - `expectedGain(action, hyps, beliefs) -> number` — redução esperada da entropia (bits) sobre as crenças, agrupando
     as hipóteses pelo `expect` que preveem para aquele alvo (sem previsão = grupo "indiferente", espalhado).
-  - `choose(hyps, beliefs, ctx: { permission: 'observar'|'pedir'|'sozinho', maxRisk: 'baixo'|'moderado'|'alto', activeToday: number, idle: boolean, done: string[] }) -> { action: Action, needsApproval: boolean } | { need: { between: key[], reason: string } } | { stop: 'orcamento' }`
+  - `choose(hyps, beliefs, ctx: { permission: 'observar'|'pedir'|'sozinho', maxRisk: 'baixo'|'moderado'|'alto', activeToday: number, deep: boolean, onBattery: boolean, done: string[] }) -> { action: Action, needsApproval: boolean } | { need: { between: key[], reason: string } } | { stop: 'orcamento' }`
     — melhor `gain / cost` entre as ações ainda não feitas (`done` = `type:target`); `intervir` some com
-    `permission = 'observar'` ou risco acima de `maxRisk`; `medir`/`intervir` somem com `!idle` ou `activeToday >= 3`;
+    `permission = 'observar'` ou risco acima de `maxRisk`; `medir`/`intervir` somem com `!deep` ou `activeToday >= 3`; `intervir` some com `onBattery`;
     `needsApproval = (type === 'intervir' && permission === 'pedir')`; melhor ganho < `MIN_GAIN = 0.05` bits → `need`.
 - [ ] **Step 1: Write the failing tests:** entre `lembrar` que não separa nada e `medir` que separa 2 hipóteses
   igualmente prováveis, escolhe `medir`; com mesma separação escolhe a mais barata; `observar` nunca devolve `intervir`;
-  `!idle` nunca devolve `medir`/`intervir` (Review Focus 4); `activeToday = 3` idem; nada que separe → `need` com as
+  `deep:false` nunca devolve `medir`/`intervir` (Review Focus 4); `onBattery` nunca devolve `intervir`; `activeToday = 3` idem; nada que separe → `need` com as
   hipóteses empatadas; `pedir` + `intervir` → `needsApproval: true`.
 - [ ] **Step 2–4:** falhar, implementar, passar.
 - [ ] **Step 5: Commit** — `git commit -m "Cortex: planejador por ganho de informação"`
@@ -247,7 +253,25 @@ testes), JavaScript sem dependências novas.
 - [ ] **Step 4: Rodar e ver passar** — `node --test tests/cortex-engine.test.cjs tests/cortex-sim.test.cjs`.
 - [ ] **Step 5: Commit** — `git commit -m "Cortex: motor de investigação e PCs simulados"`
 
-### Task 8: Lab como braço + Cortex no processo principal
+### Task 8: Ritmo leve e profundo (`src/cortex/rhythm.js`)
+
+**Files:** Create `src/cortex/rhythm.js` (UMD → `NexoRhythm`); Test `tests/cortex-rhythm.test.cjs`; Modify `package.json`.
+
+**Interfaces:**
+- Produces:
+  - `createRhythm({ enterIdleSec = 600, confirmChecks = 2, exitIdleSec = 5 } = {}) -> { check({ idleSec: number, gameInForeground: boolean|null }) -> { state: 'leve'|'profundo', changed: boolean, reason: string }, state() -> 'leve'|'profundo' }`
+  - Regras: começa `leve`; vai a `profundo` só depois de `confirmChecks` checagens seguidas com `idleSec >= enterIdleSec`
+    **e** `gameInForeground === false` (`null` = não deu para saber → conta como jogo, fica leve); volta a `leve` na
+    primeira checagem com `idleSec < exitIdleSec` **ou** `gameInForeground === true`. `reason` em português simples
+    ("você voltou", "jogo em primeiro plano", "parado há 12 min, sem jogo aberto").
+- [ ] **Step 1: Write the failing tests:** parado 11 min sem jogo 1 vez → ainda `leve`; 2 vezes → `profundo` com
+  `changed:true`; parado 30 min **com** jogo em primeiro plano → sempre `leve`; `gameInForeground:null` → `leve`; no
+  `profundo`, `idleSec: 2` → `leve` na mesma checagem; no `profundo`, jogo aparece → `leve`; contador zera se a
+  ociosidade cair entre as checagens.
+- [ ] **Step 2–4:** falhar, implementar, passar (`node --test tests/cortex-rhythm.test.cjs`).
+- [ ] **Step 5: Commit** — `git commit -m "Cortex: ritmo leve e profundo"`
+
+### Task 9: Lab como braço + Cortex no processo principal
 
 **Files:**
 - Modify: `src/lab.js` (opção `onlyKnobs` em `run` e `chooseCandidates`), `tests/lab.test.cjs`
@@ -255,25 +279,31 @@ testes), JavaScript sem dependências novas.
 - Modify: `main.cjs` (criar o Cortex, IPC, tique, backup diário), `preload.cjs`, `tests/main-ipc.test.cjs`, `package.json`
 
 **Interfaces:**
-- Consumes: Tasks 1–7; `NexoLab.run(labSystem, opts)`, `labSystem.quiet()`, `labSystem.bench(mode)`,
+- Consumes: Tasks 1–8; `NexoLab.run(labSystem, opts)`, `labSystem.quiet()`, `labSystem.bench(mode)`,
   `NexoExperiment.summarize/compare` (o que o lab já usa para decidir "acima do ruído"), `errorLog.record`,
   `createOnceADay`, `powerMonitor.getSystemIdleTime()`.
 - Produces:
   - `NexoLab.chooseCandidates({ ..., only?: string[] })` e `NexoLab.run(system, { ..., onlyKnobs?: string[] })`: com a
     lista, só esses ajustes viram braços; `combos` forçado a 0; sem a lista, comportamento idêntico ao de hoje.
-  - `createCortex({ memory, labRun, bench, idle: () => boolean, busy: () => boolean, now, emit, log }) ->`
+  - `createCortex({ memory, labRun, labCancel: () => void, bench, rhythm, idleSec: () => number, gameInForeground: () => Promise<boolean|null>, onBattery: () => boolean, busy: () => boolean, now, emit, log }) ->`
     `{ observeMinute(m), observeEvent(e), observeSession({ id, summary, samples }), tick() -> Promise<void>, settings() , setSettings({ permission, maxRisk, consent? }), approve(inv), deny(inv), list({ limit }), get(inv), stats() }`
     - `act('lembrar')` consulta `memory.minutes/events`; `act('esperar')` marca `esperando-repetir` (a próxima lentidão
       igual vira o resultado); `act('medir')` = `quiet()` + 5 rodadas de `bench(modo)` antes e depois, decide com
-      `NexoExperiment`; `act('intervir')` = `labRun({ onlyKnobs: [knob], maxArms: 1, combos: 0, autonomy: 'assistido', allowRisk, consent, requireRestorePoint: risk !== 'baixo' })`
+      `NexoExperiment` (só no profundo); `act('intervir')` = `labRun({ onlyKnobs: [knob], maxArms: 1, combos: 0, autonomy: 'assistido', allowRisk, consent, requireRestorePoint: risk !== 'baixo' })`
       (nunca adota; o lab já volta tudo ao original e o Diário registra).
     - Configuração em `memory.setMeta('cortex.config')` como registro `ajuste` (eterno): `permission` padrão
       `'observar'`; `'sozinho'` exige `consent === NexoLab.CONSENT_PHRASE`; com `'sozinho'` o teto de risco é
       `'baixo'`; com `'pedir'` vale o `maxRisk` escolhido.
-    - `tick()` (a cada 60 s, `setInterval(...).unref()`): não faz nada se `busy()` (lab, análise profunda, teste com
-      reinício ou benchmark rodando); dá no máximo 1 passo por investigação aberta; roda `mineCorrelations` 1×/dia
-      sobre os últimos 14 dias e abre investigação `curiosidade` para cada relação nova; `memory.backupDaily()` e
-      `memory.camera.prune()` 1×/dia.
+    - Ritmo: a cada 60 s no leve (e a cada 5 s no profundo) chama `rhythm.check({ idleSec: idleSec(), gameInForeground })`
+      — `gameInForeground()` só é consultado quando `idleSec() >= 600` (no leve) ou a cada checagem (no profundo), para
+      não gastar nada com a pessoa usando o PC. Mudou para `leve` com ação ativa rodando → `labCancel()` / interrompe
+      as rodadas de `bench` (checa `rhythm.state()` entre rodadas) e grava o `experimento` como `interrompido` (não
+      vira `prova`). Mudou de ritmo → `memory.setFlushMs(...)`, pensamento "voltei ao ritmo leve: você voltou" e
+      `emit('cortex:update')`.
+    - `tick()`: não faz nada se `busy()` (lab da pessoa, análise profunda, teste com reinício ou benchmark rodando).
+      **Leve:** grava, anexa/abre investigações, forja hipóteses, ações `lembrar` (consultas com limite) e pensamentos,
+      no máximo 1 passo por investigação. **Profundo:** além disso, `medir`/`intervir`, `mineCorrelations` 1×/dia sobre
+      os últimos 14 dias (abre `curiosidade` para cada relação nova), `memory.backupDaily()` e `memory.camera.prune()`.
     - O que abre investigação: `observeEvent` de `lentidao` (sintoma pelo `kind` do episódio: `cpu→cpu`,
       `memory→mem`, `thermal→temp`, `throttle→clock_queda`); `observeSession` com achado (gargalo do `NexoBottleneck`:
       `gpu*→gpu`, `gpu-calor`/`cpu-calor→temp`, `cpu-thread`/`cpu-total→cpu`, `memoria→mem`; travadas→`travadas`;
@@ -287,23 +317,28 @@ testes), JavaScript sem dependências novas.
       não abrir, `createCortex` devolve um Cortex "desligado" (todos os métodos são no-op e `stats().ativo === false`).
   - IPC (via `registerIpcHandler`): `cortex:minute`, `cortex:event`, `cortex:session`, `cortex:import-legacy`,
     `cortex:list`, `cortex:get`, `cortex:stats`, `cortex:settings`, `cortex:set-settings`, `cortex:approve`,
-    `cortex:deny`; empurra `cortex:update` com `sendToWindow` quando uma investigação muda.
-  - `preload.cjs` (`nexoDesktop`): `cortexMinute, cortexEvent, cortexSession, cortexImportLegacy, cortexList, cortexGet, cortexStats, cortexSettings, cortexSetSettings, cortexApprove, cortexDeny, onCortexUpdate`.
+    `cortex:deny`, `cortex:rhythm`; empurra `cortex:update` com `sendToWindow` quando uma investigação muda.
+  - `preload.cjs` (`nexoDesktop`): `cortexMinute, cortexEvent, cortexSession, cortexImportLegacy, cortexList, cortexGet, cortexStats, cortexSettings, cortexSetSettings, cortexApprove, cortexDeny, cortexRhythm, onCortexUpdate`.
 - [ ] **Step 1: Write the failing tests:** `lab.test.cjs` — `chooseCandidates({ only: ['perfepp'] })` só devolve
   `perfepp`; `run` com `onlyKnobs` testa 1 braço e 0 combinações; os testes antigos do lab continuam iguais.
   `cortex-main.test.cjs` (memória em pasta temporária, `labRun`/`bench` falsos): minuto e lentidão entram na memória;
   com `permission:'observar'` nenhum `labRun`; `'sozinho'` sem a frase é recusado; `busy()` verdadeiro → `tick` não age;
-  `idle()` falso → nenhum `bench`/`labRun` (Review Focus 4); sessão com achado `cpu-thread` abre investigação de `cpu`
+  ritmo leve → nenhum `bench`/`labRun` (Review Focus 4); pessoa "volta" (idleSec 2) no meio de um `medir` → `bench`
+  para, experimento `interrompido`, nenhuma `prova` nova; PC parado 20 min com jogo em primeiro plano → nunca chama
+  `bench`/`labRun`; sessão com achado `cpu-thread` abre investigação de `cpu`
   e sessão `equilibrado` não abre; evento `lab` não abre investigação e grava evento de relação; memória que não abre → Cortex desligado e um `log` com
-  `source:'cortex'` (Review Focus 1). `main-ipc.test.cjs` — os 11 canais existem e `cortex:stats` responde.
+  `source:'cortex'` (Review Focus 1). `main-ipc.test.cjs` — os 12 canais existem e `cortex:stats` responde.
 - [ ] **Step 2: Rodar e ver falhar.**
 - [ ] **Step 3: Implementar** (em `main.cjs`: criar a memória em `path.join(app.getPath('userData'), 'cortex')` depois de
   `app.whenReady`; `busy` usa `labState.running`, `activeBench`, `deepAnalysis.isRunning()` e `rebootTest.active()`;
-  `idle` = `powerMonitor.getSystemIdleTime() >= 600`).
+  `idleSec` = `powerMonitor.getSystemIdleTime()`; `onBattery` = `powerMonitor.isOnBatteryPower()`; `labCancel` marca
+  o `signal` da execução do Cortex; `gameInForeground` faz uma consulta única do primeiro plano com o mesmo detector do
+  `electron/probe.cjs` (Windows) / `linux.foreground()` (Linux) e classifica com o `match` da biblioteca +
+  `NexoSession.classifyForeground`; erro na consulta → `null`).
 - [ ] **Step 4: Rodar e ver passar** — `npm test`.
 - [ ] **Step 5: Commit** — `git commit -m "Cortex: processo principal, IPC e lab como braço"`
 
-### Task 9: Alimentar o Cortex pela interface
+### Task 10: Alimentar o Cortex pela interface
 
 **Files:**
 - Modify: `src/brain.js` (`create(saved, { onEpisode })`), `tests/brain.test.cjs`
@@ -311,7 +346,7 @@ testes), JavaScript sem dependências novas.
   `src/view-lab.js` (mandar o resultado do lab), `dev/mock-bridge.js` (versões falsas dos métodos novos)
 
 **Interfaces:**
-- Consumes: métodos do `nexoDesktop` da Task 8.
+- Consumes: métodos do `nexoDesktop` da Task 9.
 - Produces: `NexoBrain.create(saved, { onEpisode?: (episode) => void })` — chamado em `closeEpisode` com o episódio
   fechado (mesma forma que já vai para `state.episodes`).
 - [ ] **Step 1: Write the failing test** em `tests/brain.test.cjs`: 4 minutos com CPU ≥ 85 e depois 3 normais chamam
@@ -327,18 +362,19 @@ testes), JavaScript sem dependências novas.
 - [ ] **Step 4: Rodar e ver passar** — `npm test` (inclui `syntax.test.cjs` e `security-static.test.cjs`).
 - [ ] **Step 5: Commit** — `git commit -m "Cortex: interface alimenta a memória e as investigações"`
 
-### Task 10: Caderno do Cortex (interface)
+### Task 11: Página do Cortex (interface)
 
 **Files:**
-- Modify: `index.html` (seção nova dentro de `data-view-panel="analysis"`, script `src/view-cortex.js` e os módulos
+- Modify: `index.html` (botão novo na barra lateral `data-view="cortex"`, página `data-view-panel="cortex"`, cartão
+  pequeno na Análise com a investigação em andamento que leva para a página, script `src/view-cortex.js` e os módulos
   `src/cortex/relations.js`, `src/cortex/narrate.js` para rótulos), `style.css`
 - Create: `src/view-cortex.js`
 - Modify: `dev/mock-bridge.js` (2 investigações de exemplo: uma `apoiada`, uma `aguardando`)
 
 **Interfaces:**
 - Consumes: `nexoDesktop.cortexList/cortexGet/cortexStats/cortexSettings/cortexSetSettings/cortexApprove/cortexDeny/onCortexUpdate`.
-- Produces: seção "Caderno do Cortex" com:
-  - topo: estado (ativo/desligado), memória ocupada (MB), dias de memória, relações provadas nesta máquina;
+- Produces: página própria do Cortex (a casa da nova IA; as próximas partes vão morar aqui) com:
+  - topo: estado (ativo/desligado), ritmo atual (leve/profundo, com o motivo), memória ocupada (MB), dias de memória, relações provadas nesta máquina;
   - chave de permissão `Só observar` (padrão) / `Pedir antes de testar ajustes` (+ teto de risco) /
     `Testar ajustes sozinho com o PC parado` (pede a frase `ENTENDO O RISCO`, teto baixo);
   - lista de investigações por estado (abertas, aguardando você, concluídas, não resolvidas); ao abrir: pergunta,
@@ -346,14 +382,14 @@ testes), JavaScript sem dependências novas.
     pensamentos; botões `Pode testar` / `Agora não` quando `aguardando`;
   - "Instrumentos que faltaram" (registros `necessidade`).
   - Visual no padrão do Nexo (vidro/aurora, neon, toque de fantasia sombria). Sem "provavelmente" em nenhum texto.
-- [ ] **Step 1: Rodar o preview** — `npm run preview` e abrir a página gerada; seção ainda não existe.
-- [ ] **Step 2: Implementar** a seção, o `view-cortex.js` (IIFE como as outras `view-*.js`, usando `escapeHtml` para tudo
+- [ ] **Step 1: Rodar o preview** — `npm run preview` e abrir a página gerada; a página ainda não existe.
+- [ ] **Step 2: Implementar** a página, o botão da barra lateral, o cartão da Análise, o `view-cortex.js` (IIFE como as outras `view-*.js`, usando `escapeHtml` para tudo
   que vem da memória) e o estilo.
 - [ ] **Step 3: Verificar** — `npm run preview` gera sem erro; com o mock, as 2 investigações aparecem, os botões
   chamam os métodos falsos e a chave de permissão pede a frase; `npm test` passa (`syntax`, `security-static`).
-- [ ] **Step 4: Commit** — `git commit -m "Cortex: Caderno na página de Análise"`
+- [ ] **Step 4: Commit** — `git commit -m "Cortex: página própria"`
 
-### Task 11: Privacidade, exportação e anotação para a release
+### Task 12: Privacidade, exportação e anotação para a release
 
 **Files:**
 - Modify: `PRIVACIDADE.md`, `PRIVACY.md`, `src/view-settings.js` (exportar inclui uma cópia da memória; texto do botão
@@ -362,7 +398,7 @@ testes), JavaScript sem dependências novas.
 - Project doc: `claude/pendente-proxima-versao.md`
 
 **Interfaces:**
-- Consumes: Task 1 (`backup`), Task 8.
+- Consumes: Task 1 (`backup`), Task 9.
 - Produces: canal `cortex:export` → `{ ok, file }`; método `cortexExport()` no `nexoDesktop`.
 - [ ] **Step 1: Write the failing test** em `tests/main-ipc.test.cjs`: `cortex:export` com `dialog` falso devolve um
   arquivo que abre com `DatabaseSync` e tem as mesmas contagens de `registros`.
