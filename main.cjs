@@ -1273,6 +1273,7 @@ async function runCpuBench(mode, ms) {
 registerIpcHandler('bench:cpu', async (_event, options) => {
   const mode = options?.mode;
   if (!['single', 'multi', 'burst'].includes(mode)) throw new Error('Modo de teste inválido.');
+  await yieldCortex();
   if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
   const ms = Math.min(3000, Math.max(200, Math.round(Number(options.ms) || 1200)));
   return runCpuBench(mode, ms);
@@ -2197,6 +2198,7 @@ registerIpcHandler('lab:preflight', async () => {
   return { ...pre, activeGuid: undefined };
 });
 registerIpcHandler('lab:run', async (_event, options) => {
+  await yieldCortex();
   if (labState.running) throw new Error('O laboratório já está rodando.');
   if (await rebootTest.active()) throw new Error('Há um teste com reinício em andamento; termine ou cancele ele antes (as medidas se misturariam).');
   if (activeBench) throw new Error('Há um teste de desempenho em andamento.');
@@ -2348,6 +2350,7 @@ const deepAnalysis = createDeepAnalysis({
   }
 });
 registerIpcHandler('analysis:deep-run', async () => {
+  await yieldCortex();
   if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
   if (activeBench) throw new Error('Há um teste de desempenho em andamento; espere ele terminar.');
   if (await rebootTest.active()) throw new Error('Há um teste com reinício em andamento; termine ou cancele ele antes (as medidas se misturariam).');
@@ -2477,6 +2480,7 @@ const rebootTest = createRebootTest({
 const cleanRebootValue = (value) => (value === null || (typeof value === 'number' && Number.isFinite(value)) || (typeof value === 'string' && value.length <= 200) ? value : undefined);
 registerIpcHandler('reboot:status', async () => rebootTest.status());
 registerIpcHandler('reboot:start', async (_event, options) => {
+  await yieldCortex();
   if (labState.running) throw new Error('O laboratório está medindo agora; espere ele terminar.');
   const changes = (Array.isArray(options?.changes) ? options.changes : []).slice(0, 160).map((change) => ({
     id: String(change?.id || '').slice(0, 48), label: String(change?.label || '').slice(0, 120), beforeLabel: String(change?.beforeLabel || '').slice(0, 80), afterLabel: String(change?.afterLabel || '').slice(0, 80),
@@ -2550,6 +2554,14 @@ async function startCortex() {
   });
   await cortex.start({ snapshot: getSystemSnapshot, version: app.getVersion() });
 }
+/**
+ * A pessoa vai começar o lab, um benchmark, a análise profunda, a otimização ou um teste com reinício: corta o teste
+ * do Cortex (vira "interrompido", não prova) e espera ele largar o PC — o lab do Cortex volta ao original antes.
+ */
+async function yieldCortex() {
+  if (!cortex.cancelActive()) return;
+  for (let i = 0; i < 120 && (cortex.rhythm().testando || cortexLab.signal); i += 1) await new Promise((resolve) => { setTimeout(resolve, 500); });
+}
 const cortexInv = (inv) => { const n = Number(inv); if (!Number.isInteger(n) || n <= 0) throw new Error('Investigação inválida.'); return n; };
 registerIpcHandler('cortex:minute', async (_event, minute) => { cortex.observeMinute(minute); return { ok: true }; });
 registerIpcHandler('cortex:event', async (_event, event) => { cortex.observeEvent(event); return { ok: true }; });
@@ -2622,6 +2634,7 @@ registerIpcHandler('opt:plan', async (_event, options) => {
 });
 registerIpcHandler('opt:run', async (_event, options) => {
   if (optState.running) throw new Error('A otimização já está rodando.');
+  await yieldCortex();
   const busy = await optimizerBusy();
   if (busy) throw new Error(busy);
   const stored = optState.plan;

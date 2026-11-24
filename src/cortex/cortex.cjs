@@ -15,9 +15,14 @@
  *     emit       (canal, dados) => void   ('cortex:update' quando uma investigação ou o ritmo muda)
  *     log        ({ source: 'cortex', level, message, context: { etapa } }) => void
  *
- * Ritmo: no leve checa a cada 60 s e só consulta o primeiro plano com o PC parado há 10 min; no profundo checa a cada 5 s
- * e consulta sempre. Leve: grava, abre/anexa, forja, lembra (consultas com limite) e pensa, 1 passo por investigação.
- * Profundo: também mede e intervém, minera correlações 1x/dia e faz a cópia de segurança e a limpeza da câmera.
+ * Ritmo: no leve checa a cada 60 s e só consulta o primeiro plano com o PC parado há 10 min; no profundo checa a
+ * ociosidade a cada 5 s e o primeiro plano a cada 30 s. Leve: grava, abre/anexa, forja, lembra (consultas com limite) e
+ * pensa, 1 passo por investigação. Profundo: também mede e intervém, minera correlações 1x/dia, faz a cópia de
+ * segurança e a limpeza da câmera, e guarda referências dos testes (meta 'cortex.ref.<teste>', uma por tique, só de
+ * testes que nenhuma investigação aberta vai medir). Medir = 5 rodadas contra a referência; sem referência (ou com mais
+ * de 30 dias) as rodadas viram a referência e o resultado é 'sem-referencia' (o motor grava 'invalido', sem prova).
+ * cancelActive(): o lab/benchmark/análise da pessoa corta o teste do Cortex. A fila de anomalias de eventos gravados
+ * sobrevive a reiniciar (meta 'cortex.ultima-anomalia').
  * Configuração { permission, maxRisk, chosen } em memory.setMeta('cortex.config') e num registro 'ajuste' a cada escolha
  * da pessoa (setSettings vem sempre da tela: chosen = true). Antes da primeira escolha, o padrão segue a IA local
  * (meta 'ia-local.aceita', parte 3): aceita → 'sozinho' (teto baixo); senão → 'observar'. 'sozinho' é sempre teto baixo
@@ -40,6 +45,9 @@ const RHYTHM_MS = { leve: 60000, profundo: 5000 };
 const TICK_MS = { leve: 60000, profundo: 15000 };
 const FLUSH_MS = { leve: 60000, profundo: 5000 }; // leve: lotes maiores, disco o mínimo possível
 const BENCH_ROUNDS = 5;
+const REF_MAX_AGE = 30 * DAY; // referência mais velha que isso é refeita
+const FG_DEEP_MS = 30000; // no profundo, o primeiro plano (PowerShell) só a cada 30 s; a ociosidade pega a volta antes
+const QUEUE_KINDS = ['lentidao', 'sessao']; // eventos que viram anomalia (e são relidos depois de reiniciar)
 const MINE_DAYS = 14;
 const QUEUE_MAX = 50;
 const LOG_QUIET_MS = 10 * MIN; // o mesmo erro da mesma etapa não enche o registro (o profundo checa a cada 5 s)
@@ -282,27 +290,75 @@ function createCortex(deps = {}) {
     return { observed: 'ausente', significant: looks.length >= 3 && frac <= 0.2 };
   }
 
+  const readRef = (mode) => { try { const r = JSON.parse(memory.getMeta(`cortex.ref.${mode}`) || 'null'); return r && Array.isArray(r.values) && finite(r.at) ? r : null; } catch (_) { return null; } };
+  const freshRef = (ref) => !!ref && now() - ref.at <= REF_MAX_AGE;
+  function writeRef(mode, values) {
+    const sorted = values.slice().sort((a, b) => a - b);
+    const ref = { values, median: sorted[Math.floor(sorted.length / 2)], at: now() };
+    if (!memory.setMeta(`cortex.ref.${mode}`, JSON.stringify(ref))) log('referencia', `a referência de ${mode} não gravou`);
+  }
+  /** Rodadas do teste; null se cortadas (a pessoa voltou, o lab/benchmark/análise dela começou, ou ficou ocupado). */
+  async function rounds(mode) {
+    const quiet = typeof deps.quiet === 'function' ? deps.quiet : async () => ({ ok: true });
+    const calm = await quiet();
+    if (calm && calm.ok === false) throw new Error('outro programa usou o processador durante a medição');
+    const out = [];
+    const cut = async () => active.interrupted || !deep() || !!(await busy());
+    for (let i = 0; i < BENCH_ROUNDS; i++) {
+      if (await cut()) return null;
+      out.push(Number(await bench(mode)));
+      if (await cut()) return null;
+    }
+    return out;
+  }
+
+  /**
+   * Medir = 5 rodadas agora contra a referência guardada deste teste (NexoExperiment, mesma regra de ruído). Sem
+   * referência, ou com mais de 30 dias: as rodadas viram a referência e o resultado não vale como evidência.
+   */
   async function measure(target) {
     const mode = String(target).replace(/^bench:/, '');
     if (!Lab.BENCHES.includes(mode)) throw new Error(`teste desconhecido: ${mode}`);
-    const quiet = typeof deps.quiet === 'function' ? deps.quiet : async () => ({ ok: true });
-    const sides = { antes: [], depois: [] };
-    for (const side of ['antes', 'depois']) {
-      const calm = await quiet();
-      if (calm && calm.ok === false) throw new Error('outro programa usou o processador durante a medição');
-      for (let i = 0; i < BENCH_ROUNDS; i++) {
-        if (active.interrupted || !deep()) return { observed: 'interrompido' };
-        sides[side].push(Number(await bench(mode)));
-        if (active.interrupted || !deep()) return { observed: 'interrompido' };
-      }
-    }
-    const r = Experiment.compare(sides.antes, sides.depois);
+    const ref = readRef(mode);
+    const values = await rounds(mode);
+    if (!values) return { observed: 'interrompido' };
+    if (!freshRef(ref)) { writeRef(mode, values); return { observed: 'sem-referencia' }; }
+    const r = Experiment.compare(ref.values, values);
     const observed = r.verdict === 'melhorou' ? 'sobe' : r.verdict === 'piorou' ? 'desce' : r.verdict === 'sem-diferenca' ? 'igual' : null;
     if (!observed) throw new Error(`medição ${r.verdict}`);
-    const evidenceId = memory.record('trecho', { data: { bench: mode, antes: sides.antes, depois: sides.depois, verdict: r.verdict, deltaPct: r.deltaPct, noisePct: r.noisePct } });
+    const evidenceId = memory.record('trecho', { data: { bench: mode, referencia: ref.values, referenciaEm: ref.at, agora: values, verdict: r.verdict, deltaPct: r.deltaPct, noisePct: r.noisePct } });
     const out = { observed, significant: observed !== 'igual' && r.confidence !== 'baixa' };
     if (evidenceId > 0) out.evidenceId = evidenceId;
     return out;
+  }
+
+  /** Testes que algum caminho do mapa manda medir (causa → bench:), sem os ajustes. */
+  const measurable = () => [...new Set(map.edges().filter((e) => String(e.to).startsWith('bench:') && !String(e.from).startsWith('ajuste:')).map((e) => e.to.slice(6)))]
+    .filter((b) => Lab.BENCHES.includes(b));
+  /** Testes que uma investigação aberta vai medir: a referência deles não é feita agora (sairia "contaminada"). */
+  function benchesInUse() {
+    const used = new Set();
+    for (const r of memory.list('investigacao', { limit: 1000 })) {
+      if (memory.latest('conclusao', { inv: r.id })) continue;
+      for (const h of memory.list('hipotese', { inv: r.id, limit: 1000 })) for (const p of (h.data && h.data.predictions) || []) if (p.action === 'medir') used.add(String(p.target).slice(6));
+    }
+    return used;
+  }
+  /** No profundo, uma referência por tique: a que falta ou está velha, de um teste que nenhuma investigação aberta mede. */
+  async function buildReference() {
+    if (active || !deep() || await busy()) return;
+    const used = benchesInUse();
+    const day = today();
+    const mode = measurable().find((b) => !used.has(b) && !freshRef(readRef(b)) && memory.getMeta(`cortex.ref-falhou.${b}`) !== day);
+    if (!mode) return;
+    active = { type: 'referencia', interrupted: false };
+    try {
+      const values = await rounds(mode);
+      if (values) writeRef(mode, values);
+    } catch (e) {
+      memory.setMeta(`cortex.ref-falhou.${mode}`, day); // tenta de novo amanhã (ex.: teste que não existe no Linux)
+      log('referencia', e, 'aviso');
+    } finally { active = null; }
   }
 
   async function intervene(action) {
@@ -365,10 +421,52 @@ function createCortex(deps = {}) {
 
   // ---------- o que chega da tela ----------
 
-  const pending = []; // anomalias à espera do próximo tique (que abre ou anexa)
-  function enqueue(anomaly) {
-    pending.push(anomaly);
-    if (pending.length > QUEUE_MAX) pending.shift();
+  /*
+   * Fila de anomalias à espera do próximo tique. As que vêm de eventos gravados (lentidão, sessão) sobrevivem a fechar o
+   * app: o meta 'cortex.ultima-anomalia' = { id, at } marca o último evento tratado, e o start relê os depois dele.
+   */
+  const pending = [];
+  const queued = new Set(); // ids de evento já na fila
+  function enqueue(anomaly, eventId = null) {
+    if (eventId != null) { if (queued.has(eventId)) return; queued.add(eventId); }
+    pending.push({ anomaly, eventId });
+    if (pending.length > QUEUE_MAX) { const old = pending.shift(); if (old.eventId != null) queued.delete(old.eventId); }
+  }
+  const readMark = () => { try { const m = JSON.parse(memory.getMeta('cortex.ultima-anomalia') || 'null'); return m && finite(m.id) ? m : { id: 0, at: 0 }; } catch (_) { return { id: 0, at: 0 }; } };
+  function markDone(eventId, at) {
+    const m = readMark();
+    if (eventId <= m.id) return;
+    if (!memory.setMeta('cortex.ultima-anomalia', JSON.stringify({ id: eventId, at: Math.max(m.at, at) }))) log('fila', 'a marca da fila não gravou');
+  }
+
+  /** Anomalias de um evento gravado (o mesmo texto que a tela mandou). */
+  function anomaliesOf(kind, at, data, id) {
+    if (kind === 'lentidao') {
+      const symptom = symptomOfEpisode(data);
+      if (!symptom) return [];
+      const from = finite(data.start) ? data.start : at - 5 * MIN;
+      const to = finite(data.end) ? data.end : at;
+      const value = data.kind !== 'throttle' && finite(data.peak) ? data.peak : undefined;
+      return [{ kind: 'lentidao', symptom, at: to, window: { from, to }, data: { value, culprit: typeof data.culprit === 'string' ? data.culprit.slice(0, 80) : null, eventId: id } }];
+    }
+    if (kind === 'sessao') {
+      const summary = { verdict: data.verdict, findings: (data.findings || []).map((f) => ({ id: f })) };
+      return symptomsOfSession(summary).map((symptom) => ({ kind: 'sessao', symptom, at: data.to, window: { from: data.from, to: data.to }, data: { session: data.id, verdict: data.verdict || null } }));
+    }
+    return [];
+  }
+  function queueEvent(id, kind, at, data) {
+    if (!(id > 0)) return; // não gravou: não dá para marcar; abre só nesta sessão
+    const list = anomaliesOf(kind, at, data, id);
+    if (!list.length) { markDone(id, at); return; }
+    list.forEach((an, i) => enqueue(an, i === list.length - 1 ? id : null));
+  }
+  /** Depois de reiniciar: relê os eventos gravados depois da marca e que ainda não abriram nada. */
+  function reloadQueue() {
+    const m = readMark();
+    // Na ordem dos ids (a marca é o maior id tratado: fora de ordem, um evento mais antigo poderia ser pulado).
+    const evs = QUEUE_KINDS.flatMap((kind) => memory.events({ kind, from: m.at, limit: 500 })).filter((e) => e.id > m.id && !queued.has(e.id)).sort((a, b) => a.id - b.id);
+    for (const e of evs) queueEvent(e.id, e.kind, e.at, e.data || {});
   }
 
   function observeMinute(m) {
@@ -411,12 +509,8 @@ function createCortex(deps = {}) {
       const id = memory.addEvent({ kind, at, data });
       if (id < 0) log('evento', 'evento não gravou');
       if (kind === 'lentidao') {
-        const symptom = symptomOfEpisode(data);
-        if (!symptom) return;
-        const from = finite(data.start) ? data.start : at - 5 * MIN;
-        const to = finite(data.end) ? data.end : at;
-        const value = data.kind !== 'throttle' && finite(data.peak) ? data.peak : undefined;
-        enqueue({ kind: 'lentidao', symptom, at: to, window: { from, to }, data: { value, culprit: typeof data.culprit === 'string' ? data.culprit.slice(0, 80) : null, eventId: id } });
+        if (id > 0) queueEvent(id, kind, at, data);
+        else anomaliesOf(kind, at, data, null).forEach((an) => enqueue(an));
       } else if (kind === 'lab') noteLab(data); // um resultado do lab não abre investigação
     }, null);
   }
@@ -432,9 +526,11 @@ function createCortex(deps = {}) {
       const to = finite(meta.endedAt) ? meta.endedAt : now();
       const from = finite(meta.startedAt) ? meta.startedAt : to - 5 * MIN;
       const b = summary.bottleneck || {};
-      memory.addEvent({ kind: 'sessao', at: to, data: { id, from, to, name: typeof meta.name === 'string' ? meta.name.slice(0, 80) : null, verdict: b.verdict || summary.verdict || null,
-        findings: (Array.isArray(summary.findings) ? summary.findings : []).map((f) => f && f.id).filter((x) => typeof x === 'string').slice(0, 20), fps: summary.fps && typeof summary.fps === 'object' ? { avg: summary.fps.avgFps ?? null, p1Low: summary.fps.p1LowFps ?? null } : null } });
-      for (const symptom of symptomsOfSession(summary)) enqueue({ kind: 'sessao', symptom, at: to, window: { from, to }, data: { session: id, verdict: b.verdict || null } });
+      const data = { id, from, to, name: typeof meta.name === 'string' ? meta.name.slice(0, 80) : null, verdict: b.verdict || summary.verdict || null,
+        findings: (Array.isArray(summary.findings) ? summary.findings : []).map((f) => f && f.id).filter((x) => typeof x === 'string').slice(0, 20), fps: summary.fps && typeof summary.fps === 'object' ? { avg: summary.fps.avgFps ?? null, p1Low: summary.fps.p1LowFps ?? null } : null };
+      const eventId = memory.addEvent({ kind: 'sessao', at: to, data });
+      if (eventId > 0) queueEvent(eventId, 'sessao', to, data);
+      else { log('sessao', 'resumo da sessão não gravou'); anomaliesOf('sessao', to, data, null).forEach((an) => enqueue(an)); }
     }, null);
   }
 
@@ -450,16 +546,19 @@ function createCortex(deps = {}) {
   let lastRhythm = { state: rhythm.state(), reason: 'começando no ritmo leve', at: now() };
   safe('ritmo', () => memory.setFlushMs(FLUSH_MS.leve), null);
 
+  let lastGame = { value: null, at: -Infinity };
   async function checkRhythm() {
     try {
       const idle = Number(await idleSec());
       const validIdle = Number.isFinite(idle) && idle >= 0;
       // Com a pessoa usando o PC (leve e pouco parado) nem consulta o primeiro plano: o ritmo fica leve de todo jeito.
       let game = false;
-      if (deep() || (validIdle && idle >= ENTER_IDLE_SEC)) {
+      const ask = deep() ? now() - lastGame.at >= FG_DEEP_MS : validIdle && idle >= ENTER_IDLE_SEC;
+      if (ask) {
         try { game = await gameInForeground(); } catch (e) { log('primeiro-plano', e, 'aviso'); game = null; }
         if (game !== true && game !== false) game = null;
-      }
+        lastGame = { value: game, at: now() };
+      } else if (deep()) game = lastGame.value; // entre consultas, vale a última (a ociosidade pega a volta da pessoa)
       const r = rhythm.check({ idleSec: validIdle ? idle : NaN, gameInForeground: game });
       lastRhythm = { state: r.state, reason: r.reason, at: now() };
       if (r.changed) onRhythmChange(r);
@@ -515,8 +614,10 @@ function createCortex(deps = {}) {
     try {
       if (await busy()) return;
       while (pending.length) {
-        const an = pending.shift();
+        const { anomaly: an, eventId } = pending[0];
         const inv = await call('abrir', () => engine.open(an), -1);
+        pending.shift();
+        if (eventId != null) { queued.delete(eventId); markDone(eventId, an.at || now()); }
         if (inv > 0) changed.add(inv);
         else log('abrir', `investigação de ${an.symptom} não abriu`);
       }
@@ -531,6 +632,7 @@ function createCortex(deps = {}) {
         else if (status) lastStatus.set(inv, status);
       }
       safe('mapa', syncMap, null);
+      await call('referencia', buildReference, null);
     } catch (e) {
       log('tique', e);
     } finally {
@@ -639,6 +741,7 @@ function createCortex(deps = {}) {
   function loopTick() { later(async () => { await tick(); loopTick(); }, TICK_MS[rhythm.state()] || TICK_MS.leve); }
 
   async function start({ snapshot, version, timers: withTimers = true } = {}) {
+    safe('fila', reloadQueue, null);
     if (typeof snapshot === 'function') {
       await call('maquina', async () => { const s = await snapshot(); if (s) memory.addMachine(machineOf(s)); }, null);
     }
@@ -654,6 +757,14 @@ function createCortex(deps = {}) {
     if (withTimers && !running) { running = true; loopRhythm(); loopTick(); }
   }
 
+  /** O lab, o benchmark ou a análise profunda da pessoa vão começar: corta o teste do Cortex (não vira prova). */
+  function cancelActive() {
+    if (!active) return false;
+    active.interrupted = true;
+    if (active.type === 'intervir') safe('cancelar', () => deps.labCancel && deps.labCancel(), null);
+    return true;
+  }
+
   function stop() {
     running = false;
     for (const h of timers) clearTimeout(h);
@@ -663,7 +774,7 @@ function createCortex(deps = {}) {
 
   return {
     ativo: true,
-    observeMinute, observeEvent, observeSession, importLegacy, tick, checkRhythm, start, stop,
+    observeMinute, observeEvent, observeSession, importLegacy, tick, checkRhythm, start, stop, cancelActive,
     settings, setSettings, approve: (inv) => answer(inv, true), deny: (inv) => answer(inv, false), list, get, stats,
     rhythm: () => ({ state: rhythm.state(), reason: lastRhythm.reason, at: lastRhythm.at, testando: active ? active.type : null }),
     /** Só para os testes: a ação que o motor recebe. */
@@ -677,7 +788,7 @@ function disabled(reason) {
   return {
     ativo: false,
     observeMinute: nothing, observeEvent: nothing, observeSession: nothing, importLegacy: () => ({ imported: 0 }),
-    tick: async () => {}, checkRhythm: async () => ({ state: 'leve', changed: false, reason: 'Cortex desligado' }), start: async () => {}, stop: nothing,
+    tick: async () => {}, checkRhythm: async () => ({ state: 'leve', changed: false, reason: 'Cortex desligado' }), start: async () => {}, stop: nothing, cancelActive: () => false,
     settings: () => ({ ...DEFAULT_CONFIG }), setSettings: () => ({ ok: false, reason: 'O Cortex está desligado: a memória dele não abriu.' }),
     approve: () => false, deny: () => false, list: () => [], get: () => null,
     stats: () => ({ ativo: false, motivo: String(reason || 'memória indisponível') }),

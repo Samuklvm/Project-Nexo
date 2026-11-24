@@ -72,6 +72,20 @@ async function tickUntil(t, cond, max = 40) {
 
 const experiments = (memory) => memory.list('experimento', { limit: 1000 });
 
+/** Leva uma investigação de cpu até o próximo passo ser medir: lembra, espera a repetição, repete e entra no profundo. */
+async function toMedir(t) {
+  t.cortex.observeEvent(lentidao(T0));
+  assert.ok(await tickUntil(t, () => experiments(t.memory).some((e) => e.data.status === 'esperando')), 'não chegou a esperar a repetição');
+  t.clock.t = T0 + 40 * MIN;
+  t.cortex.observeEvent(lentidao(t.clock.t));
+  await t.cortex.tick();
+  await t.cortex.tick();
+  assert.deepEqual(t.env.bench, [], 'mediu no leve');
+  await goDeep(t);
+  // As referências dos outros testes entram no profundo; só a medição da investigação interessa daqui em diante.
+  for (const b of ['disk', 'memory', 'frames']) t.memory.setMeta(`cortex.ref.${b}`, JSON.stringify({ values: [100, 100, 100, 100, 100], at: t.clock.t }));
+}
+
 test('minuto e lentidão entram na memória eterna', async () => {
   const t = setup();
   t.cortex.observeMinute({ t: T0 - MIN, cpu: 42, mem: 50, disk: 3, gpu: 7, temp: 51, cpuTemp: 60, clock: 3900, clockRatio: 0.97, culprit: 'chrome' });
@@ -292,25 +306,118 @@ test('pessoa volta no meio de um medir: bench para, experimento interrompido, ne
   assert.equal(t.cortex.stats().ativosHoje, 0, 'teste interrompido gastou o orçamento');
 });
 
-test('medir no profundo: 5 rodadas antes e 5 depois, julgadas pelo NexoExperiment; o orçamento do dia sobrevive a reiniciar e zera à meia-noite', async () => {
+test('medir compara com a referência guardada do teste: sem referência (ou velha) guarda e não vale como evidência; o orçamento sobrevive a reiniciar e zera à meia-noite', async () => {
   const dir = tmp();
   const clock = { t: T0 };
   const t = setup({ dir, clock });
   await goDeep(t);
-  t.env.score = (n) => (n <= 5 ? 100 + (n % 2) : 80 + (n % 2)); // depois cai 20%
-  const o = await t.cortex._act({ type: 'medir', target: 'bench:single', cost: 1, risk: 'nenhum' }, { inv: 1, symptom: 'cpu' });
+  const medir = { type: 'medir', target: 'bench:single', cost: 1, risk: 'nenhum' };
+  t.env.score = (n) => (n <= 5 ? 100 + (n % 2) : 80 + (n % 2)); // a referência ~100; depois cai 20%
+  // Primeira vez: sem referência. As 5 rodadas viram a referência e o resultado não é evidência.
+  const first = await t.cortex._act(medir, { inv: 1, symptom: 'cpu' });
+  assert.equal(first.observed, 'sem-referencia');
+  assert.equal(t.env.bench.length, 5);
+  const ref = JSON.parse(t.memory.getMeta('cortex.ref.single'));
+  assert.equal(ref.values.length, 5);
+  assert.equal(ref.at, T0);
+  // Agora 5 rodadas comparadas com a referência pelo NexoExperiment.
+  const o = await t.cortex._act(medir, { inv: 1, symptom: 'cpu' });
   assert.equal(t.env.bench.length, 10);
   assert.ok(t.env.bench.every((m) => m === 'single'));
   assert.equal(o.observed, 'desce');
   assert.equal(o.significant, true);
-  assert.equal(t.cortex.stats().ativosHoje, 1);
+  assert.equal(t.cortex.stats().ativosHoje, 2);
   // Reiniciou o app: o contador continua.
   const again = setup({ memory: { ok: true, memory: t.memory }, clock });
-  assert.equal(again.cortex.stats().ativosHoje, 1);
+  assert.equal(again.cortex.stats().ativosHoje, 2);
   // Meia-noite local: zera.
   const next = new Date(T0); next.setDate(next.getDate() + 1); next.setHours(0, 5, 0, 0);
   clock.t = next.getTime();
   assert.equal(again.cortex.stats().ativosHoje, 0);
+  // Referência com mais de 30 dias: refeita do mesmo jeito (e de novo não vale como evidência).
+  clock.t = T0 + 31 * DAY;
+  await goDeep(again);
+  const stale = await again.cortex._act(medir, { inv: 1, symptom: 'cpu' });
+  assert.equal(stale.observed, 'sem-referencia');
+  assert.equal(JSON.parse(t.memory.getMeta('cortex.ref.single')).at, T0 + 31 * DAY);
+});
+
+test('referências no profundo: só dos testes que nenhuma investigação aberta vai medir; interrompidas não ficam', async () => {
+  const t = setup();
+  t.cortex.observeEvent(lentidao(T0)); // investigação de cpu: mede bench:multi e bench:single
+  await t.cortex.tick();
+  await goDeep(t);
+  await t.cortex.tick();
+  const refs = ['single', 'multi', 'disk', 'memory', 'frames'].filter((b) => t.memory.getMeta(`cortex.ref.${b}`));
+  assert.ok(refs.length >= 1, 'nenhuma referência no profundo');
+  assert.ok(!refs.includes('multi') && !refs.includes('single'), `referência de teste com investigação aberta: ${refs}`);
+  // Cancelada no meio (a pessoa abriu o lab): nada é guardado.
+  const u = setup();
+  await goDeep(u);
+  u.env.onBench = async (n) => { if (n === 2) assert.equal(u.cortex.cancelActive(), true); };
+  await u.cortex.tick();
+  assert.equal(u.env.bench.length, 2);
+  assert.ok(!['single', 'multi', 'disk', 'memory', 'frames'].some((b) => u.memory.getMeta(`cortex.ref.${b}`)), 'guardou referência interrompida');
+  // Ocupado: nem começa.
+  const w = setup();
+  await goDeep(w);
+  w.env.busy = true;
+  await w.cortex.tick();
+  assert.deepEqual(w.env.bench, []);
+});
+
+test('o lab, o benchmark ou a análise profunda da pessoa cancelam o teste do Cortex: experimento interrompido, nenhuma prova', async () => {
+  const t = setup();
+  await toMedir(t);
+  const provas = t.memory.list('prova', { limit: 1000 }).length;
+  t.env.onBench = async (n) => { if (n === 2) t.cortex.cancelActive(); };
+  await t.cortex.tick();
+  assert.equal(t.env.bench.length, 2);
+  const last = experiments(t.memory).pop();
+  assert.equal(last.data.action.type, 'medir');
+  assert.equal(last.data.status, 'interrompido');
+  assert.equal(t.memory.list('prova', { limit: 1000 }).length, provas);
+  assert.equal(t.cortex.cancelActive(), false, 'nada rodando: nada a cancelar');
+  // Intervir: o cancelamento chega ao lab.
+  let u;
+  u = setup({ labReturn: async () => { u.cortex.cancelActive(); return labResult('melhorou', 'cancelled'); } });
+  u.cortex.setSettings({ permission: 'pedir', maxRisk: 'baixo' });
+  await goDeep(u);
+  const o = await u.cortex._act({ type: 'intervir', target: 'ajuste:minstate', cost: 3, risk: 'baixo' }, { inv: 1, symptom: 'bench:burst' });
+  assert.equal(o.observed, 'interrompido');
+  assert.equal(u.env.cancels, 1);
+});
+
+test('profundo: ociosidade a cada checagem, primeiro plano só a cada 30 s', async () => {
+  const t = setup();
+  await goDeep(t);
+  const before = t.env.gameCalls;
+  for (let i = 1; i <= 12; i++) { t.clock.t = T0 + i * 5000; await t.cortex.checkRhythm(); }
+  assert.equal(t.cortex.rhythm().state, 'profundo');
+  assert.equal(t.env.gameCalls - before, 2, `consultas: ${t.env.gameCalls - before}`);
+  // A pessoa volta: a ociosidade pega na hora, sem esperar a consulta do primeiro plano.
+  t.clock.t += 5000;
+  t.env.idle = 1;
+  await t.cortex.checkRhythm();
+  assert.equal(t.cortex.rhythm().state, 'leve');
+});
+
+test('lentidão gravada e app fechado antes do tique: o Cortex novo abre a investigação (uma vez só)', async () => {
+  const t = setup();
+  t.cortex.observeEvent(lentidao(T0));
+  t.cortex.observeSession({ id: 's1', summary: { meta: { startedAt: T0 - 30 * MIN, endedAt: T0 }, bottleneck: { verdict: 'memoria' }, findings: [] }, samples: [] });
+  t.cortex.stop(); // fechou sem tique
+  const again = setup({ memory: { ok: true, memory: t.memory } });
+  await again.cortex.start({ timers: false });
+  await again.cortex.tick();
+  const symptoms = again.cortex.list({ limit: 10 }).map((i) => i.symptom).sort();
+  assert.deepEqual(symptoms, ['cpu', 'mem']);
+  // Outro reinício: já foi tratada, não repete (nem vira "repetição" da investigação aberta).
+  const third = setup({ memory: { ok: true, memory: t.memory } });
+  await third.cortex.start({ timers: false });
+  await third.cortex.tick();
+  assert.equal(third.cortex.list({ limit: 10 }).length, 2);
+  assert.equal(t.memory.list('prova', { limit: 100 }).filter((p) => p.data.kind === 'repeticao').length, 0);
 });
 
 test('intervir: o lab vira braço só do ajuste pedido, sem combinações e sem adotar; "observar" nunca chama o lab', async () => {
