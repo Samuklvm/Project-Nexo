@@ -367,8 +367,8 @@ testes), JavaScript sem dependências novas.
 **Files:**
 - Modify: `index.html` (botão novo na barra lateral `data-view="cortex"`, página `data-view-panel="cortex"`, cartão
   pequeno na Análise com a investigação em andamento que leva para a página, script `src/view-cortex.js` e os módulos
-  `src/cortex/relations.js`, `src/cortex/narrate.js` para rótulos), `style.css`
-- Create: `src/view-cortex.js`
+  `src/cortex/relations.js`, `src/cortex/narrate.js` para rótulos, `<link>` do `cortex.css`)
+- Create: `src/view-cortex.js`, `cortex.css` (tudo escopado em `[data-view-panel="cortex"]`, como o `santuario.css`)
 - Modify: `dev/mock-bridge.js` (2 investigações de exemplo: uma `apoiada`, uma `aguardando`)
 
 **Interfaces:**
@@ -381,11 +381,18 @@ testes), JavaScript sem dependências novas.
     hipóteses com estado e barra de confiança, testes feitos, provas (com o trecho guardado) e a linha do tempo dos
     pensamentos; botões `Pode testar` / `Agora não` quando `aguardando`;
   - "Instrumentos que faltaram" (registros `necessidade`).
-  - Visual no padrão do Nexo (vidro/aurora, neon, toque de fantasia sombria). Sem "provavelmente" em nenhum texto.
+  - Visual **com o site do Nexo de referência** (spec, seção 8): variáveis `--ink #0a090d, --ink-2 #13111a,
+    --ink-3 #1c1925, --bone #ece3cf, --bone-dim #b9b0a0, --mist #7f8796, --gold #c9a35a, --gold-hi #f0d48e,
+    --silk #b3202c, --silk-hi #e2394a`; fontes "Cinzel Nexo" (títulos/números, caixa alta espaçada) e "Cormorant Nexo"
+    (texto); cartões com cantos de ouro, divisória com losango vermelho, capitular vermelha, painel de números grandes,
+    ritmo como carretel, investigações como cartões de diário, hipóteses com fio de confiança. Animações a 30 quadros
+    pelo relógio único (`Nexo.clock`), só com a página visível, paradas no modo Leve e com "menos movimento".
+    Sem "provavelmente" em nenhum texto.
 - [ ] **Step 1: Rodar o preview** — `npm run preview` e abrir a página gerada; a página ainda não existe.
 - [ ] **Step 2: Implementar** a página, o botão da barra lateral, o cartão da Análise, o `view-cortex.js` (IIFE como as outras `view-*.js`, usando `escapeHtml` para tudo
   que vem da memória) e o estilo.
-- [ ] **Step 3: Verificar** — `npm run preview` gera sem erro; com o mock, as 2 investigações aparecem, os botões
+- [ ] **Step 3: Verificar** — `npm run preview` gera sem erro; comparar uma captura da página com o site
+  (nexodevicecare.vercel.app) lado a lado: mesmas cores, letras e ornamentos; com o mock, as 2 investigações aparecem, os botões
   chamam os métodos falsos e a chave de permissão pede a frase; `npm test` passa (`syntax`, `security-static`).
 - [ ] **Step 4: Commit** — `git commit -m "Cortex: página própria"`
 

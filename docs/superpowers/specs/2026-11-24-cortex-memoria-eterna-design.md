@@ -234,8 +234,23 @@ O Cortex nunca para, mas muda de ritmo conforme a pessoa está ou não usando o 
   as hipóteses com estado e confiança, os testes feitos, as provas (com o trecho guardado) e a linha do tempo dos
   pensamentos.
 - Também mostra quanto a memória ocupa, as relações que esta máquina já provou e a fila de "instrumentos que faltaram".
-- Visual no padrão do Nexo (noite, vidro e aurora, neon, mais a estética de fantasia sombria). O layout fica para o
-  construtor.
+- **Referência visual: o site do Nexo** (nexodevicecare.vercel.app; pedido do Samuel, 24/11/2026). A página segue a
+  identidade dele, que é a mesma fantasia sombria do Santuário:
+  - **Cores do site:** tinta `#0a090d` / `#13111a` / `#1c1925`, osso `#ece3cf` (apagado `#b9b0a0`), névoa `#7f8796`,
+    ouro `#c9a35a` (aceso `#f0d48e`), vermelho seda `#b3202c` (aceso `#e2394a`).
+  - **Letras:** Cinzel em caixa alta e espaçada nos títulos e números; Cormorant Garamond (itálico) no texto. As duas já
+    vão no app (`assets/fonts`, `@font-face` "Cinzel Nexo" / "Cormorant Nexo" do `santuario.css`).
+  - **Ornamentos:** cartões escuros com cantos de ouro em arabesco; divisória fina dourada com losango vermelho no meio;
+    título com sobretítulo pequeno e espaçado; letra capitular vermelha; frase de destaque em itálico dourado com fio
+    vermelho à esquerda; painel de números grandes em Cinzel (como "702 / 109" do site); lista lateral com
+    medalhões redondos e selo "NOVO" (como o "Inventário de ferramentas").
+  - **Como isso vira o Cortex** (proposta do Claude): investigações como páginas de um "diário" em cartões emoldurados;
+    hipóteses com a confiança desenhada como um fio que enche; o ritmo leve/profundo como o carretel do canto do site
+    (vazio no leve, girando devagar no profundo); a lista de partes do cérebro como o inventário (só a parte pronta
+    aparece; nada de botão de recurso que não existe).
+  - Sem imagens nem nada dos jogos de referência; fundo e efeitos desenhados como no Santuário, a 30 quadros, só com a
+    página visível, parando no modo Leve e com "menos movimento".
+  - O layout exato fica para o construtor.
 
 ### 9. Lugar da IA local (`mind.js`)
 
