@@ -248,8 +248,11 @@ O Cortex nunca para, mas muda de ritmo conforme a pessoa está ou não usando o 
     hipóteses com a confiança desenhada como um fio que enche; o ritmo leve/profundo como o carretel do canto do site
     (vazio no leve, girando devagar no profundo); a lista de partes do cérebro como o inventário (só a parte pronta
     aparece; nada de botão de recurso que não existe).
-  - Sem imagens nem nada dos jogos de referência; fundo e efeitos desenhados como no Santuário, a 30 quadros, só com a
-    página visível, parando no modo Leve e com "menos movimento".
+  - **Arte (Samuel, 24/11/2026):** a página tem lugares para arte de fundo, molduras e ornamentos lidos de
+    `assets/arte/cortex/` (pasta de arte de terceiros: fica **fora da GPL-3.0**, com aviso de direitos na própria pasta
+    e no `THIRD-PARTY-NOTICES.md`, como o site faz). Os arquivos dessa pasta são colocados pelo Samuel. Sem arquivo,
+    a página usa o fundo e os efeitos desenhados por código, como no Santuário. Efeitos a 30 quadros, só com a página
+    visível, parando no modo Leve e com "menos movimento".
   - O layout exato fica para o construtor.
 
 ### 9. Lugar da IA local (`mind.js`)

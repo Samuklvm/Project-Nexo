@@ -368,7 +368,10 @@ testes), JavaScript sem dependências novas.
 - Modify: `index.html` (botão novo na barra lateral `data-view="cortex"`, página `data-view-panel="cortex"`, cartão
   pequeno na Análise com a investigação em andamento que leva para a página, script `src/view-cortex.js` e os módulos
   `src/cortex/relations.js`, `src/cortex/narrate.js` para rótulos, `<link>` do `cortex.css`)
-- Create: `src/view-cortex.js`, `cortex.css` (tudo escopado em `[data-view-panel="cortex"]`, como o `santuario.css`)
+- Create: `src/view-cortex.js`, `cortex.css` (tudo escopado em `[data-view-panel="cortex"]`, como o `santuario.css`),
+  `assets/arte/LEIA-ME.md` (PT e EN: arte de terceiros, direitos dos donos, **não coberta pela GPL-3.0**; sem citar
+  nenhum acordo), pasta `assets/arte/cortex/` vazia com `.gitkeep`
+- Modify: `THIRD-PARTY-NOTICES.md` (entrada para `assets/arte/`, mesmo texto), `NOTICE.md` se ele listar o que é GPL
 - Modify: `dev/mock-bridge.js` (2 investigações de exemplo: uma `apoiada`, uma `aguardando`)
 
 **Interfaces:**
@@ -387,6 +390,9 @@ testes), JavaScript sem dependências novas.
     (texto); cartões com cantos de ouro, divisória com losango vermelho, capitular vermelha, painel de números grandes,
     ritmo como carretel, investigações como cartões de diário, hipóteses com fio de confiança. Animações a 30 quadros
     pelo relógio único (`Nexo.clock`), só com a página visível, paradas no modo Leve e com "menos movimento".
+    Arte opcional: se existirem `assets/arte/cortex/fundo.(webp|png)`, `moldura.(webp|png)` e `ornamento.(webp|png)`,
+    entram no fundo, nos cantos dos cartões e na divisória; sem eles, tudo desenhado por CSS/canvas. Nenhuma imagem é
+    baixada da internet pelo app (CSP); só arquivos locais.
     Sem "provavelmente" em nenhum texto.
 - [ ] **Step 1: Rodar o preview** — `npm run preview` e abrir a página gerada; a página ainda não existe.
 - [ ] **Step 2: Implementar** a página, o botão da barra lateral, o cartão da Análise, o `view-cortex.js` (IIFE como as outras `view-*.js`, usando `escapeHtml` para tudo
