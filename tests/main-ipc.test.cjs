@@ -1,5 +1,11 @@
 // Carrega o main.cjs real com um Electron simulado e exercita os handlers de IPC.
 // Roda em qualquer sistema: força a plataforma "linux" para não chamar PowerShell/reg/powercfg.
+// O Cortex abre a memória (node:sqlite), que ainda avisa "experimental" no Node 22: só esse aviso é silenciado.
+process.removeAllListeners('warning');
+process.on('warning', (w) => {
+  if (w && w.name === 'ExperimentalWarning' && /SQLite/i.test(w.message)) return;
+  console.warn(w);
+});
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -51,6 +57,16 @@ test('registra todos os canais esperados', () => {
   for (const channel of ['cleanup:scan', 'cleanup:run', 'power:list', 'power:set', 'startup:list', 'wallpaper:set', 'wallpaper:get', 'wallpaper:reset', 'privacy:get', 'privacy:set', 'app:uninstall', 'app:info', 'app:open-link', 'system:open-settings']) {
     assert.ok(handlers.has(channel), `faltou ${channel}`);
   }
+});
+
+test('Cortex: os 12 canais existem e cortex:stats responde', async () => {
+  for (const channel of ['cortex:minute', 'cortex:event', 'cortex:session', 'cortex:import-legacy', 'cortex:list', 'cortex:get', 'cortex:stats', 'cortex:settings', 'cortex:set-settings', 'cortex:approve', 'cortex:deny', 'cortex:rhythm']) {
+    assert.ok(handlers.has(channel), `faltou ${channel}`);
+  }
+  const stats = await call('cortex:stats');
+  assert.equal(typeof stats.ativo, 'boolean');
+  assert.equal(typeof (await call('cortex:rhythm')).state, 'string');
+  assert.ok(['observar', 'pedir', 'sozinho'].includes((await call('cortex:settings')).permission));
 });
 
 test('rejeita chamadas vindas de outra origem', async () => {

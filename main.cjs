@@ -38,7 +38,7 @@ const http = require('http');
 const { createLinux } = require('./electron/linux.cjs');
 const { createLinuxLabSystem } = require('./electron/lab-linux.cjs');
 const { createMangoRunner, launchOption: mangoLaunchOption } = require('./electron/mangohud.cjs');
-const { createLinuxProbe } = require('./electron/probe.cjs');
+const { createLinuxProbe, foregroundIsGame, FOREGROUND_SCRIPT } = require('./electron/probe.cjs');
 const { createLinuxWatcher } = require('./electron/watcher.cjs');
 const { linuxPrivileged } = require('./electron/elevate.cjs');
 const IS_LINUX = process.platform === 'linux';
@@ -676,7 +676,7 @@ function registerIpcHandler(channel, handler) {
     const ms = performance.now() - started;
     diag.ipc(channel, ms, !failure);
     try {
-      if (!/^(window|app:self-metrics|system:snapshot|sensors:snapshot|watch:current|session:sample)/.test(channel)) crumb('ipc', channel, `${failure ? 'falhou' : 'ok'} ${Math.round(ms)}ms`);
+      if (!/^(window|app:self-metrics|system:snapshot|sensors:snapshot|watch:current|session:sample|cortex:minute)/.test(channel)) crumb('ipc', channel, `${failure ? 'falhou' : 'ok'} ${Math.round(ms)}ms`);
       if (ms > (SLOW_IPC_MS[channel] ?? 30000)) noteSlowIpc(channel, ms);
     } catch { /* instrumentação nunca atrapalha */ }
     if (failure) {
@@ -1630,8 +1630,16 @@ registerIpcHandler('drivers:cancel', async (_event, id) => (process.platform ===
 registerIpcHandler('drivers:install', async (_event, id, options = {}) => {
   cardId(id);
   if (process.platform !== 'win32') return { ...ONLY_WINDOWS };
-  return driverDownloads.install(id, { restorePoint: options?.restorePoint === true, window: options?.window === true });
+  const result = await driverDownloads.install(id, { restorePoint: options?.restorePoint === true, window: options?.window === true });
+  // Marco para o Cortex ("o que mudou"): só o cartão e a versão, nunca o caminho do arquivo.
+  if (result?.ok) cortex.observeEvent({ kind: 'driver', at: Date.now(), data: { id: id.slice(0, 120), versao: driverVersionOf(id), reiniciar: result.restart === true } });
+  return result;
 });
+/** Versão do driver que o cartão oferecia (da última leitura da página de drivers). */
+function driverVersionOf(id) {
+  for (const group of lastDriversModel?.groups || []) for (const item of group.items || []) if (item.id === id) return typeof item.latest?.version === 'string' ? item.latest.version.slice(0, 40) : null;
+  return null;
+}
 registerIpcHandler('drivers:downloads', async () => (process.platform === 'win32' ? driverDownloads.list() : []));
 registerIpcHandler('drivers:show-file', async (_event, id) => {
   cardId(id);
@@ -2493,6 +2501,70 @@ async function resumeRebootTest(viaRunOnce, launchedAt) {
   if (result) sendToWindow('reboot:status', result);
 }
 registerIpcHandler('lab:cancel', async () => { if (labState.signal) { labState.signal.cancelled = true; } return { ok: true }; });
+// ---- Cortex: o cérebro novo (src/cortex/cortex.cjs). Aqui só se montam as dependências do sistema ----
+const { createCortex } = require('./src/cortex/cortex.cjs');
+const { createMemory: createCortexMemory } = require('./src/cortex/memory.cjs');
+const { createRhythm } = require('./src/cortex/rhythm.js');
+// Até a memória abrir (depois do app.whenReady), os canais respondem com um Cortex desligado.
+let cortex = createCortex({ memory: { ok: false, error: 'o Cortex ainda está abrindo' } });
+let cortexMemory = null;
+const cortexLab = { signal: null };
+/** O lab como braço do Cortex: mesma trava do laboratório da pessoa (a saída do app espera a restauração). */
+async function cortexLabRun(options) {
+  if (labState.running) throw new Error('O laboratório já está rodando.');
+  labState.running = true;
+  labState.signal = { cancelled: false };
+  cortexLab.signal = labState.signal;
+  try {
+    const result = await NexoLab.run(labSystem, { ...options, signal: labState.signal });
+    if (result.status === 'aborted') noteInterruption('laboratorio', result.reason, { guarda: result.guard || 'erro', origem: 'cortex' });
+    if (result.restoreFailed) noteInterruption('laboratorio', 'não consegui voltar ao plano de energia original (a recuperação tenta de novo na próxima abertura)', { etapa: 'restaurar', origem: 'cortex' });
+    return result;
+  } finally { labState.running = false; labState.signal = null; cortexLab.signal = null; }
+}
+/** Lab da pessoa, teste de desempenho, análise profunda ou teste com reinício rodando: o Cortex não pesa junto. */
+async function cortexBusy() {
+  return labState.running || Boolean(activeBench) || deepAnalysis.isRunning() || await rebootTest.active().catch(() => false);
+}
+/** No Linux o teste do lab só tem single/multi/burst: os outros não são medidos (em vez de medir outro no lugar). */
+const cortexBench = (mode) => (IS_LINUX && !['single', 'multi', 'burst'].includes(mode) ? Promise.reject(new Error(`o teste "${mode}" não existe no Linux`)) : labSystem.bench(mode));
+/** Uma consulta do primeiro plano, com o mesmo detector das sessões; erro lança (o Cortex registra e conta como "não sei"). */
+async function cortexGameInForeground() {
+  if (IS_LINUX) return foregroundIsGame({ fg: await linux.foreground() }, probeMatch);
+  if (process.platform !== 'win32') return null;
+  const { code, stdout } = await runPowerShellCode(FOREGROUND_SCRIPT, 15000);
+  if (code !== 0) throw new Error(`a consulta do primeiro plano falhou (código ${code})`);
+  const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop();
+  return foregroundIsGame(line ? JSON.parse(line) : null, probeMatch);
+}
+async function startCortex() {
+  const opened = createCortexMemory({ dir: path.join(app.getPath('userData'), 'cortex') });
+  cortexMemory = opened.ok ? opened.memory : null;
+  cortex = createCortex({
+    memory: opened, rhythm: createRhythm(), now: Date.now,
+    labRun: cortexLabRun, labCancel: () => { if (cortexLab.signal) cortexLab.signal.cancelled = true; },
+    bench: cortexBench, quiet: typeof labSystem.quiet === 'function' ? () => labSystem.quiet() : undefined,
+    idleSec: () => powerMonitor?.getSystemIdleTime?.(), gameInForeground: cortexGameInForeground,
+    onBattery: () => Boolean(powerMonitor?.isOnBatteryPower?.()), busy: cortexBusy,
+    emit: (channel, payload) => sendToWindow(channel, payload), log: (entry) => errorLog.record(entry)
+  });
+  await cortex.start({ snapshot: getSystemSnapshot, version: app.getVersion() });
+}
+const cortexInv = (inv) => { const n = Number(inv); if (!Number.isInteger(n) || n <= 0) throw new Error('Investigação inválida.'); return n; };
+registerIpcHandler('cortex:minute', async (_event, minute) => { cortex.observeMinute(minute); return { ok: true }; });
+registerIpcHandler('cortex:event', async (_event, event) => { cortex.observeEvent(event); return { ok: true }; });
+registerIpcHandler('cortex:session', async (_event, session) => { cortex.observeSession(session); return { ok: true }; });
+registerIpcHandler('cortex:import-legacy', async (_event, data) => cortex.importLegacy(data));
+registerIpcHandler('cortex:list', async (_event, options) => cortex.list({ limit: Number(options?.limit) || 50 }));
+registerIpcHandler('cortex:get', async (_event, inv) => cortex.get(cortexInv(inv)));
+registerIpcHandler('cortex:stats', async () => cortex.stats());
+registerIpcHandler('cortex:settings', async () => cortex.settings());
+registerIpcHandler('cortex:set-settings', async (_event, patch) => cortex.setSettings({
+  permission: String(patch?.permission || '').slice(0, 20), maxRisk: String(patch?.maxRisk || '').slice(0, 20), consent: String(patch?.consent || '').slice(0, 40)
+}));
+registerIpcHandler('cortex:approve', async (_event, inv) => ({ ok: cortex.approve(cortexInv(inv)) }));
+registerIpcHandler('cortex:deny', async (_event, inv) => ({ ok: cortex.deny(cortexInv(inv)) }));
+registerIpcHandler('cortex:rhythm', async () => cortex.rhythm());
 registerIpcHandler('lab:recover', async () => labSystem.recover());
 registerIpcHandler('lab:adopt', async (_event, config) => {
   if (labState.running) throw new Error('O laboratório está rodando.');
@@ -3202,6 +3274,8 @@ if (!app.requestSingleInstanceLock()) {
     if (recovered.recovered) mainWindow.webContents.once('did-finish-load', () => sendToWindow('lab:recovered', recovered));
     if (process.platform === 'win32') mainWindow.webContents.once('did-finish-load', () => { setTimeout(() => resumeRebootTest(process.argv.includes('--reboot-test'), APP_LAUNCHED_AT).catch(() => {}), 1500); });
     applyTray();
+    // Cortex: memória eterna + ciclo. Falha aqui nunca impede o app de abrir (vira um Cortex desligado e um registro).
+    startCortex().catch((error) => errorLog.record({ source: 'cortex', level: 'erro', message: `O Cortex não começou: ${error?.message || error}`, context: { etapa: 'abrir' } }));
     if (process.platform === 'win32' && app.isPackaged) setTimeout(() => autoSensorSetup().catch(() => {}), 5000);
     if (settings.autoSession) library.scan().catch(() => []).then(() => watcher.start()).catch((error) => console.error('[observador de jogos]', error));
 
@@ -3233,6 +3307,9 @@ app.on('before-quit', (event) => {
   }
   watcher.stop();
   probe.stop();
+  cortex.stop();
+  try { cortexMemory?.close(); } catch { /* a memória grava o que faltar na próxima abertura */ }
+  cortexMemory = null;
   // stop() do FPS é assíncrono: a falha ao fechar não pode virar rejeição sem tratamento na saída do app.
   Promise.resolve(fpsRunner.stop()).catch(() => {});
   sensorHost?.kill();

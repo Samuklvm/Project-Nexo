@@ -198,3 +198,10 @@ test('ação permitida mais fraca roda antes de pausar por uma mais forte bloque
   const r = P.choose(hs, b, ctx({ deep: false }));
   assert.equal(r.action.type, 'lembrar');
 });
+
+test('Linux: o risco do ajuste ppd vem do catálogo (baixo), não cai em "alto"', () => {
+  const h = (key, expect) => ({ key, cause: key, symptom: 'bench:single', prior: 0.5, predictions: [{ action: 'intervir', target: 'ajuste:ppd', expect }] });
+  const choice = P.choose([h('a', 'sobe'), h('b', 'igual')], { a: 0.5, b: 0.5 }, { permission: 'pedir', maxRisk: 'baixo', deep: true, activeToday: 0 });
+  assert.ok(choice.action, JSON.stringify(choice));
+  assert.equal(choice.action.risk, 'baixo');
+});

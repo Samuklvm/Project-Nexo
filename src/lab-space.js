@@ -1,5 +1,5 @@
 /*
- * Espaço de ajustes do laboratório (Windows). Catálogo FECHADO: o motor só aplica o que está aqui, e o adaptador do
+ * Espaço de ajustes do laboratório (Windows; no fim, o pequeno espaço do Linux). Catálogo FECHADO: o motor só aplica o que está aqui, e o adaptador do
  * Windows ainda corta tudo o que o próprio PC não expõe ou não aceita (faixa e índices lidos do powercfg /qh).
  *
  * Cada ajuste vive num plano de energia: no laboratório, num CLONE temporário que é apagado no fim. Por isso todos são
@@ -215,5 +215,13 @@
       what: 'Deixa o rádio do Wi-Fi cochilar entre pacotes. Em desempenho máximo, o ping fica mais baixo e mais estável.' }
   ];
 
-  return { SPACE, GROUPS, PROC, DISK, PCIE, AMD_SLIDER, WIFI };
+  /* No Linux o laboratório testa os perfis do power-profiles-daemon (sem root). Ajustes finos do processador no Linux
+     (EPP, governador) exigem root a cada mudança, e o Nexo não roda como root. */
+  const LINUX_SPACE = [
+    { id: 'ppd', group: 'desempenho', sub: 'PPD', setting: 'PROFILE', label: 'Perfil de energia do sistema', values: [2, 1, 0], risk: 'baixo', novelty: 'conhecido', hidden: false, platform: 'linux', affects: ['single', 'multi', 'burst'],
+      names: { 0: 'Economia de energia', 1: 'Equilibrado', 2: 'Desempenho' },
+      what: 'O perfil do power-profiles-daemon muda limites de frequência, EPP e plataforma de uma vez, do jeito que o fabricante e o kernel definiram.' }
+  ];
+
+  return { SPACE, LINUX_SPACE, GROUPS, PROC, DISK, PCIE, AMD_SLIDER, WIFI };
 });

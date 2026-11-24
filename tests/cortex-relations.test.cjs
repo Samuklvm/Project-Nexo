@@ -154,3 +154,9 @@ test('mineCorrelations mapeia colunas: cpuTemp→temp_cpu e queda de clock (1 - 
   assert.equal(e.from, 'temp_cpu');
   assert.equal(e.lag, 1);
 });
+
+test('Linux: o perfil de energia (ppd) do laboratório também ganha arestas ajuste → teste', () => {
+  const ids = new Set(R.seedEdges().map((e) => e.id));
+  for (const bench of ['single', 'multi', 'burst']) assert.ok(ids.has(`ajuste:ppd>bench:${bench}`), `faltou ajuste:ppd>bench:${bench}`);
+  assert.ok(R.SIGNALS['ajuste:ppd'], 'rótulo do ppd');
+});

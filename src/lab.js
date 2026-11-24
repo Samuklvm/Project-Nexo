@@ -18,14 +18,7 @@
   else root.NexoLab = factory(root.NexoLabSpace);
 })(typeof self !== 'undefined' ? self : this, function (LabSpace) {
   /** Espaço fechado de ajustes (src/lab-space.js). Nada fora daqui pode ser aplicado (validateStep). */
-  const { SPACE, GROUPS } = LabSpace;
-  /* No Linux o laboratório testa os perfis do power-profiles-daemon (sem root). Ajustes finos do processador no Linux
-     (EPP, governador) exigem root a cada mudança, e o Nexo não roda como root. */
-  const LINUX_SPACE = [
-    { id: 'ppd', group: 'desempenho', sub: 'PPD', setting: 'PROFILE', label: 'Perfil de energia do sistema', values: [2, 1, 0], risk: 'baixo', novelty: 'conhecido', hidden: false, platform: 'linux', affects: ['single', 'multi', 'burst'],
-      names: { 0: 'Economia de energia', 1: 'Equilibrado', 2: 'Desempenho' },
-      what: 'O perfil do power-profiles-daemon muda limites de frequência, EPP e plataforma de uma vez, do jeito que o fabricante e o kernel definiram.' }
-  ];
+  const { SPACE, GROUPS, LINUX_SPACE } = LabSpace;
   const ALL = [...SPACE, ...LINUX_SPACE];
   const KNOB = new Map(ALL.map((knob) => [knob.id, knob]));
   const RISK_RANK = { baixo: 1, moderado: 2, alto: 3 };
@@ -86,13 +79,16 @@
    * Escolhe as próximas ideias: primeiro as nunca testadas aqui (menor risco e mais promissoras primeiro), espalhadas
    * entre os grupos; depois UCB (ganho médio + bônus de incerteza). Tabu fica de fora.
    * support: { id: { indexes | min/max } } lido do PC; hybrid: false tira os ajustes de núcleos de eficiência.
+   * only: lista de ajustes (o Cortex pede um por vez); com ela, só esses viram braços. Sem ela (null), todos.
    */
-  function chooseCandidates({ baseline = {}, evidence = {}, tabu = [], count = 4, allowRisk = 'moderado', support = null, hybrid = null, benchSupport = null } = {}) {
+  function chooseCandidates({ baseline = {}, evidence = {}, tabu = [], count = 4, allowRisk = 'moderado', support = null, hybrid = null, benchSupport = null, only = null } = {}) {
     const blocked = new Set(tabu);
+    const wanted = Array.isArray(only) ? new Set(only.map(String)) : null;
     const maxRisk = RISK_RANK[allowRisk] || 1;
     const total = Object.entries(evidence).filter(([key]) => !key.startsWith('combo:')).reduce((sum, [, item]) => sum + (item?.n || 0), 0);
     const arms = [];
     for (const knob of ALL) {
+      if (wanted && !wanted.has(knob.id)) continue;
       if (!finite(baseline[knob.id])) continue;
       if ((RISK_RANK[knob.risk] || 9) > maxRisk) continue;
       if (knob.hybrid && hybrid === false) continue;
@@ -264,7 +260,8 @@
   /**
    * Executa uma sessão de risco. `system` é o adaptador do Windows (ou um simulado nos testes).
    * options: consent, autonomy ('assistido' | 'autonomo'), goal (jogos | geral | pesado | resposta), maxArms, combos,
-   *          wild (exploração radical), limits, evidence, tabu, allowRisk, requireRestorePoint, signal ({ cancelled }), emit(event)
+   *          wild (exploração radical), limits, evidence, tabu, allowRisk, requireRestorePoint, signal ({ cancelled }), emit(event),
+   *          onlyKnobs (só esses ajustes viram braços e nenhuma combinação é sorteada: é o lab como braço do Cortex)
    *
    * Etapas: pré-checagem → ponto de restauração → clone do plano → aquecimento → triagem (2 pares; quem promete ganha
    * mais pares) → combinações inéditas → confirmação (5 pares) → restauração. Guardas depois de cada medição.
@@ -281,7 +278,8 @@
     const signal = options.signal || {};
     const startedAt = now();
     const random = rng(startedAt || 1);
-    const comboCount = Math.max(0, Math.min(8, Number.isInteger(options.combos) ? options.combos : 2));
+    const only = Array.isArray(options.onlyKnobs) ? options.onlyKnobs.map(String) : null;
+    const comboCount = only ? 0 : Math.max(0, Math.min(8, Number.isInteger(options.combos) ? options.combos : 2));
     const result = { riskSession: true, startedAt, endedAt: null, status: 'running', reason: null, autonomy: options.autonomy === 'autonomo' ? 'autonomo' : 'assistido', goal,
       restorePoint: null, baseline: null, arms: [], combos: [], combination: null, adopted: null, evidence: { ...(options.evidence || {}) }, tabu: [...(options.tabu || [])], log: [], restoreFailed: false, budgetHit: false, stats: null };
     const say = (message) => { const entry = { t: now(), message }; result.log.push(entry); emit({ type: 'log', ...entry }); };
@@ -410,7 +408,7 @@
       result.stats = spaceStats({ baseline: result.baseline, support, hybrid: pre.hybrid ?? null, allowRisk: options.allowRisk || 'moderado', platform: pre.platform });
       say(`Ambiente de testes pronto: um clone do seu plano, que é apagado no fim. ${result.stats.knobs} ajustes e ${result.stats.options} opções liberados para este PC (cerca de 10^${result.stats.log10} combinações possíveis).`);
 
-      const candidates = chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: Math.max(1, Math.min(48, options.maxArms || 4)), allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null, benchSupport });
+      const candidates = chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: Math.max(1, Math.min(48, options.maxArms || 4)), allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null, benchSupport, only });
       const sessionBenches = [...new Set(candidates.flatMap((arm) => arm.benches))];
       stage('aquecer', 'Aquecendo para estabilizar a medição');
       // Aquecimento no plano original: só as guardas absolutas valem aqui; o que ele medir vira o "normal" de cada teste.
@@ -463,7 +461,7 @@
       /* Combinações inéditas: ajustes que, sozinhos, deram sinal de ganho (ou ficaram neutros) podem render juntos.
          Na exploração radical, entram também ajustes que ninguém testou neste PC, de grupos diferentes. */
       const pool = result.arms.filter((arm) => ['melhorou', 'sem-diferenca'].includes(arm.verdict) && finite(arm.compositeDelta) && arm.compositeDelta > 0).sort((a, b) => b.compositeDelta - a.compositeDelta);
-      const wildPool = options.wild ? chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: 24, allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null, benchSupport }).filter((arm) => arm.untested) : [];
+      const wildPool = options.wild && !only ? chooseCandidates({ baseline: result.baseline, evidence: result.evidence, tabu: result.tabu, count: 24, allowRisk: options.allowRisk || 'moderado', support, hybrid: pre.hybrid ?? null, benchSupport }).filter((arm) => arm.untested) : [];
       const tried = new Set([...Object.keys(result.evidence).filter((key) => key.startsWith('combo:') && result.evidence[key]?.n), ...result.tabu]);
       const chosenKey = chosen.length > 1 ? comboKey(chosen.map((arm) => arm.key)) : null;
       const novel = [];

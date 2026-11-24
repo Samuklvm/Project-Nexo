@@ -28,7 +28,7 @@
       knobs = new Map();
       try {
         const space = loadSpace();
-        for (const k of (space && space.SPACE) || []) knobs.set(k.id, k.risk);
+        for (const k of [...((space && space.SPACE) || []), ...((space && space.LINUX_SPACE) || [])]) knobs.set(k.id, k.risk);
       } catch (e) { /* sem catálogo: tudo vira 'alto' */ }
     }
     const id = String(target).replace(/^ajuste:/, '');
