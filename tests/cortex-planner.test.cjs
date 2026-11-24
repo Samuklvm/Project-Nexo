@@ -49,10 +49,32 @@ test('expectedGain: presente e antes na mesma ação contam como resultados dist
   assert.ok(P.expectedGain({ type: 'lembrar', target: 'x' }, hs, priors(hs)) > 0.9);
 });
 
-test('expectedGain: hipótese sem previsão fica espalhada (valor exato 0.8 bit)', () => {
+const H = (ps) => -ps.reduce((acc, p) => (p > 0 ? acc + p * Math.log2(p) : acc), 0);
+
+test('expectedGain: hipótese sem previsão se espalha pelo domínio inteiro da ação (valor exato)', () => {
   const hs = [hyp('A>s', 0.4, [pred('medir', 'bench:b', 'desce')]), hyp('B>s', 0.4, [pred('medir', 'bench:b', 'igual')]), hyp('C>s', 0.2, [])];
-  // H(0.4, 0.4, 0.2) - H(0.8, 0.2) = 0.8
-  assert.ok(Math.abs(P.expectedGain({ type: 'medir', target: 'bench:b' }, hs, priors(hs)) - 0.8) < 1e-9);
+  // C reparte 1/3 em sobe, desce e igual. desce e igual: 0.4 + 0.2/3 cada, posterior (0.4, 0.2/3)/p; sobe: só C (certeza).
+  const pd = 0.4 + 0.2 / 3;
+  const esperado = H([0.4, 0.4, 0.2]) - 2 * pd * H([0.4 / pd, 0.2 / 3 / pd]);
+  assert.ok(Math.abs(P.expectedGain({ type: 'medir', target: 'bench:b' }, hs, priors(hs)) - esperado) < 1e-9);
+});
+
+test('expectedGain: teste que só uma hipótese prevê separa (a outra se espalha), valor exato', () => {
+  // lembrar: domínio presente/ausente/antes/depois. B espalha 1/4 em cada; presente: 0.5 + 0.125, posterior (0.8, 0.2).
+  const hs = [hyp('A>s', 0.5, [pred('lembrar', 'x', 'presente')]), hyp('B>s', 0.5, [])];
+  assert.ok(Math.abs(P.expectedGain({ type: 'lembrar', target: 'x' }, hs, priors(hs)) - (1 - 0.625 * H([0.8, 0.2]))) < 1e-9);
+  // medir/intervir/esperar: domínio sobe/desce/igual. desce: 0.5 + 1/6, posterior (0.75, 0.25).
+  const ms = [hyp('A>s', 0.5, [pred('medir', 'bench:b', 'desce')]), hyp('B>s', 0.5, [])];
+  assert.ok(Math.abs(P.expectedGain({ type: 'medir', target: 'bench:b' }, ms, priors(ms)) - (1 - (2 / 3) * H([0.75, 0.25]))) < 1e-9);
+});
+
+test('empate de ganho/custo: ajuste de risco menor primeiro, depois o id', () => {
+  // boostmode (moderado) vem antes de perfepp (baixo) pelo id; o risco menor ganha.
+  const hs = [hyp('A>s', 0.5, [pred('intervir', 'ajuste:boostmode', 'sobe'), pred('intervir', 'ajuste:perfepp', 'sobe')]), hyp('B>s', 0.5, [])];
+  const r = P.choose(hs, priors(hs), ctx());
+  assert.equal(r.action.target, 'ajuste:perfepp');
+  const baixos = [hyp('A>s', 0.5, [pred('intervir', 'ajuste:perfepp', 'sobe'), pred('intervir', 'ajuste:minstate', 'sobe')]), hyp('B>s', 0.5, [])];
+  assert.equal(P.choose(baixos, priors(baixos), ctx()).action.target, 'ajuste:minstate', 'mesmo risco: menor id');
 });
 
 test('expectedGain: hipótese com dois expect no mesmo alvo reparte por igual (valor exato)', () => {
@@ -116,7 +138,7 @@ test('activeToday = 3 não devolve medir nem intervir', () => {
 });
 
 test('nada que separe devolve need com as hipóteses empatadas', () => {
-  const hs = [hyp('A>s', 0.45, [pred('lembrar', 'x', 'presente')]), hyp('B>s', 0.45, [pred('lembrar', 'x', 'presente')]), hyp('C>s', 0.1, [])];
+  const hs = [hyp('A>s', 0.45, [pred('lembrar', 'x', 'presente')]), hyp('B>s', 0.45, [pred('lembrar', 'x', 'presente')]), hyp('C>s', 0.1, [pred('lembrar', 'x', 'presente')])];
   const r = P.choose(hs, priors(hs), ctx());
   assert.deepEqual(r.need.between.sort(), ['A>s', 'B>s']);
   assert.equal(typeof r.need.reason, 'string');
