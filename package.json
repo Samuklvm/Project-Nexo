@@ -49,7 +49,8 @@
       "package.json",
       "src/**/*",
       "electron/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "!assets/artes/**"
     ],
     "asarUnpack": [
       "electron/workers/**"
