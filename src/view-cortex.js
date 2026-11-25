@@ -351,7 +351,7 @@
     const d = detailOf(item.inv) || {};
     const hyps = (d.hipoteses || []).slice().sort((a, b) => Page.belief(b, d) - Page.belief(a, d));
     const thoughts = (d.pensamentos || []).slice(-60);
-    const conclusion = [...thoughts].reverse().find((t) => t.type === 'conclusao');
+    const conclusion = [...thoughts].reverse().find((t) => t.type === 'conclusao' || t.type === 'arquivada');
     const asking = item.status === 'aguardando';
     const pending = asking ? item.pedido || [...(d.pedidos || [])].reverse().find((p) => p.status === 'pendente')?.action : null;
     const first = thoughts.find((t) => t.type === 'notei') || thoughts[0];

@@ -271,8 +271,9 @@ function createLinuxProbe({ linux, emit = () => {}, match = () => null, interval
  * Tem jogo em primeiro plano? Mesma classificação da sonda (biblioteca de jogos primeiro, depois NexoSession).
  * null = não deu para saber (sem leitura, erro, ou nenhuma janela visível — no Wayland puro o sistema não revela).
  */
-function foregroundIsGame(raw, match = () => null) {
+function foregroundIsGame(raw, match = () => null, learn = null) {
   const sample = raw && typeof raw === 'object' ? normalizeProbe({ ...raw, t: 0 }, match) : null;
+  if (sample && sample.fg && sample.fg.isGame === true && sample.fg.name && typeof learn === 'function') { try { learn(sample.fg.name); } catch { /* aprender é opcional */ } }
   return sample && sample.fg ? sample.fg.isGame === true : null;
 }
 

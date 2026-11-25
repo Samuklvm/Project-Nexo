@@ -2547,12 +2547,12 @@ const cortexBusy = createBusy({ labRunning: () => labState.running, optRunning: 
 const cortexBench = (mode) => (IS_LINUX && !['single', 'multi', 'burst'].includes(mode) ? Promise.reject(new Error(`o teste "${mode}" não existe no Linux`)) : labSystem.bench(mode));
 /** Uma consulta do primeiro plano, com o mesmo detector das sessões; erro lança (o Cortex registra e conta como "não sei"). */
 async function cortexQueryForeground() {
-  if (IS_LINUX) return foregroundIsGame({ fg: await linux.foreground() }, probeMatch);
+  if (IS_LINUX) return foregroundIsGame({ fg: await linux.foreground() }, probeMatch, cortexIsGame.learn);
   if (process.platform !== 'win32') return null;
   const { code, stdout } = await runPowerShellCode(FOREGROUND_SCRIPT, 15000);
   if (code !== 0) throw new Error(`a consulta do primeiro plano falhou (código ${code})`);
   const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop();
-  return foregroundIsGame(line ? JSON.parse(line) : null, probeMatch);
+  return foregroundIsGame(line ? JSON.parse(line) : null, probeMatch, cortexIsGame.learn);
 }
 const cortexGameInForeground = createGameInForeground({ lastProbe: () => lastProbeSample, query: cortexQueryForeground });
 async function startCortex() {

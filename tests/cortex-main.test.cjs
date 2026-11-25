@@ -47,7 +47,7 @@ function setup({ dir = tmp(), clock = { t: T0 }, memory, labReturn, platform = '
     onBattery: () => env.battery,
     busy: () => env.busy,
     bench: async (mode) => { env.bench.push(mode); const n = env.bench.length; if (env.onBench) await env.onBench(n); return env.score(n); },
-    quiet: async () => ({ ok: true }),
+    quiet: async () => env.quiet || { ok: true },
     labRun: async (opts) => { env.lab.push(opts); return labReturn ? labReturn(opts) : labResult(); },
     labCancel: () => { env.cancels += 1; },
     emit: (channel, payload) => env.emits.push({ channel, payload }),
@@ -820,7 +820,7 @@ test('cópia de segurança também sem profundo: ~2 min depois de abrir, se a ú
     return t;
   };
   const t = make();
-  const c = Cortex.createCortex({ memory: { ok: true, memory: t.memory }, rhythm: createRhythm(), now: () => t.clock.t, platform: 'win32', backupDelayMs: 5, log: (e) => t.env.logs.push(e) });
+  const c = Cortex.createCortex({ memory: { ok: true, memory: t.memory }, rhythm: createRhythm(), now: () => t.clock.t, platform: 'win32', backupDelayMs: 5, idleSec: () => 700, log: (e) => t.env.logs.push(e) });
   await c.start();
   // A cópia (API de backup do SQLite + troca de nome) é assíncrona e, no Windows, bem mais lenta que no Linux:
   // espera ela terminar de verdade (até 10 s) em vez de um tempo fixo.
@@ -940,6 +940,7 @@ test('P3: referência recusada (quente, bateria, processador ocupado) vai para o
   // Outro motivo no mesmo dia: mais um registro (e só um).
   t.env.tempC = 50;
   t.env.battery = true;
+  t.clock.t += 3 * 60 * MIN; // a espera cresce com bloqueios seguidos (teto de 2 h)
   for (let i = 0; i < 4; i++) { t.clock.t += 5 * MIN; await t.cortex.tick(); }
   assert.equal(refusals().length, 2, JSON.stringify(refusals()));
   assert.match(refusals()[1].message, /bateria/);
@@ -1250,4 +1251,116 @@ test('F2: ponta a ponta: a sonda aprende, o app reinicia, o Cortex novo não abr
   u.cortex.observeEvent({ kind: 'lentidao', at: T0, data: { kind: 'cpu', start: T0 - 10 * MIN, end: T0, peak: 97, minutes: 10, culprit: 'JogoComAnticheat.exe' } });
   await u.cortex.tick();
   assert.deepEqual(u.cortex.list({ limit: 10 }), []);
+});
+
+// ---- Correções da revisão (I1..I4, M-a..M-d) ----
+
+const gameSlowAnomaly = (symptom, culprit, at = T0 - DAY) => ({ kind: 'lentidao', symptom, at, window: { from: at - 10 * MIN, to: at }, data: { culprit } });
+
+test('I1: a lentidão do jogo é regra permanente: sem o jogo conhecido na partida fica aberta; quando o Cortex aprende o nome, o tique arquiva', async () => {
+  const { createIsGame } = require('../electron/cortex-host.cjs');
+  const isGame = createIsGame({});
+  const t = setup({ isGame });
+  const inv = seedOpen(t.memory, gameSlowAnomaly('cpu', 'JogoComAnticheat.exe'));
+  const mem = seedOpen(t.memory, gameSlowAnomaly('mem', 'JogoComAnticheat.exe'));
+  const curio = seedOpen(t.memory, { kind: 'curiosidade', symptom: 'disk', at: T0, window: { from: 0, to: 1 }, data: {} });
+  await t.cortex.start({ timers: false });
+  assert.ok(concl(t.memory, curio), 'a carga trivial (P4) é arquivada uma vez, na partida');
+  assert.equal(concl(t.memory, inv), null, 'jogo ainda desconhecido: fica aberta');
+  assert.ok(t.memory.getMeta('cortex.v01-arquivo'));
+  isGame.learn('JogoComAnticheat.exe');
+  t.clock.t += 10 * MIN;
+  await t.cortex.tick();
+  for (const i of [inv, mem]) {
+    assert.equal(concl(t.memory, i).data.verdict.status, 'nao-resolvido');
+    assert.match(t.memory.latest('pensamento', { inv: i }).data.text, /^Deixei de investigar/);
+  }
+});
+
+test('I1: a consulta do primeiro plano do próprio Cortex ensina o jogo (foregroundIsGame chama learn com o nome)', () => {
+  const { foregroundIsGame } = require('../electron/probe.cjs');
+  const learned = [];
+  const raw = { fg: { name: 'JogoComAnticheat', title: 'x', fullscreen: true } };
+  const match = (p) => (/jogocomanticheat/i.test(String(p)) ? { kind: 'game' } : null);
+  const verdict = foregroundIsGame(raw, match, (n) => learned.push(n));
+  if (verdict === true) assert.deepEqual(learned, ['JogoComAnticheat']);
+  assert.deepEqual(foregroundIsGame({ fg: { name: 'chrome', title: 'c', fullscreen: false } }, () => null, (n) => learned.push(n)), false);
+  assert.equal(learned.length, verdict === true ? 1 : 0);
+});
+
+test('I2: investigação com prova de lentidão de programa que não é jogo nunca é arquivada (curiosidade nem lentidão de jogo)', async () => {
+  const t = setup({ isGame: isGameName });
+  const curio = seedOpen(t.memory, { kind: 'curiosidade', symptom: 'cpu', at: T0, window: { from: 0, to: 1 }, data: {} });
+  t.memory.record('prova', { inv: curio, data: { kind: 'repeticao', anomaly: gameSlowAnomaly('cpu', 'compilador.exe', T0) } });
+  const slow = seedOpen(t.memory, gameSlowAnomaly('mem', GAME_EXE));
+  t.memory.record('prova', { inv: slow, data: { outcome: { observed: 'sobe' }, anomaly: gameSlowAnomaly('mem', 'render.exe', T0) } });
+  const onlyGame = seedOpen(t.memory, gameSlowAnomaly('cpu', GAME_EXE));
+  t.memory.record('prova', { inv: onlyGame, data: { kind: 'repeticao', anomaly: gameSlowAnomaly('cpu', GAME_EXE, T0) } });
+  await t.cortex.start({ timers: false });
+  assert.equal(concl(t.memory, curio), null);
+  assert.equal(concl(t.memory, slow), null);
+  assert.ok(concl(t.memory, onlyGame), 'prova só de jogo: pode arquivar');
+});
+
+test('I3: 8 h no profundo com a medição sempre recusada (outro programa usando o processador): poucas linhas, não 48 interrompidos', async () => {
+  const t = setup();
+  await toMedir(t);
+  for (const b of ['single', 'multi']) t.memory.setMeta(`cortex.ref.${b}`, JSON.stringify({ values: [100, 101, 100, 101, 100], at: t.clock.t }));
+  t.env.quiet = { ok: false };
+  const inv = t.memory.list('investigacao', { limit: 10 })[0].id;
+  const before = t.memory.list('pensamento', { inv, limit: 1000 }).length;
+  for (let i = 0; i < 8 * 60; i++) { t.clock.t += MIN; await t.cortex.tick(); }
+  const cut = experiments(t.memory).filter((e) => e.data.status === 'interrompido');
+  assert.ok(cut.length >= 1 && cut.length <= 3, `interrompidos: ${cut.length}`);
+  const added = t.memory.list('pensamento', { inv, limit: 1000 }).length - before;
+  assert.ok(added <= 5, `pensamentos novos: ${added}`);
+  assert.deepEqual(t.env.bench, [], 'mediu mesmo recusado');
+  // No dia seguinte a ação volta a tentar (e mede, com o PC livre).
+  t.env.quiet = null;
+  t.clock.t += 20 * 60 * MIN;
+  await tickUntil(t, () => t.env.bench.length > 0, 20);
+  assert.ok(t.env.bench.length > 0, 'a pausa do dia nunca acabou');
+});
+
+test('I4: primeiro plano "não sei" (null) não deixa copiar com a pessoa por perto: só com o PC parado há 10 min ou mais', async () => {
+  const t = setup();
+  const s = { idle: 5 };
+  let copies = 0;
+  const spy = { ...t.memory, backupDaily: async () => { copies += 1; return null; } };
+  const c = Cortex.createCortex({ memory: { ok: true, memory: spy }, rhythm: createRhythm(), now: () => t.clock.t, platform: 'win32', backupDelayMs: 5, backupRetryMs: 10,
+    busy: () => false, gameInForeground: async () => null, idleSec: () => s.idle, log: (e) => t.env.logs.push(e) });
+  await c.start();
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  await wait(80);
+  assert.equal(copies, 0, 'copiou com o primeiro plano desconhecido e a pessoa por perto');
+  s.idle = 600;
+  for (let waited = 0; copies === 0 && waited < 2000; waited += 10) await wait(10);
+  c.stop();
+  assert.equal(copies, 1);
+});
+
+test('M-b: medir sem referência cuja referência não pôde ser guardada falha (gasta o orçamento) em vez de medir para sempre', async () => {
+  const t = setup();
+  await goDeep(t);
+  const real = t.memory.setMeta;
+  t.memory.setMeta = (k, v) => (String(k).startsWith('cortex.ref.') ? false : real(k, v));
+  await assert.rejects(() => t.cortex._act({ type: 'medir', target: 'bench:single', cost: 2, risk: 'baixo' }, { inv: 1, symptom: 'cpu' }), /referência/);
+  assert.equal(t.cortex.stats().ativosHoje, 1);
+  t.memory.setMeta = real;
+});
+
+test('M-c: temp e temp_cpu iguais (Windows: temp == cpuTemp) não geram relação nem curiosidade', async () => {
+  const t = setup({ isGame: isGameName });
+  heavyNights(t, 'render-noturno.exe');
+  await goDeep(t);
+  await t.cortex.tick();
+  await t.cortex.tick();
+  const pairs = t.memory.list('relacao', { limit: 1000 }).filter((r) => r.data.kind === 'correlacao').map((r) => [r.data.edge.from, r.data.edge.to].sort().join('|'));
+  assert.ok(pairs.length > 0);
+  assert.ok(!pairs.includes('temp|temp_cpu'), `${pairs}`);
+});
+
+test('M-d: a página mostra o motivo de uma investigação arquivada (pensamento do tipo arquivada)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'view-cortex.js'), 'utf8');
+  assert.match(src, /'conclusao'\s*\|\|\s*t\.type === 'arquivada'|\['conclusao', 'arquivada'\]/);
 });

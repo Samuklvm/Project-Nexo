@@ -94,6 +94,8 @@ const riskRank = (r) => RISKS.indexOf(r);
 const HOT_C = 80; // o mesmo limite da pré-checagem do laboratório: processador mais quente que isso, espera esfriar
 const POINT_MAX_AGE = DAY; // o ponto de restauração criado no "Pode testar" vale por 24 h
 const POINT_RENEW_MS = 2 * 60 * MIN; // no "Pode testar", ponto que vence em menos de 2 h é refeito
+const HOLD_MAX_MS = 120 * MIN; // teto da espera crescente depois de bloqueios seguidos
+const CUTS_PER_DAY = 3; // interrupções passageiras da mesma ação no dia; a próxima tentativa fica para o dia seguinte
 const HOLD_MS = 10 * MIN; // depois de um bloqueio passageiro, testes e referências esperam isso antes de tentar de novo
 const LAB_PASSING_GUARDS = new Set(['bateria', 'quente', 'ocupado']); // guardas do lab (antes de medir) que passam sozinhas
 const PLATFORM_BENCHES = { linux: ['single', 'multi', 'burst'] }; // no Linux o lab só tem os testes de processador
@@ -359,7 +361,8 @@ function createCortex(deps = {}) {
     const sorted = values.slice().sort((a, b) => a - b);
     const ref = { values, median: sorted[Math.floor(sorted.length / 2)], at: now() };
     if (RUN_SCOPED.has(mode)) ref.abertura = opening;
-    if (!memory.setMeta(`cortex.ref.${mode}`, JSON.stringify(ref))) log('referencia', `a referência de ${mode} não gravou`);
+    if (!memory.setMeta(`cortex.ref.${mode}`, JSON.stringify(ref))) { log('referencia', `a referência de ${mode} não gravou`); return false; }
+    return true;
   }
   /**
    * Antes de medir: na tomada e com o processador abaixo do limite quente do lab. Nada mediu ainda, então a falha não
@@ -400,7 +403,10 @@ function createCortex(deps = {}) {
     const ref = readRef(mode);
     const values = await rounds(mode);
     if (!values) return { observed: 'interrompido' };
-    if (!freshRef(ref, mode)) { writeRef(mode, values); return { observed: 'sem-referencia' }; }
+    if (!freshRef(ref, mode)) {
+      if (!writeRef(mode, values)) throw new Error(`a referência de ${mode} não pôde ser guardada`); // senão mediria de novo para sempre
+      return { observed: 'sem-referencia' };
+    }
     const r = Experiment.compare(ref.values, values);
     const observed = r.verdict === 'melhorou' ? 'sobe' : r.verdict === 'piorou' ? 'desce' : r.verdict === 'sem-diferenca' ? 'igual' : null;
     if (!observed) throw new Error(`medição ${r.verdict}`);
@@ -439,9 +445,10 @@ function createCortex(deps = {}) {
     if (!mode) return;
     try { await guardMeasure(); } catch (e) { refusedRef(e); holdFor(e.motivo); return; } // na bateria ou quente: espera, sem marcar o dia
     active = { type: 'referencia', interrupted: false };
+    testRan = true;
     try {
       const values = await rounds(mode);
-      if (values) writeRef(mode, values);
+      if (values && !writeRef(mode, values)) memory.setMeta(`cortex.ref-falhou.${mode}`, day);
     } catch (e) {
       if (!e.semCusto) memory.setMeta(`cortex.ref-falhou.${mode}`, day); // o teste falhou de verdade: tenta de novo amanhã
       refusedRef(e, e && e.motivo ? null : `falhou.${mode}`);
@@ -452,7 +459,26 @@ function createCortex(deps = {}) {
   /** Bloqueio passageiro em vigor (motivo) ou null. */
   let hold = null;
   const held = () => (hold && now() < hold.until ? hold.motivo : null);
-  const holdFor = (motivo) => { if (motivo && motivo !== 'ponto') hold = { motivo, until: now() + HOLD_MS }; };
+  /**
+   * Cada bloqueio seguido do mesmo motivo espera o dobro (10 min, 20, 40... até 2 h); a 3ª interrupção da mesma ação no
+   * dia pausa os testes até o dia seguinte. Um teste que roda de verdade zera a sequência.
+   */
+  const holdStreak = new Map();
+  const cuts = { day: null, n: new Map() };
+  function holdFor(motivo, actionId) {
+    if (!motivo || motivo === 'ponto') return;
+    const n = holdStreak.get(motivo) || 0;
+    holdStreak.set(motivo, n + 1);
+    let ms = Math.min(HOLD_MS * 2 ** n, HOLD_MAX_MS);
+    if (actionId) {
+      const day = today();
+      if (cuts.day !== day) { cuts.day = day; cuts.n.clear(); }
+      const c = (cuts.n.get(actionId) || 0) + 1;
+      cuts.n.set(actionId, c);
+      if (c >= CUTS_PER_DAY) { const d = new Date(now()); d.setHours(24, 0, 0, 0); ms = Math.max(ms, d.getTime() - now()); }
+    }
+    hold = { motivo, until: now() + ms };
+  }
 
   /** O ponto de restauração criado no "Pode testar" (meta 'cortex.ponto' = { at, note }), se ainda vale (24 h). */
   function readPoint() {
@@ -507,6 +533,7 @@ function createCortex(deps = {}) {
    * A ação que o motor pede. null só para esperar (o resultado chega com a próxima lentidão igual).
    * O motor manda tudo num objeto só ({ type, target, cost, risk, inv, symptom }); `info` é opcional (testes).
    */
+  let testRan = false; // um teste pesado (ou referência) rodou neste tique: no máximo um por tique
   async function act(action, info = {}) {
     const a = action || {};
     const inv = info.inv ?? a.inv;
@@ -518,17 +545,18 @@ function createCortex(deps = {}) {
     if (!deep()) return { observed: 'interrompido' }; // teste pesado só no profundo (Review Focus 4)
     if (active) throw new Error('já há um teste do Cortex rodando');
     active = { type: a.type, interrupted: false };
+    testRan = true;
     try {
       const o = a.type === 'medir' ? await measure(a.target) : await intervene(a);
       // Interrompido não mediu; 'sem-referencia' virou a referência do teste (referências não contam no orçamento).
-      if (o && o.observed !== 'interrompido' && o.observed !== 'sem-referencia') spendActive();
+      if (o && o.observed !== 'interrompido' && o.observed !== 'sem-referencia') { spendActive(); holdStreak.clear(); }
       return o;
     } catch (e) {
       if (!active.interrupted && !(e && e.semCusto)) spendActive(); // falhou depois de começar: o PC trabalhou
       log(a.type, e, 'aviso'); // o motor registra 'falhou' (ou 'interrompido', se passageiro); aqui fica o porquê
       // Bloqueio passageiro: não é falha, a ação continua na investigação (e testes esperam HOLD_MS).
       if (e && e.semCusto && e.motivo && !active.interrupted) {
-        holdFor(e.motivo);
+        holdFor(e.motivo, `${a.type}:${a.target}`);
         return { observed: 'interrompido', motivo: e.motivo, reason: String(e.message || e.motivo).slice(0, 200) };
       }
       throw e;
@@ -768,9 +796,10 @@ function createCortex(deps = {}) {
   function mine() {
     const t = now();
     const rows = memory.minutes({ from: t - MINE_DAYS * DAY, to: t, limit: MINE_DAYS * 1440 });
-    const fresh = Relations.mineCorrelations(rows, map.edges());
+    const tauto = (e) => pairOf(e.from, e.to) === 'temp|temp_cpu'; // no Windows temp == cpuTemp: a "correlação" é a mesma medida duas vezes
+    const fresh = Relations.mineCorrelations(rows, map.edges()).filter((e) => !tauto(e));
     const calm = fresh.length ? withoutGames(rows) : rows;
-    const calmPairs = new Set((calm === rows ? fresh : Relations.mineCorrelations(calm, map.edges())).map((e) => pairOf(e.from, e.to)));
+    const calmPairs = new Set((calm === rows ? fresh : Relations.mineCorrelations(calm, map.edges()).filter((e) => !tauto(e))).map((e) => pairOf(e.from, e.to)));
     const open = new Set(memory.list('investigacao', { limit: 1000 }).filter((r) => !memory.latest('conclusao', { inv: r.id })).map((r) => r.data && r.data.symptom));
     for (const edge of fresh) {
       if (!(memory.record('relacao', { data: { edgeId: edge.id, kind: 'correlacao', at: t, edge } }) > 0)) { log('correlacoes', 'relação nova não gravou'); continue; }
@@ -790,8 +819,13 @@ function createCortex(deps = {}) {
   async function backupIfStale() {
     const last = typeof memory.lastBackupAt === 'function' ? memory.lastBackupAt() : null;
     if (finite(last) && now() - last < DAY) return;
-    // Consulta do primeiro plano que falha conta como "pode ser jogo"; null ("não sei", Wayland) deixa copiar.
-    const free = !(await busy()) && (await Promise.resolve().then(gameInForeground).catch(() => true)) !== true;
+    // Consulta do primeiro plano que falha conta como "pode ser jogo"; null ("não sei", Wayland) também, a não ser que o PC esteja parado há ENTER_IDLE_SEC.
+    let free = false;
+    if (!(await busy())) {
+      const game = await Promise.resolve().then(gameInForeground).catch(() => true);
+      const idle = Number(await Promise.resolve().then(idleSec).catch(() => Number.NaN));
+      free = game === false || (game === null && idle >= ENTER_IDLE_SEC);
+    }
     if (!free) {
       later(() => call('copia', backupIfStale, null), finite(deps.backupRetryMs) ? deps.backupRetryMs : BACKUP_RETRY_MS);
       return;
@@ -813,20 +847,23 @@ function createCortex(deps = {}) {
         if (inv > 0) changed.add(inv);
         else log('abrir', `investigação de ${an.symptom} não abriu`);
       }
+      safe('jogos', archiveGames, null);
       if (deep()) await call('profundo', daily, null);
       const ids = await call('retomar', () => engine.resume(), []);
       let worked = false; // algum passo andou: a referência espera um tique sem mais nada a fazer
+      testRan = false;
       for (const inv of ids) {
         if (await busy()) break;
         const status = await call('passo', () => engine.step(inv), null);
         if (status && status !== lastStatus.get(inv) && status !== 'falha-gravacao') changed.add(inv);
         if (status === 'falha-gravacao') log('passo', `a memória não gravou um passo (investigação ${inv})`);
-        if (status === 'continua') worked = true;
+        if (status === 'continua' || testRan) worked = true;
+        if (testRan) { if (status === 'concluida') lastStatus.delete(inv); else if (status) lastStatus.set(inv, status); break; } // um teste pesado por tique
         if (status === 'concluida') lastStatus.delete(inv);
         else if (status) lastStatus.set(inv, status);
       }
       safe('mapa', syncMap, null);
-      if (!worked) await call('referencia', buildReference, null);
+      if (!worked && !testRan) await call('referencia', buildReference, null);
     } catch (e) {
       log('tique', e);
     } finally {
@@ -983,23 +1020,46 @@ function createCortex(deps = {}) {
    */
   const ARCHIVE_KEY = 'cortex.v01-arquivo';
   const ARCHIVE_TEXT = 'Deixei de investigar: isso é a carga normal do computador (ou do jogo), não um problema.';
-  const refusedNow = (an) => !!an && typeof an === 'object' && (
-    (an.kind === 'curiosidade' && !Object.prototype.hasOwnProperty.call(CURIOUS, an.symptom)) ||
-    (an.kind === 'lentidao' && GAME_LOAD.has(an.symptom) && isGame(an.data && an.data.culprit)));
-  function archiveOld() {
-    if (memory.getMeta(ARCHIVE_KEY)) return;
+  const GAME_CHECK_MS = 2 * MIN;
+  let gameCheckedAt = -Infinity;
+  /** A investigação já recebeu prova de uma lentidão de programa que não é jogo? Então ela não é só "do jogo": nunca arquivar. */
+  function hasRealSlowdown(inv) {
+    const carries = (r) => { const an = r.data && r.data.anomaly; return !!an && an.kind === 'lentidao' && !isGame(an.data && an.data.culprit); };
+    return memory.list('prova', { inv, limit: 1000 }).some(carries) || memory.list('experimento', { inv, limit: 1000 }).some(carries);
+  }
+  function archive(rows, refused) {
     let ok = true;
-    for (const r of memory.list('investigacao', { limit: 100000 })) {
-      if (memory.latest('conclusao', { inv: r.id }) || !refusedNow(r.data && r.data.anomaly)) continue;
+    for (const r of rows) {
+      if (memory.latest('conclusao', { inv: r.id }) || !refused(r.data && r.data.anomaly) || hasRealSlowdown(r.id)) continue;
       const done = memory.record('conclusao', { inv: r.id, data: { verdict: { status: 'nao-resolvido', winner: null, refuted: [] }, missing: [], leading: null, events: [], reason: ARCHIVE_TEXT } });
       if (!(done > 0)) { ok = false; continue; }
       if (!(memory.record('pensamento', { inv: r.id, data: { step: { type: 'arquivada' }, text: ARCHIVE_TEXT } }) > 0)) ok = false;
     }
+    return ok;
+  }
+  /**
+   * P4, uma vez (meta cortex.v01-arquivo): curiosidade aberta de carga (cpu/mem/gpu/disk) ganha uma conclusão
+   * 'nao-resolvido' e um pensamento, só acrescentando. Se alguma gravação falhar, a marca não é posta e a próxima partida completa.
+   */
+  function archiveOld() {
+    if (memory.getMeta(ARCHIVE_KEY)) return;
+    const ok = archive(memory.list('investigacao', { limit: 100000 }), (an) => an && an.kind === 'curiosidade' && !Object.prototype.hasOwnProperty.call(CURIOUS, an.symptom));
     if (ok && !memory.setMeta(ARCHIVE_KEY, String(now()))) log('arquivo', 'a marca do arquivamento não gravou');
+  }
+  /**
+   * P5, regra permanente (partida e tique, no máximo a cada 2 min): lentidão de cpu/mem aberta cujo culpado o Cortex
+   * reconhece como jogo agora. O jogo só é conhecido depois (a biblioteca escaneia e a sonda ensina nomes), então não dá
+   * para decidir uma vez só na partida.
+   */
+  function archiveGames() {
+    if (now() - gameCheckedAt < GAME_CHECK_MS) return;
+    gameCheckedAt = now();
+    archive(memory.list('investigacao', { limit: 1000 }), (an) => !!an && an.kind === 'lentidao' && GAME_LOAD.has(an.symptom) && isGame(an.data && an.data.culprit));
   }
 
   async function start({ snapshot, version, timers: withTimers = true } = {}) {
     safe('arquivo', archiveOld, null);
+    safe('jogos', archiveGames, null);
     safe('fila', reloadQueue, null);
     if (typeof snapshot === 'function') {
       await call('maquina', async () => { const s = await snapshot(); if (s) memory.addMachine(machineOf(s)); }, null);

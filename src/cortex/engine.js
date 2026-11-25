@@ -266,8 +266,15 @@
       return 'continua';
     }
 
+    /** O último experimento desta ação já foi um bloqueio passageiro (interrompido com motivo)? Então é a mesma sequência. */
+    function lastCut(s, a) {
+      const last = store.list('experimento', { inv: s.inv, limit: ALL }).filter((r) => r.data.action && r.data.action.type === a.type && r.data.action.target === a.target).pop();
+      return last && last.data.status === 'interrompido' && last.data.detail ? last.data.detail : null;
+    }
+
     async function run(s, a) {
-      think(s.inv, { type: 'plano', prediction: predictionFor(s, a) });
+      const streak = lastCut(s, a); // uma narração por sequência de bloqueios: nada de "vou testar" de novo a cada tentativa
+      if (!streak) think(s.inv, { type: 'plano', prediction: predictionFor(s, a) });
       let o;
       try {
         o = await act({ type: a.type, target: a.target, cost: a.cost, risk: a.risk, inv: s.inv, symptom: s.symptom });
@@ -283,6 +290,7 @@
       if (o.observed === 'interrompido') {
         // A pessoa voltou no meio, ou um bloqueio passageiro: não é evidência, não muda crença e a ação continua por fazer.
         const motivo = typeof o.motivo === 'string' && o.motivo ? o.motivo.slice(0, 40) : null;
+        if (motivo && streak === motivo) return 'continua'; // o mesmo bloqueio de novo: já está registrado e narrado
         put('experimento', { inv: s.inv, data: { action: slimAction(a), status: 'interrompido', ...(motivo ? { detail: motivo } : {}) } });
         think(s.inv, { type: 'interrompido', target: a.target, ...(motivo ? { reason: String(o.reason || motivo).slice(0, 200) } : {}) });
         if (motivo === 'ponto' && a.type === 'intervir') return ask(s, a);
