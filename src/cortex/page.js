@@ -108,6 +108,23 @@
     return !hidden && !modalOpen && !showing && firstRun(settings).show;
   }
 
+  /**
+   * Paralaxe do cenário: deslocamento de uma camada (px) para o ponteiro (x, y entre -1 e 1, o centro da tela = 0) e a
+   * rolagem da página. A camada vai para o lado contrário do mouse, proporcional à profundidade (0 = céu parado,
+   * 1 = frente, no máximo `max` px); a rolagem sobe as camadas mais perto mais depressa, até `scrollMax` × profundidade.
+   * Com "menos movimento", nada se mexe.
+   */
+  function parallax({ depth = 0, pointer = null, scroll = 0, max = 30, scrollMax = 120, reduced = false } = {}) {
+    if (reduced) return { x: 0, y: 0 };
+    const d = Math.max(0, Math.min(1, Number(depth) || 0));
+    const clamp = (v) => Math.max(-1, Math.min(1, Number(v) || 0));
+    const px = pointer ? clamp(pointer.x) : 0;
+    const py = pointer ? clamp(pointer.y) : 0;
+    const lift = Math.min(Math.max(0, Number(scroll) || 0) * d * 0.15, scrollMax * d);
+    const round = (v) => Math.round(v * 100) / 100 || 0; // || 0: nada de -0
+    return { x: round(-px * max * d), y: round(-py * max * d * 0.6 - lift) };
+  }
+
   const QUESTION = {
     cpu: 'Por que o processador ficou sobrecarregado', mem: 'Por que a memória chegou ao limite', disk: 'Por que o disco ficou ocupado',
     gpu: 'Por que a placa de vídeo chegou ao limite', temp_cpu: 'Por que o processador esquentou', temp: 'Por que a placa de vídeo esquentou',
@@ -129,5 +146,5 @@
     return Math.max(1, Math.ceil((now - since) / DAY));
   }
 
-  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, question, memoryDays };
+  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, parallax, question, memoryDays };
 });

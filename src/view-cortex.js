@@ -341,7 +341,7 @@
       try { localStorage.setItem(SEEN_KEY, JSON.stringify([...new Set([...seen, ...proven])].slice(-200))); } catch { /* só nesta sessão */ }
       for (const cause of fresh) {
         const card = [...host.querySelectorAll('.cx-beast')].find((el) => el.dataset.cause === cause);
-        if (card) whenSeen(card, () => burst(card.querySelector('.cx-beast-art'), [['flash', 'clarao'], ['ring', 'anel']]));
+        if (card) whenSeen(card, () => { burst(card.querySelector('.cx-beast-art'), [['flash', 'clarao'], ['ring', 'anel']]); sceneFlash(); });
       }
     }
   }
@@ -403,6 +403,7 @@
       const testing = stats?.testando || null;
       if (page) {
         renderAll();
+        if (scene.on) placeGlobe();
         if (testing && testing !== lastTesting) burst(panel.querySelector('.cx-spool'), [['spark', 'faisca']]);
       } else renderTeaser();
       lastTesting = testing;
@@ -447,6 +448,114 @@
     const next = all[(all.indexOf(pact) + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1) + all.length) % all.length];
     next.focus();
   });
+
+  /* ---------- Cenário vivo em camadas (A Biblioteca da Memória) ----------
+   As mesmas camadas da assets/arte/cortex/cenario/cena.json (o CSP não deixa ler o JSON na hora; o teste confere).
+   depth: 0 = parado (céu), 1 = frente. O globo é recortado (box na cena de 2400 × 1350) e brilha conforme o Cortex. */
+  const SCENE_BASE = `${window.__assetBase || ''}assets/arte/cortex/cenario/`;
+  const SCENE = [
+    { id: 'ceu', file: 'ceu.webp', depth: 0.04 },
+    { id: 'fundo', file: 'fundo.webp', depth: 0.12 },
+    { id: 'meio', file: 'meio.webp', depth: 0.3 },
+    { id: 'luzes', file: 'luzes.webp', depth: 0.3 },
+    { id: 'globo', file: 'globo.webp', depth: 0.32, box: [990, 270, 420, 400] },
+    { id: 'perto', file: 'perto.webp', depth: 0.6 },
+    { id: 'frente', file: 'frente.webp', depth: 1 }
+  ];
+  const sceneHost = $id('cx-scene');
+  const stageEl = $id('stage');
+  const scene = { ready: null, on: false, layers: [], globe: null, glow: null, core: null, pointer: { x: 0, y: 0 }, target: null, lastMove: 0, flash: 0 };
+  /** Carrega as camadas na primeira visita à página. Sem o céu (ou sem qualquer camada), fica o fundo de antes. */
+  function ensureScene() {
+    if (scene.ready || !sceneHost) return scene.ready || Promise.resolve();
+    scene.ready = Promise.all(SCENE.map((layer) => new Promise((resolve) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.alt = '';
+      img.draggable = false;
+      img.onload = () => resolve({ layer, img });
+      img.onerror = () => resolve(null);
+      img.src = SCENE_BASE + layer.file;
+    }))).then((loaded) => {
+      if (loaded.some((entry) => !entry)) return; // cenário pela metade não monta: fica o fundo antigo
+      for (const { layer, img } of loaded) {
+        const el = document.createElement('div');
+        el.className = 'cx-layer';
+        el.dataset.l = layer.id;
+        if (layer.box) {
+          // O globo mora no vão do coração (no fluxo da página: rola junto com o conteúdo, mesmo sem efeitos).
+          const globe = document.createElement('div');
+          globe.className = 'cx-globe';
+          globe.innerHTML = '<i class="cx-globe-silk"></i><i class="cx-globe-glow"></i><i class="cx-globe-core"></i>';
+          globe.prepend(img);
+          $id('cx-heart')?.append(globe);
+          scene.globe = globe; scene.glow = globe.querySelector('.cx-globe-glow'); scene.core = globe.querySelector('.cx-globe-core');
+          scene.layers.push({ el: globe, depth: layer.depth, box: layer.box, inPage: true });
+          continue;
+        }
+        el.append(img);
+        sceneHost.append(el);
+        scene.layers.push({ el, depth: layer.depth, box: null });
+      }
+      scene.on = true;
+      sceneHost.classList.add('on');
+      panel.classList.add('cx-scene-on');
+      placeGlobe();
+    });
+    return scene.ready;
+  }
+  /** O globo pende num fio de seda no centro do vão do coração (entre o salão e a permissão), do tamanho do vão. */
+  function placeGlobe() {
+    const entry = scene.layers.find((layer) => layer.box);
+    const heart = $id('cx-heart');
+    if (!entry || !scene.globe || !heart || !heart.offsetHeight) return;
+    const [, , bw, bh] = entry.box;
+    const h = Math.min(heart.offsetHeight * 0.8, 380);
+    const w = h * (bw / bh);
+    Object.assign(scene.globe.style, { left: `calc(50% - ${(w / 2).toFixed(1)}px)`, top: `calc(50% - ${(h / 2).toFixed(1)}px)`, width: `${w.toFixed(1)}px`, height: `${h.toFixed(1)}px` });
+  }
+  addEventListener('resize', () => { if (scene.on) placeGlobe(); });
+  addEventListener('pointermove', (event) => {
+    if (Nexo.state.view !== 'cortex') return;
+    const box = stageEl?.getBoundingClientRect() || { left: 0, top: 0, width: innerWidth, height: innerHeight };
+    scene.target = { x: ((event.clientX - box.left) / box.width) * 2 - 1, y: ((event.clientY - box.top) / box.height) * 2 - 1 };
+    scene.lastMove = performance.now();
+  }, { passive: true });
+  /** Um passo do cenário: segue o mouse com inércia (sem mouse há 4 s, respira devagar) e a rolagem; o globo pulsa. */
+  function sceneStep(t, dt) {
+    if (!scene.on) return;
+    sceneHost.classList.add('moving');
+    const idle = !scene.target || performance.now() - scene.lastMove > 4000;
+    const goal = idle ? { x: Math.sin(t * 0.13) * 0.35, y: Math.cos(t * 0.09) * 0.22 } : scene.target;
+    const k = 1 - Math.exp(-dt * (idle ? 0.8 : 3.2));
+    scene.pointer.x += (goal.x - scene.pointer.x) * k;
+    scene.pointer.y += (goal.y - scene.pointer.y) * k;
+    const scroll = stageEl?.scrollTop || 0;
+    for (const layer of scene.layers) {
+      // Camadas fixas sobem devagar com a rolagem; o globo (no fluxo da página) fica um pouco para trás do conteúdo.
+      const { x, y } = Page.parallax({ depth: layer.depth, pointer: scene.pointer, scroll: layer.inPage ? 0 : scroll, max: 30, scrollMax: 120 });
+      const lag = layer.inPage ? Math.min(scroll * 0.1, 36) : 0;
+      layer.el.style.transform = `translate3d(${x}px, ${(y + lag).toFixed(2)}px, 0)`;
+    }
+    // O coração: brilho calmo; pulso lento pensando; mais forte no profundo; clarão quando uma causa é provada.
+    const deep = (rhythm?.state || stats?.ritmo) === 'profundo';
+    const thinking = deep || Boolean(stats?.testando || rhythm?.testando);
+    const pulse = thinking ? 0.5 + 0.5 * Math.sin(t * (deep ? 1.6 : 0.9)) : 0;
+    scene.flash = Math.max(0, scene.flash - dt * 0.7);
+    const glow = 0.55 + (deep ? 0.2 : 0) + pulse * (deep ? 0.3 : 0.18) + scene.flash * 0.6;
+    if (scene.glow) { scene.glow.style.opacity = Math.min(1, glow).toFixed(3); scene.glow.style.transform = `scale(${(1 + pulse * 0.06 + scene.flash * 0.35).toFixed(3)})`; }
+    if (scene.core) scene.core.style.opacity = Math.min(1, 0.32 + pulse * 0.3 + scene.flash * 0.7).toFixed(3);
+  }
+  /** Parado (Leve, menos movimento, fora da página): imagem no lugar, sem deslocamento. */
+  function sceneSettle() {
+    if (!scene.on) return;
+    sceneHost.classList.remove('moving');
+    for (const layer of scene.layers) layer.el.style.transform = '';
+    if (scene.glow) { scene.glow.style.opacity = ''; scene.glow.style.transform = ''; }
+    if (scene.core) scene.core.style.opacity = '';
+  }
+  /** Clarão do globo quando uma causa vira "apoiada" (junto com o clarão da criatura). */
+  function sceneFlash() { scene.flash = 1; wake(); }
 
   /* ---------- Efeitos (relógio único) ---------- */
   const fx = { on: false, t: 0, canvas: $id('cx-fx'), ctx: null, w: 0, h: 0, dpr: 1, parts: [], shots: [], nextSpark: 3 };
@@ -565,12 +674,14 @@
     const mandala = panel.querySelector('.cx-thought.thinking .cx-mandala');
     if (mandala) mandala.style.transform = `rotate(${((t * 9) % 360).toFixed(1)}deg)`;
     if (t > fx.nextSpark) { fx.nextSpark = t + rnd(2.5, 5); sparkle(); }
+    sceneStep(t, dt);
     drawParticles(dt);
     stepShots(dt);
     return true;
   }
   /** Parado (Leve, menos movimento, janela oculta): tudo fica no lugar, sem resto de efeito pela metade. */
   function settle() {
+    sceneSettle();
     for (const shot of fx.shots) shot.el.remove();
     fx.shots = [];
     fx.ctx?.clearRect(0, 0, fx.canvas.width, fx.canvas.height);
@@ -585,7 +696,7 @@
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (fx.on) { sizeCanvas(); seedParticles(); } }).observe($id('cx-hall'));
 
   Nexo.on('view', (view) => {
-    if (view === 'cortex') { refresh().then(() => setTimeout(wake, 80)); }
+    if (view === 'cortex') { ensureScene().then(placeGlobe); refresh().then(() => setTimeout(wake, 80)); }
     else if (view === 'analysis') refresh();
   });
   Nexo.on('idle', (idle) => { if (!idle) wake(); });

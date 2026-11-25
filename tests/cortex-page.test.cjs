@@ -134,7 +134,8 @@ test('view-cortex.js: só papéis do manifesto, nada de nome de jogo na tela e t
   const view = read('src/view-cortex.js');
   const manifest = JSON.parse(read('assets/arte/cortex/manifest.json'));
   const files = new Set(Object.values(manifest.papeis).map((e) => e.arquivo));
-  for (const [, file] of view.matchAll(/'([a-z0-9_-]+\.webp)'/g)) assert.ok(files.has(file), `${file} não está no manifesto`);
+  const sceneFiles = new Set(JSON.parse(read('assets/arte/cortex/cenario/cena.json')).camadas.map((l) => l.arquivo));
+  for (const [, file] of view.matchAll(/'([a-z0-9_-]+\.webp)'/g)) assert.ok(files.has(file) || sceneFiles.has(file), `${file} não está no manifesto nem na cena`);
   const css = read('cortex.css');
   for (const [, file] of css.matchAll(/assets\/arte\/cortex\/([a-z0-9_-]+\.webp)/g)) assert.ok(files.has(file), `cortex.css: ${file} não está no manifesto`);
   for (const text of [view, css, read('index.html')]) assert.doesNotMatch(text, /Hornet|Silksong|Hollow Knight|Team Cherry|Pharloom|Farmer Wisp|Bell Beast|Beastfly|Voltvyrm|Bloatroach|Cogwork|Clover Dancer|Shadow Creeper/);
@@ -178,4 +179,31 @@ test('primeira escolha: a escolha é relida depois de carregar a arte, logo ante
   assert.match(between, /cortexSettings\(\)/, 'relê a configuração depois da espera pela arte');
   assert.match(between, /Page\.canShowFirst\(\{[^}]*settings: fresh/, 'a última conferência usa a leitura nova');
   assert.match(body.slice(show), /^showFirst\(Page\.firstRun\(fresh\), fresh\)/, 'a janela abre com a leitura nova');
+});
+
+test('paralaxe: deslocamento proporcional à profundidade, com teto, e parado com menos movimento', () => {
+  const frente = Page.parallax({ depth: 1, pointer: { x: 1, y: 1 }, scroll: 0, max: 30 });
+  assert.equal(frente.x, -30, 'a frente vai para o lado contrário do mouse, no máximo 30 px');
+  assert.ok(frente.y < 0 && frente.y >= -30);
+  const fundo = Page.parallax({ depth: 0.1, pointer: { x: 1, y: 0 }, scroll: 0, max: 30 });
+  assert.ok(Math.abs(fundo.x) < Math.abs(frente.x) / 5, 'o fundo quase não mexe');
+  const longe = Page.parallax({ depth: 1, pointer: { x: 9, y: -9 }, scroll: 0, max: 30 });
+  assert.equal(longe.x, -30, 'ponteiro fora da janela não passa do teto');
+  assert.ok(longe.y <= 30);
+  // A rolagem sobe as camadas mais perto mais depressa (mais que o mouse sozinho), com teto próprio.
+  const rolou = Page.parallax({ depth: 1, pointer: { x: 0, y: 0 }, scroll: 4000, max: 30, scrollMax: 120 });
+  assert.equal(rolou.y, -120);
+  assert.ok(Page.parallax({ depth: 0.2, pointer: { x: 0, y: 0 }, scroll: 400, max: 30 }).y > rolou.y);
+  assert.deepEqual(Page.parallax({ depth: 1, pointer: { x: 1, y: 1 }, scroll: 900, max: 30, reduced: true }), { x: 0, y: 0 });
+  assert.deepEqual(Page.parallax({ depth: 0.5, pointer: null, scroll: 0, max: 30 }), { x: 0, y: 0 });
+});
+
+test('cenário: a tela usa as mesmas camadas da cena.json (o CSP não deixa ler o JSON na hora)', () => {
+  const view = read('src/view-cortex.js');
+  const cena = JSON.parse(read('assets/arte/cortex/cenario/cena.json'));
+  const block = view.slice(view.indexOf('const SCENE = ['), view.indexOf('];', view.indexOf('const SCENE = [')));
+  for (const layer of cena.camadas) {
+    assert.match(block, new RegExp(`id: '${layer.id}', file: '${layer.arquivo.replace('.', '\\.')}', depth: ${layer.profundidade}\\b`), `camada ${layer.id}`);
+  }
+  assert.equal((block.match(/id: '/g) || []).length, cena.camadas.length);
 });

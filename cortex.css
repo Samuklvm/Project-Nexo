@@ -34,6 +34,39 @@ body[data-view="cortex"] .aurora::before { content: ""; position: absolute; inse
   -webkit-mask-image: linear-gradient(180deg, transparent, #000 35%, #000 60%, transparent); mask-image: linear-gradient(180deg, transparent, #000 35%, #000 60%, transparent); }
 [data-view-panel="cortex"].cx-a-nevoa .cx-mist { background: url("assets/arte/cortex/nevoa.webp") 0 0 / 512px 512px repeat; opacity: 0.09; mix-blend-mode: screen; }
 
+/* ---------- Cenário vivo: "A Biblioteca da Memória" (assets/arte/cortex/cenario/, camadas em paralaxe) ----------
+   Fixo atrás da página inteira. Cada camada cobre a tela como a cena de 2400 × 1350 (object-fit: cover, mesmo ponto de
+   apoio), com folga para o deslocamento; o src/view-cortex.js move só o transform, no relógio único. Sem os arquivos,
+   nada disso aparece e fica o céu de antes. Um véu de tinta e a vinheta seguram o contraste atrás dos cartões. */
+[data-view-panel="cortex"] .cx-scene { position: fixed; inset: 0; z-index: -2; display: none; overflow: hidden; pointer-events: none; background: var(--ink); }
+[data-view-panel="cortex"] .cx-scene.on { display: block; }
+[data-view-panel="cortex"] .cx-layer { position: absolute; left: -40px; right: -40px; top: -40px; bottom: -170px; }
+[data-view-panel="cortex"] .cx-scene.moving .cx-layer, [data-view-panel="cortex"] .cx-scene.moving ~ .cx-heart .cx-globe { will-change: transform; }
+[data-view-panel="cortex"] .cx-layer > img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; user-select: none; }
+[data-view-panel="cortex"] .cx-layer[data-l="luzes"] { opacity: 0.85; }
+[data-view-panel="cortex"] .cx-globe { position: absolute; }
+/* O fio de seda de onde o globo pende (vai até o alto da tela). */
+[data-view-panel="cortex"] .cx-globe-silk { position: absolute; left: 50%; bottom: 88%; width: 2px; height: 2400px; margin-left: -1px; z-index: 0;
+  background: linear-gradient(180deg, rgba(179, 32, 44, 0), rgba(179, 32, 44, 0.55) 70%, rgba(226, 57, 74, 0.95)); box-shadow: 0 0 8px rgba(226, 57, 74, 0.55); }
+/* O vão do coração: com o cenário, a divisória dá lugar a um vão onde o globo aparece. */
+[data-view-panel="cortex"] .cx-heart { display: none; }
+[data-view-panel="cortex"].cx-scene-on .cx-heart { position: relative; z-index: -1; display: block; height: clamp(260px, 40vh, 470px); }
+[data-view-panel="cortex"].cx-scene-on .cx-divider { display: none; }
+[data-view-panel="cortex"].cx-scene-on .cx-heart + .cx-sec { margin-top: 0; }
+[data-view-panel="cortex"].cx-scene-on .cx-dust { opacity: 0.22; }
+[data-view-panel="cortex"].cx-scene-on .cx-dust-far { opacity: 0.14; }
+[data-view-panel="cortex"] .cx-globe img { position: relative; z-index: 1; display: block; width: 100%; height: 100%; }
+[data-view-panel="cortex"] .cx-globe-glow { position: absolute; left: -60%; top: -60%; width: 220%; height: 220%; z-index: 0; border-radius: 50%; opacity: 0.6;
+  background: radial-gradient(circle, rgba(255, 240, 200, 0.75), rgba(240, 212, 142, 0.4) 22%, rgba(201, 163, 90, 0.14) 42%, transparent 64%); }
+[data-view-panel="cortex"] .cx-globe-core { position: absolute; left: 20%; top: 18%; width: 60%; height: 62%; z-index: 2; border-radius: 50%; opacity: 0.35; mix-blend-mode: screen;
+  background: radial-gradient(circle at 46% 42%, rgba(255, 246, 220, 0.95), rgba(240, 212, 142, 0.45) 38%, transparent 70%); }
+[data-view-panel="cortex"] .cx-globe img { filter: brightness(1.25) contrast(1.05) drop-shadow(0 0 18px rgba(240, 212, 142, 0.35)); }
+[data-view-panel="cortex"] .cx-scene::after { content: ""; position: absolute; inset: 0; z-index: 9;
+  background: radial-gradient(ellipse 80% 75% at 50% 45%, transparent 50%, rgba(10, 9, 13, 0.7) 100%), linear-gradient(180deg, rgba(10, 9, 13, 0.08), rgba(10, 9, 13, 0.22) 55%, rgba(10, 9, 13, 0.55)); }
+/* Com o cenário, o salão vira uma janela para a biblioteca (o título continua sobre tinta). */
+[data-view-panel="cortex"].cx-scene-on .cx-hall { background: radial-gradient(45% 60% at 31% 42%, rgba(10, 9, 13, 0.55), transparent 75%), radial-gradient(55% 70% at 30% 0%, rgba(179, 32, 44, 0.1), transparent 70%), linear-gradient(180deg, rgba(19, 17, 26, 0.3), rgba(10, 9, 13, 0.55)); }
+[data-view-panel="cortex"].cx-scene-on .cx-mist { opacity: 0.06; }
+
 /* ---------- Salão (topo) ---------- */
 [data-view-panel="cortex"] .cx-hall { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 40px; align-items: center; margin-top: 6px; padding: 44px 46px 42px; min-height: 420px; overflow: hidden;
   border: 1px solid rgba(var(--gild), 0.26);
