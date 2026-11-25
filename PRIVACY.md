@@ -93,7 +93,10 @@ The Cortex is Nexo's brain: it keeps a memory of how your PC behaves and investi
 - **Where it lives:** the Cortex memory (measured minutes, events, machine snapshots and its hypotheses, proofs and conclusions) stays **only on this PC**, in the `cortex` folder of the app data, **forever**. It is not sent anywhere: not to the Nexo server, not to GitHub, not to any other service.
 - **No erase button:** there is no button to erase this memory. **Erase learning and history** (“Apagar aprendizado e histórico”) erases only the old learning (see below) and does not touch the Cortex memory. Only uninstalling removes the folder.
 - **Export:** in **Settings → Privacy and data** (**Export Cortex memory**) and on the Cortex page you can save a copy of the memory, as a `.db` (SQLite) file, wherever you choose. The live memory is never overwritten.
-- **What it may do on its own:** by default the Cortex **only observes**. Automatic tests are **off** and only run if you turn them on in the Cortex page (or if you accept the optional integrated AI, which turns the tests on by default). Even when on, automatic tests are **low-risk only**, **only with the PC idle and no game in the foreground**, **always reverted** to the original value, and **at most 3 per day**. You can go back to “only observe” whenever you want.
+- **What it may do on its own:** you pick one of three modes on the Cortex page, and nothing leaves your PC in any of them.
+  - **Only observe** (default without the integrated AI): changes nothing on the PC; with the PC idle and no game open, it may run short performance measurements to compare (at most 3 per day).
+  - **Ask before testing:** each setting test waits for your OK; you can allow higher risk by typing a confirmation.
+  - **Test on its own while the PC is idle** (default with the optional integrated AI): only low-risk settings, only with the PC idle and no game, at most 3 per day; every tested setting goes back to the original, and Nexo warns you if the revert fails.
 - **Nothing leaves the PC:** neither the memory, nor the tests, nor what the Cortex concluded is sent.
 
 ## Export, erase and uninstall

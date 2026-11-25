@@ -91,7 +91,10 @@ O Cortex é o cérebro do Nexo: ele guarda uma memória de como o seu PC se comp
 - **Onde fica:** a memória do Cortex (minutos medidos, eventos, retratos da máquina e as hipóteses, provas e conclusões dele) fica **só neste PC**, na pasta `cortex` dos dados do app, **para sempre**. Não é enviada a lugar nenhum: nem para o servidor do Nexo, nem para o GitHub, nem para qualquer outro serviço.
 - **Sem botão de apagar:** não existe botão para apagar essa memória. O **Apagar aprendizado e histórico** apaga só o aprendizado antigo (veja abaixo) e não toca na memória do Cortex. Só a desinstalação remove a pasta.
 - **Exportar:** em **Ajustes → Privacidade e dados** (**Exportar memória do Cortex**) e na página do Cortex você salva uma cópia da memória, num arquivo `.db` (SQLite), no lugar que escolher. A memória viva nunca é sobrescrita.
-- **O que ele pode fazer sozinho:** por padrão, o Cortex **só observa**. Os testes automáticos vêm **desligados** e só rodam se você ligar na página do Cortex (ou se aceitar a IA integrada opcional, que liga os testes por padrão). Mesmo ligados, os testes automáticos são **só de risco baixo**, **só com o PC parado e sem jogo em primeiro plano**, **sempre revertidos** ao valor original e **no máximo 3 por dia**. Você pode voltar para “só observar” quando quiser.
+- **O que ele pode fazer sozinho:** você escolhe entre três modos na página do Cortex, e nada sai do seu PC em nenhum deles.
+  - **Só observar** (padrão sem a IA integrada): não muda nada no PC; com o PC parado e sem jogo aberto, pode fazer medições curtas de desempenho para comparar (no máximo 3 por dia).
+  - **Pedir antes de testar:** cada teste de ajuste espera o seu OK; você pode liberar risco maior digitando uma confirmação.
+  - **Testar sozinho com o PC parado** (padrão com a IA integrada opcional): só ajustes de risco baixo, só com o PC parado e sem jogo, no máximo 3 por dia; todo ajuste testado volta ao original, e o Nexo avisa se a volta falhar.
 - **Nada sai do PC:** nem a memória, nem os testes, nem o que o Cortex concluiu são enviados.
 
 ## Exportar, apagar e desinstalar
