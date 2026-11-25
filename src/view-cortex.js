@@ -595,20 +595,28 @@
   if (has('onCortexUpdate')) bridge.onCortexUpdate((payload) => { if (payload?.settings) settings = payload.settings; if (Nexo.state.view === 'cortex' || Nexo.state.view === 'analysis' || payload?.inv) soon(); });
   Nexo.commands?.push({ label: 'Ir para o Cortex', hint: 'Página', run: () => Nexo.go('cortex') });
 
-  /* ---------- Primeira escolha: uma janela por abertura até a pessoa escolher ---------- */
-  let asked = false;
-  async function firstRun(tries = 0) {
-    if (asked || !has('cortexSettings') || !has('cortexSetSettings')) return;
+  /* ---------- Primeira escolha: em toda abertura, até a pessoa escolher ---------- */
+  // Espera sem limite: o app pode abrir escondido na bandeja (iniciar com o sistema) e a janela de perfil pode
+  // demorar. Tenta de novo quando a janela fica visível e quando o #modal-root esvazia; confere a escolha logo antes.
+  let firstShowing = false;
+  let firstDone = false; // já apareceu nesta abertura (escolhendo ou fechando): só volta na próxima
+  let firstChecking = false;
+  const modalRoot = document.getElementById('modal-root');
+  const modalOpen = () => Boolean(modalRoot?.childElementCount);
+  async function firstRun() {
+    if (firstShowing || firstDone || firstChecking || document.hidden || modalOpen() || !has('cortexSettings') || !has('cortexSetSettings')) return;
+    firstChecking = true;
     let current = null;
-    try { current = await bridge.cortexSettings(); } catch { return; }
-    const plan = Page.firstRun(current);
-    if (!plan.show) return;
-    // Espera as outras janelas (perfil, novidades, perguntas) fecharem; nunca empilha.
-    if (document.getElementById('modal-root')?.childElementCount || document.hidden) { if (tries < 60) setTimeout(() => firstRun(tries + 1), 3000); return; }
-    asked = true;
+    try { current = await bridge.cortexSettings(); } catch { current = null; }
+    firstChecking = false;
+    if (!Page.canShowFirst({ hidden: document.hidden, modalOpen: modalOpen(), settings: current, showing: firstShowing || firstDone })) return;
     await ensureArt();
-    showFirst(plan, current);
+    // A espera pela arte é curta, mas outra janela pode ter aberto nela.
+    if (!Page.canShowFirst({ hidden: document.hidden, modalOpen: modalOpen(), settings: current, showing: firstShowing || firstDone })) return;
+    showFirst(Page.firstRun(current), current);
   }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(firstRun, 1200); });
+  if (modalRoot) new MutationObserver(() => { if (!modalOpen()) setTimeout(firstRun, 900); }).observe(modalRoot, { childList: true });
   function showFirst(plan, current) {
     const root = document.getElementById('modal-root') || document.body;
     const back = document.createElement('div');
@@ -628,14 +636,16 @@
       <div class="cx-first-actions"><span class="cx-choice">${on ? '' : reco}<button type="button" class="cx-btn${on ? ' ghost' : ''}" data-first="off">Deixar desligado</button></span><span class="cx-choice">${on ? reco : ''}<button type="button" class="cx-btn${on ? '' : ' ghost'}" data-first="on">Deixar ligado</button></span></div>
       <p class="cx-first-foot">Dá para mudar a qualquer hora na página do Cortex.</p></div>`;
     const previous = document.activeElement;
+    firstShowing = true;
     const close = () => {
+      firstShowing = false; firstDone = true;
       document.removeEventListener('keydown', onKey, true);
       back.classList.add('out');
       setTimeout(() => back.remove(), 220);
       previous?.focus?.();
     };
     const onKey = (event) => {
-      if (!back.isConnected) { document.removeEventListener('keydown', onKey, true); return; } // outra janela tomou o lugar
+      if (!back.isConnected) { firstShowing = false; document.removeEventListener('keydown', onKey, true); return; } // outra janela tomou o lugar
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
       if (event.key === 'Tab') {
         const focusable = [...back.querySelectorAll('button')];

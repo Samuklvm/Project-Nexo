@@ -141,3 +141,29 @@ test('view-cortex.js: só papéis do manifesto, nada de nome de jogo na tela e t
   assert.match(view, /escapeHtml\(/);
   assert.doesNotMatch(view, / style="/, 'use data-css');
 });
+
+test('primeira escolha: só mostra agora com a janela visível, sem outra janela aberta, sem escolha feita e sem já estar aberta', () => {
+  const s = { chosen: false, recommended: 'observar' };
+  assert.equal(Page.canShowFirst({ hidden: true, modalOpen: false, settings: s, showing: false }), false, 'janela escondida (aberto na bandeja)');
+  assert.equal(Page.canShowFirst({ hidden: false, modalOpen: true, settings: s, showing: false }), false, 'outra janela aberta');
+  assert.equal(Page.canShowFirst({ hidden: false, modalOpen: false, settings: { ...s, chosen: true }, showing: false }), false, 'já escolheu');
+  assert.equal(Page.canShowFirst({ hidden: false, modalOpen: false, settings: null, showing: false }), false, 'sem configuração');
+  assert.equal(Page.canShowFirst({ hidden: false, modalOpen: false, settings: s, showing: true }), false, 'nunca duas ao mesmo tempo');
+  assert.equal(Page.canShowFirst({ hidden: false, modalOpen: false, settings: s, showing: false }), true);
+});
+
+test('primeira escolha: a tela espera sem limite de tentativas (bandeja e janela de perfil demorada)', () => {
+  const view = read('src/view-cortex.js');
+  const block = view.slice(view.indexOf('Primeira escolha'), view.indexOf('setTimeout(() => firstRun()'));
+  assert.match(block, /Page\.canShowFirst\(/);
+  assert.doesNotMatch(block, /tries\s*</, 'sem teto de tentativas');
+  assert.match(block, /visibilitychange/);
+  assert.match(block, /MutationObserver/);
+});
+
+test('primeira escolha: fechar sem escolher não reabre na mesma abertura (só na próxima)', () => {
+  const view = read('src/view-cortex.js');
+  const block = view.slice(view.indexOf('Primeira escolha'), view.indexOf('setTimeout(() => firstRun()'));
+  assert.match(block, /const close = \(\) => \{[^}]*firstDone = true/);
+  assert.match(block, /showing: firstShowing \|\| firstDone/);
+});

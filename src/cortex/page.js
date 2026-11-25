@@ -100,6 +100,14 @@
     return { show: true, recommendedOn: settings.recommended === 'sozinho' };
   }
 
+  /**
+   * A janela da primeira escolha pode aparecer agora? Só com a janela do app visível (quem abre na bandeja vê quando
+   * abrir), sem outra janela na frente, sem escolha feita e sem ela já estar aberta. Sem limite de espera.
+   */
+  function canShowFirst({ hidden, modalOpen, settings, showing } = {}) {
+    return !hidden && !modalOpen && !showing && firstRun(settings).show;
+  }
+
   const QUESTION = {
     cpu: 'Por que o processador ficou sobrecarregado', mem: 'Por que a memória chegou ao limite', disk: 'Por que o disco ficou ocupado',
     gpu: 'Por que a placa de vídeo chegou ao limite', temp_cpu: 'Por que o processador esquentou', temp: 'Por que a placa de vídeo esquentou',
@@ -121,5 +129,5 @@
     return Math.max(1, Math.ceil((now - since) / DAY));
   }
 
-  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, question, memoryDays };
+  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, question, memoryDays };
 });
