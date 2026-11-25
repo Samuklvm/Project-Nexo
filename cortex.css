@@ -298,10 +298,40 @@ body[data-view="cortex"] .aurora::before { content: ""; position: absolute; inse
 .cx-teaser em { display: block; margin-top: 3px; font: italic 500 16px/1.35 var(--text); color: var(--bone-dim); }
 .cx-teaser .cx-teaser-go { font: 600 11px/1 var(--display); letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold-hi); white-space: nowrap; }
 
+/* ---------- Janela da primeira escolha ---------- */
+.cx-first { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: rgba(6, 5, 9, 0.72); backdrop-filter: blur(6px); animation: cxFirstIn 0.4s ease-out both; }
+.cx-first.out { opacity: 0; transition: opacity 0.22s; }
+.cx-first .cx-first-card { width: min(620px, 100%); max-height: calc(100vh - 48px); overflow: auto; padding: 46px 44px 34px; text-align: center; color: var(--bone); font-family: var(--text);
+  background: radial-gradient(70% 50% at 50% 0%, rgba(179, 32, 44, 0.18), transparent 70%), linear-gradient(180deg, rgba(25, 21, 31, 0.97), rgba(8, 7, 12, 0.98));
+  box-shadow: inset 0 0 0 4px rgba(8, 7, 12, 0.92), inset 0 0 0 5px rgba(var(--gild), 0.14), 0 28px 70px rgba(0, 0, 0, 0.72), 0 0 60px rgba(179, 32, 44, 0.1); }
+.cx-first .cx-first-close { position: absolute; top: 12px; right: 14px; width: 34px; height: 34px; border: 0; background: none; color: var(--bone-dim); font: 400 24px/1 var(--text); cursor: pointer; }
+.cx-first .cx-first-close:hover, .cx-first .cx-first-close:focus-visible { color: var(--gold-hi); outline: 1px solid rgba(var(--gild), 0.5); }
+.cx-first .cx-first-spool { display: grid; place-items: center; width: 92px; height: 92px; margin: 0 auto 10px; }
+.cx-first .cx-first-spool img { width: 92px; height: 92px; object-fit: contain; }
+.cx-first .cx-first-spool svg { width: 46px; height: 46px; color: var(--gold-hi); filter: drop-shadow(0 0 12px rgba(240, 212, 142, 0.5)); }
+.cx-first .cx-first-pre { display: inline-flex; align-items: center; gap: 0.8rem; font: 600 11px/1 var(--display); letter-spacing: 0.45em; text-transform: uppercase; color: var(--silk-hi); }
+.cx-first .cx-first-pre::before, .cx-first .cx-first-pre::after { content: ""; width: 40px; height: 1px; background: linear-gradient(90deg, transparent, var(--silk-hi)); }
+.cx-first .cx-first-pre::after { background: linear-gradient(90deg, var(--silk-hi), transparent); }
+.cx-first h2 { margin-top: 14px; font: 700 25px/1.25 var(--display); letter-spacing: 0.06em; color: var(--bone); }
+.cx-first .cx-first-orn { display: block; width: 300px; max-width: 80%; height: 22px; margin: 16px auto 0; background: var(--gold); opacity: 0.8; -webkit-mask: var(--flourish) center / contain no-repeat; mask: var(--flourish) center / contain no-repeat; }
+.cx-first.cx-a-divisor .cx-first-orn { height: 30px; -webkit-mask-image: url("assets/arte/cortex/divisor.webp"); mask-image: url("assets/arte/cortex/divisor.webp"); }
+.cx-first .cx-first-lead { margin-top: 16px; font: italic 500 19px/1.45 var(--text); color: var(--bone-dim); }
+.cx-first ul { display: grid; gap: 9px; max-width: 420px; margin: 18px auto 0; padding: 0; list-style: none; text-align: left; }
+.cx-first li { display: flex; align-items: baseline; gap: 12px; font: italic 500 18px/1.35 var(--text); color: var(--bone); }
+.cx-first li::before { content: ""; flex: none; width: 7px; height: 7px; transform: translateY(-2px) rotate(45deg); background: var(--silk-hi); box-shadow: 0 0 6px var(--silk-hi); }
+.cx-first .cx-first-why { margin-top: 18px; font: italic 500 16.5px/1.4 var(--text); color: var(--gold-hi); }
+.cx-first .cx-first-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px; margin-top: 42px; }
+.cx-first .cx-first-actions .cx-choice { position: relative; }
+.cx-first .cx-choice .cx-reco { top: -26px; z-index: 1; }
+.cx-first .cx-first-foot { margin-top: 18px; font: italic 500 15px/1.4 var(--text); color: var(--mist); }
+@keyframes cxFirstIn { from { opacity: 0; } to { opacity: 1; } }
+
 /* ---------- Leve, menos movimento e telas estreitas ---------- */
 body.lite [data-view-panel="cortex"] .cx-fx { display: none; }
+body.lite .cx-first { backdrop-filter: none; background: rgba(6, 5, 9, 0.9); }
 @media (prefers-reduced-motion: reduce) {
   [data-view-panel="cortex"] .cx-pact, [data-view-panel="cortex"] .cx-entry, [data-view-panel="cortex"] .cx-thread i::before, [data-view-panel="cortex"] .cx-thread i::after, .cx-teaser { transition: none; }
+  .cx-first { animation: none; }
 }
 @media (max-width: 1180px) {
   [data-view-panel="cortex"] .cx-hall { grid-template-columns: 1fr; }

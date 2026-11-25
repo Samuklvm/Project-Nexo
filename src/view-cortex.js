@@ -6,7 +6,7 @@
  *  - diário de investigações por estado, com a página aberta (pergunta, hipóteses com fio de confiança, testes, provas
  *    com o trecho guardado e a linha do tempo dos pensamentos; "Pode testar" / "Agora não" quando aguarda você);
  *  - diário de causas (criaturas: sombra enquanto é suspeita, cor quando um teste prova) e instrumentos que faltaram;
- *  - o cartão pequeno na Análise.
+ *  - o cartão pequeno na Análise e a janela da primeira escolha (uma vez por abertura, até a pessoa escolher).
  * Tudo o que vem da memória passa por escapeHtml. As regras puras ficam em src/cortex/page.js.
  * Arte opcional em assets/arte/cortex/ (manifest.json): cada arquivo é conferido antes; sem ele, tudo é desenhado.
  * Efeitos (poeira, névoa, vagalumes, carretel, clarão de "apoiada") andam no relógio único (Nexo.clock, 30 quadros), só
@@ -595,5 +595,73 @@
   if (has('onCortexUpdate')) bridge.onCortexUpdate((payload) => { if (payload?.settings) settings = payload.settings; if (Nexo.state.view === 'cortex' || Nexo.state.view === 'analysis' || payload?.inv) soon(); });
   Nexo.commands?.push({ label: 'Ir para o Cortex', hint: 'Página', run: () => Nexo.go('cortex') });
 
+  /* ---------- Primeira escolha: uma janela por abertura até a pessoa escolher ---------- */
+  let asked = false;
+  async function firstRun(tries = 0) {
+    if (asked || !has('cortexSettings') || !has('cortexSetSettings')) return;
+    let current = null;
+    try { current = await bridge.cortexSettings(); } catch { return; }
+    const plan = Page.firstRun(current);
+    if (!plan.show) return;
+    // Espera as outras janelas (perfil, novidades, perguntas) fecharem; nunca empilha.
+    if (document.getElementById('modal-root')?.childElementCount || document.hidden) { if (tries < 60) setTimeout(() => firstRun(tries + 1), 3000); return; }
+    asked = true;
+    await ensureArt();
+    showFirst(plan, current);
+  }
+  function showFirst(plan, current) {
+    const root = document.getElementById('modal-root') || document.body;
+    const back = document.createElement('div');
+    back.className = ['cx-first', ...artClasses()].join(' ');
+    const on = plan.recommendedOn;
+    const why = current.iaLocal ? 'Recomendado ligado, porque a IA integrada do Nexo está ativa neste PC.' : 'Sem a IA integrada, o padrão é desligado. Dá para ligar agora ou quando quiser.';
+    const reco = '<span class="cx-reco">Recomendado</span>';
+    back.innerHTML = `<div class="cx-first-card" role="dialog" aria-modal="true" aria-labelledby="cx-first-t" aria-describedby="cx-first-d">${corners()}
+      <button type="button" class="cx-first-close" data-first="close" aria-label="Fechar sem escolher">×</button>
+      <div class="cx-first-spool" aria-hidden="true">${spoolArt()}</div>
+      <p class="cx-first-pre">O cérebro do Nexo</p>
+      <h2 id="cx-first-t">Deixar o Nexo testar ajustes sozinho?</h2>
+      <i class="cx-first-orn" aria-hidden="true"></i>
+      <div id="cx-first-d"><p class="cx-first-lead">O Cortex investiga por que o PC fica lento. Às vezes, para provar uma causa, ele precisa testar um ajuste e medir a diferença.</p>
+      <ul><li>Só ajustes de risco baixo.</li><li>Só com o PC parado e sem jogo aberto.</li><li>Sempre volta ao valor original no fim.</li><li>No máximo 3 testes por dia.</li></ul>
+      <p class="cx-first-why">${why}</p></div>
+      <div class="cx-first-actions"><span class="cx-choice">${on ? '' : reco}<button type="button" class="cx-btn${on ? ' ghost' : ''}" data-first="off">Deixar desligado</button></span><span class="cx-choice">${on ? reco : ''}<button type="button" class="cx-btn${on ? '' : ' ghost'}" data-first="on">Deixar ligado</button></span></div>
+      <p class="cx-first-foot">Dá para mudar a qualquer hora na página do Cortex.</p></div>`;
+    const previous = document.activeElement;
+    const close = () => {
+      document.removeEventListener('keydown', onKey, true);
+      back.classList.add('out');
+      setTimeout(() => back.remove(), 220);
+      previous?.focus?.();
+    };
+    const onKey = (event) => {
+      if (!back.isConnected) { document.removeEventListener('keydown', onKey, true); return; } // outra janela tomou o lugar
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
+      if (event.key === 'Tab') {
+        const focusable = [...back.querySelectorAll('button')];
+        const index = focusable.indexOf(document.activeElement);
+        event.preventDefault();
+        focusable[(index + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length].focus();
+      }
+    };
+    back.addEventListener('click', async (event) => {
+      const action = event.target.closest('[data-first]')?.dataset.first;
+      if (!action) return;
+      if (action === 'close') { close(); return; } // fechar sem escolher: mantém o padrão, não grava, pergunta na próxima abertura
+      const permission = action === 'on' ? 'sozinho' : 'observar';
+      back.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+      try {
+        const result = await bridge.cortexSetSettings({ permission });
+        if (result?.ok) { settings = result.settings || settings; showToast(action === 'on' ? 'Pronto: o Cortex pode testar ajustes de risco baixo com o PC parado.' : 'Pronto: o Cortex só observa. Dá para mudar na página dele.'); }
+        else showToast(result?.reason || 'Não consegui guardar a escolha agora. Ela aparece de novo na próxima abertura.');
+      } catch (error) { showToast(error.message || 'Não consegui guardar a escolha agora.'); }
+      close();
+      if (Nexo.state.view === 'cortex') refresh();
+    });
+    document.addEventListener('keydown', onKey, true);
+    root.append(back);
+    back.querySelector(`[data-first="${on ? 'on' : 'off'}"]`)?.focus();
+  }
+  setTimeout(() => firstRun(), 3200);
   setTimeout(() => { if (Nexo.state.view !== 'cortex') refresh(); }, 2600); // cartão da Análise e o ponto na barra
 })();
