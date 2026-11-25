@@ -37,9 +37,10 @@
     'bestiario-mem': 'bestiario-mem.webp', 'bestiario-programa_pesado': 'bestiario-programa_pesado.webp', 'bestiario-cpu': 'bestiario-cpu.webp',
     'bestiario-ajuste': 'bestiario-ajuste.webp', 'bestiario-rotina': 'bestiario-rotina.webp', 'bestiario-desconhecida': 'bestiario-desconhecida.webp',
     'poeira-luz': 'poeira-luz.webp', 'poeira-voo': 'poeira-voo.webp', nevoa: 'nevoa.webp', vagalume: 'vagalume.webp', cinza: 'cinza.webp',
-    pluma: 'pluma.webp', mandala: 'mandala.webp', faisca: 'faisca.webp', clarao: 'clarao.webp', anel: 'anel.webp', brilho: 'brilho.webp'
+    pluma: 'pluma.webp', mandala: 'mandala.webp', faisca: 'faisca.webp', clarao: 'clarao.webp', anel: 'anel.webp', brilho: 'brilho.webp',
+    mariposa: 'mariposa.webp', 'onda-sino': 'onda-sino.webp', folha: 'folha.webp'
   };
-  const FRAMES = { 'ritmo-profundo': [8, 12], faisca: [5, 15], clarao: [4, 8], brilho: [9, 18] }; // [quadros, fps]
+  const FRAMES = { 'ritmo-profundo': [8, 12], faisca: [5, 15], clarao: [4, 8], brilho: [9, 18], mariposa: [5, 14] }; // [quadros, fps]
   const art = new Map(); // papel → Image carregada
   let artReady = null;
   /** Confere cada arquivo de arte uma vez (Image solta: arquivo ausente não vira erro na tela) e marca as raízes. */
@@ -402,6 +403,7 @@
       await ensureArt();
       await load({ withDetails: page });
       const testing = stats?.testando || null;
+      noteConclusions();
       if (page) {
         renderAll();
         if (scene.on) placeGlobe();
@@ -548,9 +550,204 @@
     const glow = 0.55 + (deep ? 0.2 : 0) + pulse * (deep ? 0.3 : 0.18) + scene.flash * 0.6;
     if (scene.glow) { scene.glow.style.opacity = Math.min(1, glow).toFixed(3); scene.glow.style.transform = `scale(${(1 + pulse * 0.06 + scene.flash * 0.35).toFixed(3)})`; }
     if (scene.core) scene.core.style.opacity = Math.min(1, 0.32 + pulse * 0.3 + scene.flash * 0.7).toFixed(3);
+    ambientStep(t, dt);
   }
+  /* ---------- Eventos de ambiente: algo acontece na biblioteca de vez em quando ----------
+   Um por vez, sorteado por Page.ambientNext (25 a 70 s de intervalo, contados só com os efeitos andando), curto, sempre
+   dentro do cenário (atrás dos cartões). A "descoberta" vem quando uma investigação conclui. Sem arte, cada evento tem
+   um desenho de reserva. */
+  const amb = { next: null, last: null, active: null, canvas: null, ctx: null, parts: [], pendingDiscovery: false, concluded: null };
+  const sceneRect = () => sceneHost.getBoundingClientRect();
+  /** Ponto da cena (2400 × 1350) na tela, pela camada do meio (mesma conta do object-fit: cover, com o deslocamento). */
+  function toScreen(x, y) {
+    const layer = scene.layers.find((entry) => !entry.inPage && entry.depth >= 0.3) || scene.layers[0];
+    const box = layer.el.getBoundingClientRect();
+    const host = sceneRect();
+    const k = Math.max(box.width / 2400, box.height / 1350);
+    return { x: box.left - host.left + (box.width - 2400 * k) / 2 + x * k, y: box.top - host.top + (box.height - 1350 * k) * 0.3 + y * k, k };
+  }
+  function evEl(cls) {
+    const el = document.createElement('i');
+    el.className = `cx-ev ${cls}`;
+    sceneHost.append(el);
+    return el;
+  }
+  function evCanvas() {
+    if (!amb.canvas) { amb.canvas = document.createElement('canvas'); amb.canvas.className = 'cx-ev-canvas'; sceneHost.append(amb.canvas); }
+    const r = sceneRect();
+    amb.canvas.width = Math.round(r.width); amb.canvas.height = Math.round(r.height);
+    amb.canvas.hidden = false;
+    amb.ctx = amb.canvas.getContext('2d');
+    amb.parts = [];
+    return amb.ctx;
+  }
+  function dot(ctx, p, alpha) {
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 3);
+    g.addColorStop(0, `rgba(255, 244, 214, ${alpha})`); g.addColorStop(0.35, `rgba(240, 212, 142, ${alpha * 0.55})`); g.addColorStop(1, 'rgba(240, 212, 142, 0)');
+    ctx.fillStyle = g; ctx.fillRect(p.x - p.r * 3, p.y - p.r * 3, p.r * 6, p.r * 6);
+  }
+  const ease = (p) => Math.sin(Math.PI * Math.min(1, Math.max(0, p))); // sobe e desce
+  const EVENTS = {
+    mariposa() {
+      const el = evEl('cx-ev-moth');
+      const r = sceneRect();
+      const ltr = Math.random() < 0.5;
+      const base = r.height * rnd(0.22, 0.62);
+      const size = Math.round(rnd(46, 64));
+      Object.assign(el.style, { width: `${size}px`, height: `${size}px` });
+      const flip = ltr ? '' : ' scaleX(-1)'; // dentro do transform: a propriedade scale espelharia o deslocamento junto
+      return (p, t) => {
+        const x = ltr ? -90 + (r.width + 180) * p : r.width + 90 - (r.width + 180) * p;
+        const y = base + Math.sin(p * Math.PI * 3.2) * 46 - p * 60;
+        el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)${flip}`;
+        el.style.opacity = Math.min(1, ease(p) * 2.2).toFixed(3);
+        if (art.has('mariposa')) el.style.backgroundPositionX = `${((Math.floor(t * 14) % 5) / 4 * 100).toFixed(2)}%`;
+      };
+    },
+    lustre() {
+      // Um lustre que esteja à vista (em janelas estreitas eles ficam atrás da barra lateral); senão, a luz da janela.
+      const host = sceneRect();
+      const rail = document.getElementById('rail')?.getBoundingClientRect().right || 0;
+      const lamps = [toScreen(330, 760), toScreen(2070, 760)].filter((pt) => pt.x > rail + 40 && pt.x < host.width - 40);
+      const at = lamps.length ? lamps[Math.floor(rnd(0, lamps.length))] : toScreen(1200, 470);
+      const el = evEl('cx-ev-lamp');
+      const size = Math.round((lamps.length ? 420 : 900) * at.k);
+      Object.assign(el.style, { width: `${size}px`, height: `${size}px`, left: `${(at.x - size / 2).toFixed(1)}px`, top: `${(at.y - size / 2).toFixed(1)}px` });
+      el.innerHTML = '<b></b><em></em>';
+      const [dark, light] = el.children;
+      return (p, t) => {
+        // Tremula, apaga por um instante e reacende mais forte.
+        const flicker = p < 0.55 ? Math.max(0, Math.sin(t * 31) * Math.sin(t * 13)) : 0;
+        const out = p > 0.45 && p < 0.62 ? 0.75 : flicker * 0.55;
+        dark.style.opacity = out.toFixed(3);
+        light.style.opacity = (p >= 0.62 ? ease((p - 0.62) / 0.38) * 0.9 : 0).toFixed(3);
+      };
+    },
+    varredura() {
+      const left = toScreen(760, 60); const right = toScreen(1640, 60); const bottom = toScreen(1200, 1150);
+      const el = evEl('cx-ev-sweep');
+      const w = Math.round(260 * left.k);
+      Object.assign(el.style, { width: `${w}px`, height: `${(bottom.y - left.y).toFixed(0)}px`, top: `${left.y.toFixed(1)}px` });
+      return (p) => {
+        const x = left.x + (right.x - left.x) * p - w / 2;
+        el.style.transform = `translate3d(${x.toFixed(1)}px, 0, 0) skewX(-12deg)`;
+        el.style.opacity = (ease(p) * 0.85).toFixed(3);
+      };
+    },
+    poeira() {
+      const ctx = evCanvas();
+      const r = sceneRect();
+      const x0 = r.width * rnd(0.18, 0.82);
+      for (let i = 0; i < 34; i += 1) amb.parts.push({ x: x0 + rnd(-60, 60), y: rnd(-20, 30), vx: rnd(-12, 12), vy: rnd(10, 40), r: rnd(0.8, 2.2), d: rnd(0, 0.35) });
+      return (p, t, dt) => {
+        ctx.clearRect(0, 0, amb.canvas.width, amb.canvas.height);
+        for (const q of amb.parts) {
+          if (p < q.d) continue;
+          q.vy += 18 * dt; q.x += (q.vx + Math.sin(t * 2 + q.r) * 6) * dt; q.y += q.vy * dt;
+          dot(ctx, q, 0.75 * ease((p - q.d) / (1 - q.d)));
+        }
+      };
+    },
+    folha() {
+      const el = evEl('cx-ev-leaf');
+      const r = sceneRect();
+      const ltr = Math.random() < 0.5;
+      const v = Math.floor(rnd(0, 4));
+      el.style.backgroundPositionX = `${(v / 3 * 100).toFixed(2)}%`;
+      const x0 = ltr ? r.width * rnd(0.05, 0.3) : r.width * rnd(0.7, 0.95);
+      return (p) => {
+        const x = x0 + (ltr ? 1 : -1) * (p * r.width * 0.32 + Math.sin(p * Math.PI * 4) * 40);
+        const y = -60 + p * (r.height * 0.85);
+        el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) rotate(${(Math.sin(p * Math.PI * 5) * 50 + p * 120).toFixed(1)}deg)`;
+        el.style.opacity = Math.min(0.9, ease(p) * 2).toFixed(3);
+      };
+    },
+    fagulha() { return sparks(5, 1); },
+    sino() {
+      const at = toScreen(Math.random() < 0.5 ? 520 : 1880, 300);
+      const els = [evEl('cx-ev-ring'), evEl('cx-ev-ring')];
+      const size = Math.round(520 * at.k);
+      for (const el of els) Object.assign(el.style, { width: `${size}px`, height: `${size}px`, left: `${(at.x - size / 2).toFixed(1)}px`, top: `${(at.y - size / 2).toFixed(1)}px` });
+      return (p) => els.forEach((el, i) => {
+        const q = Math.min(1, Math.max(0, (p - i * 0.22) / 0.78));
+        el.style.transform = `scale(${(0.25 + q * 1.3).toFixed(3)})`;
+        el.style.opacity = (q > 0 ? (1 - q) * 0.55 : 0).toFixed(3);
+      });
+    },
+    nevoa() {
+      const el = evEl('cx-ev-fog');
+      const r = sceneRect();
+      const ltr = Math.random() < 0.5;
+      el.style.top = `${(r.height * rnd(0.35, 0.6)).toFixed(0)}px`;
+      return (p) => {
+        el.style.transform = `translate3d(${((ltr ? -1 : 1) * (0.5 - p) * r.width * 0.6).toFixed(1)}px, 0, 0)`;
+        el.style.opacity = (ease(p) * 0.3).toFixed(3);
+      };
+    },
+    descoberta() {
+      sceneFlash();
+      const glowAt = toScreen(1200, 470);
+      const el = evEl('cx-ev-dawn');
+      const size = Math.round(1100 * glowAt.k);
+      Object.assign(el.style, { width: `${size}px`, height: `${size}px`, left: `${(glowAt.x - size / 2).toFixed(1)}px`, top: `${(glowAt.y - size / 2).toFixed(1)}px` });
+      const rise = sparks(30, 1.6);
+      return (p, t, dt) => { el.style.opacity = (ease(p) * 0.6).toFixed(3); rise(p, t, dt); };
+    }
+  };
+  /** Fagulhas que sobem do globo (ou do meio da cena, sem o globo à vista). */
+  function sparks(count, spread) {
+    const ctx = evCanvas();
+    const host = sceneRect();
+    const g = scene.globe?.getBoundingClientRect();
+    const visible = g && g.bottom > host.top && g.top < host.bottom;
+    const from = visible ? { x: g.left - host.left + g.width / 2, y: g.top - host.top + g.height * 0.45 } : toScreen(1200, 520);
+    for (let i = 0; i < count; i += 1) amb.parts.push({ x: from.x + rnd(-14, 14) * spread, y: from.y + rnd(-10, 10), vx: rnd(-14, 14) * spread, vy: -rnd(40, 90) * (i ? 0.8 : 1.2), r: i ? rnd(0.8, 1.8) : 2.6, d: i ? rnd(0, 0.4) : 0, ph: rnd(0, 6) });
+    return (p, t, dt) => {
+      ctx.clearRect(0, 0, amb.canvas.width, amb.canvas.height);
+      for (const q of amb.parts) {
+        if (p < q.d) continue;
+        q.x += (q.vx + Math.sin(t * 3 + q.ph) * 10) * dt; q.y += q.vy * dt;
+        dot(ctx, q, 0.9 * ease((p - q.d) / (1 - q.d)));
+      }
+    };
+  }
+  function startEvent(kind) {
+    if (!scene.on || amb.active || !EVENTS[kind]) return false;
+    amb.active = { kind, t: 0, duration: Page.AMBIENT[kind].duration, update: EVENTS[kind]() };
+    amb.last = kind;
+    return true;
+  }
+  function endEvent() {
+    if (!amb.active) return;
+    amb.active = null;
+    sceneHost.querySelectorAll('.cx-ev').forEach((el) => el.remove());
+    if (amb.canvas) { amb.ctx?.clearRect(0, 0, amb.canvas.width, amb.canvas.height); amb.canvas.hidden = true; }
+    amb.parts = [];
+  }
+  function ambientStep(t, dt) {
+    if (amb.active) {
+      amb.active.t += dt;
+      const p = amb.active.t / amb.active.duration;
+      if (p >= 1) { endEvent(); amb.next = null; return; }
+      amb.active.update(p, t, dt);
+      return;
+    }
+    if (amb.pendingDiscovery) { amb.pendingDiscovery = false; startEvent('descoberta'); return; }
+    if (amb.next === null) { const plan = Page.ambientNext({ last: amb.last }); amb.next = t + plan.delay; amb.planned = plan.kind; return; }
+    if (t >= amb.next) startEvent(amb.planned);
+  }
+  /** Uma investigação acabou de concluir (desde a última leitura): o próximo evento é a "descoberta". */
+  function noteConclusions() {
+    const now = new Set(items.filter((item) => item.status === 'concluida').map((item) => item.inv));
+    if (amb.concluded && [...now].some((inv) => !amb.concluded.has(inv))) amb.pendingDiscovery = true;
+    amb.concluded = now;
+  }
+  // Para a prévia e as conferências: dispara um evento agora (só com os efeitos andando).
+  Nexo.cortexAmbiente = (kind) => (fx.on ? startEvent(kind) : false);
+
   /** Parado (Leve, menos movimento, fora da página): imagem no lugar, sem deslocamento. */
   function sceneSettle() {
+    endEvent();
     if (!scene.on) return;
     sceneHost.classList.remove('moving');
     for (const layer of scene.layers) layer.el.style.transform = '';

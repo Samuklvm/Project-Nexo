@@ -36,6 +36,7 @@ const FLEURS = () => category('Fleurs', 'Fleurs');
 const MENU = () => category('Menu', 'Menu');
 const JOURNAL = () => category("Hunter's Journal", 'Hunter_s Journal');
 const FX = () => category('Particles & Effects', 'Particles & Effects');
+const VAULTS = () => { const env = category('Architecture & Environment', 'Architecture & Environment'); return { dir: path.join(env.dir, 'Whispering Vaults'), label: 'Whispering Vaults' }; };
 
 const im = (...args) => execFileSync('convert', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
 const size = (file) => execFileSync('identify', ['-format', '%w %h', file]).toString().trim().split(' ').map(Number);
@@ -151,6 +152,11 @@ function main() {
   strip('clarao', fx, Array.from({ length: 4 }, (_, i) => `death_flash_effects_white000${i}.png`), [220, 220], 8, 80);
   picture('anel', fx, 'burst_round_generic.png', 200);
   variants('brilho', fx, 'crystal_particle_tiny.png', [35, 35], 9, { quadros: 9, fps: 18 });
+
+  // Eventos de ambiente do cenário (Task 11c): a mariposa que cruza, a onda de luz do sino ao longe e as folhas.
+  variants('mariposa', fx, 'Cog_fly_particle.png', [148, 151], 5, { quadros: 5, fps: 14 });
+  picture('onda-sino', fx, 'bell_hub_scream_roar_effect_0000_1.png', 320);
+  variants('folha', VAULTS(), 'library_scroll_particle.png', [42, 42], 4, { variantes: 4 });
 
   fs.writeFileSync(path.join(out, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   if (!fs.existsSync(path.join(out, '.gitkeep'))) fs.writeFileSync(path.join(out, '.gitkeep'), '');

@@ -280,6 +280,35 @@
       },
       "largura": 315,
       "altura": 35
+    },
+    "mariposa": {
+      "arquivo": "mariposa.webp",
+      "origem": "Particles & Effects/Cog_fly_particle.png",
+      "quadros": 5,
+      "fps": 14,
+      "quadro": {
+        "largura": 148,
+        "altura": 151
+      },
+      "largura": 739,
+      "altura": 151
+    },
+    "onda-sino": {
+      "arquivo": "onda-sino.webp",
+      "origem": "Particles & Effects/bell_hub_scream_roar_effect_0000_1.png",
+      "largura": 320,
+      "altura": 291
+    },
+    "folha": {
+      "arquivo": "folha.webp",
+      "origem": "Whispering Vaults/library_scroll_particle.png",
+      "variantes": 4,
+      "quadro": {
+        "largura": 42,
+        "altura": 42
+      },
+      "largura": 168,
+      "altura": 42
     }
   }
 }

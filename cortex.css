@@ -67,6 +67,25 @@ body[data-view="cortex"] .titlebar { position: relative; z-index: 2; }
 [data-view-panel="cortex"] .cx-globe img { filter: brightness(1.25) contrast(1.05) drop-shadow(0 0 18px rgba(240, 212, 142, 0.35)); }
 [data-view-panel="cortex"] .cx-scene::after { content: ""; position: absolute; inset: 0; z-index: 9;
   background: radial-gradient(ellipse 80% 75% at 50% 45%, transparent 50%, rgba(10, 9, 13, 0.7) 100%), linear-gradient(180deg, rgba(10, 9, 13, 0.08), rgba(10, 9, 13, 0.22) 55%, rgba(10, 9, 13, 0.55)); }
+/* Eventos de ambiente (src/view-cortex.js): dentro do cenário, atrás dos cartões; só existem enquanto acontecem. */
+[data-view-panel="cortex"] .cx-ev, [data-view-panel="cortex"] .cx-ev-canvas { position: absolute; left: 0; top: 0; z-index: 10; pointer-events: none; }
+[data-view-panel="cortex"] .cx-ev-canvas { width: 100%; height: 100%; }
+[data-view-panel="cortex"] .cx-ev-moth { opacity: 0; border-radius: 50%; background: radial-gradient(circle, rgba(255, 240, 200, 0.9), rgba(240, 212, 142, 0.35) 35%, transparent 70%); filter: drop-shadow(0 0 12px rgba(240, 212, 142, 0.55)); }
+[data-view-panel="cortex"].cx-a-mariposa .cx-ev-moth { border-radius: 0; background: url("assets/arte/cortex/mariposa.webp") 0 0 / 500% 100% no-repeat; filter: brightness(0.85) drop-shadow(0 0 10px rgba(240, 212, 142, 0.45)); }
+[data-view-panel="cortex"] .cx-ev-lamp b, [data-view-panel="cortex"] .cx-ev-lamp em { position: absolute; inset: 0; border-radius: 50%; opacity: 0; }
+[data-view-panel="cortex"] .cx-ev-lamp b { background: radial-gradient(circle, rgba(10, 9, 13, 0.85), rgba(10, 9, 13, 0.4) 40%, transparent 70%); }
+[data-view-panel="cortex"] .cx-ev-lamp em { background: radial-gradient(circle, rgba(255, 244, 214, 0.7), rgba(240, 212, 142, 0.3) 30%, transparent 65%); mix-blend-mode: screen; }
+[data-view-panel="cortex"] .cx-ev-sweep { opacity: 0; mix-blend-mode: screen; background: linear-gradient(90deg, transparent, rgba(240, 212, 142, 0.35) 40%, rgba(255, 244, 214, 0.55) 50%, rgba(240, 212, 142, 0.35) 60%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 15%, #000 70%, transparent); mask-image: linear-gradient(180deg, transparent, #000 15%, #000 70%, transparent); }
+[data-view-panel="cortex"] .cx-ev-leaf { width: 34px; height: 34px; opacity: 0; background: linear-gradient(135deg, rgba(236, 227, 207, 0.75), rgba(185, 176, 160, 0.4)); clip-path: polygon(10% 0, 100% 18%, 88% 100%, 0 80%); }
+[data-view-panel="cortex"].cx-a-folha .cx-ev-leaf { width: 38px; height: 38px; clip-path: none; background: url("assets/arte/cortex/folha.webp") 0 0 / 400% 100% no-repeat; filter: brightness(0.9) sepia(0.3); }
+[data-view-panel="cortex"] .cx-ev-ring { opacity: 0; border-radius: 50%; border: 2px solid rgba(240, 212, 142, 0.6); box-shadow: 0 0 24px rgba(240, 212, 142, 0.35), inset 0 0 24px rgba(240, 212, 142, 0.25); mix-blend-mode: screen; }
+[data-view-panel="cortex"].cx-a-onda-sino .cx-ev-ring { border: 0; box-shadow: none; border-radius: 0; background: url("assets/arte/cortex/onda-sino.webp") center / contain no-repeat; filter: sepia(1) saturate(2.2) hue-rotate(-12deg) brightness(1.05); }
+[data-view-panel="cortex"] .cx-ev-fog { left: -10%; width: 120%; height: 34%; opacity: 0; -webkit-mask-image: linear-gradient(180deg, transparent, #000 40%, #000 60%, transparent); mask-image: linear-gradient(180deg, transparent, #000 40%, #000 60%, transparent);
+  background: radial-gradient(40% 60% at 30% 50%, rgba(236, 227, 207, 0.5), transparent 70%), radial-gradient(40% 60% at 72% 50%, rgba(236, 227, 207, 0.45), transparent 70%); }
+[data-view-panel="cortex"].cx-a-nevoa .cx-ev-fog { background: url("assets/arte/cortex/nevoa.webp") 0 0 / 512px 512px repeat; mix-blend-mode: screen; }
+[data-view-panel="cortex"] .cx-ev-dawn { opacity: 0; border-radius: 50%; mix-blend-mode: screen; background: radial-gradient(circle, rgba(255, 240, 200, 0.6), rgba(240, 212, 142, 0.25) 30%, rgba(179, 32, 44, 0.08) 55%, transparent 70%); }
+
 /* Com o cenário, o salão vira uma janela para a biblioteca (o título continua sobre tinta). */
 [data-view-panel="cortex"].cx-scene-on .cx-hall { background: radial-gradient(45% 60% at 31% 42%, rgba(10, 9, 13, 0.55), transparent 75%), radial-gradient(55% 70% at 30% 0%, rgba(179, 32, 44, 0.1), transparent 70%), linear-gradient(180deg, rgba(19, 17, 26, 0.3), rgba(10, 9, 13, 0.55)); }
 [data-view-panel="cortex"].cx-scene-on .cx-mist { opacity: 0.06; }

@@ -245,3 +245,27 @@ test('selo de estado: Ativo (verde) quando o Cortex está ativo; Desligado (verm
   assert.match(css, /\.cx-seal\.on::before \{[^}]*background: #5fbf8a/);
   assert.match(css, /\.cx-seal\.off::before \{[^}]*background: var\(--silk-hi\)/);
 });
+
+test('eventos de ambiente: sorteio com intervalo de 25 a 70 s, um tipo diferente do anterior, curtos, e a "descoberta" fora do sorteio', () => {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const seen = new Set();
+  let last = null;
+  for (let i = 0; i < 400; i += 1) {
+    const next = Page.ambientNext({ rnd, last });
+    assert.ok(next.delay >= 25 && next.delay <= 70, `intervalo ${next.delay}`);
+    assert.notEqual(next.kind, last, 'não repete o anterior');
+    assert.ok(Page.AMBIENT[next.kind], `tipo conhecido: ${next.kind}`);
+    assert.ok(next.duration >= 2 && next.duration <= 8, `${next.kind}: ${next.duration} s`);
+    seen.add(next.kind);
+    last = next.kind;
+  }
+  const kinds = Object.keys(Page.AMBIENT).filter((k) => k !== 'descoberta');
+  assert.ok(kinds.length >= 5 && kinds.length <= 8, `${kinds.length} tipos`);
+  assert.deepEqual([...seen].sort(), kinds.sort(), 'todos os tipos saem, e a descoberta nunca é sorteada');
+  assert.ok(Page.AMBIENT.descoberta, 'a descoberta existe (vem quando o Cortex conclui algo)');
+  // Determinístico com a mesma semente.
+  const a = (() => { let s = 3; const r = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; return [1, 2, 3].map(() => Page.ambientNext({ rnd: r, last: null })); })();
+  const b = (() => { let s = 3; const r = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; return [1, 2, 3].map(() => Page.ambientNext({ rnd: r, last: null })); })();
+  assert.deepEqual(a, b);
+});

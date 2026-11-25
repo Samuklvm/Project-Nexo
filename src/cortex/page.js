@@ -146,6 +146,23 @@
     return on ? { label: 'Ativo', tone: 'on' } : { label: 'Desligado', tone: 'off' };
   }
 
+  /**
+   * Eventos de ambiente do cenário (duração em segundos). "descoberta" não entra no sorteio: vem quando o Cortex
+   * conclui algo. Um por vez, raros (25 a 70 s entre um e outro), e nunca o mesmo duas vezes seguidas.
+   */
+  const AMBIENT = {
+    mariposa: { duration: 6 }, lustre: { duration: 3.5 }, varredura: { duration: 4.5 }, poeira: { duration: 4 },
+    folha: { duration: 7 }, fagulha: { duration: 3 }, sino: { duration: 3 }, nevoa: { duration: 8 }, descoberta: { duration: 5 }
+  };
+  const DRAWN = Object.keys(AMBIENT).filter((kind) => kind !== 'descoberta');
+  /** O próximo evento: { kind, delay (s até ele), duration (s) }. rnd injetável (0 ≤ rnd() < 1) para o teste. */
+  function ambientNext({ rnd = Math.random, last = null } = {}) {
+    const pool = DRAWN.filter((kind) => kind !== last);
+    const kind = pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))];
+    const delay = Math.round((25 + rnd() * 45) * 10) / 10;
+    return { kind, delay, duration: AMBIENT[kind].duration };
+  }
+
   const QUESTION = {
     cpu: 'Por que o processador ficou sobrecarregado', mem: 'Por que a memória chegou ao limite', disk: 'Por que o disco ficou ocupado',
     gpu: 'Por que a placa de vídeo chegou ao limite', temp_cpu: 'Por que o processador esquentou', temp: 'Por que a placa de vídeo esquentou',
@@ -167,5 +184,5 @@
     return Math.max(1, Math.ceil((now - since) / DAY));
   }
 
-  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, parallax, heartLayout, seal, question, memoryDays };
+  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, parallax, heartLayout, seal, AMBIENT, ambientNext, question, memoryDays };
 });
