@@ -167,3 +167,15 @@ test('primeira escolha: fechar sem escolher não reabre na mesma abertura (só n
   assert.match(block, /const close = \(\) => \{[^}]*firstDone = true/);
   assert.match(block, /showing: firstShowing \|\| firstDone/);
 });
+
+test('primeira escolha: a escolha é relida depois de carregar a arte, logo antes de mostrar', () => {
+  const view = read('src/view-cortex.js');
+  const body = view.slice(view.indexOf('async function firstRun()'), view.indexOf('function showFirst('));
+  const art = body.indexOf('await ensureArt()');
+  const show = body.indexOf('showFirst(');
+  assert.ok(art > 0 && show > art, 'firstRun carrega a arte e depois mostra');
+  const between = body.slice(art, show);
+  assert.match(between, /cortexSettings\(\)/, 'relê a configuração depois da espera pela arte');
+  assert.match(between, /Page\.canShowFirst\(\{[^}]*settings: fresh/, 'a última conferência usa a leitura nova');
+  assert.match(body.slice(show), /^showFirst\(Page\.firstRun\(fresh\), fresh\)/, 'a janela abre com a leitura nova');
+});

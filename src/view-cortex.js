@@ -605,15 +605,18 @@
   const modalOpen = () => Boolean(modalRoot?.childElementCount);
   async function firstRun() {
     if (firstShowing || firstDone || firstChecking || document.hidden || modalOpen() || !has('cortexSettings') || !has('cortexSetSettings')) return;
-    firstChecking = true;
-    let current = null;
-    try { current = await bridge.cortexSettings(); } catch { current = null; }
-    firstChecking = false;
-    if (!Page.canShowFirst({ hidden: document.hidden, modalOpen: modalOpen(), settings: current, showing: firstShowing || firstDone })) return;
-    await ensureArt();
-    // A espera pela arte é curta, mas outra janela pode ter aberto nela.
-    if (!Page.canShowFirst({ hidden: document.hidden, modalOpen: modalOpen(), settings: current, showing: firstShowing || firstDone })) return;
-    showFirst(Page.firstRun(current), current);
+    firstChecking = true; // a verificação inteira (duas leituras e a arte) conta: duas chamadas nunca abrem duas janelas
+    try {
+      const read = async () => { try { return await bridge.cortexSettings(); } catch { return null; } };
+      const ok = (settings) => Page.canShowFirst({ hidden: document.hidden, modalOpen: modalOpen(), settings, showing: firstShowing || firstDone });
+      if (!ok(await read())) return;
+      await ensureArt();
+      // Durante a espera pela arte outra janela pode ter aberto, ou a escolha pode ter sido feita em outro lugar: relê.
+      let fresh = null;
+      try { fresh = await bridge.cortexSettings(); } catch { fresh = null; }
+      if (!Page.canShowFirst({ hidden: document.hidden, modalOpen: modalOpen(), settings: fresh, showing: firstShowing || firstDone })) return;
+      showFirst(Page.firstRun(fresh), fresh);
+    } finally { firstChecking = false; }
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(firstRun, 1200); });
   if (modalRoot) new MutationObserver(() => { if (!modalOpen()) setTimeout(firstRun, 900); }).observe(modalRoot, { childList: true });
