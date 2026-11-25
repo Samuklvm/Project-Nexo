@@ -39,6 +39,8 @@
   const num = (v) => (Number.isInteger(v) ? String(v) : comma(v));
   const finite = (v) => typeof v === 'number' && Number.isFinite(v);
   const str = (v) => (typeof v === 'string' ? v : '');
+  // Tira a pontuação final ("Faça isso!!" -> "Faça isso") sem regex com retrocesso.
+  const semPontoFinal = (t) => { let end = t.length; while (end > 0 && '.!?…'.includes(t[end - 1])) end -= 1; return t.slice(0, end); };
 
   /** Nome de gente de um sinal; id desconhecido volta como veio. Entre aspas para a frase não embolar. */
   const name = (id) => {
@@ -157,7 +159,7 @@
     pedido(s) {
       const sig = s.signal ? ` para olhar ${name(s.signal)}` : '';
       const mins = finite(s.minutes) ? ` (uns ${num(s.minutes)} min)` : '';
-      const text = (str(s.text) || 'me ajude com um teste').trim().replace(/[.!?…]+$/, '');
+      const text = semPontoFinal((str(s.text) || 'me ajude com um teste').trim());
       return `Um pedido: ${text}${sig}${mins}. Só assim consigo continuar.`;
     },
 

@@ -8,6 +8,23 @@
   root.NexoNovidades = {
     versions: [
       {
+        version: '0.11.7', date: '2026-11-25', emoji: '🧠', title: 'Cortex, o cérebro novo do Nexo',
+        tagline: 'Uma memória que nunca esquece e um detetive que investiga o que deixa o seu PC lento, dizendo só o que testou.',
+        sections: [
+          { emoji: '✨', title: 'Novidades', tone: 'new', items: [
+            { emoji: '🧠', title: 'Cortex', text: 'O cérebro novo do Nexo, com página própria no menu lateral. Ele guarda como o seu PC se comporta, percebe travadas e quedas de desempenho e investiga a causa com hipóteses e testes. A memória fica só neste PC.' },
+            { emoji: '🔍', title: 'Diário de investigações', text: 'Cada investigação vira uma pergunta, com as hipóteses, os testes, as provas e o que o Cortex pensou. Ele conclui com honestidade: suspeita, apoiada por teste ou "não achei".' },
+            { emoji: '🌙', title: 'Leve enquanto você joga', text: 'Enquanto você usa o PC, o Cortex só observa de leve. Investiga a fundo só com o PC parado e sem jogo aberto, e volta ao leve na hora em que você volta.' },
+            { emoji: '📚', title: 'A Biblioteca da Memória', text: 'A página do Cortex tem um cenário em camadas que se mexe com o mouse, um globo que pulsa quando ele pensa e criaturas que ganham cor quando uma causa é provada. Inspirada em Hollow Knight: Silksong.' }
+          ] },
+          { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
+            { emoji: '🎚️', title: 'Você escolhe até onde ele vai', text: 'Só observar, Pedir antes de testar ou Testar sozinho com o PC parado (só risco baixo, no máximo 3 por dia, sempre voltando ao original). Os testes aparecem no Diário de alterações.' },
+            { emoji: '🎨', title: 'Barra lateral no tom de cada página', text: 'O Cortex em tinta e ouro, os Ajustes com a luz de vela do Santuário e a Otimização extrema em vermelho, com transição suave.' },
+            { emoji: '🔏', title: 'Assinatura digital a caminho', text: 'A assinatura do Nexo chega numa atualização futura. Até lá, o Windows pode avisar ao instalar; as notas da versão explicam como abrir.' }
+          ] }
+        ]
+      },
+      {
         version: '0.11.6', date: '2026-11-18', emoji: '🏮', title: 'Drivers sem janelas e o Santuário',
         tagline: 'Os drivers agora baixam e instalam sozinhos, sem abrir janelas. E os Ajustes viraram o Santuário: um salão de lanternas desenhado a pena.',
         sections: [

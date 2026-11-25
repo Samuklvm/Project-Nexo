@@ -37,10 +37,13 @@ function trigger(tabela, op) {
 }
 const TRIGGERS = ['minutos', 'eventos', 'maquina', 'registros'].flatMap((t) => [trigger(t, 'UPDATE'), trigger(t, 'DELETE')]).join('\n');
 
+/* Ordem por código de caractere (a mesma do sort() padrão). Não usar localeCompare: a ordem mudaria com o idioma do
+   PC, e o texto canônico dos retratos já gravados na memória eterna deixaria de bater. */
+const porCodigo = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 /** JSON com chaves em ordem fixa: dois retratos iguais dão o mesmo texto. */
 function canonico(v) {
   if (Array.isArray(v)) return `[${v.map(canonico).join(',')}]`;
-  if (v && typeof v === 'object') return `{${Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonico(v[k])}`).join(',')}}`;
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort(porCodigo).filter((k) => v[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonico(v[k])}`).join(',')}}`;
   return JSON.stringify(v === undefined ? null : v);
 }
 

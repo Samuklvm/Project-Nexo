@@ -179,7 +179,7 @@ function createCortex(deps = {}) {
   const rhythm = deps.rhythm || Rhythm.createRhythm();
   // Sem a dependência: o mais conservador (ocupado não, pessoa presente, jogo "não sei", sem lab nem benchmark).
   const busy = typeof deps.busy === 'function' ? deps.busy : () => false;
-  const idleSec = typeof deps.idleSec === 'function' ? deps.idleSec : () => NaN;
+  const idleSec = typeof deps.idleSec === 'function' ? deps.idleSec : () => Number.NaN;
   const gameInForeground = typeof deps.gameInForeground === 'function' ? deps.gameInForeground : async () => null;
   const bench = typeof deps.bench === 'function' ? deps.bench : async () => { throw new Error('sem benchmark'); };
   const labRun = typeof deps.labRun === 'function' ? deps.labRun : async () => { throw new Error('sem laboratório'); };
@@ -640,7 +640,7 @@ function createCortex(deps = {}) {
         lastGame = { value: game, at: now() };
         if (!deep()) leveBackoffUntil = game === false ? 0 : now() + FG_LEVE_BACKOFF_MS;
       } else if (deep() || parked) game = lastGame.value; // entre consultas, vale a última
-      const r = rhythm.check({ idleSec: validIdle ? idle : NaN, gameInForeground: game });
+      const r = rhythm.check({ idleSec: validIdle ? idle : Number.NaN, gameInForeground: game });
       lastRhythm = { state: r.state, reason: r.reason, at: now() };
       if (r.changed) onRhythmChange(r);
       return r;

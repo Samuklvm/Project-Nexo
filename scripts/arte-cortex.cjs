@@ -39,8 +39,8 @@ const JOURNAL = () => category("Hunter's Journal", 'Hunter_s Journal');
 const FX = () => category('Particles & Effects', 'Particles & Effects');
 const VAULTS = () => { const env = category('Architecture & Environment', 'Architecture & Environment'); return { dir: path.join(env.dir, 'Whispering Vaults'), label: 'Whispering Vaults' }; };
 
-const im = (...args) => execFileSync('convert', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
-const size = (file) => execFileSync('identify', ['-format', '%w %h', file]).toString().trim().split(' ').map(Number);
+const im = (...args) => execFileSync('convert', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString(); // NOSONAR: script de desenvolvimento (fora do instalador) que usa o ImageMagick do PATH de quem gera as artes
+const size = (file) => execFileSync('identify', ['-format', '%w %h', file]).toString().trim().split(' ').map(Number); // NOSONAR: idem
 const at = (cat, file) => {
   const full = path.join(cat.dir, file);
   if (!fs.existsSync(full)) throw new Error(`falta o original ${cat.label}/${file}`);

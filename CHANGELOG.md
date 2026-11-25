@@ -6,6 +6,17 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.7: Cortex, o cérebro novo do Nexo
+- Aviso: esta versão ainda não tem assinatura digital; a assinatura chega numa atualização futura. O aviso e os passos para abrir o Nexo continuam nas notas e no README.
+- Novo: Cortex, o cérebro novo do Nexo, com página própria no menu lateral: memória eterna só neste PC (minutos medidos, eventos, retratos da máquina, hipóteses, testes e conclusões), investigação por hipóteses concorrentes (sempre com "uma causa que ainda não sei medir"), teste escolhido pelo que mais separa as hipóteses e conclusões honestas (suspeita, correlacionada, apoiada ou "não achei", com o que faltou medir).
+- Novo: diário de investigações, com hipóteses, testes, provas e a linha do tempo do que o Cortex pensou.
+- Novo: ritmo leve e profundo (leve enquanto a pessoa usa o PC ou joga; a fundo só com o PC parado há ~10 min e sem jogo; nunca junto do Laboratório, benchmark, análise profunda, otimização, gravação de sessão ou teste de FPS).
+- Novo: três modos escolhidos na primeira abertura, inclusive para quem atualizou (Só observar, padrão; Pedir antes de testar; Testar sozinho com o PC parado, só risco baixo, no máximo 3 por dia e com volta ao original); "ENTENDO O RISCO" para liberar risco moderado ou alto; testes no Diário de alterações; exportação da memória do Cortex (a memória não tem botão de apagar).
+- Novo: a Biblioteca da Memória, visual da página do Cortex inspirado em Hollow Knight: Silksong (cenário em camadas com paralaxe, globo que pulsa, efeitos de ambiente e criaturas que ganham cor quando a causa é provada), parado no modo Leve, com reduzir animações e com a janela escondida.
+- Melhoria: barra lateral no tom de cada página (Cortex, Ajustes e Otimização extrema), com transição suave.
+- Melhoria: seção nova "O Cortex (memória eterna)" na política de privacidade.
+- Melhoria: revisão do SonarCloud no código do Cortex (ordem fixa e explícita das chaves da memória, Number.NaN, pontuação sem regex com retrocesso, canvas decorativos sem papel de acessibilidade e scripts de arte marcados como de desenvolvimento).
+
 ### 0.11.6: drivers sem janelas e o Santuário
 - Aviso: esta versão ainda não tem assinatura digital; a assinatura chega numa atualização futura. O aviso e os passos para abrir o Nexo continuam nas notas e no README.
 - Novo: "Baixar e instalar" na página de Drivers: baixa do site oficial, confere a assinatura e instala sem janela; avisa na primeira vez que aceita a licença do fabricante; recusa a telemetria onde dá (NVIDIA só com o driver, sem o NVIDIA App); instalador sem modo silencioso conhecido abre a janela, e um que trava é encerrado no tempo-limite com "Instalar com janela"; chave "Instalar sem janelas" para desligar.
@@ -153,6 +164,17 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.7: Cortex, Nexo's new brain
+- Notice: this version is not digitally signed yet; the signature arrives in a future update. The notice and the steps to open Nexo stay in the notes and in the README.
+- New: Cortex, Nexo's new brain, with its own page in the sidebar: an eternal memory kept on this PC only (measured minutes, events, machine snapshots, hypotheses, tests and conclusions), investigation through competing hypotheses (always including "a cause I can't measure yet"), the test picked by what best tells the hypotheses apart, and honest conclusions (suspected, correlated, supported or "not found", with what was left to measure).
+- New: investigation journal, with hypotheses, tests, evidence and a timeline of what Cortex thought.
+- New: light and deep rhythm (light while the person uses the PC or plays; in depth only when the PC has been idle for ~10 min with no game; never alongside the Lab, benchmark, deep analysis, optimization, session recording or the FPS test).
+- New: three modes chosen on first launch, including for people who updated (Only observe, the default; Ask before testing; Test on its own while the PC is idle, low risk only, at most 3 a day and restored to the original); "ENTENDO O RISCO" to allow moderate or high risk; tests in the Change journal; Cortex memory export (the memory has no erase button).
+- New: the Library of Memory, the Cortex page's look inspired by Hollow Knight: Silksong (a layered parallax scene, a pulsing globe, ambient effects and creatures that gain color when a cause is proven), still in Lite mode, with reduce animations and when the window is hidden.
+- Improvement: sidebar in each page's tone (Cortex, Settings and Extreme optimization), with a smooth transition.
+- Improvement: new "Cortex (eternal memory)" section in the privacy policy.
+- Improvement: SonarCloud review of the Cortex code (fixed, explicit key order in the memory, Number.NaN, punctuation without backtracking regex, decorative canvases without an accessibility role and art scripts marked as development-only).
 
 ### 0.11.6: windowless drivers and the Sanctuary
 - Notice: this version is not digitally signed yet; the signature arrives in a future update. The notice and the steps to open Nexo stay in the notes and in the README.

@@ -36,8 +36,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-cena-'));
 const W = cena.largura;
 const H = cena.altura;
 
-const im = (...args) => execFileSync('convert', args, { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
-const size = (file) => execFileSync('identify', ['-format', '%w %h', file]).toString().trim().split(' ').map(Number);
+const im = (...args) => execFileSync('convert', args, { stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }); // NOSONAR: script de desenvolvimento (fora do instalador) que usa o ImageMagick do PATH de quem gera as artes
+const size = (file) => execFileSync('identify', ['-format', '%w %h', file]).toString().trim().split(' ').map(Number); // NOSONAR: idem
 const CATEGORY = new Set(['Menu', 'Particles & Effects']);
 const dirOf = (prefix, sub) => {
   const name = fs.readdirSync(src).find((n) => n.startsWith(`${prefix}-`));
