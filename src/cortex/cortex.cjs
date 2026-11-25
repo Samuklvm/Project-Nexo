@@ -86,13 +86,16 @@ function symptomOfEpisode(episode) {
   return (episode && EPISODE_SYMPTOM[episode.kind]) || null;
 }
 
-/** Sintomas que um resumo de sessão abre: o gargalo do NexoBottleneck e as travadas. Limite de quadros e equilibrado não. */
+/**
+ * Sintomas que um resumo de sessão abre: o gargalo do NexoBottleneck e as travadas. Limite de quadros, equilibrado e
+ * 'gpu' (placa no limite com desempenho real: o normal num jogo) não.
+ */
 function symptomsOfSession(summary) {
   if (!summary || typeof summary !== 'object') return [];
   const verdict = (summary.bottleneck && summary.bottleneck.verdict) ?? summary.verdict ?? null;
   const out = [];
   if (verdict === 'gpu-calor' || verdict === 'cpu-calor') out.push('temp');
-  else if (typeof verdict === 'string' && verdict.startsWith('gpu')) out.push('gpu');
+  else if (typeof verdict === 'string' && verdict.startsWith('gpu') && verdict !== 'gpu') out.push('gpu');
   else if (verdict === 'cpu-thread' || verdict === 'cpu-total') out.push('cpu');
   else if (verdict === 'memoria') out.push('mem');
   if ((Array.isArray(summary.findings) ? summary.findings : []).some((f) => f && f.id === 'fps-stutter')) out.push('travadas');
@@ -438,9 +441,10 @@ function createCortex(deps = {}) {
     } catch (e) { if (e && typeof e === 'object') e.semCusto = true; throw e; } // o lab nem começou (ex.: já estava rodando)
     safe('lab-mapa', () => {
       const arm = (result && Array.isArray(result.arms) ? result.arms : []).find((x) => x && x.knob === knob) || null;
-      const slim = { origem: 'cortex', knob, status: result && result.status, verdict: arm ? arm.verdict : null, compositeDelta: arm ? arm.compositeDelta ?? null : null, restoreFailed: !!(result && result.restoreFailed) };
+      const slim = { origem: 'cortex', knob, status: result && result.status, verdict: arm ? arm.verdict : null, compositeDelta: arm ? arm.compositeDelta ?? null : null,
+        restoreFailed: !!(result && result.restoreFailed), comecou: !!(result && result.baseline != null) };
       memory.addEvent({ kind: 'lab', at: now(), data: slim });
-      emit({ lab: slim }); // a tela registra no Diário de alterações
+      emit({ lab: slim }); // a tela (em qualquer página) registra no Diário de alterações e avisa se a volta falhou
       noteLab(result);
     }, null);
     if (active.interrupted) return { observed: 'interrompido' };
@@ -546,8 +550,12 @@ function createCortex(deps = {}) {
     }, null);
   }
 
-  /** Eventos de relação: grava os do lab; resultado que contradiz uma relação apoiada reabre a conclusão dela. */
+  /**
+   * Eventos de relação: grava os do lab; resultado que contradiz uma relação apoiada reabre a conclusão dela. Só de
+   * sessão concluída: cancelada ou abortada no meio não prova nada.
+   */
   function noteLab(result) {
+    if (!result || result.status !== 'completed') return;
     const evs = labMapEvents(result, now());
     for (const ev of evs) {
       if (ev.kind === 'experimento-contra' && map.state(ev.edgeId) === 'apoiada') reopen(ev.edgeId);
@@ -925,7 +933,7 @@ function disabled(reason) {
     ativo: false,
     observeMinute: nothing, observeEvent: nothing, observeSession: nothing, importLegacy: () => ({ ok: false }),
     tick: async () => {}, checkRhythm: async () => ({ state: 'leve', changed: false, reason: 'Cortex desligado' }), start: async () => {}, stop: nothing, cancelActive: () => false,
-    settings: () => ({ ...DEFAULT_CONFIG }), setSettings: () => ({ ok: false, reason: 'O Cortex está desligado: a memória dele não abriu.' }),
+    settings: () => ({ ...DEFAULT_CONFIG, ativo: false }), setSettings: () => ({ ok: false, reason: 'O Cortex está desligado: a memória dele não abriu.' }),
     approve: async () => ({ ok: false, reason: 'O Cortex está desligado: a memória dele não abriu.' }), deny: () => false, list: () => [], get: () => null,
     stats: () => ({ ativo: false, motivo: String(reason || 'memória indisponível') }),
     rhythm: () => ({ state: 'leve', reason: 'Cortex desligado', at: null, testando: null }),

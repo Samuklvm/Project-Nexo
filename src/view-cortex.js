@@ -218,15 +218,46 @@
   function renderBanner() {
     const host = $id('cx-banner');
     const off = bridgeError || stats?.ativo === false;
-    host.hidden = !off;
+    const warn = readRestoreWarn();
+    host.hidden = !off && !warn;
     if (off) host.innerHTML = `<strong>O Cortex está desligado</strong>${escapeHtml(bridgeError || (stats?.motivo ? `A memória dele não abriu (${stats.motivo}). O resto do Nexo segue funcionando.` : 'A memória dele não abriu. O resto do Nexo segue funcionando.'))}`;
+    else if (warn) host.innerHTML = `<strong>Atenção</strong>${escapeHtml(warn.text)}${has('recoverLab') ? ' <button type="button" class="cx-btn" data-cx-recover>Recuperar agora</button>' : ''}`;
   }
+
+  /* ---------- Teste do Cortex no laboratório: Diário de alterações e aviso de volta que falhou ----------
+   Chega pelo cortex:update em qualquer página. A volta que falhou fica avisada no topo da página do Cortex até o lab não
+   ter mais nada pendente (recuperado agora ou na próxima abertura). */
+  const RESTORE_KEY = 'nexo-cortex-volta-falhou';
+  function readRestoreWarn() {
+    try { const w = JSON.parse(localStorage.getItem(RESTORE_KEY) || 'null'); return w && typeof w.text === 'string' ? w : null; } catch { return null; }
+  }
+  function clearRestoreWarn() { try { localStorage.removeItem(RESTORE_KEY); } catch { /* só nesta sessão */ } if (Nexo.state.view === 'cortex') renderBanner(); }
+  async function recoverNow() {
+    try {
+      const result = await bridge.recoverLab();
+      const status = has('getLabStatus') ? await bridge.getLabStatus().catch(() => null) : null;
+      if (result?.recovered || (status && !status.pending)) { clearRestoreWarn(); showToast('Pronto: tudo voltou ao original.'); Nexo.loadPower?.(); }
+      else showToast('Ainda não consegui voltar ao original. O Nexo tenta de novo na próxima abertura.');
+    } catch (error) { showToast(error.message || 'Não consegui recuperar agora.'); }
+  }
+  function noteCortexLab(lab) {
+    const { entry, warn } = Page.labEntry(lab, { knob: KNOBS.get(String(lab?.knob || '')), permission: settings?.permission });
+    if (entry && Nexo.journal) { Nexo.journal.record(entry); Nexo.emit?.('journal'); }
+    if (!warn) return;
+    try { localStorage.setItem(RESTORE_KEY, JSON.stringify({ text: warn, at: Date.now() })); } catch { /* o aviso fica só nesta sessão */ }
+    showToast(warn, has('recoverLab') ? { label: 'Recuperar agora', run: recoverNow } : null);
+    if (Nexo.state.view === 'cortex') renderBanner();
+  }
+  $id('cx-banner').addEventListener('click', (event) => { if (event.target.closest('[data-cx-recover]')) recoverNow(); });
+  // O lab recuperou sozinho ao abrir: o aviso sai. Ao abrir o app, aviso velho sem nada pendente também sai.
+  if (has('onLabRecovered')) bridge.onLabRecovered(() => clearRestoreWarn());
+  if (readRestoreWarn() && has('getLabStatus')) Promise.resolve(bridge.getLabStatus()).then((status) => { if (status && !status.pending) clearRestoreWarn(); }).catch(() => {});
 
   /* ---------- Permissão ---------- */
   const PACTS = [
-    { id: 'observar', icon: 'i-eye', title: 'Só observar', text: 'Olha, lembra e investiga com o que já mediu. Nunca mexe em nada no PC.' },
+    { id: 'observar', icon: 'i-eye', title: 'Só observar', text: 'Olha, lembra e investiga, e não muda nada no PC; com o PC parado e sem jogo, faz medições curtas para comparar (no máximo 3 testes por dia, além de medições de referência ocasionais).' },
     { id: 'pedir', icon: 'i-shield', title: 'Pedir antes de testar', text: 'Quando um teste puder provar a causa, o Cortex pede aqui e espera o seu “Pode testar”.' },
-    { id: 'sozinho', icon: 'i-flask', title: 'Testar sozinho com o PC parado', text: 'Só ajustes de risco baixo, só com o PC parado e sem jogo, sempre de volta ao original, no máximo 3 testes por dia.' }
+    { id: 'sozinho', icon: 'i-flask', title: 'Testar sozinho com o PC parado', text: 'Só ajustes de risco baixo, só com o PC parado e sem jogo, sempre de volta ao original, no máximo 3 testes por dia, além de medições de referência ocasionais.' }
   ];
   const RISK_LABEL = { baixo: 'Só baixo', moderado: 'Até moderado', alto: 'Até alto' };
   function renderPacts() {
@@ -242,11 +273,20 @@
     if (!extra) { extra = document.createElement('div'); extra.className = 'cx-pact-extra'; host.after(extra); }
     const shown = pendingRisk || s.maxRisk;
     const phrase = pendingRisk && Page.needsPhrase(s, { permission: 'pedir', maxRisk: pendingRisk });
+    // A página redesenha a cada atualização do Cortex: o que a pessoa já digitou e o foco ficam; o foco só vai para o
+    // campo na primeira vez (sem rolar a página nas outras).
+    const before = extra.querySelector('#cx-consent');
+    const typed = before ? before.value : '';
+    const hadFocus = Boolean(before) && document.activeElement === before;
     extra.innerHTML = `<p>Teto de risco dos ajustes que o Cortex pode pedir para testar.</p>
       <div class="cx-risks" role="group" aria-label="Teto de risco">${Object.entries(RISK_LABEL).map(([risk, text]) => `<button type="button" data-risk="${risk}" aria-pressed="${shown === risk}">${text}</button>`).join('')}</div>
       ${phrase ? `<div class="cx-consent"><label>Para liberar o teto ${escapeHtml(pendingRisk)}, digite <strong>ENTENDO O RISCO</strong><input id="cx-consent" type="text" maxlength="30" autocomplete="off" spellcheck="false" /></label><button type="button" class="cx-btn" data-consent-go>Liberar</button><button type="button" class="cx-btn ghost" data-consent-cancel>Cancelar</button></div>` : ''}
       ${pactNote ? `<p class="cx-note">${escapeHtml(pactNote)}</p>` : ''}`;
-    if (phrase) extra.querySelector('#cx-consent')?.focus();
+    const input = phrase ? extra.querySelector('#cx-consent') : null;
+    if (!input) return;
+    input.value = typed;
+    if (!before) input.focus();
+    else if (hadFocus) { input.focus({ preventScroll: true }); input.setSelectionRange(typed.length, typed.length); }
   }
 
   async function choose(patch, success) {
@@ -923,7 +963,11 @@
   Nexo.on('effects', () => { if (still()) settle(); wake(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
   reduce.addEventListener?.('change', () => { if (still()) settle(); wake(); });
-  if (has('onCortexUpdate')) bridge.onCortexUpdate((payload) => { if (payload?.settings) settings = payload.settings; if (Nexo.state.view === 'cortex' || Nexo.state.view === 'analysis' || payload?.inv) soon(); });
+  if (has('onCortexUpdate')) bridge.onCortexUpdate((payload) => {
+    if (payload?.settings) settings = payload.settings;
+    if (payload?.lab) noteCortexLab(payload.lab);
+    if (Nexo.state.view === 'cortex' || Nexo.state.view === 'analysis' || payload?.inv) soon();
+  });
   Nexo.commands?.push({ label: 'Ir para o Cortex', hint: 'Página', run: () => Nexo.go('cortex') });
 
   /* ---------- Primeira escolha: em toda abertura, até a pessoa escolher ---------- */
@@ -956,7 +1000,7 @@
     const back = document.createElement('div');
     back.className = ['cx-first', ...artClasses()].join(' ');
     const on = plan.recommendedOn;
-    const why = current.iaLocal ? 'Recomendado ligado, porque a IA integrada do Nexo está ativa neste PC.' : 'Sem a IA integrada, o padrão é desligado. Dá para ligar agora ou quando quiser.';
+    const why = current.iaLocal ? 'Recomendado ligado, porque a IA integrada opcional do Nexo foi aceita neste PC.' : 'Sem a IA integrada opcional (ainda não disponível), o padrão é desligado. Dá para ligar agora ou quando quiser.';
     const reco = '<span class="cx-reco">Recomendado</span>';
     back.innerHTML = `<div class="cx-first-card" role="dialog" aria-modal="true" aria-labelledby="cx-first-t" aria-describedby="cx-first-d">${corners()}
       <button type="button" class="cx-first-close" data-first="close" aria-label="Fechar sem escolher">×</button>
@@ -965,7 +1009,7 @@
       <h2 id="cx-first-t">Deixar o Nexo testar ajustes sozinho?</h2>
       <i class="cx-first-orn" aria-hidden="true"></i>
       <div id="cx-first-d"><p class="cx-first-lead">O Cortex investiga por que o PC fica lento. Às vezes, para provar uma causa, ele precisa testar um ajuste e medir a diferença.</p>
-      <ul><li>Só ajustes de risco baixo.</li><li>Só com o PC parado e sem jogo aberto.</li><li>Sempre volta ao valor original no fim.</li><li>No máximo 3 testes por dia.</li></ul>
+      <ul><li>Só ajustes de risco baixo.</li><li>Só com o PC parado e sem jogo aberto.</li><li>Sempre volta ao valor original no fim.</li><li>No máximo 3 testes por dia, além de medições de referência ocasionais.</li></ul>
       <p class="cx-first-why">${why}</p></div>
       <div class="cx-first-actions"><span class="cx-choice">${on ? '' : reco}<button type="button" class="cx-btn${on ? ' ghost' : ''}" data-first="off">Deixar desligado</button></span><span class="cx-choice">${on ? reco : ''}<button type="button" class="cx-btn${on ? '' : ' ghost'}" data-first="on">Deixar ligado</button></span></div>
       <p class="cx-first-foot">Dá para mudar a qualquer hora na página do Cortex.</p></div>`;

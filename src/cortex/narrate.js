@@ -167,6 +167,11 @@
       return ending(`Voltei ao ritmo leve${why}`);
     },
 
+    // Pausa que não é de ritmo (bateria, orçamento do dia): a investigação espera, o ritmo não mudou.
+    pausa(s) {
+      return ending(`Pausei${s.reason ? `: ${str(s.reason)}` : ''}`);
+    },
+
     interrompido(s) {
       const t = s.target ? ` de ${name(s.target)}` : '';
       return `Cortei o teste${t} porque você voltou. Ele não conta como evidência e eu refaço quando o computador estiver livre.`;

@@ -151,6 +151,7 @@ test('primeira escolha: só mostra agora com a janela visível, sem outra janela
   assert.equal(Page.canShowFirst({ hidden: false, modalOpen: false, settings: null, showing: false }), false, 'sem configuração');
   assert.equal(Page.canShowFirst({ hidden: false, modalOpen: false, settings: s, showing: true }), false, 'nunca duas ao mesmo tempo');
   assert.equal(Page.canShowFirst({ hidden: false, modalOpen: false, settings: s, showing: false }), true);
+  assert.equal(Page.canShowFirst({ hidden: false, modalOpen: false, settings: { ...s, ativo: false }, showing: false }), false, 'Cortex desligado não pergunta');
 });
 
 test('primeira escolha: a tela espera sem limite de tentativas (bandeja e janela de perfil demorada)', () => {
@@ -281,4 +282,44 @@ test('eventos de ambiente: chaves herdadas (constructor, toString, __proto__) s�
   // I2: o passo de ambiente roda protegido dentro do passo da cena; no erro encerra o evento e sorteia de novo depois.
   const step = view.slice(view.indexOf('ambientStep(t, dt);') - 200, view.indexOf('ambientStep(t, dt);') + 400);
   assert.match(step, /try \{\s*ambientStep\(t, dt\);\s*\} catch \{\s*endEvent\(\);\s*amb\.next = null;\s*\}/, 'ambientStep protegido por try/catch');
+});
+
+test('textos dos modos dizem a verdade e são iguais em PT e EN: "só observar" mede com o PC parado, referências além dos 3 testes, IA integrada ainda não disponível', () => {
+  const view = read('src/view-cortex.js');
+  const html = read('index.html');
+  const pt = read('PRIVACIDADE.md');
+  const en = read('PRIVACY.md');
+  assert.doesNotMatch(view, /Nunca mexe em nada no PC|investiga com o que já mediu/);
+  assert.match(view, /não muda nada no PC; com o PC parado e sem jogo, faz medições curtas para comparar/);
+  for (const [name, text] of [['view-cortex.js', view], ['index.html', html], ['PRIVACIDADE.md', pt]]) {
+    assert.match(text, /no máximo 3 testes por dia, além de medições de referência ocasionais/i, name);
+    assert.doesNotMatch(text, /padrão com a IA integrada(?! opcional for aceita)/, `${name}: "padrão com a IA integrada"`);
+  }
+  for (const text of [html, pt]) assert.match(text, /padrão quando a IA integrada opcional for aceita \(ainda não disponível\)/);
+  assert.match(en, /at most 3 tests per day, plus occasional reference measurements/i);
+  assert.match(en, /default once the optional integrated AI is accepted \(not available yet\)/);
+  assert.doesNotMatch(en, /default with the (optional )?integrated AI/);
+});
+
+test('teste do Cortex no laboratório: entrada do Diário de alterações e aviso quando a volta ao original falha', () => {
+  const knob = { label: 'Estado mínimo do processador', risk: 'baixo' };
+  const ok = Page.labEntry({ origem: 'cortex', knob: 'minstate', status: 'completed', verdict: 'melhorou', compositeDelta: 4.2, restoreFailed: false, comecou: true }, { knob, permission: 'sozinho' });
+  assert.equal(ok.warn, null);
+  assert.equal(ok.entry.actionId, 'lab-session');
+  assert.equal(ok.entry.riskSession, true);
+  assert.equal(ok.entry.status, 'applied');
+  assert.equal(ok.entry.risk, 'baixo');
+  assert.match(ok.entry.title, /Cortex/);
+  assert.match(ok.entry.title, /Estado mínimo do processador/);
+  assert.match(ok.entry.detail, /voltou ao original/);
+  assert.match(ok.entry.authorization, /Testar sozinho/);
+  const failed = Page.labEntry({ knob: 'minstate', status: 'completed', verdict: 'sem-diferenca', restoreFailed: true, comecou: true }, { knob, permission: 'pedir' });
+  assert.equal(failed.entry.status, 'failed');
+  assert.match(failed.entry.authorization, /Pode testar/);
+  assert.equal(failed.warn, 'Não consegui voltar “Estado mínimo do processador” ao original. O Nexo tenta de novo na próxima abertura.');
+  // Guarda da pré-checagem: nada mudou no PC, nada vai para o Diário.
+  assert.equal(Page.labEntry({ knob: 'minstate', status: 'aborted', restoreFailed: false, comecou: false }, { knob }).entry, null);
+  assert.ok(Page.labEntry({ knob: 'minstate', status: 'cancelled', restoreFailed: false, comecou: true }, { knob }).entry);
+  assert.equal(Page.labEntry(null, {}).entry, null);
+  for (const r of [ok, failed]) for (const text of [r.entry.title, r.entry.detail, r.warn || '']) assert.doesNotMatch(text, /provavelmente|talvez seja|deve ser|com certeza/i);
 });

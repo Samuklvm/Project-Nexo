@@ -119,7 +119,9 @@ test('sintoma de cada lentidão: cpu, memória, calor e queda de clock', () => {
 
 test('achados de sessão: gargalo vira sintoma; limite de quadros e equilibrado não abrem nada', () => {
   const of = (verdict, findings = []) => Cortex.symptomsOfSession({ bottleneck: { verdict }, findings });
-  assert.deepEqual(of('gpu'), ['gpu']);
+  // GPU no limite com desempenho real é o caso normal num jogo (como limite de quadros e equilibrado): não abre nada.
+  assert.deepEqual(of('gpu'), []);
+  assert.deepEqual(of('gpu', [{ id: 'fps-stutter' }]), ['travadas']);
   assert.deepEqual(of('gpu-energia'), ['gpu']);
   assert.deepEqual(of('gpu-calor'), ['temp']);
   assert.deepEqual(of('cpu-calor'), ['temp']);
@@ -639,6 +641,9 @@ test('memória que não abre: Cortex desligado (tudo no-op) e o erro vai para o 
   const logs = [];
   const cortex = Cortex.createCortex({ memory: { ok: false, error: 'memória não abriu: disco cheio' }, rhythm: createRhythm(), log: (e) => logs.push(e), now: () => T0 });
   assert.equal(cortex.stats().ativo, false);
+  // Desligado não pergunta a primeira escolha: settings diz ativo:false (e a página recusa a janela).
+  assert.equal(cortex.settings().ativo, false);
+  assert.equal(require('../src/cortex/page.js').canShowFirst({ hidden: false, modalOpen: false, settings: cortex.settings(), showing: false }), false);
   assert.doesNotThrow(() => cortex.observeMinute({ t: T0, cpu: 1 }));
   assert.doesNotThrow(() => cortex.observeEvent(lentidao(T0)));
   await cortex.tick();
@@ -846,4 +851,26 @@ test('estatísticas: o uso de memória é o total em disco (banco, -wal e cópia
   await t.memory.backupDaily();
   assert.equal(t.cortex.stats().memoria.bytes, t.memory.diskBytes());
   assert.ok(t.cortex.stats().memoria.bytes > t.memory.sizeBytes());
+});
+
+test('resultado do lab cancelado ou abortado não alimenta o mapa (nem pelo braço do Cortex, nem pelo lab da pessoa)', async () => {
+  const t = setup({ labReturn: async () => ({ ...labResult('sem-diferenca'), status: 'cancelled' }) });
+  const before = t.memory.list('relacao', { limit: 1000 }).length;
+  t.cortex.observeEvent({ kind: 'lab', at: T0, data: { status: 'cancelled', arms: labResult('melhorou').arms } });
+  t.cortex.observeEvent({ kind: 'lab', at: T0, data: { status: 'aborted', arms: labResult('melhorou').arms } });
+  assert.equal(t.memory.list('relacao', { limit: 1000 }).length, before);
+  t.cortex.setSettings({ permission: 'pedir', maxRisk: 'baixo' });
+  await goDeep(t);
+  await t.cortex._act({ type: 'intervir', target: 'ajuste:minstate', cost: 3, risk: 'baixo' }, { inv: 1, symptom: 'bench:burst' }).catch(() => null);
+  assert.equal(t.memory.list('relacao', { limit: 1000 }).length, before, 'braço cancelado virou evento do mapa');
+  // Concluído alimenta.
+  t.cortex.observeEvent({ kind: 'lab', at: T0, data: { status: 'completed', arms: labResult('melhorou').arms } });
+  assert.equal(t.memory.list('relacao', { limit: 1000 }).length, before + 1);
+});
+
+test('sessão limitada pela GPU com desempenho real (veredito "gpu") não abre investigação', async () => {
+  const t = setup();
+  t.cortex.observeSession({ id: 's-gpu', summary: { meta: { startedAt: T0 - 30 * MIN, endedAt: T0 }, bottleneck: { verdict: 'gpu' }, findings: [] }, samples: [] });
+  await t.cortex.tick();
+  assert.equal(t.cortex.list({ limit: 10 }).length, 0);
 });

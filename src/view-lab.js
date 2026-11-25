@@ -213,8 +213,12 @@
     return 'Nada mudou acima do ruído neste PC';
   }
 
-  /** Cortex: o resultado vira eventos do mapa (ajuste → teste). Só o que o Cortex lê: ajuste, teste, veredito e confiança. */
+  /**
+   * Cortex: o resultado vira eventos do mapa (ajuste → teste). Só o que o Cortex lê: ajuste, teste, veredito e confiança.
+   * Só sessão concluída: cancelada ou interrompida no meio não prova nada.
+   */
   function feedCortexLab(result) {
+    if (result?.status !== 'completed') return;
     try {
       const arms = (Array.isArray(result?.arms) ? result.arms : []).map((arm) => ({ knob: arm.knob, value: arm.value, verdict: arm.verdict, compositeDelta: arm.compositeDelta ?? null,
         results: Object.fromEntries(Object.entries(arm.results || {}).map(([bench, r]) => [bench, { verdict: r?.verdict, confidence: r?.confidence, deltaPct: r?.deltaPct ?? null }])) }));

@@ -92,9 +92,9 @@ O Cortex é o cérebro do Nexo: ele guarda uma memória de como o seu PC se comp
 - **Sem botão de apagar:** não existe botão para apagar essa memória. O **Apagar aprendizado e histórico** apaga só o aprendizado antigo (veja abaixo) e não toca na memória do Cortex. Só a desinstalação remove a pasta.
 - **Exportar:** em **Ajustes → Privacidade e dados** (**Exportar memória do Cortex**) e na página do Cortex você salva uma cópia da memória, num arquivo `.db` (SQLite), no lugar que escolher. A memória viva nunca é sobrescrita.
 - **O que ele pode fazer sozinho:** você escolhe entre três modos na página do Cortex, e nada sai do seu PC em nenhum deles.
-  - **Só observar** (padrão sem a IA integrada): não muda nada no PC; com o PC parado e sem jogo aberto, pode fazer medições curtas de desempenho para comparar (no máximo 3 por dia).
+  - **Só observar**, padrão enquanto a IA integrada opcional não for aceita: não muda nada no PC; com o PC parado e sem jogo aberto, pode fazer medições curtas de desempenho para comparar (no máximo 3 testes por dia, além de medições de referência ocasionais).
   - **Pedir antes de testar:** cada teste de ajuste espera o seu OK; você pode liberar risco maior digitando uma confirmação.
-  - **Testar sozinho com o PC parado** (padrão com a IA integrada opcional): só ajustes de risco baixo, só com o PC parado e sem jogo, no máximo 3 por dia; todo ajuste testado volta ao original, e o Nexo avisa se a volta falhar.
+  - **Testar sozinho com o PC parado**, padrão quando a IA integrada opcional for aceita (ainda não disponível): só ajustes de risco baixo, só com o PC parado e sem jogo, no máximo 3 testes por dia, além de medições de referência ocasionais; todo ajuste testado volta ao original, e o Nexo avisa se a volta falhar.
 - **Nada sai do PC:** nem a memória, nem os testes, nem o que o Cortex concluiu são enviados.
 
 ## Exportar, apagar e desinstalar

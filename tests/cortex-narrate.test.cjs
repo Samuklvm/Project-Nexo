@@ -26,6 +26,7 @@ const PASSOS = () => [
   { type: 'interrompido', target: 'bench:single' },
   { type: 'ritmo', state: 'leve', reason: 'você voltou' },
   { type: 'ritmo', state: 'profundo', reason: 'o computador ficou parado' },
+  { type: 'pausa', reason: 'o computador está na bateria, então o ajuste fica para depois' },
   { type: 'conclusao', verdict: { status: 'apoiada', winner: 'temp_cpu>clock_queda', refuted: ['cpu>clock_queda'] } },
   { type: 'conclusao', verdict: { status: 'correlacionada', winner: 'temp_cpu>clock_queda', refuted: [] } },
   { type: 'conclusao', verdict: { status: 'aberta', winner: null, refuted: [] } },
@@ -128,4 +129,9 @@ test('medir sem referência ainda tem frase própria (sem "não consegui classif
   assert.ok(s.includes(SIGNALS['bench:single'].label), s);
   assert.doesNotMatch(s, /não consegui classificar/);
   assert.doesNotMatch(s, BANIDAS);
+});
+
+test('pausa por bateria ou orçamento não é mudança de ritmo: "Pausei: …"', () => {
+  assert.equal(N.say({ type: 'pausa', reason: 'já fiz os testes ativos de hoje; o próximo fica para amanhã' }), 'Pausei: já fiz os testes ativos de hoje; o próximo fica para amanhã.');
+  assert.doesNotMatch(N.say({ type: 'pausa', reason: 'x' }), /ritmo/);
 });

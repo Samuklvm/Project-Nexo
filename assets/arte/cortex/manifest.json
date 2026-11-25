@@ -4,85 +4,65 @@
   "papeis": {
     "titulo-topo": {
       "arquivo": "titulo-topo.webp",
-      "origem": "Fleurs/Hornet_Title_Fleur_top0011.png",
       "tingir": true,
       "largura": 538,
       "altura": 83
     },
     "titulo-base": {
       "arquivo": "titulo-base.webp",
-      "origem": "Fleurs/Hornet_Title_Fleur_bot0011.png",
       "tingir": true,
       "largura": 600,
       "altura": 112
     },
     "divisor": {
       "arquivo": "divisor.webp",
-      "origem": "Fleurs/divider.png",
       "tingir": true,
       "largura": 345,
       "altura": 33
     },
     "divisor-fino": {
       "arquivo": "divisor-fino.webp",
-      "origem": "Fleurs/completed_quests_spacer.png",
       "tingir": true,
       "largura": 600,
       "altura": 27
     },
     "canto": {
       "arquivo": "canto.webp",
-      "origem": "Fleurs/overscan_corner_fleur009.png",
       "tingir": true,
       "largura": 160,
       "altura": 157
     },
     "moldura-topo": {
       "arquivo": "moldura-topo.webp",
-      "origem": "Fleurs/Quest_Board_top_fleur0006.png",
       "tingir": true,
       "largura": 560,
       "altura": 77
     },
     "moldura-base": {
       "arquivo": "moldura-base.webp",
-      "origem": "Fleurs/Quest_Board_bottom_fleur0006.png",
       "tingir": true,
       "largura": 480,
       "altura": 70
     },
     "aviso": {
       "arquivo": "aviso.webp",
-      "origem": "Fleurs/Warning_Fleur0008.png",
       "tingir": true,
       "largura": 560,
       "altura": 67
     },
     "cursor": {
       "arquivo": "cursor.webp",
-      "origem": "Menu/main_menu_pointer.png",
       "tingir": true,
       "largura": 72,
       "altura": 82
     },
     "pensando": {
       "arquivo": "pensando.webp",
-      "origem": "Menu/save_icon.png",
       "largura": 176,
       "altura": 180
     },
     "ritmo-profundo": {
       "arquivo": "ritmo-profundo.webp",
-      "origem": [
-        "Menu/loading_icon_new0000.png",
-        "Menu/loading_icon_new0001.png",
-        "Menu/loading_icon_new0002.png",
-        "Menu/loading_icon_new0003.png",
-        "Menu/loading_icon_new0004.png",
-        "Menu/loading_icon_new0005.png",
-        "Menu/loading_icon_new0006.png",
-        "Menu/loading_icon_new0007.png"
-      ],
       "quadros": 8,
       "fps": 12,
       "quadro": {
@@ -94,121 +74,103 @@
     },
     "medalhao-aberta": {
       "arquivo": "medalhao-aberta.webp",
-      "origem": "Menu/Select_Game_Crest_Spools__0000_hunter.png",
       "largura": 124,
       "altura": 99
     },
     "medalhao-aguardando": {
       "arquivo": "medalhao-aguardando.webp",
-      "origem": "Menu/Select_Game_Crest_Spools__0006_architect.png",
       "largura": 123,
       "altura": 128
     },
     "medalhao-concluida": {
       "arquivo": "medalhao-concluida.webp",
-      "origem": "Menu/Select_Game_Crest_Spools__0009_witch.png",
       "largura": 128,
       "altura": 101
     },
     "bestiario-temp_cpu": {
       "arquivo": "bestiario-temp_cpu.webp",
-      "origem": "Hunter_s Journal/Burning Bug - Farmer Wisp.png",
       "causa": "temp_cpu",
       "largura": 240,
       "altura": 139
     },
     "bestiario-gpu": {
       "arquivo": "bestiario-gpu.webp",
-      "origem": "Hunter_s Journal/Cogwork Hauler - Understore Automaton EX.png",
       "causa": "gpu",
       "largura": 200,
       "altura": 209
     },
     "bestiario-disk": {
       "arquivo": "bestiario-disk.webp",
-      "origem": "Hunter_s Journal/Bloatroach - Bloat Roach #4267166.png",
       "causa": "disk",
       "largura": 240,
       "altura": 221
     },
     "bestiario-mem": {
       "arquivo": "bestiario-mem.webp",
-      "origem": "Hunter_s Journal/Voltvyrm - Zap Core Enemy #4267202.png",
       "causa": "mem",
       "largura": 240,
       "altura": 177
     },
     "bestiario-programa_pesado": {
       "arquivo": "bestiario-programa_pesado.webp",
-      "origem": "Hunter_s Journal/Bell Beast - Bone Beast.png",
       "causa": "programa_pesado",
       "largura": 240,
       "altura": 167
     },
     "bestiario-cpu": {
       "arquivo": "bestiario-cpu.webp",
-      "origem": "Hunter_s Journal/Beastfly - Bone Flyer #4267155.png",
       "causa": "cpu",
       "largura": 133,
       "altura": 138
     },
     "bestiario-ajuste": {
       "arquivo": "bestiario-ajuste.webp",
-      "origem": "Hunter_s Journal/Cogwork Crawler - Song Automaton Goomba.png",
       "causa": "ajuste",
       "largura": 148,
       "altura": 240
     },
     "bestiario-rotina": {
       "arquivo": "bestiario-rotina.webp",
-      "origem": "Hunter_s Journal/Clover Dancers - Clover Dancer #4267109.png",
       "causa": "rotina",
       "largura": 234,
       "altura": 240
     },
     "bestiario-desconhecida": {
       "arquivo": "bestiario-desconhecida.webp",
-      "origem": "Hunter_s Journal/Shadow Creeper - Abyss Crawler #4267287.png",
       "causa": "desconhecida",
       "largura": 157,
       "altura": 110
     },
     "poeira-luz": {
       "arquivo": "poeira-luz.webp",
-      "origem": "Particles & Effects/dust_light_texture.png",
       "ladrilho": true,
       "largura": 512,
       "altura": 512
     },
     "poeira-voo": {
       "arquivo": "poeira-voo.webp",
-      "origem": "Particles & Effects/dust_light_texture_fly.png",
       "ladrilho": true,
       "largura": 512,
       "altura": 512
     },
     "nevoa": {
       "arquivo": "nevoa.webp",
-      "origem": "Particles & Effects/dust_mist_texture_fg.png",
       "ladrilho": true,
       "largura": 512,
       "altura": 512
     },
     "vagalume": {
       "arquivo": "vagalume.webp",
-      "origem": "Particles & Effects/coral_particle_glow.png",
       "largura": 35,
       "altura": 35
     },
     "cinza": {
       "arquivo": "cinza.webp",
-      "origem": "Particles & Effects/ash_01.png",
       "largura": 23,
       "altura": 15
     },
     "pluma": {
       "arquivo": "pluma.webp",
-      "origem": "Particles & Effects/down_particle.png",
       "variantes": 3,
       "quadro": {
         "largura": 38,
@@ -219,7 +181,6 @@
     },
     "mandala": {
       "arquivo": "mandala.webp",
-      "origem": "Particles & Effects/dream_particle_01.png",
       "variantes": 3,
       "quadro": {
         "largura": 117,
@@ -230,13 +191,6 @@
     },
     "faisca": {
       "arquivo": "faisca.webp",
-      "origem": [
-        "Particles & Effects/burst_effect_small0000.png",
-        "Particles & Effects/burst_effect_small0001.png",
-        "Particles & Effects/burst_effect_small0002.png",
-        "Particles & Effects/burst_effect_small0003.png",
-        "Particles & Effects/burst_effect_small0004.png"
-      ],
       "quadros": 5,
       "fps": 15,
       "quadro": {
@@ -248,12 +202,6 @@
     },
     "clarao": {
       "arquivo": "clarao.webp",
-      "origem": [
-        "Particles & Effects/death_flash_effects_white0000.png",
-        "Particles & Effects/death_flash_effects_white0001.png",
-        "Particles & Effects/death_flash_effects_white0002.png",
-        "Particles & Effects/death_flash_effects_white0003.png"
-      ],
       "quadros": 4,
       "fps": 8,
       "quadro": {
@@ -265,13 +213,11 @@
     },
     "anel": {
       "arquivo": "anel.webp",
-      "origem": "Particles & Effects/burst_round_generic.png",
       "largura": 197,
       "altura": 200
     },
     "brilho": {
       "arquivo": "brilho.webp",
-      "origem": "Particles & Effects/crystal_particle_tiny.png",
       "quadros": 9,
       "fps": 18,
       "quadro": {
@@ -283,7 +229,6 @@
     },
     "mariposa": {
       "arquivo": "mariposa.webp",
-      "origem": "Particles & Effects/Cog_fly_particle.png",
       "quadros": 5,
       "fps": 14,
       "quadro": {
@@ -295,13 +240,11 @@
     },
     "onda-sino": {
       "arquivo": "onda-sino.webp",
-      "origem": "Particles & Effects/bell_hub_scream_roar_effect_0000_1.png",
       "largura": 320,
       "altura": 291
     },
     "folha": {
       "arquivo": "folha.webp",
-      "origem": "Whispering Vaults/library_scroll_particle.png",
       "variantes": 4,
       "quadro": {
         "largura": 42,

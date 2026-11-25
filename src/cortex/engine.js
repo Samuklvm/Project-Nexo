@@ -15,7 +15,8 @@
  *                                                           invalido com detail 'sem-referencia' não conta como feito)
  *   prova         { outcome, anomaly? } (ref = experimento) ou { kind: 'repeticao', anomaly } (a lentidão repetiu)
  *   pedido        { action, status: 'pendente' }; a resposta é outro pedido { action, status: aprovado|negado }, ref = pedido
- *   pensamento    { step, text, pause? }                    frase do narrador (passos no formato do narrate.js)
+ *   pensamento    { step, text, pause? }                    frase do narrador (passos no formato do narrate.js; pausa do
+ *                                                           ritmo = passo 'ritmo', de bateria/orçamento = passo 'pausa')
  *   necessidade   { goal, between, reason, missing, outside } goal 'separar' (nada separa as explicações) ou
  *                                                           'apoiada' (há vencedora correlacionada, falta a prova);
  *                                                           missing = causas ou testes ainda não olhados; outside = o
@@ -321,7 +322,9 @@
     function pause(s, why) {
       const last = store.latest('pensamento', { inv: s.inv });
       if (last && last.data && last.data.pause === why) return 'pausada';
-      think(s.inv, { type: 'ritmo', state: 'leve', reason: PAUSE[why] || why }, { pause: why });
+      // Só a pausa do ritmo é "voltei ao ritmo leve"; bateria e orçamento são uma pausa ("Pausei: …").
+      const step = why === 'ritmo' ? { type: 'ritmo', state: 'leve', reason: PAUSE[why] } : { type: 'pausa', reason: PAUSE[why] || why };
+      think(s.inv, step, { pause: why });
       return 'pausada';
     }
 

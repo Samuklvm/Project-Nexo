@@ -1,8 +1,10 @@
 /*
  * Monta o cenário vivo da página do Cortex ("A Biblioteca da Memória") a partir das peças de ambiente dos originais
  * (assets/artes/, que ficam no main, fora do instalador). A composição está descrita em
- * assets/arte/cortex/cenario/cena.json (camada → fundo, brilhos, peças com posição, escala, espelho, tom, névoa,
- * desfoque); este script só obedece. Sai uma webp por camada (2400 × 1350), mais o globo e as luzes separados.
+ * scripts/cenario-cortex.json (camada → fundo, brilhos, peças com posição, escala, espelho, tom, névoa, desfoque); este
+ * script só obedece. Sai uma webp por camada (2400 × 1350), mais o globo e as luzes separados, e o
+ * assets/arte/cortex/cenario/cena.json que vai no app: só id, arquivo, profundidade e recorte de cada camada (de onde
+ * veio cada peça fica só aqui em scripts/, que não vai no instalador).
  *
  *   node scripts/cenario-cortex.cjs [pasta-dos-originais]
  *
@@ -29,7 +31,7 @@ const { execFileSync } = require('node:child_process');
 const root = path.join(__dirname, '..');
 const src = path.resolve(process.argv[2] || path.join(root, 'assets', 'artes'));
 const out = path.join(root, 'assets', 'arte', 'cortex', 'cenario');
-const cena = JSON.parse(fs.readFileSync(path.join(out, 'cena.json'), 'utf8'));
+const cena = JSON.parse(fs.readFileSync(path.join(__dirname, 'cenario-cortex.json'), 'utf8'));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nexo-cena-'));
 const W = cena.largura;
 const H = cena.altura;
@@ -131,6 +133,9 @@ function main() {
     const bytes = fs.statSync(path.join(out, layer.arquivo)).size;
     console.log(`${layer.id.padEnd(7)} ${String(Math.round(bytes / 1024)).padStart(5)} KB  ${((Date.now() - t) / 1000).toFixed(1)} s`);
   }
+  const slim = { versao: cena.versao, nome: cena.nome, largura: W, altura: H, gerado_por: 'scripts/cenario-cortex.cjs',
+    camadas: cena.camadas.map((l) => ({ id: l.id, arquivo: l.arquivo, profundidade: l.profundidade, ...(l.recorte ? { recorte: l.recorte } : {}) })) };
+  fs.writeFileSync(path.join(out, 'cena.json'), `${JSON.stringify(slim, null, 2)}\n`);
   const total = fs.readdirSync(out).reduce((sum, name) => sum + fs.statSync(path.join(out, name)).size, 0);
   console.log(`cenário: ${(total / 1048576).toFixed(2)} MB`);
   if (total > 10 * 1024 * 1024) throw new Error('passou do teto de 10 MB do cenário');

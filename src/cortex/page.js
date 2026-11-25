@@ -1,7 +1,8 @@
 /*
  * Cortex — regras da página (src/view-cortex.js): em que grupo cada investigação entra, o estado e a confiança de cada
  * hipótese, a criatura de cada causa no diário de causas, os instrumentos que faltaram, quando a frase de consentimento
- * é pedida e se a janela da primeira escolha aparece.
+ * é pedida, se a janela da primeira escolha aparece e o que um teste do Cortex no laboratório deixa no Diário de
+ * alterações (labEntry).
  *
  * Puro: sem tela, sem disco. Lê o que cortexList/cortexGet devolvem (src/cortex/cortex.cjs list/get).
  * A frase segue a mesma regra do setSettings do processo principal: só "pedir" com teto acima de baixo, e só se o teto
@@ -94,9 +95,9 @@
     return !already;
   }
 
-  /** Janela da primeira escolha: só se a pessoa ainda não escolheu; o botão marcado segue o recomendado. */
+  /** Janela da primeira escolha: só se a pessoa ainda não escolheu (e o Cortex está ligado); o botão marcado segue o recomendado. */
   function firstRun(settings) {
-    if (!settings || settings.chosen !== false) return { show: false, recommendedOn: false };
+    if (!settings || settings.ativo === false || settings.chosen !== false) return { show: false, recommendedOn: false };
     return { show: true, recommendedOn: settings.recommended === 'sozinho' };
   }
 
@@ -106,6 +107,31 @@
    */
   function canShowFirst({ hidden, modalOpen, settings, showing } = {}) {
     return !hidden && !modalOpen && !showing && firstRun(settings).show;
+  }
+
+  const LAB_VERDICT = { melhorou: 'o desempenho subiu', piorou: 'o desempenho caiu', 'sem-diferenca': 'nada mudou acima do ruído', misto: 'o resultado veio misto' };
+  /**
+   * Teste do Cortex no laboratório (payload.lab do cortex:update: { knob, status, verdict, compositeDelta, restoreFailed,
+   * comecou }) → { entry, warn }. entry vai para o Diário de alterações, como a sessão de risco do lab da pessoa (null se o
+   * lab parou na pré-checagem, sem mexer em nada); warn é o aviso que fica na tela quando a volta ao original falhou.
+   * info: { knob: { label, risk } do catálogo, permission: a permissão do Cortex na hora }.
+   */
+  function labEntry(lab, info = {}) {
+    if (!lab || typeof lab !== 'object' || (lab.status === 'aborted' && !lab.comecou)) return { entry: null, warn: null };
+    const name = (info.knob && info.knob.label) || String(lab.knob || 'ajuste');
+    const delta = finite(lab.compositeDelta) && lab.compositeDelta !== 0 ? ` (${lab.compositeDelta > 0 ? '+' : ''}${lab.compositeDelta.toFixed(1).replace('.', ',')}%)` : '';
+    const what = lab.status === 'cancelled' ? 'Interrompido porque você voltou ao PC.'
+      : lab.status === 'aborted' ? 'Parou numa guarda de segurança.'
+        : LAB_VERDICT[lab.verdict] ? `Resultado: ${LAB_VERDICT[lab.verdict]}${delta}.` : 'Sem resultado que valha como evidência.';
+    const back = lab.restoreFailed ? 'A volta ao original falhou; o Nexo tenta de novo na próxima abertura.' : 'O ajuste voltou ao original no fim.';
+    const warn = lab.restoreFailed ? `Não consegui voltar “${name}” ao original. O Nexo tenta de novo na próxima abertura.` : null;
+    return {
+      entry: { actionId: 'lab-session', title: `Teste do Cortex: ${name}`, risk: (info.knob && info.knob.risk) || 'baixo', reversible: false, riskSession: true,
+        status: lab.restoreFailed ? 'failed' : 'applied',
+        authorization: info.permission === 'sozinho' ? 'Testar sozinho com o PC parado (escolha na página do Cortex)' : '“Pode testar” na página do Cortex',
+        detail: `${what} ${back}` },
+      warn
+    };
   }
 
   /**
@@ -184,5 +210,5 @@
     return Math.max(1, Math.ceil((now - since) / DAY));
   }
 
-  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, parallax, heartLayout, seal, AMBIENT, ambientNext, question, memoryDays };
+  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, labEntry, parallax, heartLayout, seal, AMBIENT, ambientNext, question, memoryDays };
 });

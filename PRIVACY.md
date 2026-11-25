@@ -94,9 +94,9 @@ The Cortex is Nexo's brain: it keeps a memory of how your PC behaves and investi
 - **No erase button:** there is no button to erase this memory. **Erase learning and history** (“Apagar aprendizado e histórico”) erases only the old learning (see below) and does not touch the Cortex memory. Only uninstalling removes the folder.
 - **Export:** in **Settings → Privacy and data** (**Export Cortex memory**) and on the Cortex page you can save a copy of the memory, as a `.db` (SQLite) file, wherever you choose. The live memory is never overwritten.
 - **What it may do on its own:** you pick one of three modes on the Cortex page, and nothing leaves your PC in any of them.
-  - **Only observe** (default without the integrated AI): changes nothing on the PC; with the PC idle and no game open, it may run short performance measurements to compare (at most 3 per day).
+  - **Only observe**, the default while the optional integrated AI is not accepted: changes nothing on the PC; with the PC idle and no game open, it may run short performance measurements to compare (at most 3 tests per day, plus occasional reference measurements).
   - **Ask before testing:** each setting test waits for your OK; you can allow higher risk by typing a confirmation.
-  - **Test on its own while the PC is idle** (default with the optional integrated AI): only low-risk settings, only with the PC idle and no game, at most 3 per day; every tested setting goes back to the original, and Nexo warns you if the revert fails.
+  - **Test on its own while the PC is idle**, the default once the optional integrated AI is accepted (not available yet): only low-risk settings, only with the PC idle and no game, at most 3 tests per day, plus occasional reference measurements; every tested setting goes back to the original, and Nexo warns you if the revert fails.
 - **Nothing leaves the PC:** neither the memory, nor the tests, nor what the Cortex concluded is sent.
 
 ## Export, erase and uninstall

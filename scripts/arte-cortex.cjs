@@ -1,6 +1,7 @@
 /*
  * Gera a arte da página do Cortex (assets/arte/cortex/) a partir dos originais de assets/artes/ (que ficam no main,
  * fora do instalador). Cópias pequenas em webp e um manifest.json papel → arquivo (+ quadros e fps das animações).
+ * De onde veio cada papel (o arquivo original) fica só aqui, nas chamadas abaixo: o manifest.json vai no app e não diz.
  *
  *   node scripts/arte-cortex.cjs [pasta-dos-originais]
  *
@@ -50,7 +51,9 @@ const LOSSLESS = ['-define', 'webp:lossless=true', '-define', 'webp:exact=false'
 const LOSSY = (q = 86) => ['-quality', String(q), '-define', 'webp:alpha-quality=92', '-define', 'webp:method=6'];
 
 const manifest = { versao: 1, gerado_por: 'scripts/arte-cortex.cjs', papeis: {} };
-function put(role, file, entry) {
+/** Papel no manifesto. A origem só confere a curadoria aqui (nada de logo/título) e não vai para o manifesto. */
+function put(role, file, { origem, ...entry }) {
+  for (const o of [].concat(origem || [])) if (/title(?!_fleur)|logo|hunter_symbol|wordmark/i.test(o)) throw new Error(`${role}: origem proibida ${o}`);
   const [largura, altura] = size(path.join(out, file));
   manifest.papeis[role] = { arquivo: file, ...entry, largura, altura };
 }
