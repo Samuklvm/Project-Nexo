@@ -15,6 +15,7 @@
     $$('.view').forEach((panel) => panel.classList.toggle('active', panel.dataset.viewPanel === view));
     setText('page-title', TITLES[view]);
     document.body.dataset.view = view;
+    document.body.dataset.railTheme = window.NexoRailTheme ? window.NexoRailTheme.themeFor(view) : 'padrao'; // barra no tom da página (theme.css)
     $('#stage')?.scrollTo({ top: 0 });
     Nexo.emit('view', view);
   };

@@ -61,7 +61,12 @@ input[type="search"]:focus, input[type="text"]:focus, input[type="number"]:focus
 :focus-visible { outline-color: var(--neon); }
 
 /* ---------- Barra lateral ---------- */
-.rail { border-right-color: rgba(var(--neon-rgb), 0.12); background: linear-gradient(180deg, rgba(8, 12, 34, 0.8), rgba(5, 8, 24, 0.9)); }
+/* Cores da barra em propriedades registradas: o degradê troca devagar com o tema da página (src/rail-theme.js).
+   Os valores aqui são o visual de sempre (tema "padrao"). */
+@property --rail-c1 { syntax: '<color>'; inherits: false; initial-value: rgba(8, 12, 34, 0.8); }
+@property --rail-c2 { syntax: '<color>'; inherits: false; initial-value: rgba(5, 8, 24, 0.9); }
+@property --rail-edge { syntax: '<color>'; inherits: false; initial-value: rgba(90, 215, 255, 0.12); }
+.rail { --rail-edge: rgba(var(--neon-rgb), 0.12); border-right-color: var(--rail-edge); background: linear-gradient(180deg, var(--rail-c1), var(--rail-c2)); }
 .rail::after { content: ""; position: absolute; top: 0; bottom: 0; right: -1px; width: 1px; background: linear-gradient(180deg, transparent, rgba(var(--neon-rgb), 0.45), transparent); pointer-events: none; }
 .rail-item:hover { background: rgba(var(--neon-rgb), 0.08); }
 .rail-item:hover svg { filter: drop-shadow(0 0 6px rgba(var(--neon-rgb), 0.7)); color: var(--neon); }
@@ -206,3 +211,43 @@ body.lite .rail-brand svg, body.lite .rail-brand img { filter: none; }
 .nv-nav { display: flex; align-items: center; gap: 6px; color: var(--mist); font-size: 12.5px; }
 body.lite .nv-stars i, body.lite .nv-emoji, body.lite .nv-section li { animation: none; }
 @media (prefers-reduced-motion: reduce) { .nv-card, .nv-stars i, .nv-emoji, .nv-section li { animation: none; } }
+
+/* ---------- Barra lateral no tom de cada página (src/rail-theme.js; o tema "padrao" é o de cima, sem regra aqui) ----------
+   Só a barra muda: o conteúdo das páginas não é tocado. */
+/* Ajustes (Santuário): tinta quente com luz de vela, como o salão das lanternas. */
+body[data-rail-theme="santuario"] .rail { --rail-c1: rgba(17, 13, 24, 0.86); --rail-c2: rgba(8, 6, 13, 0.93); --rail-edge: rgba(232, 200, 140, 0.18); }
+body[data-rail-theme="santuario"] .rail::after { background: linear-gradient(180deg, transparent, rgba(255, 207, 122, 0.42), transparent); }
+body[data-rail-theme="santuario"] .rail-item { color: #b3a68c; }
+body[data-rail-theme="santuario"] .rail-item:hover, body[data-rail-theme="santuario"] .rail-item.active { color: #efe6d2; }
+body[data-rail-theme="santuario"] .rail-item:hover { background: rgba(255, 207, 122, 0.08); }
+body[data-rail-theme="santuario"] .rail-item:hover svg { color: #ffcf7a; filter: drop-shadow(0 0 6px rgba(255, 180, 94, 0.7)); }
+body[data-rail-theme="santuario"] .rail-item.active svg { color: #ffe7b8; filter: drop-shadow(0 0 8px rgba(255, 180, 94, 0.85)); }
+body[data-rail-theme="santuario"] .rail-pill { background: linear-gradient(90deg, rgba(255, 180, 94, 0.24), rgba(255, 180, 94, 0.05)); box-shadow: inset 0 0 0 1px rgba(255, 207, 122, 0.35), 0 0 24px rgba(255, 180, 94, 0.18); }
+body[data-rail-theme="santuario"] .rail-pill::before { background: #ffcf7a; box-shadow: 0 0 10px #ffb45e; }
+body[data-rail-theme="santuario"] .rail-brand svg { color: #ffe0a0; filter: drop-shadow(0 0 8px rgba(255, 180, 94, 0.6)); }
+body.lite[data-rail-theme="santuario"] .rail { background: rgba(12, 9, 18, 0.96); }
+
+/* Cortex: tinta translúcida (a biblioteca aparece borrada por trás), filete de ouro com um losango e item ativo em ouro. */
+body[data-rail-theme="cortex"] .rail { --rail-c1: rgba(10, 9, 13, 0.55); --rail-c2: rgba(10, 9, 13, 0.8); --rail-edge: rgba(201, 163, 90, 0.24); }
+body[data-rail-theme="cortex"] .rail::after { width: 1px; background: linear-gradient(180deg, transparent, rgba(240, 212, 142, 0.6) 30%, rgba(201, 163, 90, 0.35) 70%, transparent); }
+body[data-rail-theme="cortex"] .rail::before { content: ""; position: absolute; right: -4px; top: 50%; width: 7px; height: 7px; margin-top: -4px; transform: rotate(45deg); background: #e2394a; box-shadow: 0 0 8px rgba(226, 57, 74, 0.8); pointer-events: none; z-index: 2; }
+body[data-rail-theme="cortex"] .rail-item { color: #a89e8a; }
+body[data-rail-theme="cortex"] .rail-item:hover, body[data-rail-theme="cortex"] .rail-item.active { color: #ece3cf; }
+body[data-rail-theme="cortex"] .rail-item:hover { background: rgba(201, 163, 90, 0.1); }
+body[data-rail-theme="cortex"] .rail-item:hover svg { color: #f0d48e; filter: drop-shadow(0 0 6px rgba(240, 212, 142, 0.6)); }
+body[data-rail-theme="cortex"] .rail-item.active svg { color: #f0d48e; filter: drop-shadow(0 0 8px rgba(240, 212, 142, 0.75)); }
+body[data-rail-theme="cortex"] .rail-pill { border-radius: 4px; background: linear-gradient(90deg, rgba(201, 163, 90, 0.26), rgba(201, 163, 90, 0.04)); box-shadow: inset 0 0 0 1px rgba(201, 163, 90, 0.45), 0 0 22px rgba(240, 212, 142, 0.14); }
+body[data-rail-theme="cortex"] .rail-pill::before { background: #f0d48e; box-shadow: 0 0 10px rgba(240, 212, 142, 0.9); }
+body[data-rail-theme="cortex"] .rail-brand svg { color: #f0d48e; filter: drop-shadow(0 0 8px rgba(240, 212, 142, 0.55)); }
+body[data-rail-theme="cortex"] .rail-dot { background: #e2394a; box-shadow: 0 0 8px #e2394a; }
+body.lite[data-rail-theme="cortex"] .rail { background: rgba(12, 10, 16, 0.96); }
+
+/* Otimização extrema: a noite com a seda vermelha do aviso de risco. */
+body[data-rail-theme="risco"] .rail { --rail-c1: rgba(20, 10, 28, 0.82); --rail-c2: rgba(10, 6, 20, 0.9); --rail-edge: rgba(255, 91, 110, 0.18); }
+body[data-rail-theme="risco"] .rail::after { background: linear-gradient(180deg, transparent, rgba(255, 91, 110, 0.45), transparent); }
+body[data-rail-theme="risco"] .rail-item:hover { background: rgba(255, 91, 110, 0.08); }
+body[data-rail-theme="risco"] .rail-item:hover svg { color: #ff9aa9; filter: drop-shadow(0 0 6px rgba(255, 91, 110, 0.6)); }
+body[data-rail-theme="risco"] .rail-item.active svg { color: #fff; filter: drop-shadow(0 0 8px rgba(255, 91, 110, 0.85)); }
+body[data-rail-theme="risco"] .rail-pill { background: linear-gradient(90deg, rgba(255, 91, 110, 0.28), rgba(255, 91, 110, 0.06)); box-shadow: inset 0 0 0 1px rgba(255, 91, 110, 0.4), 0 0 24px rgba(255, 91, 110, 0.2); }
+body[data-rail-theme="risco"] .rail-pill::before { background: #ff5b6e; box-shadow: 0 0 10px #ff5b6e; }
+body.lite[data-rail-theme="risco"] .rail { background: rgba(16, 9, 24, 0.95); }
