@@ -378,7 +378,9 @@
       const inv = put('investigacao', { data: { anomaly, symptom: anomaly.symptom } });
       heads.set(inv, { id: inv, kind: 'investigacao', inv: null, data: { anomaly, symptom: anomaly.symptom } });
       const extra = typeof correlations === 'function' ? correlations(anomaly) : correlations;
-      const hyps = Forge.forge(anomaly, map, { correlations: Array.isArray(extra) ? extra : [] });
+      // O que este sistema tem (ctx.knobs / ctx.benches): o forjador não prevê ajuste nem teste que não existe aqui.
+      const here = (typeof ctx === 'function' ? ctx() : ctx) || {};
+      const hyps = Forge.forge(anomaly, map, { correlations: Array.isArray(extra) ? extra : [], knobs: here.knobs, benches: here.benches });
       for (const h of hyps) put('hipotese', { inv, data: h });
       put('crenca', { inv, data: { beliefs: Object.fromEntries(hyps.map((h) => [h.key, h.prior])) } });
       const value = anomaly.data && finite(anomaly.data.value) ? anomaly.data.value : undefined;

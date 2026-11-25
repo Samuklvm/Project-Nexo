@@ -130,3 +130,20 @@ test('ajuste ligado à causa vira previsão de intervir só para aquela causa', 
   assert.ok(h2.find((h) => h.cause === 'cpu').predictions.some((p) => p.action === 'medir' && p.target === 'bench:single'));
   assert.ok(!h2.find((h) => h.cause === 'disk').predictions.some((p) => p.target === 'bench:single'));
 });
+
+test('plataforma: com extra.knobs / extra.benches, nenhuma previsão de ajuste ou teste que este sistema não tem', () => {
+  const map = R.createMap(R.seedEdges());
+  const full = F.forge(anomaly('bench:burst'), map).flatMap((h) => h.predictions);
+  assert.ok(full.some((p) => p.action === 'intervir' && p.target !== 'ajuste:ppd'), 'sem filtro há ajustes do Windows');
+  const hs = F.forge(anomaly('bench:burst'), map, { knobs: ['ppd'], benches: ['single', 'multi', 'burst'] });
+  for (const h of hs) {
+    assert.ok(!(h.cause.startsWith('ajuste:') && h.cause !== 'ajuste:ppd'), `causa de outro sistema: ${h.cause}`);
+    for (const p of h.predictions) {
+      if (p.action === 'intervir') assert.equal(p.target, 'ajuste:ppd');
+      if (p.action === 'medir') assert.ok(['bench:single', 'bench:multi', 'bench:burst'].includes(p.target), p.target);
+    }
+  }
+  assert.ok(Math.abs(sum(hs) - 1) < 1e-9);
+  const disk = F.forge(anomaly('disk'), map, { knobs: [], benches: ['single'] }).flatMap((h) => h.predictions);
+  assert.ok(!disk.some((p) => p.target === 'bench:disk'));
+});

@@ -82,7 +82,8 @@ function createMangoRunner({ fs, path, dir, emit = () => {}, now = Date.now, int
       if (!frames.length) return { summary: null, series: null, frames: 0 };
       return { summary: Fps.summarize(frames), series: Fps.perSecond(frames), frames: frames.length };
     },
-    poll
+    poll,
+    isRunning: () => Boolean(timer)
   };
 }
 

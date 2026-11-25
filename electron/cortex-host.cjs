@@ -1,6 +1,7 @@
 /*
  * Peças do Cortex que dependem do app (processo principal), separadas do main.cjs para dar para testar:
- *   createBusy               o que a pessoa está rodando e que impede o Cortex de pesar junto
+ *   createBusy               o que a pessoa está rodando (inclusive sessão de observação e medição de FPS) e que
+ *                            impede o Cortex de pesar junto
  *   createGameInForeground   "tem jogo em primeiro plano?" — da sonda de sessão, se ela mandou amostra há pouco;
  *                            senão uma consulta única (PowerShell no Windows, xprop no Linux)
  */
@@ -8,9 +9,14 @@
 
 const PROBE_FRESH_MS = 60000;
 
-/** Ocupado = lab, otimização, benchmark, análise profunda ou teste com reinício da pessoa. Leitura que falha não trava. */
-function createBusy({ labRunning, optRunning, benchActive, deepRunning, rebootActive }) {
-  return async () => Boolean(labRunning() || optRunning() || benchActive() || deepRunning()
+/**
+ * Ocupado = lab, otimização, benchmark, análise profunda ou teste com reinício da pessoa, ou uma sessão de observação
+ * gravando (sonda) ou a medição de FPS (PresentMon/MangoHud) rodando: a pessoa está jogando ou medindo. Leitura que
+ * falha não trava.
+ */
+function createBusy({ labRunning, optRunning, benchActive, deepRunning, rebootActive, probeRunning = () => false, fpsRunning = () => false }) {
+  const flag = (fn) => { try { return Boolean(fn()); } catch { return false; } };
+  return async () => Boolean(labRunning() || optRunning() || benchActive() || deepRunning() || flag(probeRunning) || flag(fpsRunning)
     || await Promise.resolve().then(rebootActive).catch(() => false));
 }
 

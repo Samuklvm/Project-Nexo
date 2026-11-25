@@ -205,3 +205,14 @@ test('Linux: o risco do ajuste ppd vem do catálogo (baixo), não cai em "alto"'
   assert.ok(choice.action, JSON.stringify(choice));
   assert.equal(choice.action.risk, 'baixo');
 });
+
+test('plataforma: ajuste e teste fora do que este sistema tem (ctx.knobs / ctx.benches) contam como inexistentes', () => {
+  const hs = [hyp('A>s', 0.5, [pred('intervir', 'ajuste:minstate', 'sobe'), pred('medir', 'bench:disk', 'desce'), pred('medir', 'bench:single', 'desce')]),
+    hyp('B>s', 0.5, [pred('intervir', 'ajuste:minstate', 'igual'), pred('medir', 'bench:disk', 'igual'), pred('medir', 'bench:single', 'igual')])];
+  const all = P.choose(hs, priors(hs), ctx());
+  assert.ok(all.action, 'sem filtro escolhe alguma ação');
+  const linux = P.choose(hs, priors(hs), ctx({ knobs: ['ppd'], benches: ['single', 'multi', 'burst'] }));
+  assert.deepEqual([linux.action.type, linux.action.target], ['medir', 'bench:single']);
+  const none = P.choose(hs, priors(hs), ctx({ knobs: [], benches: [] }));
+  assert.ok(none.need, 'nada que dê para fazer aqui: vira necessidade, não pausa');
+});

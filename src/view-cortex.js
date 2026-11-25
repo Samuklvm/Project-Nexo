@@ -448,7 +448,7 @@
       setButtonBusy(target, true, yes ? 'Combinado…' : 'Tudo bem…');
       try {
         const result = await (yes ? bridge.cortexApprove(inv) : bridge.cortexDeny(inv));
-        showToast(result?.ok ? (yes ? 'Combinado: o Cortex testa quando o PC estiver parado e volta tudo ao original.' : 'Tudo bem: o Cortex não testa isso e segue com o que dá para ver sem mexer.') : 'Esse pedido já não está mais aberto.');
+        showToast(result?.ok ? (yes ? 'Combinado: o Cortex testa quando o PC estiver parado e volta tudo ao original.' : 'Tudo bem: o Cortex não testa isso e segue com o que dá para ver sem mexer.') : result?.reason || 'Esse pedido já não está mais aberto.');
       } catch (error) { showToast(error.message || 'Não consegui responder ao pedido agora.'); }
       details.delete(inv);
       await refresh();

@@ -6,11 +6,14 @@
  *
  * Sem Electron aqui: tudo o que é do sistema vem injetado (createCortex deps). O main.cjs só monta as dependências.
  *
- *   createCortex({ memory, labRun, labCancel, bench, quiet?, rhythm, idleSec, gameInForeground, onBattery, busy, now, emit, log })
+ *   createCortex({ memory, labRun, labCancel, bench, quiet?, sample?, restorePoint?, platform?, rhythm, idleSec, gameInForeground, onBattery, busy, now, emit, log })
  *     memory     resultado de createMemory ({ ok, memory } | { ok: false, error }) ou a própria memória
  *     labRun     (opts) => Promise<resultado do NexoLab.run>   (o main já põe o signal de cancelamento)
  *     labCancel  () => void                                     (marca o signal da execução do Cortex)
  *     bench      (modo) => Promise<number>  (pontuação: maior = melhor);  quiet () => Promise<{ ok }> (opcional)
+ *     sample     () => Promise<{ tempC, onBattery }> (opcional): medir e referência esperam na bateria ou acima de 80 °C
+ *     restorePoint () => Promise<{ ok, note }> (opcional): só no "Pode testar" de ajuste acima do risco baixo
+ *     platform   'win32' | 'linux' (padrão: process.platform): só ajustes de Lab.spaceFor e testes que existem aqui
  *     busy       () => boolean | Promise<boolean>  (lab da pessoa, análise profunda, teste com reinício, benchmark)
  *     emit       (canal, dados) => void   ('cortex:update' quando uma investigação ou o ritmo muda)
  *     log        ({ source: 'cortex', level, message, context: { etapa } }) => void
@@ -30,6 +33,10 @@
  * (meta 'ia-local.aceita', parte 3): aceita → 'sozinho' (teto baixo); senão → 'observar'. 'sozinho' é sempre teto baixo
  * e não pede a frase; a frase (NexoLab.CONSENT_PHRASE) só é exigida para 'pedir' com teto acima de baixo.
  * Orçamento: testes ativos concluídos no dia (hora local) em memory meta 'cortex.ativos', para reiniciar não zerar.
+ * Falha antes de medir ou de mexer (bateria, processador quente, ajuste/teste que não existe neste sistema, sem ponto de
+ * restauração, guarda da pré-checagem do lab) não gasta. As referências não contam no orçamento.
+ * Ajuste acima do risco baixo: só com o ponto de restauração criado no "Pode testar" (approve; meta 'cortex.ponto',
+ * vale 24 h). O Cortex nunca cria ponto (nem abre o UAC) sozinho.
  * Toda exceção vai para log com source 'cortex' e o Cortex segue; memória que não abre → Cortex desligado (no-op).
  */
 'use strict';
@@ -60,6 +67,14 @@ const PERMISSIONS = ['observar', 'pedir', 'sozinho'];
 const RISKS = ['baixo', 'moderado', 'alto'];
 const DEFAULT_CONFIG = { permission: 'observar', maxRisk: 'baixo', chosen: false, recommended: 'observar', iaLocal: false };
 const riskRank = (r) => RISKS.indexOf(r);
+const HOT_C = 80; // o mesmo limite da pré-checagem do laboratório: processador mais quente que isso, espera esfriar
+const POINT_MAX_AGE = DAY; // o ponto de restauração criado no "Pode testar" vale por 24 h
+const PLATFORM_BENCHES = { linux: ['single', 'multi', 'burst'] }; // no Linux o lab só tem os testes de processador
+// Ritmo de quadros: o trabalho por quadro é calibrado a cada abertura do app (main.cjs), então a referência dele só vale
+// na mesma abertura (e não entra nas referências guardadas por 30 dias).
+const RUN_SCOPED = new Set(['frames']);
+/** Falha antes de medir ou mexer em qualquer coisa: o PC não trabalhou, então não gasta o orçamento do dia. */
+function noCost(message) { const e = new Error(message); e.semCusto = true; return e; }
 
 // ---------- regras puras (exportadas para os testes) ----------
 
@@ -163,6 +178,12 @@ function createCortex(deps = {}) {
   const gameInForeground = typeof deps.gameInForeground === 'function' ? deps.gameInForeground : async () => null;
   const bench = typeof deps.bench === 'function' ? deps.bench : async () => { throw new Error('sem benchmark'); };
   const labRun = typeof deps.labRun === 'function' ? deps.labRun : async () => { throw new Error('sem laboratório'); };
+  // O que existe neste sistema: ajustes (Lab.spaceFor) e testes. Ajuste do Windows no Linux nem vira hipótese.
+  const platform = typeof deps.platform === 'string' && deps.platform ? deps.platform : process.platform;
+  const knobsHere = Lab.spaceFor(platform).map((k) => k.id);
+  const benchesHere = (PLATFORM_BENCHES[platform] || Lab.BENCHES).slice();
+  const onBattery = () => !!(typeof deps.onBattery === 'function' && safe('bateria', deps.onBattery, false));
+  const opening = `${now()}-${Math.random().toString(36).slice(2, 10)}`; // esta abertura do app (referências de frames)
   const emit = (payload) => { try { if (typeof deps.emit === 'function') deps.emit('cortex:update', payload); } catch (e) { log('avisar', e); } };
   const call = async (etapa, fn, fallback) => { try { return await fn(); } catch (e) { log(etapa, e); return fallback; } };
   const safe = (etapa, fn, fallback) => { try { return fn(); } catch (e) { log(etapa, e); return fallback; } };
@@ -296,19 +317,32 @@ function createCortex(deps = {}) {
   }
 
   const readRef = (mode) => { try { const r = JSON.parse(memory.getMeta(`cortex.ref.${mode}`) || 'null'); return r && Array.isArray(r.values) && finite(r.at) ? r : null; } catch (_) { return null; } };
-  const freshRef = (ref) => !!ref && now() - ref.at <= REF_MAX_AGE;
+  const freshRef = (ref, mode) => !!ref && now() - ref.at <= REF_MAX_AGE && (!RUN_SCOPED.has(mode) || ref.abertura === opening);
   function writeRef(mode, values) {
     const sorted = values.slice().sort((a, b) => a - b);
     const ref = { values, median: sorted[Math.floor(sorted.length / 2)], at: now() };
+    if (RUN_SCOPED.has(mode)) ref.abertura = opening;
     if (!memory.setMeta(`cortex.ref.${mode}`, JSON.stringify(ref))) log('referencia', `a referência de ${mode} não gravou`);
   }
-  /** Rodadas do teste; null se cortadas (a pessoa voltou, o lab/benchmark/análise dela começou, ou ficou ocupado). */
+  /**
+   * Antes de medir: na tomada e com o processador abaixo do limite quente do lab. Nada mediu ainda, então a falha não
+   * gasta o orçamento (e a referência só espera, sem marcar o dia como falho).
+   */
+  async function guardMeasure() {
+    if (onBattery()) throw noCost('na bateria o Cortex não mede: espero o PC voltar para a tomada');
+    if (typeof deps.sample !== 'function') return;
+    const s = await Promise.resolve().then(deps.sample).catch(() => null);
+    if (s && s.onBattery) throw noCost('na bateria o Cortex não mede: espero o PC voltar para a tomada');
+    if (s && finite(s.tempC) && s.tempC >= HOT_C) throw noCost(`o processador está a ${Math.round(s.tempC)} °C; espero esfriar para medir (limite ${HOT_C} °C)`);
+  }
+
+  /** Rodadas do teste; null se cortadas (a pessoa voltou, o lab/benchmark/análise dela começou, ficou ocupado ou foi para a bateria). */
   async function rounds(mode) {
     const quiet = typeof deps.quiet === 'function' ? deps.quiet : async () => ({ ok: true });
     const calm = await quiet();
-    if (calm && calm.ok === false) throw new Error('outro programa usou o processador durante a medição');
+    if (calm && calm.ok === false) throw noCost('outro programa estava usando o processador; a medição fica para depois');
     const out = [];
-    const cut = async () => active.interrupted || !deep() || !!(await busy());
+    const cut = async () => active.interrupted || !deep() || onBattery() || !!(await busy());
     for (let i = 0; i < BENCH_ROUNDS; i++) {
       if (await cut()) return null;
       out.push(Number(await bench(mode)));
@@ -323,11 +357,13 @@ function createCortex(deps = {}) {
    */
   async function measure(target) {
     const mode = String(target).replace(/^bench:/, '');
-    if (!Lab.BENCHES.includes(mode)) throw new Error(`teste desconhecido: ${mode}`);
+    if (!Lab.BENCHES.includes(mode)) throw noCost(`teste desconhecido: ${mode}`);
+    if (!benchesHere.includes(mode)) throw noCost(`o teste "${mode}" não existe neste sistema`);
+    await guardMeasure();
     const ref = readRef(mode);
     const values = await rounds(mode);
     if (!values) return { observed: 'interrompido' };
-    if (!freshRef(ref)) { writeRef(mode, values); return { observed: 'sem-referencia' }; }
+    if (!freshRef(ref, mode)) { writeRef(mode, values); return { observed: 'sem-referencia' }; }
     const r = Experiment.compare(ref.values, values);
     const observed = r.verdict === 'melhorou' ? 'sobe' : r.verdict === 'piorou' ? 'desce' : r.verdict === 'sem-diferenca' ? 'igual' : null;
     if (!observed) throw new Error(`medição ${r.verdict}`);
@@ -337,9 +373,9 @@ function createCortex(deps = {}) {
     return out;
   }
 
-  /** Testes que algum caminho do mapa manda medir (causa → bench:), sem os ajustes. */
+  /** Testes que algum caminho do mapa manda medir (causa → bench:), sem os ajustes, que existem aqui e valem 30 dias. */
   const measurable = () => [...new Set(map.edges().filter((e) => String(e.to).startsWith('bench:') && !String(e.from).startsWith('ajuste:')).map((e) => e.to.slice(6)))]
-    .filter((b) => Lab.BENCHES.includes(b));
+    .filter((b) => Lab.BENCHES.includes(b) && benchesHere.includes(b) && !RUN_SCOPED.has(b));
   /** Testes que uma investigação aberta vai medir: a referência deles não é feita agora (sairia "contaminada"). */
   function benchesInUse() {
     const used = new Set();
@@ -354,30 +390,49 @@ function createCortex(deps = {}) {
     if (active || !deep() || await busy()) return;
     const used = benchesInUse();
     const day = today();
-    const mode = measurable().find((b) => !used.has(b) && !freshRef(readRef(b)) && memory.getMeta(`cortex.ref-falhou.${b}`) !== day);
+    const mode = measurable().find((b) => !used.has(b) && !freshRef(readRef(b), b) && memory.getMeta(`cortex.ref-falhou.${b}`) !== day);
     if (!mode) return;
+    try { await guardMeasure(); } catch (_) { return; } // na bateria ou quente: espera, sem marcar o dia
     active = { type: 'referencia', interrupted: false };
     try {
       const values = await rounds(mode);
       if (values) writeRef(mode, values);
     } catch (e) {
-      memory.setMeta(`cortex.ref-falhou.${mode}`, day); // tenta de novo amanhã (ex.: teste que não existe no Linux)
+      if (!e.semCusto) memory.setMeta(`cortex.ref-falhou.${mode}`, day); // o teste falhou de verdade: tenta de novo amanhã
       log('referencia', e, 'aviso');
     } finally { active = null; }
   }
 
+  /** O ponto de restauração criado no "Pode testar" (meta 'cortex.ponto' = { at, note }), se ainda vale (24 h). */
+  function readPoint() {
+    try {
+      const p = JSON.parse(memory.getMeta('cortex.ponto') || 'null');
+      return p && finite(p.at) && p.at <= now() + MIN && now() - p.at <= POINT_MAX_AGE ? p : null;
+    } catch (_) { return null; }
+  }
+
   async function intervene(action) {
     const c = config();
-    if (c.permission !== 'pedir' && c.permission !== 'sozinho') throw new Error('a permissão atual não deixa mexer em ajustes');
+    if (c.permission !== 'pedir' && c.permission !== 'sozinho') throw noCost('a permissão atual não deixa mexer em ajustes');
     const knob = String(action.target).replace(/^ajuste:/, '');
     const info = Lab.knob(knob);
-    if (!info) throw new Error(`ajuste fora do espaço do laboratório: ${knob}`);
+    if (!info) throw noCost(`ajuste fora do espaço do laboratório: ${knob}`);
+    if (!knobsHere.includes(knob)) throw noCost(`o ajuste "${info.label || knob}" não existe neste sistema`);
     const allowRisk = c.permission === 'sozinho' ? 'baixo' : c.maxRisk;
-    if (RISKS.indexOf(info.risk) > RISKS.indexOf(allowRisk)) throw new Error('ajuste acima do risco liberado');
-    if (deps.onBattery && deps.onBattery()) throw new Error('na bateria o Cortex não mexe em ajustes');
+    if (RISKS.indexOf(info.risk) > RISKS.indexOf(allowRisk)) throw noCost('ajuste acima do risco liberado');
+    if (onBattery()) throw noCost('na bateria o Cortex não mexe em ajustes');
+    // Acima do risco baixo: só com o ponto de restauração criado quando a pessoa autorizou (ela estava presente; o
+    // Cortex nunca abre o UAC com o PC desacompanhado). No risco baixo, nenhum ponto é criado.
+    const needsPoint = info.risk !== 'baixo';
+    const point = needsPoint ? readPoint() : null;
+    if (needsPoint && !point) throw noCost('sem um ponto de restauração recente: ele é criado quando você autoriza o teste e vale por 24 h');
     // A permissão (sozinho com a frase, ou o pedido aprovado) é o consentimento: o lab confere a frase de novo.
-    const result = await labRun({ onlyKnobs: [knob], maxArms: 1, combos: 0, autonomy: 'assistido', allowRisk,
-      consent: { acknowledged: true, phrase: Lab.CONSENT_PHRASE }, requireRestorePoint: info.risk !== 'baixo' });
+    let result;
+    try {
+      result = await labRun({ onlyKnobs: [knob], maxArms: 1, combos: 0, autonomy: 'assistido', allowRisk,
+        consent: { acknowledged: true, phrase: Lab.CONSENT_PHRASE }, requireRestorePoint: needsPoint,
+        restorePoint: point ? { ok: true, created: false, note: 'criado quando você autorizou o teste' } : null });
+    } catch (e) { if (e && typeof e === 'object') e.semCusto = true; throw e; } // o lab nem começou (ex.: já estava rodando)
     safe('lab-mapa', () => {
       const arm = (result && Array.isArray(result.arms) ? result.arms : []).find((x) => x && x.knob === knob) || null;
       const slim = { origem: 'cortex', knob, status: result && result.status, verdict: arm ? arm.verdict : null, compositeDelta: arm ? arm.compositeDelta ?? null : null, restoreFailed: !!(result && result.restoreFailed) };
@@ -386,7 +441,11 @@ function createCortex(deps = {}) {
       noteLab(result);
     }, null);
     if (active.interrupted) return { observed: 'interrompido' };
-    return labOutcome(result, knob);
+    try { return labOutcome(result, knob); } catch (e) {
+      // Guarda da pré-checagem (quente, bateria, ocupado...): o lab parou antes de mexer e de medir.
+      if (result && result.status === 'aborted' && result.baseline == null) e.semCusto = true;
+      throw e;
+    }
   }
 
   /**
@@ -409,7 +468,7 @@ function createCortex(deps = {}) {
       if (o && o.observed !== 'interrompido') spendActive();
       return o;
     } catch (e) {
-      if (!active.interrupted) spendActive(); // falhou mesmo assim: o PC trabalhou
+      if (!active.interrupted && !(e && e.semCusto)) spendActive(); // falhou depois de começar: o PC trabalhou
       log(a.type, e, 'aviso'); // o motor registra 'falhou'; aqui fica o porquê
       throw e;
     } finally { active = null; }
@@ -420,7 +479,7 @@ function createCortex(deps = {}) {
   const changed = new Set();
   const engine = Engine.createEngine({
     store: memory, map, act, now,
-    ctx: () => ({ ...pick(config()), activeToday: activeToday(), deep: deep(), onBattery: !!(deps.onBattery && safe('bateria', deps.onBattery, false)) }),
+    ctx: () => ({ ...pick(config()), activeToday: activeToday(), deep: deep(), onBattery: onBattery(), knobs: knobsHere, benches: benchesHere }),
     onThought: (_text, meta) => { if (meta && meta.inv != null) changed.add(meta.inv); }
   });
 
@@ -745,6 +804,39 @@ function createCortex(deps = {}) {
     }, false);
   }
 
+  /**
+   * "Pode testar": se o pedido é um ajuste acima do risco baixo, cria o ponto de restauração agora, com a pessoa na
+   * frente do PC (o UAC pode aparecer), e guarda quando foi criado (meta 'cortex.ponto', vale 24 h). Sem o ponto, o
+   * pedido não é aprovado e continua aberto. -> { ok, reason? }
+   */
+  async function approve(inv) {
+    const closed = { ok: false, reason: 'Esse pedido já não está mais aberto.' };
+    try {
+      const id = Number(inv);
+      const st = statusOf(id);
+      if (st.status !== 'aguardando') return closed;
+      const a = st.pedido || {};
+      const info = a.type === 'intervir' ? Lab.knob(String(a.target).replace(/^ajuste:/, '')) : null;
+      if (info && info.risk !== 'baixo' && !readPoint()) {
+        let p = null;
+        try { p = typeof deps.restorePoint === 'function' ? await deps.restorePoint() : null; } catch (e) { p = { ok: false, note: String((e && e.message) || e) }; }
+        if (!p || p.ok !== true) {
+          const note = p && p.note ? ` (${String(p.note).slice(0, 160)})` : '';
+          log('ponto', `ponto de restauração não criado${note}`, 'aviso');
+          return { ok: false, reason: `Não consegui criar o ponto de restauração do sistema${note}. Sem ele, o Cortex não testa ajustes de risco ${info.risk}.` };
+        }
+        if (!memory.setMeta('cortex.ponto', JSON.stringify({ at: now(), note: typeof p.note === 'string' ? p.note.slice(0, 160) : null }))) {
+          log('ponto', 'o ponto de restauração foi criado, mas a marca dele não gravou');
+          return { ok: false, reason: 'Não consegui gravar a resposta agora.' };
+        }
+      }
+      return answer(id, true) ? { ok: true } : closed;
+    } catch (e) {
+      log('pedido', e);
+      return { ok: false, reason: 'Não consegui responder ao pedido agora.' };
+    }
+  }
+
   // ---------- abertura e relógios ----------
 
   const timers = new Set();
@@ -793,7 +885,7 @@ function createCortex(deps = {}) {
   return {
     ativo: true,
     observeMinute, observeEvent, observeSession, importLegacy, tick, checkRhythm, start, stop, cancelActive,
-    settings, setSettings, approve: (inv) => answer(inv, true), deny: (inv) => answer(inv, false), list, get, stats,
+    settings, setSettings, approve, deny: (inv) => answer(inv, false), list, get, stats,
     rhythm: () => ({ state: rhythm.state(), reason: lastRhythm.reason, at: lastRhythm.at, testando: active ? active.type : null }),
     /** Só para os testes: a ação que o motor recebe. */
     _act: act
@@ -808,7 +900,7 @@ function disabled(reason) {
     observeMinute: nothing, observeEvent: nothing, observeSession: nothing, importLegacy: () => ({ ok: false }),
     tick: async () => {}, checkRhythm: async () => ({ state: 'leve', changed: false, reason: 'Cortex desligado' }), start: async () => {}, stop: nothing, cancelActive: () => false,
     settings: () => ({ ...DEFAULT_CONFIG }), setSettings: () => ({ ok: false, reason: 'O Cortex está desligado: a memória dele não abriu.' }),
-    approve: () => false, deny: () => false, list: () => [], get: () => null,
+    approve: async () => ({ ok: false, reason: 'O Cortex está desligado: a memória dele não abriu.' }), deny: () => false, list: () => [], get: () => null,
     stats: () => ({ ativo: false, motivo: String(reason || 'memória indisponível') }),
     rhythm: () => ({ state: 'leve', reason: 'Cortex desligado', at: null, testando: null }),
     _act: async () => null

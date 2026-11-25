@@ -30,11 +30,15 @@ function labResult(verdict = 'melhorou', status = 'completed') {
   return { status, reason: status === 'aborted' ? 'O processador chegou a 90 °C.' : null, arms: status === 'completed' ? [arm] : [], combos: [], combination: null, adopted: null };
 }
 
-function setup({ dir = tmp(), clock = { t: T0 }, memory, labReturn } = {}) {
+function setup({ dir = tmp(), clock = { t: T0 }, memory, labReturn, platform = 'win32', restorePoint } = {}) {
   const opened = memory || createMemory({ dir, now: () => clock.t });
-  const env = { idle: 0, game: false, battery: false, busy: false, bench: [], lab: [], cancels: 0, logs: [], emits: [], gameCalls: 0, onBench: null, score: () => 100 };
+  const env = { idle: 0, game: false, battery: false, busy: false, bench: [], lab: [], cancels: 0, logs: [], emits: [], gameCalls: 0, onBench: null, score: () => 100,
+    tempC: 50, points: 0, point: { ok: true, created: true, note: 'criado' } };
   const cortex = Cortex.createCortex({
     memory: opened,
+    platform,
+    sample: async () => ({ tempC: env.tempC, onBattery: env.battery, cpuLoad: 5 }),
+    restorePoint: restorePoint || (async () => { env.points += 1; return env.point; }),
     rhythm: createRhythm(),
     now: () => clock.t,
     idleSec: () => env.idle,
@@ -445,11 +449,119 @@ test('intervir: o lab vira braço só do ajuste pedido, sem combinações e sem 
   assert.equal(String(opts.consent.phrase).toUpperCase(), Lab.CONSENT_PHRASE);
   assert.equal(o.observed, 'sobe');
   assert.equal(o.significant, true);
-  // Risco acima do baixo exige ponto de restauração.
+  assert.equal(opts.restorePoint ?? null, null, 'risco baixo: o Cortex nunca cria ponto de restauração (nem abre o UAC)');
+  // Risco acima do baixo exige o ponto de restauração criado quando a pessoa autorizou: sem ele, nem chama o lab.
+  const before = t.cortex.stats().ativosHoje;
+  await assert.rejects(() => t.cortex._act({ ...action, target: 'ajuste:boostmode', risk: 'moderado' }, { inv: 1, symptom: 'bench:burst' }), /ponto de restauração/);
+  assert.equal(t.env.lab.length, 1);
+  assert.equal(t.cortex.stats().ativosHoje, before, 'falha antes de medir não gasta o orçamento');
+  // Com o ponto (criado no "Pode testar"), o lab recebe o ponto pronto e o exige.
+  t.memory.setMeta('cortex.ponto', JSON.stringify({ at: t.clock.t, note: 'criado' }));
   // (o lab falso só devolve o braço do minstate: sem o braço pedido, a ação falha em vez de inventar resultado)
   await assert.rejects(() => t.cortex._act({ ...action, target: 'ajuste:boostmode', risk: 'moderado' }, { inv: 1, symptom: 'bench:burst' }), /não testou/);
   assert.equal(t.env.lab[1].requireRestorePoint, true);
+  assert.equal(t.env.lab[1].restorePoint.ok, true);
   assert.equal(t.env.lab[1].allowRisk, 'moderado');
+  // Ponto com mais de 24 h não vale.
+  t.clock.t += 25 * 60 * MIN;
+  await assert.rejects(() => t.cortex._act({ ...action, target: 'ajuste:boostmode', risk: 'moderado' }, { inv: 1, symptom: 'bench:burst' }), /ponto de restauração/);
+  assert.equal(t.env.lab.length, 2);
+  assert.equal(t.env.points, 0, 'o Cortex não cria ponto sozinho, sem a pessoa');
+});
+
+test('"Pode testar" de um ajuste moderado cria o ponto de restauração na hora (a pessoa está presente); baixo não cria; ponto que falha não aprova', async () => {
+  const t = setup();
+  assert.equal(t.cortex.setSettings({ permission: 'pedir', maxRisk: 'moderado', consent: Lab.CONSENT_PHRASE }).ok, true);
+  const inv = t.memory.record('investigacao', { data: { anomaly: { symptom: 'bench:burst', at: T0 }, symptom: 'bench:burst' } });
+  t.memory.record('crenca', { inv, data: { beliefs: {} } });
+  const ask = (target) => t.memory.record('pedido', { inv, data: { action: { type: 'intervir', target }, status: 'pendente' } });
+  // Baixo: aprova sem ponto.
+  ask('ajuste:minstate');
+  assert.equal((await t.cortex.approve(inv)).ok, true);
+  assert.equal(t.env.points, 0);
+  // Moderado com o ponto falhando: não aprova, diz por quê, e o pedido continua aberto.
+  t.env.point = { ok: false, created: false, note: 'a proteção do sistema está desligada' };
+  ask('ajuste:boostmode');
+  const refused = await t.cortex.approve(inv);
+  assert.equal(refused.ok, false);
+  assert.match(refused.reason, /ponto de restauração/);
+  assert.equal(t.env.points, 1);
+  assert.equal(t.cortex.get(inv).status, 'aguardando');
+  // Moderado com o ponto criado: aprova e guarda quando foi criado.
+  t.env.point = { ok: true, created: true, note: 'criado' };
+  assert.equal((await t.cortex.approve(inv)).ok, true);
+  assert.equal(t.env.points, 2);
+  assert.equal(JSON.parse(t.memory.getMeta('cortex.ponto')).at, T0);
+  // Outro pedido moderado no mesmo dia reaproveita o ponto.
+  ask('ajuste:boostmode');
+  assert.equal((await t.cortex.approve(inv)).ok, true);
+  assert.equal(t.env.points, 2);
+});
+
+test('plataforma: no Linux, ajuste do Windows e teste que não existe aqui nem viram previsão, nem rodam, nem gastam o orçamento', async () => {
+  const t = setup({ platform: 'linux' });
+  t.cortex.setSettings({ permission: 'pedir', maxRisk: 'baixo' });
+  await goDeep(t);
+  await assert.rejects(() => t.cortex._act({ type: 'intervir', target: 'ajuste:minstate', cost: 3, risk: 'baixo' }, { inv: 1, symptom: 'bench:burst' }), /não existe neste sistema/);
+  await assert.rejects(() => t.cortex._act({ type: 'medir', target: 'bench:disk', cost: 1, risk: 'nenhum' }, { inv: 1, symptom: 'disk' }), /não existe neste sistema/);
+  assert.deepEqual(t.env.lab, []);
+  assert.deepEqual(t.env.bench, []);
+  assert.equal(t.cortex.stats().ativosHoje, 0);
+  // As hipóteses de uma investigação só preveem ajustes e testes deste sistema.
+  t.cortex.observeEvent(lentidao(T0, 'cpu'));
+  t.cortex.observeEvent({ kind: 'lentidao', at: T0, data: { kind: 'memory', start: T0 - 10 * MIN, end: T0, peak: 95 } });
+  await t.cortex.tick();
+  const linux = new Set(Lab.LINUX_SPACE.map((k) => `ajuste:${k.id}`));
+  const preds = t.memory.list('hipotese', { limit: 1000 }).flatMap((h) => h.data.predictions || []);
+  assert.ok(preds.length > 0);
+  for (const p of preds) {
+    if (p.action === 'intervir') assert.ok(linux.has(p.target), `ajuste de outro sistema: ${p.target}`);
+    if (p.action === 'medir') assert.ok(['bench:single', 'bench:multi', 'bench:burst'].includes(p.target), `teste que não existe no Linux: ${p.target}`);
+  }
+  // Referências: só dos testes que existem aqui (e nenhuma marca de "falhou").
+  const u = setup({ platform: 'linux' });
+  await goDeep(u);
+  for (let i = 0; i < 6; i++) await u.cortex.tick();
+  assert.ok(u.env.bench.length > 0, 'nenhuma referência');
+  assert.ok(u.env.bench.every((m) => ['single', 'multi', 'burst'].includes(m)), `mediu ${[...new Set(u.env.bench)]}`);
+  assert.ok(!['disk', 'memory', 'frames'].some((b) => u.memory.getMeta(`cortex.ref-falhou.${b}`)));
+});
+
+test('medir e referências: na bateria ou com o processador quente, não mede e não gasta o orçamento; bateria no meio corta', async () => {
+  const t = setup();
+  await goDeep(t);
+  const medir = { type: 'medir', target: 'bench:single', cost: 1, risk: 'nenhum' };
+  t.env.battery = true;
+  await assert.rejects(() => t.cortex._act(medir, { inv: 1, symptom: 'cpu' }), /bateria/);
+  t.env.battery = false;
+  t.env.tempC = 85;
+  await assert.rejects(() => t.cortex._act(medir, { inv: 1, symptom: 'cpu' }), /°C/);
+  assert.deepEqual(t.env.bench, []);
+  assert.equal(t.cortex.stats().ativosHoje, 0);
+  // Referência também espera (e não marca "falhou": tenta de novo quando esfriar).
+  await t.cortex.tick();
+  assert.deepEqual(t.env.bench, []);
+  assert.ok(!['single', 'multi', 'disk', 'memory'].some((b) => t.memory.getMeta(`cortex.ref-falhou.${b}`)));
+  t.env.tempC = 50;
+  t.env.onBench = async (n) => { if (n === 2) t.env.battery = true; };
+  const o = await t.cortex._act(medir, { inv: 1, symptom: 'cpu' });
+  assert.equal(o.observed, 'interrompido');
+  assert.equal(t.env.bench.length, 2);
+});
+
+test('ritmo de quadros: calibrado a cada abertura do app, então não vira referência de 30 dias (só vale na mesma abertura)', async () => {
+  const t = setup();
+  await goDeep(t);
+  for (const b of ['single', 'multi', 'disk', 'memory', 'burst', 'latency', 'timer', 'network']) t.memory.setMeta(`cortex.ref.${b}`, JSON.stringify({ values: [100, 100, 100, 100, 100], at: t.clock.t }));
+  for (let i = 0; i < 4; i++) await t.cortex.tick();
+  assert.ok(!t.env.bench.includes('frames'), 'fez referência de frames');
+  const medir = { type: 'medir', target: 'bench:frames', cost: 1, risk: 'nenhum' };
+  assert.equal((await t.cortex._act(medir, { inv: 1, symptom: 'gpu' })).observed, 'sem-referencia');
+  assert.notEqual((await t.cortex._act(medir, { inv: 1, symptom: 'gpu' })).observed, 'sem-referencia', 'na mesma abertura a referência vale');
+  // Outra abertura do app (outra calibração): a referência de antes não vale.
+  const again = setup({ memory: { ok: true, memory: t.memory }, clock: t.clock });
+  await goDeep(again);
+  assert.equal((await again.cortex._act(medir, { inv: 1, symptom: 'gpu' })).observed, 'sem-referencia');
 });
 
 test('intervir: a pessoa volta no meio → labCancel e o resultado é "interrompido"', async () => {
@@ -533,7 +645,7 @@ test('memória que não abre: Cortex desligado (tudo no-op) e o erro vai para o 
   await cortex.start({ timers: false });
   assert.deepEqual(cortex.list({ limit: 5 }), []);
   assert.equal(cortex.get(1), null);
-  assert.equal(cortex.approve(1), false);
+  assert.equal((await cortex.approve(1)).ok, false);
   assert.equal(cortex.setSettings({ permission: 'pedir' }).ok, false);
   assert.equal(logs.length, 1);
   assert.equal(logs[0].source, 'cortex');
@@ -568,7 +680,7 @@ test('aprovar e negar pedidos pelo Cortex: só respondem quando há pedido pende
   t.cortex.observeEvent(lentidao(T0));
   await t.cortex.tick();
   const [inv] = t.cortex.list({ limit: 1 });
-  assert.equal(t.cortex.approve(inv.inv), false);
+  assert.equal((await t.cortex.approve(inv.inv)).ok, false);
   assert.equal(t.cortex.deny(inv.inv), false);
   const detail = t.cortex.get(inv.inv);
   assert.equal(detail.inv, inv.inv);
@@ -614,12 +726,13 @@ test('controle no jogo (a ociosidade do Windows ignora o gamepad): no leve, prim
   assert.equal(w.cortex.rhythm().state, 'profundo');
 });
 
-test('host: ocupado inclui a otimização da pessoa (e lab, benchmark, análise profunda, teste com reinício)', async () => {
+test('host: ocupado inclui a otimização da pessoa (e lab, benchmark, análise profunda, teste com reinício, sessão de observação gravando e medição de FPS)', async () => {
   const { createBusy } = require('../electron/cortex-host.cjs');
-  const s = { lab: false, opt: false, bench: false, deep: false, reboot: false };
-  const busy = createBusy({ labRunning: () => s.lab, optRunning: () => s.opt, benchActive: () => s.bench, deepRunning: () => s.deep, rebootActive: async () => { if (s.reboot === 'erro') throw new Error('x'); return s.reboot; } });
+  const s = { lab: false, opt: false, bench: false, deep: false, reboot: false, probe: false, fps: false };
+  const busy = createBusy({ labRunning: () => s.lab, optRunning: () => s.opt, benchActive: () => s.bench, deepRunning: () => s.deep, rebootActive: async () => { if (s.reboot === 'erro') throw new Error('x'); return s.reboot; },
+    probeRunning: () => s.probe, fpsRunning: () => s.fps });
   assert.equal(await busy(), false);
-  for (const k of ['lab', 'opt', 'bench', 'deep', 'reboot']) {
+  for (const k of ['lab', 'opt', 'bench', 'deep', 'reboot', 'probe', 'fps']) {
     s[k] = true;
     assert.equal(await busy(), true, k);
     s[k] = false;

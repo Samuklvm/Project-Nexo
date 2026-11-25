@@ -2523,15 +2523,20 @@ async function cortexLabRun(options) {
   labState.signal = { cancelled: false };
   cortexLab.signal = labState.signal;
   try {
-    const result = await NexoLab.run(labSystem, { ...options, signal: labState.signal });
+    // O Cortex nunca cria ponto de restauração aqui (o UAC abriria com o PC desacompanhado): acima do risco baixo ele
+    // traz o ponto criado no "Pode testar"; no risco baixo segue sem ponto.
+    const { restorePoint, ...rest } = options || {};
+    const system = { ...labSystem, createRestorePoint: async () => restorePoint || { ok: false, created: false, note: 'o Cortex não cria ponto de restauração sem você presente' } };
+    const result = await NexoLab.run(system, { ...rest, signal: labState.signal });
     if (result.status === 'aborted') noteInterruption('laboratorio', result.reason, { guarda: result.guard || 'erro', origem: 'cortex' });
     if (result.restoreFailed) noteInterruption('laboratorio', 'não consegui voltar ao plano de energia original (a recuperação tenta de novo na próxima abertura)', { etapa: 'restaurar', origem: 'cortex' });
     return result;
   } finally { labState.running = false; labState.signal = null; cortexLab.signal = null; }
 }
-/** Lab da pessoa, teste de desempenho, análise profunda ou teste com reinício rodando: o Cortex não pesa junto. */
+/** Lab da pessoa, teste de desempenho, análise profunda, teste com reinício, sessão gravando ou FPS medindo: o Cortex não pesa junto. */
 const { createBusy, createGameInForeground } = require('./electron/cortex-host.cjs');
-const cortexBusy = createBusy({ labRunning: () => labState.running, optRunning: () => optState.running, benchActive: () => Boolean(activeBench), deepRunning: () => deepAnalysis.isRunning(), rebootActive: () => rebootTest.active() });
+const cortexBusy = createBusy({ labRunning: () => labState.running, optRunning: () => optState.running, benchActive: () => Boolean(activeBench), deepRunning: () => deepAnalysis.isRunning(), rebootActive: () => rebootTest.active(),
+  probeRunning: () => probe.isRunning(), fpsRunning: () => fpsRunner.isRunning() });
 /** No Linux o teste do lab só tem single/multi/burst: os outros não são medidos (em vez de medir outro no lugar). */
 const cortexBench = (mode) => (IS_LINUX && !['single', 'multi', 'burst'].includes(mode) ? Promise.reject(new Error(`o teste "${mode}" não existe no Linux`)) : labSystem.bench(mode));
 /** Uma consulta do primeiro plano, com o mesmo detector das sessões; erro lança (o Cortex registra e conta como "não sei"). */
@@ -2553,6 +2558,7 @@ async function startCortex() {
     bench: cortexBench, quiet: typeof labSystem.quiet === 'function' ? () => labSystem.quiet() : undefined,
     idleSec: () => powerMonitor?.getSystemIdleTime?.(), gameInForeground: cortexGameInForeground,
     onBattery: () => Boolean(powerMonitor?.isOnBatteryPower?.()), busy: cortexBusy,
+    platform: process.platform, sample: () => labSystem.sample(), restorePoint: () => labSystem.createRestorePoint(),
     emit: (channel, payload) => sendToWindow(channel, payload), log: (entry) => errorLog.record(entry)
   });
   await cortex.start({ snapshot: getSystemSnapshot, version: app.getVersion() });
@@ -2577,7 +2583,7 @@ registerIpcHandler('cortex:settings', async () => cortex.settings());
 registerIpcHandler('cortex:set-settings', async (_event, patch) => cortex.setSettings({
   permission: String(patch?.permission || '').slice(0, 20), maxRisk: String(patch?.maxRisk || '').slice(0, 20), consent: String(patch?.consent || '').slice(0, 40)
 }));
-registerIpcHandler('cortex:approve', async (_event, inv) => ({ ok: cortex.approve(cortexInv(inv)) }));
+registerIpcHandler('cortex:approve', async (_event, inv) => cortex.approve(cortexInv(inv)));
 registerIpcHandler('cortex:deny', async (_event, inv) => ({ ok: cortex.deny(cortexInv(inv)) }));
 registerIpcHandler('cortex:rhythm', async () => cortex.rhythm());
 // Cópia da memória do Cortex: a pessoa escolhe onde salvar; a memória viva nunca é sobrescrita.

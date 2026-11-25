@@ -2,6 +2,8 @@
  * Cortex — planejador. Escolhe o próximo passo que melhor separa as hipóteses em disputa: ganho esperado de informação
  * (bits) dividido pelo custo, sempre dentro do que a pessoa permitiu e do ritmo dela (bateria, uso do dia, modo leve).
  *
+ * ctx.knobs / ctx.benches (opcionais): os ajustes e os testes que existem neste sistema; os outros não contam.
+ *
  * Ação = tipo + alvo. Duas previsões com o mesmo `action` e `target` são a mesma ação, mesmo que difiram em `expect`
  * ('presente' e 'antes' no mesmo `lembrar` são resultados diferentes da mesma ação). Convenção dos alvos: lembrar → id de
  * sinal; esperar → sintoma; medir → bench:<id>; intervir → ajuste:<id>.
@@ -110,6 +112,11 @@
     const done = new Set(c.done || []);
     const maxRisk = RISK_ORDER[c.maxRisk] !== undefined ? RISK_ORDER[c.maxRisk] : RISK_ORDER.baixo;
     const spent = (c.activeToday || 0) >= MAX_ACTIVE_PER_DAY;
+    // O que este sistema tem (Windows ou Linux): ajuste ou teste fora disso não existe aqui. Sem a lista, vale tudo.
+    const knobsHere = Array.isArray(c.knobs) ? new Set(c.knobs) : null;
+    const benchesHere = Array.isArray(c.benches) ? new Set(c.benches) : null;
+    const exists = (a) => (a.type === 'intervir' ? !knobsHere || knobsHere.has(String(a.target).replace(/^ajuste:/, ''))
+      : a.type === 'medir' ? !benchesHere || benchesHere.has(String(a.target).replace(/^bench:/, '')) : true);
 
     let best = null;
     let blocked = null; // melhor ação útil bloqueada só por ora (ritmo, bateria ou orçamento do dia)
@@ -123,7 +130,8 @@
     for (const a of actionsFor(hyps)) {
       const id = idOf(a.type, a.target);
       if (done.has(id)) continue;
-      // Permissão e teto de risco não passam com o tempo: a ação conta como inexistente.
+      // Permissão, teto de risco e o que o sistema tem não passam com o tempo: a ação conta como inexistente.
+      if (!exists(a)) continue;
       if (a.type === 'intervir' && (!AUTONOMY.has(c.permission) || RISK_ORDER[a.risk] > maxRisk)) continue;
       const gain = expectedGain(a, hyps, bel);
       if (gain < MIN_GAIN) continue;
