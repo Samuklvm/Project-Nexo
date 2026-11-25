@@ -226,3 +226,22 @@ test('vão do coração: pequeno o bastante para a permissão aparecer na primei
   // A barra do topo fica acima do cenário fixo.
   assert.match(css, /body\[data-view="cortex"\] \.titlebar \{ position: relative; z-index: 2; \}/);
 });
+
+test('selo de estado: Ativo (verde) quando o Cortex está ativo; Desligado (vermelho) desligado, sem leitura ou com erro', () => {
+  assert.deepEqual(Page.seal({ ativo: true }), { label: 'Ativo', tone: 'on' });
+  assert.deepEqual(Page.seal({ ativo: false, motivo: 'memória' }), { label: 'Desligado', tone: 'off' });
+  assert.deepEqual(Page.seal(null), { label: 'Desligado', tone: 'off' }, 'sem leitura não é "ativo"');
+  assert.deepEqual(Page.seal({ ativo: true }, 'Não consegui ler o Cortex agora.'), { label: 'Desligado', tone: 'off' });
+  // Cores no CSS: verde musgo luminoso (não neon) e seda; contraste do texto do selo ≥ 4,5:1 sobre o fundo do selo.
+  const css = read('cortex.css');
+  const color = (re) => { const m = css.match(re); assert.ok(m, String(re)); return m[1]; };
+  const lum = (hex) => { const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const bg = '#0d0b11'; // fundo do selo (tinta) sobre o salão
+  const on = color(/\.cx-seal\.on \{[^}]*color: (#[0-9a-f]{6})/);
+  const off = color(/\.cx-seal\.off \{[^}]*color: (#[0-9a-f]{6})/);
+  assert.ok(ratio(on, bg) >= 4.5, `verde ${on}: ${ratio(on, bg).toFixed(2)}`);
+  assert.ok(ratio(off, bg) >= 4.5, `vermelho ${off}: ${ratio(off, bg).toFixed(2)}`);
+  assert.match(css, /\.cx-seal\.on::before \{[^}]*background: #5fbf8a/);
+  assert.match(css, /\.cx-seal\.off::before \{[^}]*background: var\(--silk-hi\)/);
+});

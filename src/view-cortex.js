@@ -178,7 +178,8 @@
     const thought = current?.pensamento
       ? `<p class="cx-thought${thinking ? ' thinking' : ''}"><i class="cx-mandala" aria-hidden="true"></i><q>${escapeHtml(current.pensamento)}</q><small>${testing ? 'Testando agora' : 'O último pensamento'}</small></p>`
       : `<p class="cx-thought"><i class="cx-mandala" aria-hidden="true"></i>${on ? 'Observando em silêncio. Quando algo pesar no PC, eu abro uma investigação e conto cada passo aqui.' : ''}</p>`;
-    host.innerHTML = `<span class="cx-seal${on ? '' : ' off'}">${on ? 'Ativo' : 'Desligado'}</span>
+    const badge = Page.seal(stats, bridgeError);
+    host.innerHTML = `<span class="cx-seal ${badge.tone}">${badge.label}</span>
       <span class="cx-rhythm${deep ? ' deep' : ''}"><span class="cx-spool" aria-hidden="true">${spoolArt()}</span>
         <span><strong>Ritmo ${deep ? 'profundo' : 'leve'}</strong><small>${escapeHtml(reason ? cap(reason) : deep ? 'PC parado: posso medir e testar.' : 'Você está usando o PC: só observo e penso.')}</small></span><i class="cx-runner" aria-hidden="true"></i></span>
       ${thought}`;

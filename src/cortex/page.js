@@ -140,6 +140,12 @@
     return { gap, globe, top, thread };
   }
 
+  /** Selo do topo: verde "Ativo" só com a leitura em mãos e o Cortex ligado; qualquer outra coisa é "Desligado". */
+  function seal(stats, error) {
+    const on = Boolean(stats) && stats.ativo !== false && !error;
+    return on ? { label: 'Ativo', tone: 'on' } : { label: 'Desligado', tone: 'off' };
+  }
+
   const QUESTION = {
     cpu: 'Por que o processador ficou sobrecarregado', mem: 'Por que a memória chegou ao limite', disk: 'Por que o disco ficou ocupado',
     gpu: 'Por que a placa de vídeo chegou ao limite', temp_cpu: 'Por que o processador esquentou', temp: 'Por que a placa de vídeo esquentou',
@@ -161,5 +167,5 @@
     return Math.max(1, Math.ceil((now - since) / DAY));
   }
 
-  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, parallax, heartLayout, question, memoryDays };
+  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, parallax, heartLayout, seal, question, memoryDays };
 });
