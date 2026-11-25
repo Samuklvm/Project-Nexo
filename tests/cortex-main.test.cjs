@@ -812,9 +812,11 @@ test('cópia de segurança também sem profundo: ~2 min depois de abrir, se a ú
   const t = make();
   const c = Cortex.createCortex({ memory: { ok: true, memory: t.memory }, rhythm: createRhythm(), now: () => t.clock.t, platform: 'win32', backupDelayMs: 5, log: (e) => t.env.logs.push(e) });
   await c.start();
-  await new Promise((r) => setTimeout(r, 60));
+  // A cópia (API de backup do SQLite + troca de nome) é assíncrona e, no Windows, bem mais lenta que no Linux:
+  // espera ela terminar de verdade (até 10 s) em vez de um tempo fixo.
+  for (let waited = 0; t.memory.lastBackupAt() === null && waited < 10000; waited += 20) await new Promise((r) => setTimeout(r, 20));
   c.stop();
-  assert.equal(t.memory.lastBackupAt(), T0, 'não fez a cópia ao abrir');
+  assert.equal(t.memory.lastBackupAt(), T0, `não fez a cópia ao abrir (${JSON.stringify(t.env.logs.map((l) => l.message))})`);
   assert.equal(fs.readdirSync(path.join(dir, 'backups')).length, 1);
   // Aberto de novo 1 h depois: a cópia ainda é nova, nada a fazer.
   t.clock.t = T0 + 60 * MIN;

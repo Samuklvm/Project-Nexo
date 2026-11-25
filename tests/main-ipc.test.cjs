@@ -23,11 +23,12 @@ process.env.XDG_CACHE_HOME = cache; process.env.XDG_DATA_HOME = data; process.en
 Object.defineProperty(process, 'platform', { value: 'linux' });
 
 const handlers = new Map();
+const appEvents = {};
 let loadedUrl = null;
 const electronStub = {
   app: {
     isPackaged: false, getVersion: () => '0.2.0-test', getAppMetrics: () => [{ cpu: { percentCPUUsage: 2 }, memory: { workingSetSize: 51200 } }], getPath: () => userData, requestSingleInstanceLock: () => true,
-    whenReady: () => Promise.resolve(), on() {}, quit() {}, setAppUserModelId() {}
+    whenReady: () => Promise.resolve(), on(event, fn) { (appEvents[event] ||= []).push(fn); }, quit() {}, setAppUserModelId() {}
   },
   BrowserWindow: class { constructor() { this.webContents = { on() {}, setWindowOpenHandler() {}, send() {} }; } once() {} on() {} isDestroyed() { return false; } isVisible() { return true; } loadURL(url) { loadedUrl = url; } static getAllWindows() { return []; } },
   ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on() {} },
@@ -197,7 +198,11 @@ test('sessão: amostra do sistema por núcleo, sonda e FPS têm retorno seguro f
   assert.equal((await call('fps:stop')).frames, 0);
 });
 
-test.after(() => fs.rmSync(sandbox, { recursive: true, force: true }));
+test.after(() => {
+  // Fecha como o app de verdade (o before-quit fecha a memória do Cortex): no Windows um arquivo aberto não pode ser apagado.
+  for (const fn of appEvents['before-quit'] || []) { try { fn({ preventDefault() {} }); } catch { /* o resto ainda fecha */ } }
+  fs.rmSync(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+});
 
 test('0.5.0: canais novos de laboratório, biblioteca, conta, acesso ao FPS e preferências', async () => {
   for (const channel of ['lab:status', 'lab:preflight', 'lab:run', 'lab:cancel', 'lab:recover', 'games:scan', 'games:list', 'games:launch', 'games:set-cover', 'games:add', 'account:get', 'account:sign-in', 'account:sign-out', 'account:import-config', 'fps:access', 'fps:grant', 'fps:revoke', 'settings:get', 'settings:set', 'system:facts', 'watch:current']) {
