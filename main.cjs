@@ -1294,7 +1294,13 @@ const sendToWindow = (channel, payload) => {
 const probeMatch = Object.assign((exePath) => library.matchPath(exePath), { byName: (name) => library.matchName(name) });
 // A última amostra da sonda também serve ao Cortex ("tem jogo aberto?") sem abrir outro PowerShell.
 let lastProbeSample = null;
-const onProbeSample = (sample) => { lastProbeSample = { at: Date.now(), sample }; sendToWindow('session:probe', sample); };
+// "O culprit é um jogo?" para o Cortex: a biblioteca pelo nome, a regra de session.js e os jogos que a sonda já viu.
+const cortexIsGame = require('./electron/cortex-host.cjs').createIsGame({ matchName: (name) => library.matchName(name), classify: (fg) => NexoSessionRules.classifyForeground(fg) });
+const onProbeSample = (sample) => {
+  lastProbeSample = { at: Date.now(), sample };
+  if (sample?.fg?.isGame === true && sample.fg.name) cortexIsGame.learn(sample.fg.name);
+  sendToWindow('session:probe', sample);
+};
 const probe = IS_LINUX ? createLinuxProbe({ linux, emit: onProbeSample, match: probeMatch }) : createProbe({ emit: onProbeSample, match: probeMatch });
 const MANGO_DIR = () => path.join(app.getPath('userData'), 'mangohud');
 const fpsRunner = IS_LINUX ? createMangoRunner({ fs, path, dir: MANGO_DIR(), emit: (channel, payload) => sendToWindow(channel, payload) }) : createFpsRunner({ emit: (channel, payload) => sendToWindow(channel, payload) });
@@ -2558,7 +2564,7 @@ async function startCortex() {
     bench: cortexBench, quiet: typeof labSystem.quiet === 'function' ? () => labSystem.quiet() : undefined,
     idleSec: () => powerMonitor?.getSystemIdleTime?.(), gameInForeground: cortexGameInForeground,
     onBattery: () => Boolean(powerMonitor?.isOnBatteryPower?.()), busy: cortexBusy,
-    platform: process.platform, sample: () => labSystem.sample(), restorePoint: () => labSystem.createRestorePoint(),
+    platform: process.platform, isGame: cortexIsGame, sample: () => labSystem.sample(), restorePoint: () => labSystem.createRestorePoint(),
     emit: (channel, payload) => sendToWindow(channel, payload), log: (entry) => errorLog.record(entry)
   });
   await cortex.start({ snapshot: getSystemSnapshot, version: app.getVersion() });

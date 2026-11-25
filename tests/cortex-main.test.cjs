@@ -30,13 +30,14 @@ function labResult(verdict = 'melhorou', status = 'completed') {
   return { status, reason: status === 'aborted' ? 'O processador chegou a 90 °C.' : null, arms: status === 'completed' ? [arm] : [], combos: [], combination: null, adopted: null };
 }
 
-function setup({ dir = tmp(), clock = { t: T0 }, memory, labReturn, platform = 'win32', restorePoint } = {}) {
+function setup({ dir = tmp(), clock = { t: T0 }, memory, labReturn, platform = 'win32', restorePoint, isGame } = {}) {
   const opened = memory || createMemory({ dir, now: () => clock.t });
   const env = { idle: 0, game: false, battery: false, busy: false, bench: [], lab: [], cancels: 0, logs: [], emits: [], gameCalls: 0, onBench: null, score: () => 100,
     tempC: 50, points: 0, point: { ok: true, created: true, note: 'criado' } };
   const cortex = Cortex.createCortex({
     memory: opened,
     platform,
+    isGame,
     sample: async () => ({ tempC: env.tempC, onBattery: env.battery, cpuLoad: 5 }),
     restorePoint: restorePoint || (async () => { env.points += 1; return env.point; }),
     rhythm: createRhythm(),
@@ -950,4 +951,93 @@ test('P3: referência recusada (quente, bateria, processador ocupado) vai para o
   await goDeep(t);
   await t.cortex.tick();
   assert.equal(refusals().length, 3);
+});
+
+// O executável de jogo de exemplo (o Cortex só recebe o nome do processo, como no culprit dos minutos).
+const GAME_EXE = 'JogoDeTiro-Win64-Shipping';
+const isGameName = (name) => name === GAME_EXE;
+
+/** 3 dias de minutos: 2 h por noite de carga alta (`culprit`), com carga, memória, placa, calor e clock subindo juntos. */
+function heavyNights(t, culprit, { hotC = 88 } = {}) {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 3 * 1440; i > 0; i--) {
+    const at = T0 - i * MIN;
+    const h = new Date(at).getHours();
+    const on = h >= 20 && h < 22;
+    t.cortex.observeMinute({ t: at, cpu: (on ? 75 : 10) + rnd() * 10, mem: (on ? 70 : 40) + rnd() * 5, disk: 60, gpu: (on ? 95 : 5) + rnd() * 5,
+      temp: (on ? hotC : 45) + rnd() * 4, cpuTemp: (on ? hotC : 45) + rnd() * 4, clock: on ? 3000 : 4000, clockRatio: (on ? 0.7 : 0.98) - rnd() * 0.02,
+      culprit: on ? culprit : null });
+  }
+}
+const curiosities = (t) => t.memory.list('investigacao', { limit: 1000 }).filter((r) => r.data.anomaly && r.data.anomaly.kind === 'curiosidade');
+
+test('P4: correlações de carga explicadas por estar jogando não abrem curiosidade (a relação fica no mapa)', async () => {
+  const t = setup({ isGame: isGameName });
+  heavyNights(t, GAME_EXE);
+  await goDeep(t);
+  await t.cortex.tick();
+  await t.cortex.tick();
+  assert.ok(t.memory.list('relacao', { limit: 1000 }).some((r) => r.data.kind === 'correlacao'), 'nenhuma correlação minerada');
+  assert.deepEqual(curiosities(t).map((r) => r.data.symptom), []);
+});
+
+test('P4: curiosidade só para sintoma que é problema (queda de clock, temperatura acima do normal), nunca para carga alta em si', async () => {
+  // O mesmo padrão, mas de um programa que não é jogo: o calor (88 °C) e a queda de clock viram pergunta; a carga não.
+  const t = setup({ isGame: isGameName });
+  heavyNights(t, 'render-noturno.exe');
+  await goDeep(t);
+  await t.cortex.tick();
+  await t.cortex.tick();
+  const symptoms = curiosities(t).map((r) => r.data.symptom);
+  assert.ok(symptoms.length > 0, 'nenhuma curiosidade de um problema de verdade');
+  assert.deepEqual(symptoms.filter((x) => !['clock_queda', 'temp', 'temp_cpu'].includes(x)), [], `curiosidade de carga: ${symptoms}`);
+  assert.ok(symptoms.includes('clock_queda'), `${symptoms}`);
+  // Mesmo padrão com a temperatura no normal da máquina (68 °C): calor não vira curiosidade.
+  const u = setup({ isGame: isGameName });
+  heavyNights(u, 'render-noturno.exe', { hotC: 68 });
+  await goDeep(u);
+  await u.cortex.tick();
+  await u.cortex.tick();
+  const cool = curiosities(u).map((r) => r.data.symptom);
+  assert.deepEqual(cool.filter((x) => x === 'temp' || x === 'temp_cpu'), [], `${cool}`);
+  assert.deepEqual(cool.filter((x) => !['clock_queda'].includes(x)), [], `${cool}`);
+});
+
+test('P5: lentidão de processador ou memória causada pelo jogo em primeiro plano fica na memória, mas não abre investigação', async () => {
+  const dir = tmp();
+  const t = setup({ dir, isGame: isGameName });
+  const ev = (at, kind, culprit) => ({ kind: 'lentidao', at, data: { kind, start: at - 10 * MIN, end: at, peak: 97, minutes: 10, culprit } });
+  t.cortex.observeEvent(ev(T0, 'cpu', GAME_EXE));
+  t.cortex.observeEvent(ev(T0 + MIN, 'memory', GAME_EXE));
+  await t.cortex.tick();
+  assert.equal(t.memory.events({ kind: 'lentidao' }).length, 2, 'o evento não ficou na memória');
+  assert.deepEqual(t.cortex.list({ limit: 10 }), []);
+  // Reabrir o app não traz a lentidão do jogo de volta para a fila.
+  const again = setup({ memory: { ok: true, memory: t.memory }, clock: t.clock, isGame: isGameName });
+  await again.cortex.start({ timers: false });
+  await again.cortex.tick();
+  assert.deepEqual(again.cortex.list({ limit: 10 }), []);
+  // Outro programa pesando: abre. Calor durante o jogo também abre (temperatura alta é problema).
+  t.cortex.observeEvent(ev(T0 + 2 * MIN, 'cpu', 'compilador.exe'));
+  t.cortex.observeEvent(ev(T0 + 3 * MIN, 'thermal', GAME_EXE));
+  await t.cortex.tick();
+  assert.deepEqual(t.cortex.list({ limit: 10 }).map((r) => r.symptom).sort(), ['cpu', 'temp']);
+});
+
+test('host: "o culprit é um jogo?" pela biblioteca (nome do executável), pela regra de session.js e pelo que a sonda já viu', () => {
+  const { createIsGame } = require('../electron/cortex-host.cjs');
+  const Session = require('../src/session.js');
+  const library = { [GAME_EXE.toLowerCase()]: { kind: 'game' }, 'editor-de-fotos': { kind: 'app' } };
+  const isGame = createIsGame({ matchName: (n) => library[String(n).toLowerCase().replace(/\.exe$/, '')] || null, classify: Session.classifyForeground });
+  assert.equal(isGame(GAME_EXE), true);
+  assert.equal(isGame(`${GAME_EXE}.exe`), true);
+  assert.equal(isGame('editor-de-fotos'), false, 'programa da biblioteca não é jogo');
+  assert.equal(isGame('chrome'), false);
+  assert.equal(isGame(null), false);
+  assert.equal(isGame('OutroJogo'), false);
+  isGame.learn('OutroJogo');
+  assert.equal(isGame('outrojogo.exe'), true, 'nome que a sonda viu como jogo');
+  const broken = createIsGame({ matchName: () => { throw new Error('x'); }, classify: () => { throw new Error('y'); } });
+  assert.equal(broken('qualquer'), false);
 });

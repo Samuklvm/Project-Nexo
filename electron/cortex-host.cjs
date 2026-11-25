@@ -4,6 +4,9 @@
  *                            impede o Cortex de pesar junto
  *   createGameInForeground   "tem jogo em primeiro plano?" — da sonda de sessão, se ela mandou amostra há pouco;
  *                            senão uma consulta única (PowerShell no Windows, xprop no Linux)
+ *   createIsGame             "este processo (só o nome, como no culprit dos minutos) é um jogo?" — a mesma regra do
+ *                            app: biblioteca de jogos pelo nome do executável, depois src/session.js classifyForeground;
+ *                            mais os nomes que a sonda ou o observador já viram como jogo em primeiro plano (learn)
  */
 'use strict';
 
@@ -35,4 +38,28 @@ function createGameInForeground({ now = Date.now, lastProbe, query }) {
   };
 }
 
-module.exports = { createBusy, createGameInForeground, PROBE_FRESH_MS };
+const plainName = (name) => String(name || '').trim().toLowerCase().replace(/\.exe$/, '');
+
+/**
+ * matchName(nome) → jogo da biblioteca ({ kind }) ou null; classify({ name }) → { isGame } (session.js). Só com o nome
+ * o classify não vê pasta nem tela cheia, então a biblioteca e o que a sonda já viu é que pegam jogos com anticheat.
+ * Leitura que falha conta como "não é jogo" (aí a lentidão abre investigação, como antes).
+ */
+function createIsGame({ matchName = () => null, classify = () => ({ isGame: false }) } = {}) {
+  const seen = new Set();
+  const isGame = (name) => {
+    const plain = plainName(name);
+    if (plain.length < 2) return false;
+    if (seen.has(plain)) return true;
+    try {
+      const game = matchName(String(name));
+      if (game) return game.kind !== 'app';
+    } catch { /* biblioteca indisponível */ }
+    try { return Boolean(classify({ name: String(name) })?.isGame); } catch { return false; }
+  };
+  /** Um nome que a sonda (ou o observador) viu como jogo em primeiro plano. */
+  isGame.learn = (name) => { const plain = plainName(name); if (plain.length >= 2 && seen.size < 500) seen.add(plain); };
+  return isGame;
+}
+
+module.exports = { createBusy, createGameInForeground, createIsGame, PROBE_FRESH_MS };

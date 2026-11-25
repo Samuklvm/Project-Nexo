@@ -6,7 +6,7 @@
  *
  * Sem Electron aqui: tudo o que é do sistema vem injetado (createCortex deps). O main.cjs só monta as dependências.
  *
- *   createCortex({ memory, labRun, labCancel, bench, quiet?, sample?, restorePoint?, platform?, rhythm, idleSec, gameInForeground, onBattery, busy, now, emit, log })
+ *   createCortex({ memory, labRun, labCancel, bench, quiet?, sample?, restorePoint?, platform?, isGame?, rhythm, idleSec, gameInForeground, onBattery, busy, now, emit, log })
  *     memory     resultado de createMemory ({ ok, memory } | { ok: false, error }) ou a própria memória
  *     labRun     (opts) => Promise<resultado do NexoLab.run>   (o main já põe o signal de cancelamento)
  *     labCancel  () => void                                     (marca o signal da execução do Cortex)
@@ -14,6 +14,9 @@
  *     sample     () => Promise<{ tempC, onBattery }> (opcional): medir e referência esperam na bateria ou acima de 80 °C
  *     restorePoint () => Promise<{ ok, note }> (opcional): só no "Pode testar" de ajuste acima do risco baixo
  *     platform   'win32' | 'linux' (padrão: process.platform): só ajustes de Lab.spaceFor e testes que existem aqui
+ *     isGame     (nome do processo) => boolean (opcional): o culprit é um jogo? (biblioteca de jogos + session.js). Lentidão
+ *                de processador/memória cujo culprit é o jogo fica na memória, mas não abre investigação (a carga do
+ *                jogo é esperada); e os minutos de jogo não contam na pergunta "essa correlação tem explicação?".
  *     busy       () => boolean | Promise<boolean>  (lab da pessoa, análise profunda, teste com reinício, benchmark)
  *     emit       (canal, dados) => void   ('cortex:update' quando uma investigação ou o ritmo muda)
  *     log        ({ source: 'cortex', level, message, context: { etapa } }) => void
@@ -41,6 +44,10 @@
  * restauração, guarda da pré-checagem do lab) não gasta. As referências não contam no orçamento.
  * Ajuste acima do risco baixo: só com o ponto de restauração criado no "Pode testar" (approve; meta 'cortex.ponto',
  * vale 24 h). O Cortex nunca cria ponto (nem abre o UAC) sozinho.
+ * Curiosidade (correlação nova sem investigação do sintoma): só para sintoma que é problema — queda de clock, ou
+ * temperatura acima do normal da máquina (pelo menos 5 min a HOT_C ou mais fora de jogo) — e só se a correlação continua
+ * de pé sem os minutos de jogo (culprit = jogo, com 15 min de folga em volta). Carga alta (processador, memória, placa
+ * de vídeo, disco) não é problema em si e nunca abre curiosidade. A relação nova fica no mapa de todo jeito.
  * Toda exceção vai para log com source 'cortex' e o Cortex segue; memória que não abre → Cortex desligado (no-op).
  */
 'use strict';
@@ -65,6 +72,12 @@ const FG_DEEP_MS = 30000; // no profundo, o primeiro plano (PowerShell) só a ca
 const FG_LEVE_BACKOFF_MS = 10 * MIN;
 const QUEUE_KINDS = ['lentidao', 'sessao']; // eventos que viram anomalia (e são relidos depois de reiniciar)
 const MINE_DAYS = 14;
+const GAME_PAD_MIN = 15; // minutos em volta de um minuto com o jogo de culprit que ainda contam como "jogando"
+const HOT_MINUTES = 5; // minutos quentes (>= HOT_C) fora de jogo para a temperatura contar como acima do normal
+// Sintomas que podem virar curiosidade (os outros sinais dos minutos são carga, e carga alta não é problema em si).
+const CURIOUS = { clock_queda: null, temp: 'temp', temp_cpu: 'cpuTemp' };
+// Lentidões que o próprio jogo explica (carga esperada); calor e queda de clock durante o jogo continuam abrindo.
+const GAME_LOAD = new Set(['cpu', 'mem']);
 const BACKUP_LATE_MS = 2 * MIN; // depois de abrir: cópia de segurança se a última tiver mais de 24 h (só disco)
 const QUEUE_MAX = 50;
 const LOG_QUIET_MS = 10 * MIN; // o mesmo erro da mesma etapa não enche o registro (o profundo checa a cada 5 s)
@@ -196,6 +209,7 @@ function createCortex(deps = {}) {
   const knobsHere = Lab.spaceFor(platform).map((k) => k.id);
   const benchesHere = (PLATFORM_BENCHES[platform] || Lab.BENCHES).slice();
   const onBattery = () => !!(typeof deps.onBattery === 'function' && safe('bateria', deps.onBattery, false));
+  const isGame = (name) => typeof name === 'string' && !!name && typeof deps.isGame === 'function' && !!safe('jogo', () => deps.isGame(name), false);
   const opening = `${now()}-${Math.random().toString(36).slice(2, 10)}`; // esta abertura do app (referências de frames)
   const emit = (payload) => { try { if (typeof deps.emit === 'function') deps.emit('cortex:update', payload); } catch (e) { log('avisar', e); } };
   const call = async (etapa, fn, fallback) => { try { return await fn(); } catch (e) { log(etapa, e); return fallback; } };
@@ -532,6 +546,7 @@ function createCortex(deps = {}) {
     if (kind === 'lentidao') {
       const symptom = symptomOfEpisode(data);
       if (!symptom) return [];
+      if (GAME_LOAD.has(symptom) && isGame(data.culprit)) return []; // o jogo pesando: esperado (o evento já está na memória)
       const from = finite(data.start) ? data.start : at - 5 * MIN;
       const to = finite(data.end) ? data.end : at;
       const value = data.kind !== 'throttle' && finite(data.peak) ? data.peak : undefined;
@@ -702,16 +717,45 @@ function createCortex(deps = {}) {
     await onceToday('cortex.manutencao', 'manutencao', async () => { memory.camera.prune(); await memory.backupDaily(); });
   }
 
-  /** Correlações novas dos últimos 14 dias viram relações (e as sem explicação, curiosidades). */
+  /** Os minutos fora de jogo: tira os que têm o jogo de culprit e os GAME_PAD_MIN em volta deles. */
+  function withoutGames(rows) {
+    const games = rows.filter((r) => isGame(r.culprit) && finite(r.t)).map((r) => r.t).sort((a, b) => a - b);
+    if (!games.length) return rows;
+    const pad = GAME_PAD_MIN * MIN;
+    const near = (t) => {
+      let lo = 0; let hi = games.length - 1;
+      while (lo <= hi) { const mid = (lo + hi) >> 1; if (Math.abs(games[mid] - t) <= pad) return true; if (games[mid] < t) lo = mid + 1; else hi = mid - 1; }
+      return false;
+    };
+    return rows.filter((r) => !finite(r.t) || !near(r.t));
+  }
+  const pairOf = (a, b) => [a, b].sort().join('|');
+  /**
+   * A correlação nova vale uma pergunta? Só se o sintoma é problema (queda de clock; temperatura acima do normal da
+   * máquina fora de jogo) e se ela continua de pé sem os minutos de jogo (senão estar jogando já explica).
+   */
+  function curious(edge, calm, calmPairs) {
+    if (!Object.prototype.hasOwnProperty.call(CURIOUS, edge.to)) return false;
+    if (!calmPairs.has(pairOf(edge.from, edge.to))) return false;
+    const col = CURIOUS[edge.to];
+    return !col || calm.filter((r) => finite(r[col]) && r[col] >= HOT_C).length >= HOT_MINUTES;
+  }
+
+  /** Correlações novas dos últimos 14 dias viram relações (e as sem explicação, sobre um problema, curiosidades). */
   function mine() {
     const t = now();
     const rows = memory.minutes({ from: t - MINE_DAYS * DAY, to: t, limit: MINE_DAYS * 1440 });
     const fresh = Relations.mineCorrelations(rows, map.edges());
+    const calm = fresh.length ? withoutGames(rows) : rows;
+    const calmPairs = new Set((calm === rows ? fresh : Relations.mineCorrelations(calm, map.edges())).map((e) => pairOf(e.from, e.to)));
     const open = new Set(memory.list('investigacao', { limit: 1000 }).filter((r) => !memory.latest('conclusao', { inv: r.id })).map((r) => r.data && r.data.symptom));
     for (const edge of fresh) {
       if (!(memory.record('relacao', { data: { edgeId: edge.id, kind: 'correlacao', at: t, edge } }) > 0)) { log('correlacoes', 'relação nova não gravou'); continue; }
       // Curiosidade: o padrão sem explicação vira pergunta (se já houver uma investigação do sintoma, ela usa o mapa novo).
-      if (!open.has(edge.to)) enqueue({ kind: 'curiosidade', symptom: edge.to, at: t, window: { from: t - MINE_DAYS * DAY, to: t }, data: { edgeId: edge.id, lag: edge.lag, r: edge.weight } });
+      if (!open.has(edge.to) && curious(edge, calm, calmPairs)) {
+        open.add(edge.to);
+        enqueue({ kind: 'curiosidade', symptom: edge.to, at: t, window: { from: t - MINE_DAYS * DAY, to: t }, data: { edgeId: edge.id, lag: edge.lag, r: edge.weight } });
+      }
     }
     syncMap();
   }
