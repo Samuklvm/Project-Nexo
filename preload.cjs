@@ -144,6 +144,7 @@ contextBridge.exposeInMainWorld('nexoDesktop', {
   cortexApprove: (inv) => call('cortex:approve', inv),
   cortexDeny: (inv) => call('cortex:deny', inv),
   cortexRhythm: () => call('cortex:rhythm'),
+  cortexExport: () => call('cortex:export'),
   onCortexUpdate: subscribe('cortex:update'),
   // Biblioteca de jogos
   scanGames: () => call('games:scan'),

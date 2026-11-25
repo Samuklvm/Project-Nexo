@@ -74,10 +74,25 @@
     showToast('Arquivo salvo localmente.');
   });
 
+  // A memória eterna do Cortex não tem botão de apagar: só dá para exportar uma cópia (o arquivo vai para onde a pessoa escolher).
+  const exportCortex = document.getElementById('export-cortex');
+  if (exportCortex && typeof desktopBridge?.cortexExport === 'function') {
+    exportCortex.hidden = false;
+    exportCortex.addEventListener('click', async () => {
+      exportCortex.disabled = true;
+      try {
+        const result = await desktopBridge.cortexExport();
+        if (result?.ok) showToast('Cópia da memória do Cortex salva.');
+        else if (!result?.cancelled) showToast(result?.reason || 'Não consegui exportar a memória agora.');
+      } catch (error) { showToast(error.message || 'Não consegui exportar a memória agora.'); }
+      exportCortex.disabled = false;
+    });
+  }
+
   document.getElementById('erase-learning').addEventListener('click', async () => {
     const confirmed = await Nexo.confirm({
       title: 'Apagar o aprendizado e o histórico?',
-      body: 'O Nexo esquece a sua rotina, as lentidões registradas, os programas identificados, o histórico de 7 dias, as sessões de observação gravadas e as suas avaliações. Ele volta a aprender do zero. O Diário de alterações é mantido, porque é o que permite reverter.',
+      body: 'O Nexo esquece a sua rotina, as lentidões registradas, os programas identificados, o histórico de 7 dias, as sessões de observação gravadas e as suas avaliações. Ele volta a aprender do zero. O Diário de alterações é mantido, porque é o que permite reverter. A memória do Cortex também fica: ela é eterna, só vive neste PC e não tem botão de apagar (dá para exportar uma cópia).',
       confirmLabel: 'Apagar', tone: 'danger'
     });
     if (!confirmed) return;

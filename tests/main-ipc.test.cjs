@@ -31,7 +31,7 @@ const electronStub = {
   },
   BrowserWindow: class { constructor() { this.webContents = { on() {}, setWindowOpenHandler() {}, send() {} }; } once() {} on() {} isDestroyed() { return false; } isVisible() { return true; } loadURL(url) { loadedUrl = url; } static getAllWindows() { return []; } },
   ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on() {} },
-  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }, dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }, dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }), showSaveDialog: async () => ({ canceled: true }) },
   Tray: class { setToolTip() {} on() {} setContextMenu() {} destroy() {} }, Notification: class { static isSupported() { return false; } show() {} },
   nativeImage: { createFromPath: () => ({ resize: () => ({}) }) }, net: { fetch: async (url) => { netCalls.push(String(url)); return { ok: false, status: 503, json: async () => ({}) }; } }, safeStorage: { isEncryptionAvailable: () => false }
 };
@@ -304,4 +304,31 @@ test('drivers com um clique: canais existem, só aceitam id e fora do Windows n�
   assert.deepEqual(await call('drivers:install', 'video-NVIDIA GeForce RTX 4070', { restorePoint: true }), { ok: false, note: 'Só no Windows.' });
   assert.deepEqual(await call('drivers:downloads'), []);
   assert.equal(netCalls.length, before, 'nenhuma ida à internet');
+});
+
+test('Cortex: cortex:export grava uma cópia que abre e tem as mesmas contagens; cancelar e o arquivo vivo são recusados', async () => {
+  assert.ok(handlers.has('cortex:export'), 'faltou cortex:export');
+  for (let i = 0; i < 100 && !(await call('cortex:stats')).ativo; i += 1) await new Promise((resolve) => { setTimeout(resolve, 50); });
+  assert.equal((await call('cortex:stats')).ativo, true, 'o Cortex abriu a memória');
+  const { DatabaseSync } = require('node:sqlite');
+  const live = path.join(userData, 'cortex', 'memoria.db');
+  const out = path.join(sandbox, 'copia-cortex.db');
+  let asked = null;
+  electronStub.dialog.showSaveDialog = async (_win, options) => { asked = options; return { canceled: false, filePath: out }; };
+  const result = await call('cortex:export');
+  assert.deepEqual(result, { ok: true, file: out });
+  assert.match(path.basename(asked.defaultPath), /^nexo-cortex-memoria-\d{4}-\d{2}-\d{2}\.db$/);
+  const count = (file) => { const db = new DatabaseSync(file, { readOnly: true }); try { return db.prepare('SELECT COUNT(*) n FROM registros').get().n; } finally { db.close(); } };
+  assert.equal(count(out), count(live), 'mesmas contagens de registros');
+  electronStub.dialog.showSaveDialog = async () => ({ canceled: true });
+  assert.deepEqual(await call('cortex:export'), { ok: false, cancelled: true });
+  electronStub.dialog.showSaveDialog = async () => ({ canceled: false, filePath: live });
+  const refused = await call('cortex:export');
+  assert.equal(refused.ok, false);
+  assert.match(refused.reason, /memória viva|própria memória/);
+  assert.ok(count(live) >= 0, 'a memória viva continua abrindo');
+  electronStub.dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(sandbox, 'nao-existe', 'x.db') });
+  const broken = await call('cortex:export');
+  assert.equal(broken.ok, false);
+  assert.equal(typeof broken.reason, 'string');
 });

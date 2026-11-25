@@ -198,8 +198,22 @@
       <div class="cx-stat"><b>${num(mb, mb < 10 ? 1 : 0)}<small> MB</small></b><span>de memória guardada</span></div>
       <div class="cx-stat"><b>${num(days)}</b><span>${days === 1 ? 'dia de memória' : 'dias de memória'}</span></div>
       <div class="cx-stat"><b>${num(proven)}</b><span>${proven === 1 ? 'relação provada neste PC' : 'relações provadas neste PC'}</span></div>
-      <div class="cx-stat"><b>${num(tests)}<small> / 3</small></b><span>testes sozinho hoje</span></div>`;
+      <div class="cx-stat"><b>${num(tests)}<small> / 3</small></b><span>testes sozinho hoje</span></div>
+      ${on && has('cortexExport') ? '<button type="button" class="cx-btn ghost" data-cx-export title="Salva uma cópia da memória do Cortex, só neste PC, no lugar que você escolher">Exportar memória do Cortex</button>' : ''}`;
   }
+
+  // A memória do Cortex fica só neste PC; aqui a pessoa pede uma cópia (o arquivo vai para onde ela escolher).
+  $id('cx-stats').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-cx-export]');
+    if (!button || !has('cortexExport')) return;
+    button.disabled = true;
+    try {
+      const result = await bridge.cortexExport();
+      if (result?.ok) showToast('Cópia da memória do Cortex salva.');
+      else if (!result?.cancelled) showToast(result?.reason || 'Não consegui exportar a memória agora.');
+    } catch (error) { showToast(error.message || 'Não consegui exportar a memória agora.'); }
+    button.disabled = false;
+  });
 
   function renderBanner() {
     const host = $id('cx-banner');

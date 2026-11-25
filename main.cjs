@@ -2580,6 +2580,23 @@ registerIpcHandler('cortex:set-settings', async (_event, patch) => cortex.setSet
 registerIpcHandler('cortex:approve', async (_event, inv) => ({ ok: cortex.approve(cortexInv(inv)) }));
 registerIpcHandler('cortex:deny', async (_event, inv) => ({ ok: cortex.deny(cortexInv(inv)) }));
 registerIpcHandler('cortex:rhythm', async () => cortex.rhythm());
+// Cópia da memória do Cortex: a pessoa escolhe onde salvar; a memória viva nunca é sobrescrita.
+registerIpcHandler('cortex:export', async () => {
+  if (!cortexMemory) return { ok: false, reason: 'O Cortex está desligado: a memória dele não abriu, então não há o que exportar.' };
+  const day = new Date();
+  const stamp = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+  const picked = await dialog.showSaveDialog(mainWindow, {
+    title: 'Exportar a memória do Cortex', defaultPath: path.join(app.getPath('documents'), `nexo-cortex-memoria-${stamp}.db`),
+    filters: [{ name: 'Memória do Cortex (SQLite)', extensions: ['db'] }]
+  });
+  if (picked.canceled || !picked.filePath) return { ok: false, cancelled: true };
+  try {
+    return { ok: true, file: await cortexMemory.backup(picked.filePath) };
+  } catch (error) {
+    errorLog.record({ source: 'cortex', level: 'erro', message: `Não consegui exportar a memória: ${error?.message || error}`, context: { etapa: 'exportar' } });
+    return { ok: false, reason: `Não consegui salvar a cópia: ${error?.message || error}` };
+  }
+});
 registerIpcHandler('lab:recover', async () => labSystem.recover());
 registerIpcHandler('lab:adopt', async (_event, config) => {
   if (labState.running) throw new Error('O laboratório está rodando.');

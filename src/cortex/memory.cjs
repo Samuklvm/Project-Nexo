@@ -256,6 +256,22 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
     return destino;
   }
 
+  /**
+   * Cópia consistente da memória viva para `destino` (a pessoa escolhe). Grava num arquivo parcial e só então troca o
+   * nome, então um erro no meio não deixa meia cópia nem estraga uma cópia antiga. Nunca escreve na própria memória.
+   */
+  async function backup(destino) {
+    const alvo = path.resolve(String(destino || ''));
+    if (!destino || path.resolve(file) === alvo || path.resolve(pastaBackup) === path.dirname(alvo) && /^memoria-.*\.db$/.test(path.basename(alvo))) throw new Error('esse é o arquivo da memória viva; escolha outro lugar');
+    flush();
+    const tmp = `${alvo}.parcial`;
+    try {
+      await require('node:sqlite').backup(db, tmp);
+      fs.renameSync(tmp, alvo);
+    } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
+    return alvo;
+  }
+
   /** Traz o histórico do formato antigo (history.json / brain.json). Roda uma vez só: o resto vira 0. */
   function importLegacy({ history, brain } = {}) {
     flush();
@@ -281,7 +297,7 @@ function createMemory({ dir, now = Date.now, flushMs = 4000, cameraMaxBytes = 20
   return {
     ok: true,
     memory: {
-      addMinute, addEvent, addMachine, record, latest, list, minutes, events, camera, backupDaily, importLegacy, sizeBytes, flush,
+      addMinute, addEvent, addMachine, record, latest, list, minutes, events, camera, backupDaily, backup, file, importLegacy, sizeBytes, flush,
       setFlushMs(ms) { flushAtual = Math.max(1, Number(ms) || flushAtual); },
       getMeta(key) { const r = sql.getMeta.get(String(key)); return r ? r.value : null; },
       /** false se a gravação falhou (veja health()). */

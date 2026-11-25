@@ -162,6 +162,7 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
         emit({ settings: { ...settings } });
         return { ok: true, settings: { ...settings } };
       },
+      cortexExport: async () => ({ ok: true, file: 'nexo-cortex-memoria-demo.db' }),
       cortexApprove: async (inv) => answer(inv, true), cortexDeny: async (inv) => answer(inv, false),
       cortexRhythm: async () => ({ state: deep ? 'profundo' : 'leve', reason: deep ? 'o PC está parado há 12 min e sem jogo' : 'você está usando o PC', at: now, testando }),
       onCortexUpdate: (cb) => { listeners.add(cb); return () => listeners.delete(cb); }

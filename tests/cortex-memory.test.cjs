@@ -120,6 +120,24 @@ test('backup diário guarda só 3', async () => {
   memory.close();
 });
 
+test('backup(destino): cópia com as mesmas contagens, sem tocar a memória viva e sem escrever em cima dela', async () => {
+  const { memory, dir } = open();
+  memory.record('pensamento', { data: { t: 1 } });
+  memory.record('pensamento', { data: { t: 2 } });
+  const destino = path.join(dir, 'copia.db');
+  assert.equal(await memory.backup(destino), destino);
+  const { DatabaseSync } = require('node:sqlite');
+  const copia = new DatabaseSync(destino);
+  const viva = memory._db.prepare('SELECT COUNT(*) n FROM registros').get().n;
+  assert.equal(copia.prepare('SELECT COUNT(*) n FROM registros').get().n, viva);
+  copia.close();
+  assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith('.parcial')).length, 0, 'sem sobra de arquivo parcial');
+  await assert.rejects(memory.backup(memory.file), /memória viva/);
+  await assert.rejects(memory.backup(path.join(dir, 'nao-existe', 'x.db')));
+  assert.equal(memory._db.prepare('SELECT COUNT(*) n FROM registros').get().n, viva, 'a memória viva segue intacta');
+  memory.close();
+});
+
 test('importLegacy é idempotente', () => {
   const { memory } = open();
   const history = Array.from({ length: 100 }, (_, i) => minute(T0 - (i + 1) * MIN));
