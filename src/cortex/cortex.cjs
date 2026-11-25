@@ -24,9 +24,12 @@
  * pensa, 1 passo por investigação. Profundo: também mede e intervém, minera correlações 1x/dia, faz a cópia de
  * segurança e a limpeza da câmera (o dia é marcado antes: o que falhar só tenta de novo amanhã; ~2 min depois de abrir
  * o app a cópia também é feita se a última tiver mais de 24 h, mesmo sem profundo), e guarda referências dos testes (meta 'cortex.ref.<teste>', no máximo uma por tique
- * e só num tique sem outro passo andando, só de testes que nenhuma investigação aberta vai medir). Medir = 5 rodadas contra a referência; sem referência (ou com mais
+ * e só num tique sem outro passo andando, de todo teste do mapa que existe neste sistema, menos o ritmo de quadros, que
+ * só vale na abertura, e a rede, que depende do roteador e não do PC parado). Referência recusada (bateria, processador
+ * quente, outro programa usando o processador, teste que falhou) vai para o registro, no máximo 1 vez por dia por motivo
+ * (meta 'cortex.ref-recusa.<motivo>'). Medir = 5 rodadas contra a referência; sem referência (ou com mais
  * de 30 dias) as rodadas viram a referência e o resultado é 'sem-referencia' (o motor grava 'invalido', sem prova, e
- * não conta como feito: o mesmo teste é refeito depois, já com a referência).
+ * não conta como feito: o mesmo teste é refeito depois, já com a referência; como referência, não gasta o orçamento).
  * cancelActive(): o lab/benchmark/análise da pessoa corta o teste do Cortex. A fila de anomalias de eventos gravados
  * sobrevive a reiniciar (meta 'cortex.ultima-anomalia').
  * Configuração { permission, maxRisk, chosen } em memory.setMeta('cortex.config') e num registro 'ajuste' a cada escolha
@@ -75,8 +78,13 @@ const PLATFORM_BENCHES = { linux: ['single', 'multi', 'burst'] }; // no Linux o 
 // Ritmo de quadros: o trabalho por quadro é calibrado a cada abertura do app (main.cjs), então a referência dele só vale
 // na mesma abertura (e não entra nas referências guardadas por 30 dias).
 const RUN_SCOPED = new Set(['frames']);
-/** Falha antes de medir ou mexer em qualquer coisa: o PC não trabalhou, então não gasta o orçamento do dia. */
-function noCost(message) { const e = new Error(message); e.semCusto = true; return e; }
+// Testes que não viram referência guardada sozinhos: a rede mede o roteador (muda com quem mais está na rede).
+const NO_BACKGROUND_REF = new Set(['network']);
+/**
+ * Falha antes de medir ou mexer em qualquer coisa: o PC não trabalhou, então não gasta o orçamento do dia. `motivo`
+ * (bateria, quente, ocupado) marca um bloqueio passageiro: o mesmo teste dá certo depois.
+ */
+function noCost(message, motivo) { const e = new Error(message); e.semCusto = true; if (motivo) e.motivo = motivo; return e; }
 
 // ---------- regras puras (exportadas para os testes) ----------
 
@@ -335,18 +343,18 @@ function createCortex(deps = {}) {
    * gasta o orçamento (e a referência só espera, sem marcar o dia como falho).
    */
   async function guardMeasure() {
-    if (onBattery()) throw noCost('na bateria o Cortex não mede: espero o PC voltar para a tomada');
+    if (onBattery()) throw noCost('na bateria o Cortex não mede: espero o PC voltar para a tomada', 'bateria');
     if (typeof deps.sample !== 'function') return;
     const s = await Promise.resolve().then(deps.sample).catch(() => null);
-    if (s && s.onBattery) throw noCost('na bateria o Cortex não mede: espero o PC voltar para a tomada');
-    if (s && finite(s.tempC) && s.tempC >= HOT_C) throw noCost(`o processador está a ${Math.round(s.tempC)} °C; espero esfriar para medir (limite ${HOT_C} °C)`);
+    if (s && s.onBattery) throw noCost('na bateria o Cortex não mede: espero o PC voltar para a tomada', 'bateria');
+    if (s && finite(s.tempC) && s.tempC >= HOT_C) throw noCost(`o processador está a ${Math.round(s.tempC)} °C; espero esfriar para medir (limite ${HOT_C} °C)`, 'quente');
   }
 
   /** Rodadas do teste; null se cortadas (a pessoa voltou, o lab/benchmark/análise dela começou, ficou ocupado ou foi para a bateria). */
   async function rounds(mode) {
     const quiet = typeof deps.quiet === 'function' ? deps.quiet : async () => ({ ok: true });
     const calm = await quiet();
-    if (calm && calm.ok === false) throw noCost('outro programa estava usando o processador; a medição fica para depois');
+    if (calm && calm.ok === false) throw noCost('outro programa estava usando o processador; a medição fica para depois', 'ocupado');
     const out = [];
     const cut = async () => active.interrupted || !deep() || onBattery() || !!(await busy());
     for (let i = 0; i < BENCH_ROUNDS; i++) {
@@ -379,33 +387,41 @@ function createCortex(deps = {}) {
     return out;
   }
 
-  /** Testes que algum caminho do mapa manda medir (causa → bench:), sem os ajustes, que existem aqui e valem 30 dias. */
-  const measurable = () => [...new Set(map.edges().filter((e) => String(e.to).startsWith('bench:') && !String(e.from).startsWith('ajuste:')).map((e) => e.to.slice(6)))]
-    .filter((b) => Lab.BENCHES.includes(b) && benchesHere.includes(b) && !RUN_SCOPED.has(b));
-  /** Testes que uma investigação aberta vai medir: a referência deles não é feita agora (sairia "contaminada"). */
-  function benchesInUse() {
-    const used = new Set();
-    for (const r of memory.list('investigacao', { limit: 1000 })) {
-      if (memory.latest('conclusao', { inv: r.id })) continue;
-      for (const h of memory.list('hipotese', { inv: r.id, limit: 1000 })) for (const p of (h.data && h.data.predictions) || []) if (p.action === 'medir') used.add(String(p.target).slice(6));
-    }
-    return used;
+  /**
+   * Testes que um medir pode pedir: todo teste do mapa (causa → teste e ajuste → teste: o forjador prevê medir também o
+   * teste ligado a um ajuste), que existe aqui e vale 30 dias. Antes só entravam os de causa → teste, e burst, latency e
+   * timer nunca ganhavam referência.
+   */
+  const measurable = () => [...new Set(map.edges().flatMap((e) => [e.from, e.to]).filter((id) => String(id).startsWith('bench:')).map((id) => id.slice(6)))]
+    .filter((b) => Lab.BENCHES.includes(b) && benchesHere.includes(b) && !RUN_SCOPED.has(b) && !NO_BACKGROUND_REF.has(b))
+    .sort((a, b) => Lab.BENCHES.indexOf(a) - Lab.BENCHES.indexOf(b));
+  /** Referência recusada: o porquê vai para o registro, no máximo 1 vez por dia por motivo (mesmo reabrindo o app). */
+  function refusedRef(e, fallback = 'falhou') {
+    const motivo = (e && e.motivo) || fallback;
+    const key = `cortex.ref-recusa.${motivo}`;
+    const day = today();
+    if (memory.getMeta(key) === day) return;
+    memory.setMeta(key, day);
+    log('referencia', `referência não feita: ${(e && e.message) || e}`, 'aviso');
   }
-  /** No profundo, uma referência por tique: a que falta ou está velha, de um teste que nenhuma investigação aberta mede. */
+  /**
+   * No profundo, uma referência por tique: a que falta ou está velha. Também a de um teste que uma investigação aberta
+   * vai medir: qualquer referência feita depois da anomalia vale o mesmo que a primeira medição dela (que viraria a
+   * referência), e esperar por ela prendia a referência para sempre quando a investigação só esperava.
+   */
   async function buildReference() {
     if (active || !deep() || await busy()) return;
-    const used = benchesInUse();
     const day = today();
-    const mode = measurable().find((b) => !used.has(b) && !freshRef(readRef(b), b) && memory.getMeta(`cortex.ref-falhou.${b}`) !== day);
+    const mode = measurable().find((b) => !freshRef(readRef(b), b) && memory.getMeta(`cortex.ref-falhou.${b}`) !== day);
     if (!mode) return;
-    try { await guardMeasure(); } catch (_) { return; } // na bateria ou quente: espera, sem marcar o dia
+    try { await guardMeasure(); } catch (e) { refusedRef(e); return; } // na bateria ou quente: espera, sem marcar o dia
     active = { type: 'referencia', interrupted: false };
     try {
       const values = await rounds(mode);
       if (values) writeRef(mode, values);
     } catch (e) {
       if (!e.semCusto) memory.setMeta(`cortex.ref-falhou.${mode}`, day); // o teste falhou de verdade: tenta de novo amanhã
-      log('referencia', e, 'aviso');
+      refusedRef(e, e && e.motivo ? null : `falhou.${mode}`);
     } finally { active = null; }
   }
 
@@ -472,7 +488,8 @@ function createCortex(deps = {}) {
     active = { type: a.type, interrupted: false };
     try {
       const o = a.type === 'medir' ? await measure(a.target) : await intervene(a);
-      if (o && o.observed !== 'interrompido') spendActive();
+      // Interrompido não mediu; 'sem-referencia' virou a referência do teste (referências não contam no orçamento).
+      if (o && o.observed !== 'interrompido' && o.observed !== 'sem-referencia') spendActive();
       return o;
     } catch (e) {
       if (!active.interrupted && !(e && e.semCusto)) spendActive(); // falhou depois de começar: o PC trabalhou

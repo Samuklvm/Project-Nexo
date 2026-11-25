@@ -333,10 +333,11 @@ test('medir compara com a referência guardada do teste: sem referência (ou vel
   assert.ok(t.env.bench.every((m) => m === 'single'));
   assert.equal(o.observed, 'desce');
   assert.equal(o.significant, true);
-  assert.equal(t.cortex.stats().ativosHoje, 2);
+  // A medição que virou referência não gasta o orçamento (as referências não contam nele); a comparação gasta.
+  assert.equal(t.cortex.stats().ativosHoje, 1);
   // Reiniciou o app: o contador continua.
   const again = setup({ memory: { ok: true, memory: t.memory }, clock });
-  assert.equal(again.cortex.stats().ativosHoje, 2);
+  assert.equal(again.cortex.stats().ativosHoje, 1);
   // Meia-noite local: zera.
   const next = new Date(T0); next.setDate(next.getDate() + 1); next.setHours(0, 5, 0, 0);
   clock.t = next.getTime();
@@ -349,7 +350,7 @@ test('medir compara com a referência guardada do teste: sem referência (ou vel
   assert.equal(JSON.parse(t.memory.getMeta('cortex.ref.single')).at, T0 + 31 * DAY);
 });
 
-test('referências no profundo: só dos testes que nenhuma investigação aberta vai medir; interrompidas não ficam', async () => {
+test('referências no profundo: só num tique sem passo andando; interrompidas não ficam', async () => {
   const t = setup();
   t.cortex.observeEvent(lentidao(T0)); // investigação de cpu: mede bench:multi e bench:single
   await t.cortex.tick();
@@ -358,16 +359,15 @@ test('referências no profundo: só dos testes que nenhuma investigação aberta
   await t.cortex.tick();
   assert.deepEqual(t.env.bench, [], 'fez referência num tique que ainda tinha passo');
   assert.ok(await tickUntil(t, () => t.env.bench.length > 0), 'nunca fez referência');
-  const refs = ['single', 'multi', 'disk', 'memory', 'frames'].filter((b) => t.memory.getMeta(`cortex.ref.${b}`));
+  const refs = Lab.BENCHES.filter((b) => t.memory.getMeta(`cortex.ref.${b}`));
   assert.ok(refs.length >= 1, 'nenhuma referência no profundo');
-  assert.ok(!refs.includes('multi') && !refs.includes('single'), `referência de teste com investigação aberta: ${refs}`);
   // Cancelada no meio (a pessoa abriu o lab): nada é guardado.
   const u = setup();
   await goDeep(u);
   u.env.onBench = async (n) => { if (n === 2) assert.equal(u.cortex.cancelActive(), true); };
   await u.cortex.tick();
   assert.equal(u.env.bench.length, 2);
-  assert.ok(!['single', 'multi', 'disk', 'memory', 'frames'].some((b) => u.memory.getMeta(`cortex.ref.${b}`)), 'guardou referência interrompida');
+  assert.ok(!Lab.BENCHES.some((b) => u.memory.getMeta(`cortex.ref.${b}`)), 'guardou referência interrompida');
   // Ocupado: nem começa.
   const w = setup();
   await goDeep(w);
@@ -892,4 +892,62 @@ test('P2: investigação em espera + profundo + referência pronta → roda medi
   assert.ok(t.env.bench.length >= 5, `rodadas: ${t.env.bench.length}`);
   assert.ok(!experiments(t.memory).some((e) => e.prev === waiting.id), 'a espera foi cancelada');
   assert.equal(t.cortex.list({ limit: 5 })[0].status, 'esperando');
+});
+
+test('P3: no profundo todas as referências que faltam são feitas, uma por tique ocioso, mesmo as de testes que uma investigação aberta vai medir', async () => {
+  const t = setup();
+  t.cortex.observeEvent(lentidao(T0)); // investigação de cpu (prevê medir bench:multi e bench:single)
+  assert.ok(await tickUntil(t, () => experiments(t.memory).some((e) => e.data.status === 'esperando')), 'não chegou a esperar a repetição');
+  // Orçamento do dia já gasto: a investigação não mede; só as referências (que não contam no orçamento) andam.
+  const d = new Date(T0);
+  t.memory.setMeta('cortex.ativos', JSON.stringify({ dia: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`, n: 3 }));
+  await goDeep(t);
+  const want = ['single', 'multi', 'burst', 'latency', 'timer', 'memory', 'disk'];
+  const has = (b) => !!t.memory.getMeta(`cortex.ref.${b}`);
+  const perTick = [];
+  for (let i = 0; i < 20 && !want.every(has); i++) { const before = t.env.bench.length; t.clock.t += 15000; await t.cortex.tick(); perTick.push(t.env.bench.length - before); }
+  assert.deepEqual(want.filter((b) => !has(b)), [], `faltaram referências; testes rodados: ${[...new Set(t.env.bench)]}`);
+  assert.ok(perTick.every((n) => n <= 5), `mais de uma referência num tique: ${perTick}`);
+  // Ritmo de quadros é da abertura (não vira referência de 30 dias); a rede depende do roteador, não do PC parado.
+  assert.ok(!has('frames') && !has('network'), 'guardou referência de quadros ou de rede');
+  assert.ok(!experiments(t.memory).some((e) => e.data.action.type === 'medir'), 'mediu com o orçamento gasto');
+  // No Linux só os testes de processador.
+  const u = setup({ platform: 'linux' });
+  await goDeep(u);
+  for (let i = 0; i < 10; i++) { u.clock.t += 15000; await u.cortex.tick(); }
+  assert.deepEqual(Lab.BENCHES.filter((b) => u.memory.getMeta(`cortex.ref.${b}`)).sort(), ['burst', 'multi', 'single']);
+});
+
+test('P3: referência recusada (quente, bateria, processador ocupado) vai para o registro com source cortex, no máximo 1 vez por dia por motivo', async () => {
+  const t = setup();
+  await goDeep(t);
+  t.env.tempC = 91;
+  const refusals = () => t.env.logs.filter((l) => l.source === 'cortex' && l.context && l.context.etapa === 'referencia');
+  for (let i = 0; i < 8; i++) { t.clock.t += 5 * MIN; await t.cortex.checkRhythm(); await t.cortex.tick(); }
+  assert.deepEqual(t.env.bench, [], 'mediu quente');
+  assert.equal(refusals().length, 1, JSON.stringify(refusals()));
+  assert.match(refusals()[0].message, /91 °C/);
+  // Outro motivo no mesmo dia: mais um registro (e só um).
+  t.env.tempC = 50;
+  t.env.battery = true;
+  for (let i = 0; i < 4; i++) { t.clock.t += 5 * MIN; await t.cortex.tick(); }
+  assert.equal(refusals().length, 2, JSON.stringify(refusals()));
+  assert.match(refusals()[1].message, /bateria/);
+  // Outro programa usando o processador (quiet() recusa).
+  t.env.battery = false;
+  const v = setup({ clock: t.clock });
+  await goDeep(v);
+  const quietCortex = Cortex.createCortex({ memory: { ok: true, memory: v.memory }, platform: 'win32', rhythm: createRhythm(), now: () => v.clock.t,
+    idleSec: () => 700, gameInForeground: async () => false, bench: async () => 100, quiet: async () => ({ ok: false }), log: (e) => v.env.logs.push(e) });
+  await quietCortex.checkRhythm(); await quietCortex.checkRhythm();
+  for (let i = 0; i < 4; i++) { v.clock.t += 5 * MIN; await quietCortex.tick(); }
+  const q = v.env.logs.filter((l) => l.context && l.context.etapa === 'referencia');
+  assert.equal(q.length, 1, JSON.stringify(q));
+  assert.match(q[0].message, /outro programa/);
+  // No dia seguinte o mesmo motivo é registrado de novo.
+  t.env.tempC = 91;
+  t.clock.t += DAY;
+  await goDeep(t);
+  await t.cortex.tick();
+  assert.equal(refusals().length, 3);
 });
