@@ -195,7 +195,7 @@
     const tests = on && Number.isFinite(stats.ativosHoje) ? stats.ativosHoje : NaN;
     const num = (v, digits = 0) => (Number.isFinite(v) ? v.toFixed(digits).replace('.', ',') : '--');
     host.innerHTML = `${corners()}
-      <div class="cx-stat"><b>${num(mb, mb < 10 ? 1 : 0)}<small> MB</small></b><span>de memória guardada</span></div>
+      <div class="cx-stat"><b>${num(mb, mb < 10 ? 1 : 0)}<small> MB</small></b><span>no disco, com as cópias</span></div>
       <div class="cx-stat"><b>${num(days)}</b><span>${days === 1 ? 'dia de memória' : 'dias de memória'}</span></div>
       <div class="cx-stat"><b>${num(proven)}</b><span>${proven === 1 ? 'relação provada neste PC' : 'relações provadas neste PC'}</span></div>
       <div class="cx-stat"><b>${num(tests)}<small> / 3</small></b><span>testes sozinho hoje</span></div>

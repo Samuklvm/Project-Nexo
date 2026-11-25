@@ -264,3 +264,93 @@ test('erro que não é corrupção (não abre) deixa o arquivo quieto', async ()
   assert.ok(fs.statSync(path.join(dir, 'memoria.db')).isDirectory());
   assert.ok(!fs.readdirSync(dir).some((f) => /corrompido/.test(f)));
 });
+
+test('restauração não perde nada: copia o backup antes, guarda o corrompido com o -wal e o -shm, e tenta do backup mais novo ao mais antigo', async () => {
+  const { memory, dir, clock } = open();
+  memory.record('pensamento', { data: { t: 'antigo' } });
+  await memory.backupDaily();
+  clock.t += DAY;
+  memory.record('pensamento', { data: { t: 'novo' } });
+  await memory.backupDaily();
+  memory.close();
+  const backups = fs.readdirSync(path.join(dir, 'backups')).sort();
+  assert.equal(backups.length, 2);
+  // O backup mais novo também estragou: vale o anterior.
+  fs.writeFileSync(path.join(dir, 'backups', backups[1]), 'lixo '.repeat(1000));
+  const junk = 'lixo '.repeat(1000);
+  fs.writeFileSync(path.join(dir, 'memoria.db'), junk);
+  for (const ext of ['-wal', '-shm']) fs.rmSync(path.join(dir, 'memoria.db' + ext), { force: true });
+  const r = createMemory({ dir, now: () => clock.t });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.memory.latest('pensamento', {}).data.t, 'antigo');
+  const names = fs.readdirSync(dir);
+  const base = names.find((f) => /^memoria\.corrompido-\d+\.db$/.test(f));
+  assert.ok(base, names.join(', '));
+  assert.equal(fs.readFileSync(path.join(dir, base), 'utf8'), junk, 'o corrompido fica guardado como estava');
+  assert.ok(!names.some((f) => f.includes('restaurando')), 'sem sobra da cópia de restauração');
+  r.memory.close();
+});
+
+test('restauração sem nenhum backup bom: o arquivo estragado fica como estava', async () => {
+  const { memory, dir } = open();
+  await memory.backupDaily();
+  memory.close();
+  for (const f of fs.readdirSync(path.join(dir, 'backups'))) fs.writeFileSync(path.join(dir, 'backups', f), 'lixo '.repeat(1000));
+  const junk = 'lixo do arquivo vivo '.repeat(100);
+  fs.writeFileSync(path.join(dir, 'memoria.db'), junk);
+  for (const ext of ['-wal', '-shm']) fs.rmSync(path.join(dir, 'memoria.db' + ext), { force: true });
+  const r = createMemory({ dir, now: () => T0 });
+  assert.equal(r.ok, false);
+  assert.equal(fs.readFileSync(path.join(dir, 'memoria.db'), 'utf8'), junk, 'não mexeu no arquivo estragado');
+  assert.ok(!fs.readdirSync(dir).some((f) => /corrompido|restaurando/.test(f)));
+});
+
+test('minuto sem hora de verdade (null, vazio, 0 ou antes de 2020) não entra, nem pela importação', () => {
+  const { memory } = open();
+  for (const t of [null, '', 0, undefined, Date.UTC(2019, 11, 31)]) memory.addMinute({ ...minute(T0), t });
+  memory.flush();
+  assert.equal(memory._db.prepare('SELECT COUNT(*) n FROM minutos').get().n, 0);
+  const r = memory.importLegacy({ history: [{ ...minute(0), t: null }, { ...minute(0), t: '' }, minute(0), minute(Date.UTC(2019, 0, 1)), minute(T0 - MIN)] });
+  assert.equal(r.imported, 1);
+  assert.equal(memory._db.prepare('SELECT MIN(t) t FROM minutos').get().t, T0 - MIN);
+  memory.close();
+});
+
+test('importLegacy: se o cérebro antigo não grava, nada é importado nem marcado (tenta de novo depois)', () => {
+  const { memory } = open();
+  const history = Array.from({ length: 10 }, (_, i) => minute(T0 - (i + 1) * MIN));
+  const bad = memory.importLegacy({ history, brain: { x: 1n } }); // BigInt: a gravação do registro falha
+  assert.equal(bad.ok, false);
+  assert.equal(memory.getMeta('legado_importado'), null);
+  assert.equal(memory._db.prepare('SELECT COUNT(*) n FROM minutos').get().n, 0);
+  assert.equal(memory.importLegacy({ history, brain: { x: 1 } }).imported, 10);
+  assert.equal(memory.list('ajuste', {}).length, 1);
+  memory.close();
+});
+
+test('eventos: order "desc" traz os mais novos primeiro (o limite corta os mais antigos)', () => {
+  const { memory } = open();
+  for (let i = 0; i < 5; i++) memory.addEvent({ kind: 'lentidao', at: T0 + i * MIN, data: { i } });
+  assert.deepEqual(memory.events({ kind: 'lentidao', limit: 2 }).map((e) => e.data.i), [0, 1]);
+  assert.deepEqual(memory.events({ kind: 'lentidao', limit: 2, order: 'desc' }).map((e) => e.data.i), [4, 3]);
+  memory.close();
+});
+
+test('câmera: sessões com mais de 7 dias saem; teto padrão de 50 MB; uso em disco conta o banco, o -wal e as cópias', async () => {
+  const { CAMERA_MAX_BYTES, CAMERA_MAX_AGE_MS } = require('../src/cortex/memory.cjs');
+  assert.equal(CAMERA_MAX_BYTES, 50 * 1024 * 1024);
+  assert.equal(CAMERA_MAX_AGE_MS, 7 * DAY);
+  const { memory, dir, clock } = open();
+  memory.camera.put('velha', [{ t: T0 - 8 * DAY, cpu: 1 }, { t: T0 - 8 * DAY + MIN, cpu: 2 }]);
+  memory.camera.put('nova', [{ t: T0 - DAY, cpu: 3 }]);
+  memory.camera.prune();
+  const sessions = memory._db.prepare('SELECT DISTINCT session s FROM camera').all().map((r) => r.s);
+  assert.deepEqual(sessions, ['nova']);
+  const live = memory.sizeBytes();
+  await memory.backupDaily();
+  const backup = fs.readdirSync(path.join(dir, 'backups')).reduce((n, f) => n + fs.statSync(path.join(dir, 'backups', f)).size, 0);
+  assert.ok(backup > 0);
+  assert.ok(memory.diskBytes() >= live + backup, `${memory.diskBytes()} < ${live} + ${backup}`);
+  assert.equal(memory.lastBackupAt(), clock.t);
+  memory.close();
+});

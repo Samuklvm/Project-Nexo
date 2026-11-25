@@ -781,3 +781,69 @@ test('estatísticas para a página do Cortex: desde quando há memória e quanta
   await t.cortex.tick();
   assert.equal(t.cortex.stats().provadas, 1);
 });
+
+test('trabalho diário que falha não é refeito a cada tique: o dia é marcado antes de rodar', async () => {
+  const base = setup();
+  let backups = 0;
+  const broken = { ...base.memory, backupDaily: async () => { backups += 1; throw new Error('disco cheio'); } };
+  const t = setup({ memory: { ok: true, memory: broken }, clock: base.clock });
+  await goDeep(t);
+  for (let i = 0; i < 4; i++) { t.clock.t += 15000; await t.cortex.tick(); }
+  assert.equal(backups, 1, `cópias tentadas: ${backups}`);
+  assert.ok(t.env.logs.some((l) => /disco cheio/.test(l.message)));
+  // No dia seguinte tenta de novo.
+  t.clock.t += DAY;
+  await goDeep(t);
+  await t.cortex.tick();
+  assert.equal(backups, 2);
+});
+
+test('cópia de segurança também sem profundo: ~2 min depois de abrir, se a última tiver mais de 24 h (Wayland não diz o primeiro plano)', async () => {
+  const dir = tmp();
+  const make = () => {
+    const t = setup({ dir });
+    return t;
+  };
+  const t = make();
+  const c = Cortex.createCortex({ memory: { ok: true, memory: t.memory }, rhythm: createRhythm(), now: () => t.clock.t, platform: 'win32', backupDelayMs: 5, log: (e) => t.env.logs.push(e) });
+  await c.start();
+  await new Promise((r) => setTimeout(r, 60));
+  c.stop();
+  assert.equal(t.memory.lastBackupAt(), T0, 'não fez a cópia ao abrir');
+  assert.equal(fs.readdirSync(path.join(dir, 'backups')).length, 1);
+  // Aberto de novo 1 h depois: a cópia ainda é nova, nada a fazer.
+  t.clock.t = T0 + 60 * MIN;
+  let calls = 0;
+  const spy = { ...t.memory, backupDaily: async () => { calls += 1; return null; } };
+  const d = Cortex.createCortex({ memory: { ok: true, memory: spy }, rhythm: createRhythm(), now: () => t.clock.t, platform: 'win32', backupDelayMs: 5 });
+  await d.start();
+  await new Promise((r) => setTimeout(r, 60));
+  d.stop();
+  assert.equal(calls, 0);
+});
+
+test('lembrar usa as lentidões mais recentes dos 30 dias (não as 500 mais antigas)', async () => {
+  const t = setup();
+  // 520 lentidões de cpu antigas, sem minutos guardados em volta.
+  for (let i = 0; i < 520; i++) t.memory.addEvent({ kind: 'lentidao', at: T0 - 25 * DAY + i * MIN, data: { kind: 'cpu', start: T0 - 25 * DAY + i * MIN - 10 * MIN, end: T0 - 25 * DAY + i * MIN, peak: 90 } });
+  for (let d = 3; d >= 0; d--) {
+    const start = T0 - d * DAY - 10 * MIN;
+    for (let m = -80; m <= 10; m++) {
+      const at = start + m * MIN;
+      const hot = m >= -5 && m <= 10;
+      t.cortex.observeMinute({ t: at, cpu: m >= 0 ? 95 : 20, mem: 40, disk: 2, gpu: 5, temp: 45, cpuTemp: hot ? 88 : 55 + (m % 3), clock: 4000, clockRatio: 0.98, culprit: null });
+    }
+    if (d > 0) t.memory.addEvent({ kind: 'lentidao', at: start + 10 * MIN, data: { kind: 'cpu', start, end: start + 10 * MIN, peak: 95 } });
+  }
+  const o = await t.cortex._act({ type: 'lembrar', target: 'temp_cpu', cost: 0.05, risk: 'nenhum' }, { inv: null, symptom: 'cpu', anomaly: { symptom: 'cpu', window: { from: T0 - 10 * MIN, to: T0 } } });
+  assert.equal(o.observed, 'antes');
+  assert.equal(o.significant, true, 'as lentidões recentes não entraram');
+});
+
+test('estatísticas: o uso de memória é o total em disco (banco, -wal e cópias)', async () => {
+  const t = setup();
+  t.memory.record('pensamento', { data: { t: 1 } });
+  await t.memory.backupDaily();
+  assert.equal(t.cortex.stats().memoria.bytes, t.memory.diskBytes());
+  assert.ok(t.cortex.stats().memoria.bytes > t.memory.sizeBytes());
+});

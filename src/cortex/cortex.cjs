@@ -22,7 +22,8 @@
  * "não sei", espera 10 min para perguntar de novo, até a pessoa mexer); no profundo checa a
  * ociosidade a cada 5 s e o primeiro plano a cada 30 s. Leve: grava, abre/anexa, forja, lembra (consultas com limite) e
  * pensa, 1 passo por investigação. Profundo: também mede e intervém, minera correlações 1x/dia, faz a cópia de
- * segurança e a limpeza da câmera, e guarda referências dos testes (meta 'cortex.ref.<teste>', no máximo uma por tique
+ * segurança e a limpeza da câmera (o dia é marcado antes: o que falhar só tenta de novo amanhã; ~2 min depois de abrir
+ * o app a cópia também é feita se a última tiver mais de 24 h, mesmo sem profundo), e guarda referências dos testes (meta 'cortex.ref.<teste>', no máximo uma por tique
  * e só num tique sem outro passo andando, só de testes que nenhuma investigação aberta vai medir). Medir = 5 rodadas contra a referência; sem referência (ou com mais
  * de 30 dias) as rodadas viram a referência e o resultado é 'sem-referencia' (o motor grava 'invalido', sem prova, e
  * não conta como feito: o mesmo teste é refeito depois, já com a referência).
@@ -61,6 +62,7 @@ const FG_DEEP_MS = 30000; // no profundo, o primeiro plano (PowerShell) só a ca
 const FG_LEVE_BACKOFF_MS = 10 * MIN;
 const QUEUE_KINDS = ['lentidao', 'sessao']; // eventos que viram anomalia (e são relidos depois de reiniciar)
 const MINE_DAYS = 14;
+const BACKUP_LATE_MS = 2 * MIN; // depois de abrir: cópia de segurança se a última tiver mais de 24 h (só disco)
 const QUEUE_MAX = 50;
 const LOG_QUIET_MS = 10 * MIN; // o mesmo erro da mesma etapa não enche o registro (o profundo checa a cada 5 s)
 const PERMISSIONS = ['observar', 'pedir', 'sozinho'];
@@ -257,10 +259,11 @@ function createCortex(deps = {}) {
     const out = [];
     const win = anomaly && anomaly.window;
     if (win && finite(win.from) && finite(win.to)) out.push({ from: Math.max(win.from, win.to - WINDOW_MAX_MIN * MIN), to: win.to, current: true });
-    const past = memory.events({ kind: 'lentidao', from: t - 30 * DAY, to: t, limit: 500 })
+    // As 500 mais novas dos 30 dias (da mais nova para a mais antiga).
+    const past = memory.events({ kind: 'lentidao', from: t - 30 * DAY, to: t, limit: 500, order: 'desc' })
       .filter((e) => e.data && symptomOfEpisode(e.data) === symptom && finite(e.data.start) && finite(e.data.end))
       .map((e) => ({ from: Math.max(e.data.start, e.data.end - WINDOW_MAX_MIN * MIN), to: e.data.end, culprit: e.data.culprit || null }));
-    for (const ep of past.reverse()) {
+    for (const ep of past) {
       if (out.length >= EPISODES_MAX) break;
       if (out.some((o) => Math.abs(o.to - ep.to) < 5 * MIN)) continue; // a própria lentidão atual
       out.push(ep);
@@ -656,26 +659,44 @@ function createCortex(deps = {}) {
   let ticking = false;
   const lastStatus = new Map();
 
-  async function daily() {
+  /*
+   * Trabalho de uma vez por dia. O dia é marcado ANTES de rodar (no meta e aqui, se o meta não gravar): o que falhar
+   * vai para o registro e só tenta de novo amanhã, em vez de a cada tique de 15 s.
+   */
+  const triedToday = new Map();
+  async function onceToday(key, etapa, fn) {
     const day = today();
-    if (memory.getMeta('cortex.correlacoes') !== day) {
-      const t = now();
-      const rows = memory.minutes({ from: t - MINE_DAYS * DAY, to: t, limit: MINE_DAYS * 1440 });
-      const fresh = Relations.mineCorrelations(rows, map.edges());
-      const open = new Set(memory.list('investigacao', { limit: 1000 }).filter((r) => !memory.latest('conclusao', { inv: r.id })).map((r) => r.data && r.data.symptom));
-      for (const edge of fresh) {
-        if (!(memory.record('relacao', { data: { edgeId: edge.id, kind: 'correlacao', at: t, edge } }) > 0)) { log('correlacoes', 'relação nova não gravou'); continue; }
-        // Curiosidade: o padrão sem explicação vira pergunta (se já houver uma investigação do sintoma, ela usa o mapa novo).
-        if (!open.has(edge.to)) enqueue({ kind: 'curiosidade', symptom: edge.to, at: t, window: { from: t - MINE_DAYS * DAY, to: t }, data: { edgeId: edge.id, lag: edge.lag, r: edge.weight } });
-      }
-      syncMap();
-      memory.setMeta('cortex.correlacoes', day);
+    if (triedToday.get(key) === day || memory.getMeta(key) === day) return;
+    triedToday.set(key, day);
+    memory.setMeta(key, day);
+    await call(etapa, fn, null);
+  }
+
+  async function daily() {
+    await onceToday('cortex.correlacoes', 'correlacoes', mine);
+    await onceToday('cortex.manutencao', 'manutencao', async () => { memory.camera.prune(); await memory.backupDaily(); });
+  }
+
+  /** Correlações novas dos últimos 14 dias viram relações (e as sem explicação, curiosidades). */
+  function mine() {
+    const t = now();
+    const rows = memory.minutes({ from: t - MINE_DAYS * DAY, to: t, limit: MINE_DAYS * 1440 });
+    const fresh = Relations.mineCorrelations(rows, map.edges());
+    const open = new Set(memory.list('investigacao', { limit: 1000 }).filter((r) => !memory.latest('conclusao', { inv: r.id })).map((r) => r.data && r.data.symptom));
+    for (const edge of fresh) {
+      if (!(memory.record('relacao', { data: { edgeId: edge.id, kind: 'correlacao', at: t, edge } }) > 0)) { log('correlacoes', 'relação nova não gravou'); continue; }
+      // Curiosidade: o padrão sem explicação vira pergunta (se já houver uma investigação do sintoma, ela usa o mapa novo).
+      if (!open.has(edge.to)) enqueue({ kind: 'curiosidade', symptom: edge.to, at: t, window: { from: t - MINE_DAYS * DAY, to: t }, data: { edgeId: edge.id, lag: edge.lag, r: edge.weight } });
     }
-    if (memory.getMeta('cortex.manutencao') !== day) {
-      await memory.backupDaily();
-      memory.camera.prune();
-      memory.setMeta('cortex.manutencao', day);
-    }
+    syncMap();
+  }
+
+  /** Cópia de segurança sem esperar o profundo (no Wayland o primeiro plano é "não sei" e o profundo nunca vem). */
+  async function backupIfStale() {
+    const last = typeof memory.lastBackupAt === 'function' ? memory.lastBackupAt() : null;
+    if (finite(last) && now() - last < DAY) return;
+    memory.camera.prune(); // a câmera vai dentro da cópia: poda antes
+    await memory.backupDaily();
   }
 
   async function tick() {
@@ -765,7 +786,9 @@ function createCortex(deps = {}) {
       const first = memory.minutes({ limit: 1 })[0];
       safe('mapa', syncMap, null);
       const provadas = map.edges().filter((e) => map.state(e.id) === 'apoiada').length;
-      return { ativo: true, ritmo: rhythm.state(), motivo: lastRhythm.reason, memoria: { bytes: memory.sizeBytes(), saude: memory.health() },
+      // Uso total em disco (o banco, o -wal e as cópias de segurança), não só o arquivo vivo.
+      const bytes = typeof memory.diskBytes === 'function' ? memory.diskBytes() : memory.sizeBytes();
+      return { ativo: true, ritmo: rhythm.state(), motivo: lastRhythm.reason, memoria: { bytes, saude: memory.health() },
         investigacoes: { abertas, aguardando, concluidas }, ativosHoje: activeToday(), testando: active ? active.type : null, config: settings(),
         desde: first && finite(first.t) ? first.t : null, provadas };
     }, { ativo: true, ritmo: rhythm.state(), motivo: lastRhythm.reason, erro: 'não consegui ler a memória agora' });
@@ -864,7 +887,10 @@ function createCortex(deps = {}) {
       }, null);
     }
     await call('retomar', () => engine.resume(), []);
-    if (withTimers && !running) { running = true; loopRhythm(); loopTick(); }
+    if (withTimers && !running) {
+      running = true; loopRhythm(); loopTick();
+      later(() => call('copia', backupIfStale, null), finite(deps.backupDelayMs) ? deps.backupDelayMs : BACKUP_LATE_MS);
+    }
   }
 
   /** O lab, o benchmark ou a análise profunda da pessoa vão começar: corta o teste do Cortex (não vira prova). */
