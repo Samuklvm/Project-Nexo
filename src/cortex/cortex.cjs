@@ -702,8 +702,13 @@ function createCortex(deps = {}) {
         const s = statusOf(r.id).status;
         if (s === 'concluida') concluidas += 1; else if (s === 'aguardando') aguardando += 1; else abertas += 1;
       }
+      // desde: o primeiro minuto guardado (dias de memória na página); provadas: ligações que um experimento apoiou aqui.
+      const first = memory.minutes({ limit: 1 })[0];
+      safe('mapa', syncMap, null);
+      const provadas = map.edges().filter((e) => map.state(e.id) === 'apoiada').length;
       return { ativo: true, ritmo: rhythm.state(), motivo: lastRhythm.reason, memoria: { bytes: memory.sizeBytes(), saude: memory.health() },
-        investigacoes: { abertas, aguardando, concluidas }, ativosHoje: activeToday(), testando: active ? active.type : null, config: settings() };
+        investigacoes: { abertas, aguardando, concluidas }, ativosHoje: activeToday(), testando: active ? active.type : null, config: settings(),
+        desde: first && finite(first.t) ? first.t : null, provadas };
     }, { ativo: true, ritmo: rhythm.state(), motivo: lastRhythm.reason, erro: 'não consegui ler a memória agora' });
   }
 

@@ -650,3 +650,21 @@ test('host: com a sonda de sessão mandando amostras recentes, o primeiro plano 
   assert.equal(await game(), false);
   assert.equal(queries, 2);
 });
+
+test('estatísticas para a página do Cortex: desde quando há memória e quantas relações já foram provadas aqui', async () => {
+  const t = setup();
+  const s0 = t.cortex.stats();
+  assert.equal(s0.desde, null, 'sem nenhum minuto gravado não há "desde"');
+  assert.equal(s0.provadas, 0);
+  t.cortex.observeMinute({ t: T0 - 3 * DAY, cpu: 10, mem: 30 });
+  t.cortex.observeMinute({ t: T0, cpu: 12, mem: 31 });
+  assert.equal(t.cortex.stats().desde, T0 - 3 * DAY);
+  // Um experimento a favor numa ligação da semente: ela vira "apoiada" (provada nesta máquina).
+  assert.ok(t.memory.record('relacao', { data: { edgeId: 'temp_cpu>clock_queda', kind: 'experimento-a-favor', at: T0, inv: null } }) > 0);
+  await t.cortex.tick();
+  assert.equal(t.cortex.stats().provadas, 1);
+  // Derrubada não conta como provada.
+  assert.ok(t.memory.record('relacao', { data: { edgeId: 'cpu>travadas', kind: 'experimento-contra', at: T0, inv: null } }) > 0);
+  await t.cortex.tick();
+  assert.equal(t.cortex.stats().provadas, 1);
+});
