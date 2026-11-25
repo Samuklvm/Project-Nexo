@@ -24,6 +24,10 @@
  *   conclusao     { verdict: { status, winner, refuted }, missing, leading, events }  (events = os EdgeEvent abaixo)
  *   relacao       EdgeEvent { edgeId, kind, at, inv }       o motor só grava; quem chama aplica no mapa (map.apply)
  *
+ * Esperar a lentidão repetir não prende a investigação: enquanto espera, cada passo ainda procura um teste ativo útil
+ * (medir/intervir com ganho >= MIN_GAIN, dentro do ritmo, da permissão e do orçamento) e o faz sem cancelar a espera.
+ * No profundo o tempo do PC parado é o recurso escasso; no leve o teste fica bloqueado e a investigação só espera.
+ *
  * step(inv) → 'continua' | 'aguardando' (pedido de autorização) | 'esperando-repetir' (esperar sem resultado ainda) |
  *             'pausada' (o planejador mandou esperar: ritmo leve, bateria, orçamento) | 'concluida' |
  *             'falha-gravacao' (a loja não gravou: o passo para ali, sem gravar mais nada; tenta de novo depois).
@@ -348,17 +352,35 @@
       const s = load(inv);
       if (!s) throw new Error(`investigação desconhecida: ${inv}`);
       if (s.concluded) return 'concluida';
-      if (s.waiting) return 'esperando-repetir';
+      // Um pedido feito durante a espera (teste ativo que precisa de autorização) também segura a investigação.
       if (s.pending) return 'aguardando';
+      if (s.waiting) return testWhileWaiting(s);
       // O app pode ter fechado entre a última crença e a conclusão.
       const settled = settle(s);
       if (settled) return settled;
 
-      const base = (typeof ctx === 'function' ? ctx() : ctx) || {};
-      const c = { ...base, done: [...(base.done || []), ...s.done, ...s.denied] };
+      const c = planCtx(s);
       const choice = Planner.choose(s.hyps, s.beliefs, c);
       if (choice.need) return giveUp(s, choice.need);
       if (choice.stop) return pause(s, choice.stop);
+      const a = choice.action;
+      if (choice.needsApproval && !s.approved.has(idOf(a.type, a.target))) return ask(s, a);
+      return run(s, a);
+    }
+
+    function planCtx(s, extra = {}) {
+      const base = (typeof ctx === 'function' ? ctx() : ctx) || {};
+      return { ...base, ...extra, done: [...(base.done || []), ...s.done, ...s.denied, ...(extra.done || [])] };
+    }
+
+    /**
+     * Em espera: só um teste ativo útil (a espera continua de pé e o resultado dela chega pelo attach). Sem teste
+     * possível agora (leve, bateria, orçamento) ou que valha a pena, só espera, sem narrar pausa nem desistir.
+     */
+    async function testWhileWaiting(s) {
+      const w = s.waiting.data.action;
+      const choice = Planner.choose(s.hyps, s.beliefs, planCtx(s, { types: ['medir', 'intervir'], done: [idOf(w.type, w.target)] }));
+      if (!choice.action) return 'esperando-repetir';
       const a = choice.action;
       if (choice.needsApproval && !s.approved.has(idOf(a.type, a.target))) return ask(s, a);
       return run(s, a);

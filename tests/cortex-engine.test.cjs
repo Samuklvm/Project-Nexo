@@ -201,13 +201,17 @@ test('nenhum registro é sobrescrito: a loja só cresce e os dados gravados não
 test('esperar sem resultado: esperando-repetir até a lentidão repetir, e a repetição vira o resultado', async () => {
   const store = memoryStore();
   const act = heatAct({ 'esperar:clock_queda': null });
-  const engine = E.createEngine({ store, map: heatMap(), act, ctx: deep(), now: () => T0 });
+  // No leve (teste pesado bloqueado) a espera fica parada; no profundo ela pode medir enquanto espera (teste abaixo).
+  let isDeep = false;
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: () => deep({ deep: isDeep })(), now: () => T0 });
   const inv = await engine.open(anomaly());
   const seen = await untilDone(engine, inv);
   assert.equal(seen[seen.length - 1], 'esperando-repetir');
   const calls = act.calls.length;
   assert.equal(await engine.step(inv), 'esperando-repetir');
   assert.equal(act.calls.length, calls, 'não chama de novo enquanto espera');
+  assert.equal(kinds(store, 'pensamento', inv).filter((p) => p.data.step.type === 'pausa').length, 0, 'esperar no leve não narra pausa');
+  isDeep = true;
   const waiting = kinds(store, 'experimento', inv).find((r) => r.data.status === 'esperando');
   assert.ok(waiting);
 
@@ -219,6 +223,46 @@ test('esperar sem resultado: esperando-repetir até a lentidão repetir, e a rep
   const rest = await untilDone(engine, inv);
   assert.equal(rest[rest.length - 1], 'concluida');
   assert.equal(act.calls.filter((c) => c === 'esperar:clock_queda').length, 1, 'esperar não é refeito');
+});
+
+test('P2: em espera e no profundo, um teste ativo útil roda na mesma investigação sem cancelar a espera', async () => {
+  const store = memoryStore();
+  const act = heatAct({ 'esperar:clock_queda': null });
+  let isDeep = false;
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: () => deep({ deep: isDeep })(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  const seen = await untilDone(engine, inv);
+  assert.equal(seen[seen.length - 1], 'esperando-repetir');
+  assert.ok(!act.calls.some((c) => c.startsWith('medir:')), 'no leve não mede');
+  const waiting = kinds(store, 'experimento', inv).find((r) => r.data.status === 'esperando');
+  // Entrou no profundo: a espera continua, mas o tempo do PC parado é usado num medir.
+  isDeep = true;
+  const r = await engine.step(inv);
+  assert.ok(r === 'continua' || r === 'concluida', r);
+  assert.ok(act.calls.some((c) => c.startsWith('medir:')), `não mediu na espera: ${act.calls.join(' ')}`);
+  assert.equal(act.calls.filter((c) => c === 'esperar:clock_queda').length, 1, 'esperar não é refeito');
+  assert.ok(!kinds(store, 'experimento', inv).some((x) => x.prev === waiting.id), 'a espera não foi cancelada');
+  const rest = await untilDone(engine, inv);
+  assert.equal(rest[rest.length - 1], 'concluida');
+  assert.equal(kinds(store, 'conclusao', inv)[0].data.verdict.status, 'apoiada');
+  assert.equal(kinds(store, 'conclusao', inv)[0].data.verdict.winner, 'temp_cpu>clock_queda');
+  // Concluída: a repetição da lentidão já não anexa nela.
+  assert.equal(engine.attach(anomaly()), null);
+});
+
+test('P2: em espera, sem teste ativo útil (orçamento gasto), só espera: nada de lembrar nem pausa narrada', async () => {
+  const store = memoryStore();
+  const act = heatAct({ 'esperar:clock_queda': null });
+  let ctx = deep({ deep: false });
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: () => ctx(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  await untilDone(engine, inv);
+  const calls = act.calls.length;
+  const thoughts = kinds(store, 'pensamento', inv).length;
+  ctx = deep({ activeToday: 3 });
+  assert.equal(await engine.step(inv), 'esperando-repetir');
+  assert.equal(act.calls.length, calls);
+  assert.equal(kinds(store, 'pensamento', inv).length, thoughts);
 });
 
 test('planejador pausa (ritmo leve): pausada, um pensamento só, e continua quando o PC fica livre', async () => {

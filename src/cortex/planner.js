@@ -3,6 +3,8 @@
  * (bits) dividido pelo custo, sempre dentro do que a pessoa permitiu e do ritmo dela (bateria, uso do dia, modo leve).
  *
  * ctx.knobs / ctx.benches (opcionais): os ajustes e os testes que existem neste sistema; os outros não contam.
+ * ctx.types (opcional): só estes tipos de ação contam (o motor pede ['medir', 'intervir'] para a investigação que espera
+ * a lentidão repetir: no profundo ela ainda faz um teste ativo útil, sem cancelar a espera).
  *
  * Ação = tipo + alvo. Duas previsões com o mesmo `action` e `target` são a mesma ação, mesmo que difiram em `expect`
  * ('presente' e 'antes' no mesmo `lembrar` são resultados diferentes da mesma ação). Convenção dos alvos: lembrar → id de
@@ -113,6 +115,7 @@
     const maxRisk = RISK_ORDER[c.maxRisk] !== undefined ? RISK_ORDER[c.maxRisk] : RISK_ORDER.baixo;
     const spent = (c.activeToday || 0) >= MAX_ACTIVE_PER_DAY;
     // O que este sistema tem (Windows ou Linux): ajuste ou teste fora disso não existe aqui. Sem a lista, vale tudo.
+    const types = Array.isArray(c.types) ? new Set(c.types) : null;
     const knobsHere = Array.isArray(c.knobs) ? new Set(c.knobs) : null;
     const benchesHere = Array.isArray(c.benches) ? new Set(c.benches) : null;
     const exists = (a) => (a.type === 'intervir' ? !knobsHere || knobsHere.has(String(a.target).replace(/^ajuste:/, ''))
@@ -129,7 +132,7 @@
     };
     for (const a of actionsFor(hyps)) {
       const id = idOf(a.type, a.target);
-      if (done.has(id)) continue;
+      if (done.has(id) || (types && !types.has(a.type))) continue;
       // Permissão, teto de risco e o que o sistema tem não passam com o tempo: a ação conta como inexistente.
       if (!exists(a)) continue;
       if (a.type === 'intervir' && (!AUTONOMY.has(c.permission) || RISK_ORDER[a.risk] > maxRisk)) continue;

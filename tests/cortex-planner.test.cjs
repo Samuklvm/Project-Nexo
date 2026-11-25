@@ -216,3 +216,13 @@ test('plataforma: ajuste e teste fora do que este sistema tem (ctx.knobs / ctx.b
   const none = P.choose(hs, priors(hs), ctx({ knobs: [], benches: [] }));
   assert.ok(none.need, 'nada que dê para fazer aqui: vira necessidade, não pausa');
 });
+
+test('ctx.types: só os tipos de ação pedidos contam (a investigação em espera procura só um teste ativo)', () => {
+  const hs = [hyp('A>s', 0.5, [pred('lembrar', 'x', 'presente'), pred('medir', 'bench:b', 'desce')]),
+    hyp('B>s', 0.5, [pred('lembrar', 'x', 'ausente'), pred('medir', 'bench:b', 'igual')])];
+  assert.equal(P.choose(hs, priors(hs), ctx()).action.type, 'lembrar');
+  const r = P.choose(hs, priors(hs), ctx({ types: ['medir', 'intervir'] }));
+  assert.equal(r.action.type, 'medir');
+  // Fora do profundo o teste fica bloqueado pelo ritmo; o lembrar não entra no lugar.
+  assert.deepEqual(P.choose(hs, priors(hs), ctx({ types: ['medir', 'intervir'], deep: false })), { stop: 'ritmo' });
+});

@@ -876,3 +876,20 @@ test('sessão limitada pela GPU com desempenho real (veredito "gpu") não abre i
   await t.cortex.tick();
   assert.equal(t.cortex.list({ limit: 10 }).length, 0);
 });
+
+test('P2: investigação em espera + profundo + referência pronta → roda medir (a espera continua de pé)', async () => {
+  const t = setup();
+  t.cortex.observeEvent(lentidao(T0));
+  assert.ok(await tickUntil(t, () => experiments(t.memory).some((e) => e.data.status === 'esperando')), 'não chegou a esperar a repetição');
+  const waiting = experiments(t.memory).find((e) => e.data.status === 'esperando');
+  // Referências prontas de todos os testes: o tique do profundo não gasta tempo guardando nenhuma.
+  for (const b of Lab.BENCHES) t.memory.setMeta(`cortex.ref.${b}`, JSON.stringify({ values: [100, 101, 100, 101, 100], at: T0 }));
+  await goDeep(t);
+  await t.cortex.tick();
+  const medir = experiments(t.memory).filter((e) => e.data.action.type === 'medir');
+  assert.equal(medir.length, 1, `experimentos: ${experiments(t.memory).map((e) => `${e.data.action.type}:${e.data.action.target}=${e.data.status}`).join(' ')}`);
+  assert.equal(medir[0].data.status, 'feito');
+  assert.ok(t.env.bench.length >= 5, `rodadas: ${t.env.bench.length}`);
+  assert.ok(!experiments(t.memory).some((e) => e.prev === waiting.id), 'a espera foi cancelada');
+  assert.equal(t.cortex.list({ limit: 5 })[0].status, 'esperando');
+});
