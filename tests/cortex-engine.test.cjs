@@ -479,8 +479,8 @@ test('medir sem referência ainda: experimento invalido que NÃO conta como feit
   for (const b of ['bench:single', 'bench:multi']) assert.ok(act2.calls.filter((c) => c === `medir:${b}`).length <= 1, act2.calls.join(', '));
 });
 
-test('pausa por bateria ou orçamento vira passo "pausa" ("Pausei: …"); a do ritmo leve continua "Voltei ao ritmo leve"', async () => {
-  for (const [extra, why, type] of [[{ deep: false }, 'ritmo', 'ritmo'], [{ activeToday: 3 }, 'orcamento', 'pausa']]) {
+test('pausa por ritmo, bateria ou orçamento vira passo "pausa" ("Pausei: …"): o ritmo não mudou, ele já era o leve (P6)', async () => {
+  for (const [extra, why, type] of [[{ deep: false }, 'ritmo', 'pausa'], [{ activeToday: 3 }, 'orcamento', 'pausa']]) {
     const store = memoryStore();
     const engine = E.createEngine({ store, map: heatMap(), act: heatAct(), ctx: deep(extra), now: () => T0 });
     const inv = await engine.open(anomaly());
@@ -489,7 +489,8 @@ test('pausa por bateria ou orçamento vira passo "pausa" ("Pausei: …"); a do r
     const last = kinds(store, 'pensamento', inv).pop();
     assert.equal(last.data.pause, why);
     assert.equal(last.data.step.type, type);
-    if (type === 'pausa') assert.match(last.data.text, /^Pausei: /);
-    else assert.match(last.data.text, /^Voltei ao ritmo leve/);
+    assert.match(last.data.text, /^Pausei: /);
+    assert.doesNotMatch(last.data.text, /Voltei/);
+    if (why === 'ritmo') assert.equal(last.data.text, 'Pausei: o próximo passo é um teste pesado, e esse eu só faço com o computador parado.');
   }
 });

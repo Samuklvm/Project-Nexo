@@ -135,3 +135,19 @@ test('pausa por bateria ou orçamento não é mudança de ritmo: "Pausei: …"',
   assert.equal(N.say({ type: 'pausa', reason: 'já fiz os testes ativos de hoje; o próximo fica para amanhã' }), 'Pausei: já fiz os testes ativos de hoje; o próximo fica para amanhã.');
   assert.doesNotMatch(N.say({ type: 'pausa', reason: 'x' }), /ritmo/);
 });
+
+test('P1: cada rótulo diz o que a coluna dos minutos mede (temp = o sensor mais quente, disk = espaço usado)', () => {
+  const Page = require('../src/cortex/page.js');
+  // store.js: temp = hottest(processador, placa de vídeo, ACPI); no PC do teste de campo temp == cpuTemp.
+  assert.doesNotMatch(SIGNALS.temp.label, /placa de vídeo/i);
+  assert.match(SIGNALS.temp.label, /^Temperatura/);
+  assert.equal(SIGNALS.temp_cpu.label, 'Temperatura do processador'); // cpuTemp: sensor do processador (ou ACPI)
+  assert.doesNotMatch(N.say({ type: 'notei', signal: 'temp', value: 84 }), /placa de vídeo/i);
+  assert.doesNotMatch(Page.question('temp', null), /placa de vídeo/i);
+  // disk = primaryDrive.usedPercent: espaço ocupado no disco principal, não atividade do disco.
+  assert.match(SIGNALS.disk.label, /espaço/i);
+  assert.doesNotMatch(Page.question('disk', null), /ocupado/i);
+  assert.equal(SIGNALS.cpu.label, 'Processador ocupado');
+  assert.equal(SIGNALS.gpu.label, 'Placa de vídeo ocupada');
+  assert.equal(SIGNALS.mem.label, 'Memória em uso');
+});

@@ -16,7 +16,7 @@
  *   prova         { outcome, anomaly? } (ref = experimento) ou { kind: 'repeticao', anomaly } (a lentidão repetiu)
  *   pedido        { action, status: 'pendente' }; a resposta é outro pedido { action, status: aprovado|negado }, ref = pedido
  *   pensamento    { step, text, pause? }                    frase do narrador (passos no formato do narrate.js; pausa do
- *                                                           ritmo = passo 'ritmo', de bateria/orçamento = passo 'pausa')
+ *                                                           planejador (ritmo, bateria, orçamento) = passo 'pausa')
  *   necessidade   { goal, between, reason, missing, outside } goal 'separar' (nada separa as explicações) ou
  *                                                           'apoiada' (há vencedora correlacionada, falta a prova);
  *                                                           missing = causas ou testes ainda não olhados; outside = o
@@ -322,8 +322,9 @@
     function pause(s, why) {
       const last = store.latest('pensamento', { inv: s.inv });
       if (last && last.data && last.data.pause === why) return 'pausada';
-      // Só a pausa do ritmo é "voltei ao ritmo leve"; bateria e orçamento são uma pausa ("Pausei: …").
-      const step = why === 'ritmo' ? { type: 'ritmo', state: 'leve', reason: PAUSE[why] } : { type: 'pausa', reason: PAUSE[why] || why };
+      // Toda pausa do planejador é "Pausei: …": a do ritmo vem com o PC já no leve (o ritmo não mudou agora; quem narra a
+      // mudança de ritmo é o cortex.cjs), e bateria e orçamento também não mudam o ritmo.
+      const step = { type: 'pausa', reason: PAUSE[why] || why };
       think(s.inv, step, { pause: why });
       return 'pausada';
     }

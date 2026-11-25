@@ -190,8 +190,8 @@
   }
 
   const QUESTION = {
-    cpu: 'Por que o processador ficou sobrecarregado', mem: 'Por que a memória chegou ao limite', disk: 'Por que o disco ficou ocupado',
-    gpu: 'Por que a placa de vídeo chegou ao limite', temp_cpu: 'Por que o processador esquentou', temp: 'Por que a placa de vídeo esquentou',
+    cpu: 'Por que o processador ficou sobrecarregado', mem: 'Por que a memória chegou ao limite', disk: 'Por que o disco ficou cheio',
+    gpu: 'Por que a placa de vídeo chegou ao limite', temp_cpu: 'Por que o processador esquentou', temp: 'Por que o computador esquentou',
     clock_queda: 'Por que o processador desacelerou', page_faults: 'Por que a memória foi parar no disco', travadas: 'Por que houve travadas',
     quadros_ruins: 'Por que os quadros pioraram no jogo'
   };

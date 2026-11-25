@@ -29,10 +29,12 @@
   const SIGNALS = {
     cpu: { label: 'Processador ocupado', unit: '%' },
     mem: { label: 'Memória em uso', unit: '%' },
-    disk: { label: 'Disco ocupado', unit: '%' },
+    // Os rótulos seguem o que a coluna dos minutos mede (store.js commitMinute): disk = espaço usado do disco principal
+    // (não atividade), temp = o sensor mais quente (processador, placa de vídeo ou ACPI), cpuTemp = o do processador.
+    disk: { label: 'Espaço usado no disco', unit: '%' },
     gpu: { label: 'Placa de vídeo ocupada', unit: '%' },
     temp_cpu: { label: 'Temperatura do processador', unit: '°C' },
-    temp: { label: 'Temperatura da placa de vídeo', unit: '°C' },
+    temp: { label: 'Temperatura mais alta do PC', unit: '°C' },
     clock_queda: { label: 'Processador desacelerando' },
     page_faults: { label: 'Memória indo para o disco' },
     travadas: { label: 'Travadas' },
