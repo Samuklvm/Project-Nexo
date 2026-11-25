@@ -2558,6 +2558,7 @@ const cortexGameInForeground = createGameInForeground({ lastProbe: () => lastPro
 async function startCortex() {
   const opened = createCortexMemory({ dir: path.join(app.getPath('userData'), 'cortex') });
   cortexMemory = opened.ok ? opened.memory : null;
+  if (cortexMemory) { try { require('./electron/cortex-host.cjs').bindGameMemory(cortexIsGame, cortexMemory); } catch { /* sem os jogos vistos, só aprende de novo */ } }
   cortex = createCortex({
     memory: opened, rhythm: createRhythm(), now: Date.now,
     labRun: cortexLabRun, labCancel: () => { if (cortexLab.signal) cortexLab.signal.cancelled = true; },

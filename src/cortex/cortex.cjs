@@ -976,7 +976,30 @@ function createCortex(deps = {}) {
   function loopRhythm() { later(async () => { await checkRhythm(); loopRhythm(); }, RHYTHM_MS[rhythm.state()] || RHYTHM_MS.leve); }
   function loopTick() { later(async () => { await tick(); loopTick(); }, TICK_MS[rhythm.state()] || TICK_MS.leve); }
 
+  /**
+   * Uma vez (meta cortex.v01-arquivo): investigação aberta que as regras novas (P4: curiosidade só de problema; P5: carga
+   * do jogo) recusariam ganha uma conclusão 'nao-resolvido' e um pensamento, só acrescentando. O motor a vê fechada e
+   * a página a mostra concluída. Se alguma gravação falhar, a marca não é posta e a próxima partida completa.
+   */
+  const ARCHIVE_KEY = 'cortex.v01-arquivo';
+  const ARCHIVE_TEXT = 'Deixei de investigar: isso é a carga normal do computador (ou do jogo), não um problema.';
+  const refusedNow = (an) => !!an && typeof an === 'object' && (
+    (an.kind === 'curiosidade' && !Object.prototype.hasOwnProperty.call(CURIOUS, an.symptom)) ||
+    (an.kind === 'lentidao' && GAME_LOAD.has(an.symptom) && isGame(an.data && an.data.culprit)));
+  function archiveOld() {
+    if (memory.getMeta(ARCHIVE_KEY)) return;
+    let ok = true;
+    for (const r of memory.list('investigacao', { limit: 100000 })) {
+      if (memory.latest('conclusao', { inv: r.id }) || !refusedNow(r.data && r.data.anomaly)) continue;
+      const done = memory.record('conclusao', { inv: r.id, data: { verdict: { status: 'nao-resolvido', winner: null, refuted: [] }, missing: [], leading: null, events: [], reason: ARCHIVE_TEXT } });
+      if (!(done > 0)) { ok = false; continue; }
+      if (!(memory.record('pensamento', { inv: r.id, data: { step: { type: 'arquivada' }, text: ARCHIVE_TEXT } }) > 0)) ok = false;
+    }
+    if (ok && !memory.setMeta(ARCHIVE_KEY, String(now()))) log('arquivo', 'a marca do arquivamento não gravou');
+  }
+
   async function start({ snapshot, version, timers: withTimers = true } = {}) {
+    safe('arquivo', archiveOld, null);
     safe('fila', reloadQueue, null);
     if (typeof snapshot === 'function') {
       await call('maquina', async () => { const s = await snapshot(); if (s) memory.addMachine(machineOf(s)); }, null);

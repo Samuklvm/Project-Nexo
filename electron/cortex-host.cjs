@@ -46,7 +46,8 @@ const plainName = (name) => String(name || '').trim().toLowerCase().replace(/\.e
  * Leitura que falha conta como "não é jogo" (aí a lentidão abre investigação, como antes).
  */
 function createIsGame({ matchName = () => null, classify = () => ({ isGame: false }) } = {}) {
-  const seen = new Set();
+  const seen = new Set(); // em ordem de chegada: o teto (SEEN_MAX) tira os mais antigos
+  let onNew = null;
   const isGame = (name) => {
     const plain = plainName(name);
     if (plain.length < 2) return false;
@@ -58,8 +59,29 @@ function createIsGame({ matchName = () => null, classify = () => ({ isGame: fals
     try { return Boolean(classify({ name: String(name) })?.isGame); } catch { return false; }
   };
   /** Um nome que a sonda (ou o observador) viu como jogo em primeiro plano. */
-  isGame.learn = (name) => { const plain = plainName(name); if (plain.length >= 2 && seen.size < 500) seen.add(plain); };
+  isGame.learn = (name) => {
+    const plain = plainName(name);
+    if (plain.length < 2 || seen.has(plain)) return;
+    seen.add(plain);
+    while (seen.size > SEEN_MAX) seen.delete(seen.values().next().value);
+    if (onNew) try { onNew([...seen]); } catch { /* guardar é opcional */ }
+  };
+  /** Carrega nomes guardados (sem avisar) e passa a avisar `save(nomes)` a cada nome novo aprendido. */
+  isGame.persist = (names, save) => {
+    for (const n of Array.isArray(names) ? names : []) { const plain = plainName(n); if (plain.length >= 2) seen.add(plain); }
+    while (seen.size > SEEN_MAX) seen.delete(seen.values().next().value);
+    onNew = typeof save === 'function' ? save : null;
+  };
   return isGame;
 }
 
-module.exports = { createBusy, createGameInForeground, createIsGame, PROBE_FRESH_MS };
+const SEEN_KEY = 'cortex.jogos-vistos';
+const SEEN_MAX = 200;
+/** Liga o isGame à memória do Cortex: os jogos que a sonda viu sobrevivem ao reinício (meta, ≤ 200, minúsculos). */
+function bindGameMemory(isGame, memory) {
+  let names = [];
+  try { const v = JSON.parse(memory.getMeta(SEEN_KEY) || '[]'); if (Array.isArray(v)) names = v.filter((n) => typeof n === 'string'); } catch { /* meta estragado: recomeça */ }
+  isGame.persist(names, (all) => { memory.setMeta(SEEN_KEY, JSON.stringify(all)); });
+}
+
+module.exports = { createBusy, createGameInForeground, createIsGame, bindGameMemory, PROBE_FRESH_MS };

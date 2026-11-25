@@ -1143,3 +1143,111 @@ test('E3: a cópia de ~2 min depois de abrir espera o PC livre: nada com a pesso
   await wait(40);
   assert.equal(s.gameCalls, calls, 'depois da cópia não tenta mais');
 });
+
+// ---- F1: investigações abertas antes do v0.1 que as regras novas (P4/P5) recusariam são arquivadas uma vez ----
+
+/** Uma investigação aberta como a versão anterior abria (investigacao + crenca inicial, sem conclusão). */
+function seedOpen(memory, anomaly) {
+  const inv = memory.record('investigacao', { data: { anomaly, symptom: anomaly.symptom } });
+  memory.record('crenca', { inv, data: { beliefs: {} } });
+  return inv;
+}
+const concl = (memory, inv) => memory.latest('conclusao', { inv });
+
+test('F1: ao iniciar, arquiva (uma vez) as investigações abertas que o P4/P5 recusariam; a legítima continua aberta', async () => {
+  const dir = tmp();
+  const clock = { t: T0 };
+  const first = setup({ dir, clock, isGame: isGameName });
+  const m = first.memory;
+  const trivial = ['cpu', 'mem', 'gpu', 'disk'].map((s) => seedOpen(m, { kind: 'curiosidade', symptom: s, at: T0 - DAY, window: { from: T0 - 14 * DAY, to: T0 }, data: {} }));
+  const gameSlow = ['cpu', 'mem'].map((s) => seedOpen(m, { kind: 'lentidao', symptom: s, at: T0 - DAY, window: { from: T0 - DAY - 10 * MIN, to: T0 - DAY }, data: { culprit: GAME_EXE } }));
+  const keep = [
+    seedOpen(m, { kind: 'lentidao', symptom: 'cpu', at: T0 - DAY, window: { from: T0 - DAY - 10 * MIN, to: T0 - DAY }, data: { culprit: 'compilador.exe' } }),
+    seedOpen(m, { kind: 'curiosidade', symptom: 'clock_queda', at: T0 - DAY, window: { from: T0 - 14 * DAY, to: T0 }, data: {} }),
+    seedOpen(m, { kind: 'lentidao', symptom: 'temp', at: T0 - DAY, window: { from: T0 - DAY - 10 * MIN, to: T0 - DAY }, data: { culprit: GAME_EXE } })
+  ];
+  const before = m.list('conclusao', { limit: 1000 }).length;
+  assert.equal(before, 0);
+  await first.cortex.start({ timers: false });
+  for (const inv of [...trivial, ...gameSlow]) {
+    const c = concl(m, inv);
+    assert.ok(c, `investigação ${inv} não foi arquivada`);
+    assert.equal(c.data.verdict.status, 'nao-resolvido');
+    assert.equal(c.data.verdict.winner, null);
+    assert.match(c.data.reason, /Deixei de investigar: isso é a carga normal do computador \(ou do jogo\), não um problema\./);
+    const thought = m.latest('pensamento', { inv });
+    assert.equal(thought.data.text, 'Deixei de investigar: isso é a carga normal do computador (ou do jogo), não um problema.');
+    const shown = first.cortex.get(inv);
+    assert.equal(shown.status, 'concluida');
+    assert.equal(shown.conclusao.verdict.status, 'nao-resolvido');
+  }
+  for (const inv of keep) assert.equal(concl(m, inv), null, `investigação legítima ${inv} foi arquivada`);
+  assert.equal(m.getMeta('cortex.v01-arquivo') != null, true);
+  // Não mede nem gasta orçamento: as arquivadas não são mais abertas para o motor.
+  assert.deepEqual(first.cortex.list({ limit: 20 }).filter((r) => r.status !== 'concluida').map((r) => r.inv).sort(), [...keep].sort());
+  // Uma vez só: o que abrir depois (mesmo parecido) não é mexido na próxima partida; nada é apagado nem alterado.
+  const total = m.list('conclusao', { limit: 1000 }).length;
+  assert.equal(total, trivial.length + gameSlow.length);
+  const later = seedOpen(m, { kind: 'curiosidade', symptom: 'cpu', at: T0, window: { from: T0 - 14 * DAY, to: T0 }, data: {} });
+  const again = setup({ memory: { ok: true, memory: m }, clock, isGame: isGameName });
+  await again.cortex.start({ timers: false });
+  assert.equal(concl(m, later), null, 'a marca do meta não impediu a segunda passada');
+  assert.equal(m.list('conclusao', { limit: 1000 }).length, total);
+});
+
+test('F1: a lentidão do jogo só é arquivada se o jogo é reconhecido (sem isGame, nada é arquivado por P5)', async () => {
+  const t = setup({});
+  const inv = seedOpen(t.memory, { kind: 'lentidao', symptom: 'cpu', at: T0 - DAY, window: { from: T0 - DAY - 10 * MIN, to: T0 - DAY }, data: { culprit: GAME_EXE } });
+  const triv = seedOpen(t.memory, { kind: 'curiosidade', symptom: 'gpu', at: T0 - DAY, window: { from: 0, to: 1 }, data: {} });
+  await t.cortex.start({ timers: false });
+  assert.equal(concl(t.memory, inv), null);
+  assert.ok(concl(t.memory, triv));
+});
+
+// ---- F2: jogos que a sonda viu sobrevivem ao reinício ----
+
+test('F2: nomes de jogo aprendidos ficam na memória (meta cortex.jogos-vistos, ≤ 200, minúsculos) e um Cortex novo os reconhece', () => {
+  const { createIsGame, bindGameMemory } = require('../electron/cortex-host.cjs');
+  const t = setup({});
+  const mem = t.memory;
+  const a = createIsGame({});
+  bindGameMemory(a, mem);
+  assert.equal(a('JogoComAnticheat.exe'), false);
+  assert.equal(mem.getMeta('cortex.jogos-vistos'), null, 'gravou sem aprender nada');
+  a.learn('JogoComAnticheat.exe');
+  assert.deepEqual(JSON.parse(mem.getMeta('cortex.jogos-vistos')), ['jogocomanticheat']);
+  // Já sabido: não regrava.
+  let writes = 0;
+  const spy = { getMeta: (k) => mem.getMeta(k), setMeta: (k, v) => { writes += 1; return mem.setMeta(k, v); } };
+  const b = createIsGame({});
+  bindGameMemory(b, spy);
+  assert.equal(b('jogocomanticheat'), true, 'um Cortex novo na mesma memória não reconheceu');
+  b.learn('JOGOCOMANTICHEAT');
+  assert.equal(writes, 0);
+  b.learn('x'); // curto demais
+  assert.equal(writes, 0);
+  b.learn('Outro');
+  assert.equal(writes, 1);
+  // Teto de 200: os mais antigos saem.
+  for (let i = 0; i < 250; i++) b.learn(`jogo-${i}`);
+  const saved = JSON.parse(mem.getMeta('cortex.jogos-vistos'));
+  assert.equal(saved.length, 200);
+  assert.equal(saved[199], 'jogo-249');
+  assert.ok(!saved.includes('jogocomanticheat'));
+  // Meta estragado não derruba nada.
+  mem.setMeta('cortex.jogos-vistos', '{{lixo');
+  const c = createIsGame({});
+  bindGameMemory(c, mem);
+  assert.equal(c('qualquer'), false);
+});
+
+test('F2: ponta a ponta: a sonda aprende, o app reinicia, o Cortex novo não abre investigação da lentidão desse jogo', async () => {
+  const { createIsGame, bindGameMemory } = require('../electron/cortex-host.cjs');
+  const t = setup({});
+  const g1 = createIsGame({}); bindGameMemory(g1, t.memory); g1.learn('JogoComAnticheat.exe');
+  const g2 = createIsGame({}); bindGameMemory(g2, t.memory);
+  const u = setup({ memory: { ok: true, memory: t.memory }, clock: t.clock, isGame: g2 });
+  u.cortex.observeEvent({ kind: 'lentidao', at: T0, data: { kind: 'cpu', start: T0 - 10 * MIN, end: T0, peak: 97, minutes: 10, culprit: 'JogoComAnticheat.exe' } });
+  await u.cortex.tick();
+  assert.deepEqual(u.cortex.list({ limit: 10 }), []);
+});
