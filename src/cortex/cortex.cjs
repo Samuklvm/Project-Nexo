@@ -780,7 +780,8 @@ function createCortex(deps = {}) {
     };
     return rows.filter((r) => !finite(r.t) || !near(r.t));
   }
-  const pairOf = (a, b) => [a, b].sort().join('|');
+  // Mesma ordem do sort() padrão (por código de caractere), explícita; localeCompare mudaria com o idioma do PC.
+  const pairOf = (a, b) => [a, b].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0)).join('|');
   /**
    * A correlação nova vale uma pergunta? Só se o sintoma é problema (queda de clock; temperatura acima do normal da
    * máquina fora de jogo) e se ela continua de pé sem os minutos de jogo (senão estar jogando já explica).

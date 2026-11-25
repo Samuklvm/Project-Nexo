@@ -8,6 +8,19 @@
   root.NexoNovidades = {
     versions: [
       {
+        version: '0.11.8', date: '2026-11-25', emoji: '🔎', title: 'Um Cortex mais esperto',
+        tagline: 'Depois do primeiro teste de campo, o Cortex só investiga o que é problema e testa de verdade com o PC parado.',
+        sections: [
+          { emoji: '⚡', title: 'Melhorias', tone: 'up', items: [
+            { emoji: '🎯', title: 'Só o que é problema', text: 'A carga do próprio jogo e curiosidades do tipo "a placa de vídeo sobe quando o processador sobe" não viram mais investigação. As antigas são arquivadas como "não é problema", sem apagar nada.' },
+            { emoji: '🧪', title: 'Testa de verdade com o PC parado', text: 'Enquanto espera um problema repetir, o Cortex já roda os testes que ajudam e faz todas as medidas de referência.' },
+            { emoji: '⏳', title: 'Adia em vez de desistir', text: 'Com o PC quente, na bateria ou ocupado, o teste fica para depois (no máximo 3 vezes por dia), sem encher o diário de "Adiado".' },
+            { emoji: '🎮', title: 'Lembra dos seus jogos', text: 'O Cortex guarda os jogos que viu mesmo depois de fechar o app, e os sinais ganharam nomes certos, como "Temperatura mais alta do PC".' },
+            { emoji: '🔏', title: 'Assinatura digital a caminho', text: 'A assinatura do Nexo chega numa atualização futura. Até lá, o Windows pode avisar ao instalar; as notas da versão explicam como abrir.' }
+          ] }
+        ]
+      },
+      {
         version: '0.11.7', date: '2026-11-25', emoji: '🧠', title: 'Cortex, o cérebro novo do Nexo',
         tagline: 'Uma memória que nunca esquece e um detetive que investiga o que deixa o seu PC lento, dizendo só o que testou.',
         sections: [

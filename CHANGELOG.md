@@ -6,6 +6,14 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 
 ## Português
 
+### 0.11.8: o Cortex depois do primeiro teste de campo
+- Aviso: esta versão ainda não tem assinatura digital; a assinatura chega numa atualização futura. O aviso e os passos para abrir o Nexo continuam nas notas e no README.
+- Melhoria: o Cortex não investiga mais a carga do próprio jogo (processador ou memória cheios jogando) nem curiosidades como "a placa de vídeo sobe quando o processador sobe"; só pergunta quando o sintoma é problema. As investigações já abertas por isso são arquivadas como "não é problema", sem apagar nada.
+- Melhoria: com o PC parado, o Cortex roda os testes que ajudam enquanto espera um problema repetir e faz todas as medidas de referência que faltavam (antes parava em duas).
+- Melhoria: teste adiado em vez de descartado quando o PC está quente, na bateria ou com outro programa pesando (espera crescente, no máximo 3 vezes por dia), sem encher o diário de "Adiado".
+- Correção: nomes certos dos sinais ("Temperatura mais alta do PC", antes como placa de vídeo, e "Espaço usado no disco"); o Cortex lembra dos jogos depois de fechar o app; o aviso de que um ajuste não foi desfeito aparece sempre; a cópia de segurança ao abrir espera o PC ficar livre; as pausas dizem "Pausei: …".
+- Melhoria: revisão do SonarCloud (ordem fixa e explícita na chave dos pares de sinais do Cortex).
+
 ### 0.11.7: Cortex, o cérebro novo do Nexo
 - Aviso: esta versão ainda não tem assinatura digital; a assinatura chega numa atualização futura. O aviso e os passos para abrir o Nexo continuam nas notas e no README.
 - Novo: Cortex, o cérebro novo do Nexo, com página própria no menu lateral: memória eterna só neste PC (minutos medidos, eventos, retratos da máquina, hipóteses, testes e conclusões), investigação por hipóteses concorrentes (sempre com "uma causa que ainda não sei medir"), teste escolhido pelo que mais separa as hipóteses e conclusões honestas (suspeita, correlacionada, apoiada ou "não achei", com o que faltou medir).
@@ -164,6 +172,14 @@ Notas completas de cada versão / Full release notes: [`docs/releases/`](docs/re
 ---
 
 ## English
+
+### 0.11.8: Cortex after its first field test
+- Notice: this version is not digitally signed yet; the signature arrives in a future update. The notice and the steps to open Nexo stay in the notes and in the README.
+- Improvement: Cortex no longer investigates the game's own load (a full processor or memory while playing) or curiosities like "the graphics card rises when the processor rises"; it only asks when the symptom is a problem. Investigations already opened for that are archived as "not a problem", with nothing deleted.
+- Improvement: with the PC idle, Cortex runs the tests that help while it waits for a problem to repeat, and takes every baseline measurement that was missing (it used to stop at two).
+- Improvement: a test is postponed instead of dropped when the PC is hot, on battery or another program is weighing on it (growing wait, at most 3 times a day), without filling the journal with "Postponed".
+- Fix: correct signal names ("Highest PC temperature", previously shown as the graphics card, and "Disk space used"); Cortex remembers games after the app is closed; the notice that a tweak was not undone always shows; the backup on launch waits for the PC to be free; pauses say "Paused: …".
+- Improvement: SonarCloud review (fixed, explicit order in the key of Cortex signal pairs).
 
 ### 0.11.7: Cortex, Nexo's new brain
 - Notice: this version is not digitally signed yet; the signature arrives in a future update. The notice and the steps to open Nexo stay in the notes and in the README.
