@@ -41,13 +41,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 A interface usa a fonte **Inter** 4.1 (<https://github.com/rsms/inter>), de Rasmus Andersson e colaboradores, distribuída sob a SIL Open Font License 1.1. O arquivo `assets/fonts/InterVariable.woff2` não foi modificado; o texto completo da licença está em `assets/fonts/Inter-LICENSE.txt`.
 
 
-## Cinzel, Cormorant Garamond e Roboto (fontes da página de Ajustes)
+## Cinzel, Cormorant Garamond e Roboto (fontes da página de Ajustes e do Cortex)
 
-A página de Ajustes (o "Santuário") usa as fontes **Cinzel** (<https://github.com/NDISCOVER/Cinzel>), **Cormorant Garamond** (<https://github.com/CatharsisFonts/Cormorant>) e **Roboto** (<https://github.com/googlefonts/roboto-classic>, só no botão "Fazer login com o Google"), todas sob a SIL Open Font License 1.1. Os arquivos em `assets/fonts/` (`Cinzel-Variable.woff2`, `CormorantGaramond-Italic-Variable.woff2` e `Roboto-Medium.woff2`, só os caracteres latinos, como distribuídos pelo projeto Fontsource) não foram modificados; os textos das licenças estão em `assets/fonts/Cinzel-LICENSE.txt`, `assets/fonts/CormorantGaramond-LICENSE.txt` e `assets/fonts/Roboto-LICENSE.txt`.
+A página de Ajustes (o "Santuário") e a página do Cortex usam as fontes **Cinzel** (<https://github.com/NDISCOVER/Cinzel>), **Cormorant Garamond** (<https://github.com/CatharsisFonts/Cormorant>) e **Roboto** (<https://github.com/googlefonts/roboto-classic>, só no botão "Fazer login com o Google"), todas sob a SIL Open Font License 1.1. Os arquivos em `assets/fonts/` (`Cinzel-Variable.woff2`, `CormorantGaramond-Italic-Variable.woff2` e `Roboto-Medium.woff2`, só os caracteres latinos, como distribuídos pelo projeto Fontsource) não foram modificados; os textos das licenças estão em `assets/fonts/Cinzel-LICENSE.txt`, `assets/fonts/CormorantGaramond-LICENSE.txt` e `assets/fonts/Roboto-LICENSE.txt`.
 
 ## Logos do Google, da Steam e do Discord
 
 O "G" do Google, a logo da Steam e a logo do Discord aparecem só nos botões e cartões de entrar ou conectar a essas contas, como as próprias marcas orientam. São marcas registradas da Google LLC, da Valve Corporation e da Discord Inc., respectivamente; o Nexo não é afiliado a nenhuma delas. Os desenhos das logos da Steam e do Discord vêm do projeto Simple Icons (<https://simpleicons.org>, CC0 1.0).
+
+## Artes de terceiros (`assets/arte/`)
+
+As imagens de `assets/arte/` (ornamentos, criaturas, medalhões e efeitos da página do Cortex) não fazem parte do código do Nexo Device Care e **não** são distribuídas sob a licença GPL-3.0 do projeto. Os direitos pertencem aos seus respectivos donos. Elas servem só de decoração do app; não as reutilize fora do Nexo sem a permissão de quem detém os direitos. Detalhes em `assets/arte/LEIA-ME.md`.
 
 ## Arte do Santuário
 
