@@ -269,3 +269,16 @@ test('eventos de ambiente: sorteio com intervalo de 25 a 70 s, um tipo diferente
   const b = (() => { let s = 3; const r = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; return [1, 2, 3].map(() => Page.ambientNext({ rnd: r, last: null })); })();
   assert.deepEqual(a, b);
 });
+
+test('eventos de ambiente: chaves herdadas (constructor, toString, __proto__) são recusadas e um evento que falha não derruba a cena', () => {
+  const view = read('src/view-cortex.js');
+  // I1: só tipos próprios do mapa de eventos e de Page.AMBIENT (sem cair em Object.prototype).
+  for (const kind of ['constructor', 'toString', '__proto__']) assert.equal(Object.hasOwn(Page.AMBIENT, kind), false, kind);
+  const start = view.slice(view.indexOf('function startEvent(kind)'), view.indexOf('function endEvent()'));
+  assert.match(start, /Object\.hasOwn\(EVENTS, kind\)/, 'startEvent confere EVENTS com hasOwn');
+  assert.match(start, /Object\.hasOwn\(Page\.AMBIENT, kind\)/, 'startEvent confere Page.AMBIENT com hasOwn');
+  assert.doesNotMatch(start, /!EVENTS\[kind\]/, 'sem a checagem que aceita chave herdada');
+  // I2: o passo de ambiente roda protegido dentro do passo da cena; no erro encerra o evento e sorteia de novo depois.
+  const step = view.slice(view.indexOf('ambientStep(t, dt);') - 200, view.indexOf('ambientStep(t, dt);') + 400);
+  assert.match(step, /try \{\s*ambientStep\(t, dt\);\s*\} catch \{\s*endEvent\(\);\s*amb\.next = null;\s*\}/, 'ambientStep protegido por try/catch');
+});

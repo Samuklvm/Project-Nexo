@@ -550,7 +550,13 @@
     const glow = 0.55 + (deep ? 0.2 : 0) + pulse * (deep ? 0.3 : 0.18) + scene.flash * 0.6;
     if (scene.glow) { scene.glow.style.opacity = Math.min(1, glow).toFixed(3); scene.glow.style.transform = `scale(${(1 + pulse * 0.06 + scene.flash * 0.35).toFixed(3)})`; }
     if (scene.core) scene.core.style.opacity = Math.min(1, 0.32 + pulse * 0.3 + scene.flash * 0.7).toFixed(3);
-    ambientStep(t, dt);
+    // Evento opcional: se falhar, encerra o evento e sorteia outro depois; o brilho, a paralaxe e a poeira seguem.
+    try {
+      ambientStep(t, dt);
+    } catch {
+      endEvent();
+      amb.next = null;
+    }
   }
   /* ---------- Eventos de ambiente: algo acontece na biblioteca de vez em quando ----------
    Um por vez, sorteado por Page.ambientNext (25 a 70 s de intervalo, contados só com os efeitos andando), curto, sempre
@@ -712,7 +718,7 @@
     };
   }
   function startEvent(kind) {
-    if (!scene.on || amb.active || !EVENTS[kind]) return false;
+    if (!scene.on || amb.active || !Object.hasOwn(EVENTS, kind) || !Object.hasOwn(Page.AMBIENT, kind)) return false;
     amb.active = { kind, t: 0, duration: Page.AMBIENT[kind].duration, update: EVENTS[kind]() };
     amb.last = kind;
     return true;
