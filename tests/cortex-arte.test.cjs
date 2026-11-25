@@ -55,8 +55,11 @@ test('pasta da arte: só o que o manifesto lista (e a pasta do cenário), sem no
   }
   const total = sizeOf(dir);
   assert.ok(total <= 12 * 1024 * 1024, `assets/arte/cortex tem ${(total / 1048576).toFixed(2)} MB`);
-  // Os originais ficam no main, fora deste ramo e do instalador.
-  assert.ok(!fs.existsSync(path.join(root, 'assets', 'artes')), 'assets/artes/ não entra neste ramo');
+  // Os originais (assets/artes/, no main) ficam fora do instalador, e nada do que o app carrega aponta para eles.
+  const pkg = JSON.parse(read('package.json'));
+  assert.ok(pkg.build.files.includes('!assets/artes/**'), 'build.files precisa de "!assets/artes/**"');
+  const texts = (p) => (fs.statSync(p).isDirectory() ? fs.readdirSync(p).flatMap((n) => texts(path.join(p, n))) : /\.(json|md|txt|css|js)$/.test(p) ? [p] : []);
+  for (const file of texts(dir)) assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /assets\/artes/, `${path.relative(root, file)} aponta para assets/artes`);
 });
 
 test('cenário: cena.json descreve as camadas (profundidade, peças) e cada arquivo existe; no máximo 10 MB', () => {
