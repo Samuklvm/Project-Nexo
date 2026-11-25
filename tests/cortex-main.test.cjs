@@ -453,9 +453,13 @@ test('intervir: o lab vira braço só do ajuste pedido, sem combinações e sem 
   assert.equal(o.observed, 'sobe');
   assert.equal(o.significant, true);
   assert.equal(opts.restorePoint ?? null, null, 'risco baixo: o Cortex nunca cria ponto de restauração (nem abre o UAC)');
-  // Risco acima do baixo exige o ponto de restauração criado quando a pessoa autorizou: sem ele, nem chama o lab.
+  // Risco acima do baixo exige o ponto de restauração criado quando a pessoa autorizou: sem ele, nem chama o lab
+  // (bloqueio passageiro: volta como interrompido, motivo 'ponto', e o motor pede a autorização de novo).
   const before = t.cortex.stats().ativosHoje;
-  await assert.rejects(() => t.cortex._act({ ...action, target: 'ajuste:boostmode', risk: 'moderado' }, { inv: 1, symptom: 'bench:burst' }), /ponto de restauração/);
+  const noPoint = await t.cortex._act({ ...action, target: 'ajuste:boostmode', risk: 'moderado' }, { inv: 1, symptom: 'bench:burst' });
+  assert.equal(noPoint.observed, 'interrompido');
+  assert.equal(noPoint.motivo, 'ponto');
+  assert.match(noPoint.reason, /ponto de restauração/);
   assert.equal(t.env.lab.length, 1);
   assert.equal(t.cortex.stats().ativosHoje, before, 'falha antes de medir não gasta o orçamento');
   // Com o ponto (criado no "Pode testar"), o lab recebe o ponto pronto e o exige.
@@ -467,7 +471,7 @@ test('intervir: o lab vira braço só do ajuste pedido, sem combinações e sem 
   assert.equal(t.env.lab[1].allowRisk, 'moderado');
   // Ponto com mais de 24 h não vale.
   t.clock.t += 25 * 60 * MIN;
-  await assert.rejects(() => t.cortex._act({ ...action, target: 'ajuste:boostmode', risk: 'moderado' }, { inv: 1, symptom: 'bench:burst' }), /ponto de restauração/);
+  assert.equal((await t.cortex._act({ ...action, target: 'ajuste:boostmode', risk: 'moderado' }, { inv: 1, symptom: 'bench:burst' })).motivo, 'ponto');
   assert.equal(t.env.lab.length, 2);
   assert.equal(t.env.points, 0, 'o Cortex não cria ponto sozinho, sem a pessoa');
 });
@@ -534,11 +538,16 @@ test('medir e referências: na bateria ou com o processador quente, não mede e 
   const t = setup();
   await goDeep(t);
   const medir = { type: 'medir', target: 'bench:single', cost: 1, risk: 'nenhum' };
+  // Bloqueios passageiros: interrompido com o motivo (não conta como feito; o teste volta depois).
   t.env.battery = true;
-  await assert.rejects(() => t.cortex._act(medir, { inv: 1, symptom: 'cpu' }), /bateria/);
+  const onBat = await t.cortex._act(medir, { inv: 1, symptom: 'cpu' });
+  assert.deepEqual([onBat.observed, onBat.motivo], ['interrompido', 'bateria']);
+  assert.match(onBat.reason, /bateria/);
   t.env.battery = false;
   t.env.tempC = 85;
-  await assert.rejects(() => t.cortex._act(medir, { inv: 1, symptom: 'cpu' }), /°C/);
+  const hot = await t.cortex._act(medir, { inv: 1, symptom: 'cpu' });
+  assert.deepEqual([hot.observed, hot.motivo], ['interrompido', 'quente']);
+  assert.match(hot.reason, /°C/);
   assert.deepEqual(t.env.bench, []);
   assert.equal(t.cortex.stats().ativosHoje, 0);
   // Referência também espera (e não marca "falhou": tenta de novo quando esfriar).
@@ -1040,4 +1049,97 @@ test('host: "o culprit é um jogo?" pela biblioteca (nome do executável), pela 
   assert.equal(isGame('outrojogo.exe'), true, 'nome que a sonda viu como jogo');
   const broken = createIsGame({ matchName: () => { throw new Error('x'); }, classify: () => { throw new Error('y'); } });
   assert.equal(broken('qualquer'), false);
+});
+
+test('E2: bloqueio passageiro (quente, outro programa, guarda do lab) não vira "falhou": a ação fica na investigação, não gasta o orçamento e espera 10 min', async () => {
+  const t = setup();
+  await toMedir(t);
+  for (const b of ['single', 'multi']) t.memory.setMeta(`cortex.ref.${b}`, JSON.stringify({ values: [100, 101, 100, 101, 100], at: t.clock.t }));
+  t.env.tempC = 90;
+  await t.cortex.tick();
+  const last = experiments(t.memory).pop();
+  assert.equal(last.data.action.type, 'medir');
+  assert.equal(last.data.status, 'interrompido');
+  assert.equal(last.data.detail, 'quente');
+  assert.ok(!experiments(t.memory).some((e) => e.data.action.type === 'medir' && e.data.status === 'falhou'), 'virou falhou');
+  assert.equal(t.cortex.stats().ativosHoje, 0);
+  // Nos 10 min seguintes nem tenta (nem o teste, nem uma referência): uma pausa narrada e só.
+  const count = experiments(t.memory).length;
+  for (let i = 0; i < 8; i++) { t.clock.t += MIN; await t.cortex.tick(); }
+  assert.equal(experiments(t.memory).length, count, 'tentou de novo durante a espera');
+  assert.deepEqual(t.env.bench, []);
+  const pauses = t.memory.list('pensamento', { limit: 1000 }).filter((p) => p.data.pause === 'espera');
+  assert.equal(pauses.length, 1, pauses.map((p) => p.data.text).join(' | '));
+  // Esfriou e passou a espera: mede.
+  t.env.tempC = 50;
+  t.clock.t += 3 * MIN;
+  await t.cortex.tick();
+  assert.ok(experiments(t.memory).some((e) => e.data.action.type === 'medir' && e.data.status === 'feito'), experiments(t.memory).map((e) => e.data.status).join(' '));
+  // Outro programa usando o processador (quiet recusa) também é passageiro.
+  const q = setup();
+  const quietCortex = Cortex.createCortex({ memory: { ok: true, memory: q.memory }, platform: 'win32', rhythm: createRhythm(), now: () => q.clock.t,
+    idleSec: () => 700, gameInForeground: async () => false, bench: async () => 100, quiet: async () => ({ ok: false }), log: () => {} });
+  await quietCortex.checkRhythm(); await quietCortex.checkRhythm();
+  const busyCpu = await quietCortex._act({ type: 'medir', target: 'bench:single', cost: 1, risk: 'nenhum' }, { inv: 1, symptom: 'cpu' });
+  assert.deepEqual([busyCpu.observed, busyCpu.motivo], ['interrompido', 'ocupado']);
+  // Guarda do lab antes de medir (processador quente): interrompido, não falhou.
+  const g = setup({ labReturn: async () => ({ status: 'aborted', guard: 'quente', reason: 'O processador já está a 85 °C. Espere esfriar.', baseline: null, arms: [] }) });
+  g.cortex.setSettings({ permission: 'pedir', maxRisk: 'baixo' });
+  await goDeep(g);
+  const guarded = await g.cortex._act({ type: 'intervir', target: 'ajuste:minstate', cost: 3, risk: 'baixo' }, { inv: 1, symptom: 'bench:burst' });
+  assert.deepEqual([guarded.observed, guarded.motivo], ['interrompido', 'quente']);
+  assert.equal(g.cortex.stats().ativosHoje, 0);
+  // Guarda que não passa sozinha (sem leitura de temperatura): continua falha (sem gastar o orçamento).
+  const h = setup({ labReturn: async () => ({ status: 'aborted', guard: 'sem-temperatura', reason: 'Sem leitura de temperatura.', baseline: null, arms: [] }) });
+  h.cortex.setSettings({ permission: 'pedir', maxRisk: 'baixo' });
+  await goDeep(h);
+  await assert.rejects(() => h.cortex._act({ type: 'intervir', target: 'ajuste:minstate', cost: 3, risk: 'baixo' }, { inv: 1, symptom: 'bench:burst' }), /parou/);
+  assert.equal(h.cortex.stats().ativosHoje, 0);
+});
+
+test('E2: "Pode testar" renova o ponto de restauração quando faltam menos de 2 h para ele vencer', async () => {
+  const t = setup();
+  assert.equal(t.cortex.setSettings({ permission: 'pedir', maxRisk: 'moderado', consent: Lab.CONSENT_PHRASE }).ok, true);
+  const inv = t.memory.record('investigacao', { data: { anomaly: { symptom: 'bench:burst', at: T0 }, symptom: 'bench:burst' } });
+  t.memory.record('crenca', { inv, data: { beliefs: {} } });
+  const ask = () => t.memory.record('pedido', { inv, data: { action: { type: 'intervir', target: 'ajuste:boostmode' }, status: 'pendente' } });
+  // Ponto de 20 h (faltam 4 h): reaproveita.
+  t.memory.setMeta('cortex.ponto', JSON.stringify({ at: T0 - 20 * 60 * MIN, note: 'criado' }));
+  ask();
+  assert.equal((await t.cortex.approve(inv)).ok, true);
+  assert.equal(t.env.points, 0);
+  // Ponto de 23 h (falta 1 h): cria outro agora, com a pessoa presente.
+  t.memory.setMeta('cortex.ponto', JSON.stringify({ at: T0 - 23 * 60 * MIN, note: 'criado' }));
+  ask();
+  assert.equal((await t.cortex.approve(inv)).ok, true);
+  assert.equal(t.env.points, 1);
+  assert.equal(JSON.parse(t.memory.getMeta('cortex.ponto')).at, T0);
+});
+
+test('E3: a cópia de ~2 min depois de abrir espera o PC livre: nada com a pessoa ocupada (lab, sessão, FPS) ou jogando; tenta de novo depois', async () => {
+  const t = setup();
+  const s = { busy: true, game: false, gameCalls: 0 };
+  let copies = 0;
+  const spy = { ...t.memory, backupDaily: async () => { copies += 1; return null; } };
+  const c = Cortex.createCortex({ memory: { ok: true, memory: spy }, rhythm: createRhythm(), now: () => t.clock.t, platform: 'win32', backupDelayMs: 5, backupRetryMs: 10,
+    busy: () => s.busy, gameInForeground: async () => { s.gameCalls += 1; if (s.game instanceof Error) throw s.game; return s.game; }, idleSec: () => 0, log: (e) => t.env.logs.push(e) });
+  await c.start();
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  await wait(60);
+  assert.equal(copies, 0, 'copiou com a pessoa ocupada');
+  s.busy = false;
+  s.game = true;
+  await wait(60);
+  assert.equal(copies, 0, 'copiou com jogo em primeiro plano');
+  assert.ok(s.gameCalls >= 1, 'nem perguntou do jogo');
+  s.game = new Error('consulta travou');
+  await wait(60);
+  assert.equal(copies, 0, 'consulta que falha conta como "pode ser jogo"');
+  s.game = false;
+  for (let waited = 0; copies === 0 && waited < 2000; waited += 10) await wait(10);
+  c.stop();
+  assert.equal(copies, 1);
+  const calls = s.gameCalls;
+  await wait(40);
+  assert.equal(s.gameCalls, calls, 'depois da cópia não tenta mais');
 });

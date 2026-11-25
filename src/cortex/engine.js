@@ -12,7 +12,9 @@
  *   crenca        { beliefs }                               prev = crença anterior, ref = experimento que a mudou
  *   experimento   { action, status, outcome?, detail? }     status: feito | interrompido | esperando | invalido | falhou
  *                                                           (o resultado de uma espera aponta para ela em prev;
- *                                                           invalido com detail 'sem-referencia' não conta como feito)
+ *                                                           invalido com detail 'sem-referencia' não conta como feito;
+ *                                                           interrompido com detail = motivo de um bloqueio passageiro:
+ *                                                           quente, ocupado, bateria ou ponto)
  *   prova         { outcome, anomaly? } (ref = experimento) ou { kind: 'repeticao', anomaly } (a lentidão repetiu)
  *   pedido        { action, status: 'pendente' }; a resposta é outro pedido { action, status: aprovado|negado }, ref = pedido
  *   pensamento    { step, text, pause? }                    frase do narrador (passos no formato do narrate.js; pausa do
@@ -27,6 +29,11 @@
  * Esperar a lentidão repetir não prende a investigação: enquanto espera, cada passo ainda procura um teste ativo útil
  * (medir/intervir com ganho >= MIN_GAIN, dentro do ritmo, da permissão e do orçamento) e o faz sem cancelar a espera.
  * No profundo o tempo do PC parado é o recurso escasso; no leve o teste fica bloqueado e a investigação só espera.
+ *
+ * act devolve { observed: 'interrompido' } quando a pessoa voltou, e { observed: 'interrompido', motivo, reason } num
+ * bloqueio passageiro (processador quente, outro programa, bateria, guarda do lab antes de medir, ponto de restauração
+ * vencido): não é evidência, não conta como feito e a ação volta depois. Motivo 'ponto' num intervir pede a autorização
+ * de novo (o "Pode testar" cria um ponto novo). Quem chama segura os testes por um tempo com ctx.hold (pausa 'espera').
  *
  * step(inv) → 'continua' | 'aguardando' (pedido de autorização) | 'esperando-repetir' (esperar sem resultado ainda) |
  *             'pausada' (o planejador mandou esperar: ritmo leve, bateria, orçamento) | 'concluida' |
@@ -56,6 +63,7 @@
   const PAUSE = {
     ritmo: 'o próximo passo é um teste pesado, e esse eu só faço com o computador parado',
     bateria: 'o computador está na bateria, então o ajuste fica para depois',
+    espera: 'o computador ainda não está pronto para um teste pesado (quente, ocupado ou na bateria); tento de novo daqui a pouco',
     orcamento: 'já fiz os testes ativos de hoje; o próximo fica para amanhã'
   };
 
@@ -273,9 +281,11 @@
         return 'esperando-repetir';
       }
       if (o.observed === 'interrompido') {
-        // A pessoa voltou no meio: não é evidência, não muda crença e a ação continua por fazer.
-        put('experimento', { inv: s.inv, data: { action: slimAction(a), status: 'interrompido' } });
-        think(s.inv, { type: 'interrompido', target: a.target });
+        // A pessoa voltou no meio, ou um bloqueio passageiro: não é evidência, não muda crença e a ação continua por fazer.
+        const motivo = typeof o.motivo === 'string' && o.motivo ? o.motivo.slice(0, 40) : null;
+        put('experimento', { inv: s.inv, data: { action: slimAction(a), status: 'interrompido', ...(motivo ? { detail: motivo } : {}) } });
+        think(s.inv, { type: 'interrompido', target: a.target, ...(motivo ? { reason: String(o.reason || motivo).slice(0, 200) } : {}) });
+        if (motivo === 'ponto' && a.type === 'intervir') return ask(s, a);
         return 'continua';
       }
       if (!VOCAB.includes(o.observed)) return fail(s, a, 'invalido', o.observed);

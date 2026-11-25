@@ -114,10 +114,11 @@
    * Teste do Cortex no laboratório (payload.lab do cortex:update: { knob, status, verdict, compositeDelta, restoreFailed,
    * comecou }) → { entry, warn }. entry vai para o Diário de alterações, como a sessão de risco do lab da pessoa (null se o
    * lab parou na pré-checagem, sem mexer em nada); warn é o aviso que fica na tela quando a volta ao original falhou.
+   * Parou antes da linha de base mas a volta falhou (o plano de testes já tinha entrado): entrada e aviso valem.
    * info: { knob: { label, risk } do catálogo, permission: a permissão do Cortex na hora }.
    */
   function labEntry(lab, info = {}) {
-    if (!lab || typeof lab !== 'object' || (lab.status === 'aborted' && !lab.comecou)) return { entry: null, warn: null };
+    if (!lab || typeof lab !== 'object' || (lab.status === 'aborted' && !lab.comecou && !lab.restoreFailed)) return { entry: null, warn: null };
     const name = (info.knob && info.knob.label) || String(lab.knob || 'ajuste');
     const delta = finite(lab.compositeDelta) && lab.compositeDelta !== 0 ? ` (${lab.compositeDelta > 0 ? '+' : ''}${lab.compositeDelta.toFixed(1).replace('.', ',')}%)` : '';
     const what = lab.status === 'cancelled' ? 'Interrompido porque você voltou ao PC.'

@@ -116,6 +116,9 @@
     // "Esperando" que já teve resultado depois (mesma ação) sai da lista: o resultado conta a história.
     return list.filter((e, i) => !(e.status === 'esperando' && list.slice(i + 1).some((n) => n.action?.type === e.action?.type && n.action?.target === e.action?.target)));
   }
+  // Bloqueios passageiros (experimento interrompido com detail = motivo): o teste volta depois.
+  const DELAYED = { quente: 'o processador estava quente', ocupado: 'outro programa estava usando o processador', bateria: 'o PC estava na bateria',
+    ponto: 'o ponto de restauração tinha vencido, então pedi a autorização de novo' };
   function experimentResult(e) {
     switch (e.status) {
       case 'feito': {
@@ -124,7 +127,7 @@
         return `${cap(seen)}.${e.outcome.significant === false ? ' A diferença foi pequena, então pesa pouco.' : ''}`;
       }
       case 'esperando': return 'Esperando o sintoma acontecer de novo.';
-      case 'interrompido': return 'Interrompido porque você voltou; não conta como evidência.';
+      case 'interrompido': return DELAYED[e.detail] ? `Adiado: ${DELAYED[e.detail]}; não conta como evidência e eu tento de novo.` : 'Interrompido porque você voltou; não conta como evidência.';
       case 'invalido': return e.detail === 'sem-referencia' ? 'Virou a medida de referência; eu meço de novo para comparar.' : 'Não valeu como evidência.';
       case 'falhou': return `Não deu para fazer${e.detail ? `: ${e.detail}` : ''}.`;
       default: return String(e.status || '');

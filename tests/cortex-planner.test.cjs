@@ -226,3 +226,12 @@ test('ctx.types: só os tipos de ação pedidos contam (a investigação em espe
   // Fora do profundo o teste fica bloqueado pelo ritmo; o lembrar não entra no lugar.
   assert.deepEqual(P.choose(hs, priors(hs), ctx({ types: ['medir', 'intervir'], deep: false })), { stop: 'ritmo' });
 });
+
+test('ctx.hold (bloqueio passageiro: quente, ocupado, bateria no medir): teste ativo espera com stop "espera"; lembrar segue', () => {
+  const hs = dois();
+  assert.deepEqual(P.choose(hs, priors(hs), ctx({ hold: 'quente' })), { stop: 'espera' });
+  const both = [hyp('A>s', 0.5, [pred('lembrar', 'x', 'presente'), pred('medir', 'bench:b', 'desce')]), hyp('B>s', 0.5, [pred('lembrar', 'x', 'ausente'), pred('medir', 'bench:b', 'igual')])];
+  assert.equal(P.choose(both, priors(both), ctx({ hold: 'quente' })).action.type, 'lembrar');
+  // No leve o motivo continua sendo o ritmo.
+  assert.deepEqual(P.choose(hs, priors(hs), ctx({ hold: 'quente', deep: false })), { stop: 'ritmo' });
+});

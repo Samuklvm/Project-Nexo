@@ -26,7 +26,8 @@
  * ociosidade a cada 5 s e o primeiro plano a cada 30 s. Leve: grava, abre/anexa, forja, lembra (consultas com limite) e
  * pensa, 1 passo por investigação. Profundo: também mede e intervém, minera correlações 1x/dia, faz a cópia de
  * segurança e a limpeza da câmera (o dia é marcado antes: o que falhar só tenta de novo amanhã; ~2 min depois de abrir
- * o app a cópia também é feita se a última tiver mais de 24 h, mesmo sem profundo), e guarda referências dos testes (meta 'cortex.ref.<teste>', no máximo uma por tique
+ * o app a cópia também é feita se a última tiver mais de 24 h, mesmo sem profundo, mas só com o PC livre: nada ocupado
+ * e sem jogo em primeiro plano — jogo, ou consulta que falha, tenta de novo a cada 10 min; "não sei" (Wayland) deixa), e guarda referências dos testes (meta 'cortex.ref.<teste>', no máximo uma por tique
  * e só num tique sem outro passo andando, de todo teste do mapa que existe neste sistema, menos o ritmo de quadros, que
  * só vale na abertura, e a rede, que depende do roteador e não do PC parado). Referência recusada (bateria, processador
  * quente, outro programa usando o processador, teste que falhou) vai para o registro, no máximo 1 vez por dia por motivo
@@ -42,6 +43,10 @@
  * Orçamento: testes ativos concluídos no dia (hora local) em memory meta 'cortex.ativos', para reiniciar não zerar.
  * Falha antes de medir ou de mexer (bateria, processador quente, ajuste/teste que não existe neste sistema, sem ponto de
  * restauração, guarda da pré-checagem do lab) não gasta. As referências não contam no orçamento.
+ * Bloqueio passageiro (bateria, processador quente, outro programa usando o processador, guarda do lab antes de medir por
+ * bateria/calor/carga, ponto de restauração vencido) não é falha: a ação volta ao motor como 'interrompido' com o motivo
+ * (não conta como feita) e, menos o do ponto (que pede a autorização de novo), segura testes e referências por
+ * HOLD_MS (ctx.hold → pausa 'espera'). O "Pode testar" renova o ponto se faltar menos de 2 h para ele vencer.
  * Ajuste acima do risco baixo: só com o ponto de restauração criado no "Pode testar" (approve; meta 'cortex.ponto',
  * vale 24 h). O Cortex nunca cria ponto (nem abre o UAC) sozinho.
  * Curiosidade (correlação nova sem investigação do sintoma): só para sintoma que é problema — queda de clock, ou
@@ -79,6 +84,7 @@ const CURIOUS = { clock_queda: null, temp: 'temp', temp_cpu: 'cpuTemp' };
 // Lentidões que o próprio jogo explica (carga esperada); calor e queda de clock durante o jogo continuam abrindo.
 const GAME_LOAD = new Set(['cpu', 'mem']);
 const BACKUP_LATE_MS = 2 * MIN; // depois de abrir: cópia de segurança se a última tiver mais de 24 h (só disco)
+const BACKUP_RETRY_MS = 10 * MIN; // PC ocupado ou com jogo na hora da cópia: tenta de novo depois disso
 const QUEUE_MAX = 50;
 const LOG_QUIET_MS = 10 * MIN; // o mesmo erro da mesma etapa não enche o registro (o profundo checa a cada 5 s)
 const PERMISSIONS = ['observar', 'pedir', 'sozinho'];
@@ -87,6 +93,9 @@ const DEFAULT_CONFIG = { permission: 'observar', maxRisk: 'baixo', chosen: false
 const riskRank = (r) => RISKS.indexOf(r);
 const HOT_C = 80; // o mesmo limite da pré-checagem do laboratório: processador mais quente que isso, espera esfriar
 const POINT_MAX_AGE = DAY; // o ponto de restauração criado no "Pode testar" vale por 24 h
+const POINT_RENEW_MS = 2 * 60 * MIN; // no "Pode testar", ponto que vence em menos de 2 h é refeito
+const HOLD_MS = 10 * MIN; // depois de um bloqueio passageiro, testes e referências esperam isso antes de tentar de novo
+const LAB_PASSING_GUARDS = new Set(['bateria', 'quente', 'ocupado']); // guardas do lab (antes de medir) que passam sozinhas
 const PLATFORM_BENCHES = { linux: ['single', 'multi', 'burst'] }; // no Linux o lab só tem os testes de processador
 // Ritmo de quadros: o trabalho por quadro é calibrado a cada abertura do app (main.cjs), então a referência dele só vale
 // na mesma abertura (e não entra nas referências guardadas por 30 dias).
@@ -424,11 +433,11 @@ function createCortex(deps = {}) {
    * referência), e esperar por ela prendia a referência para sempre quando a investigação só esperava.
    */
   async function buildReference() {
-    if (active || !deep() || await busy()) return;
+    if (active || !deep() || held() || await busy()) return;
     const day = today();
     const mode = measurable().find((b) => !freshRef(readRef(b), b) && memory.getMeta(`cortex.ref-falhou.${b}`) !== day);
     if (!mode) return;
-    try { await guardMeasure(); } catch (e) { refusedRef(e); return; } // na bateria ou quente: espera, sem marcar o dia
+    try { await guardMeasure(); } catch (e) { refusedRef(e); holdFor(e.motivo); return; } // na bateria ou quente: espera, sem marcar o dia
     active = { type: 'referencia', interrupted: false };
     try {
       const values = await rounds(mode);
@@ -436,8 +445,14 @@ function createCortex(deps = {}) {
     } catch (e) {
       if (!e.semCusto) memory.setMeta(`cortex.ref-falhou.${mode}`, day); // o teste falhou de verdade: tenta de novo amanhã
       refusedRef(e, e && e.motivo ? null : `falhou.${mode}`);
+      holdFor(e && e.motivo);
     } finally { active = null; }
   }
+
+  /** Bloqueio passageiro em vigor (motivo) ou null. */
+  let hold = null;
+  const held = () => (hold && now() < hold.until ? hold.motivo : null);
+  const holdFor = (motivo) => { if (motivo && motivo !== 'ponto') hold = { motivo, until: now() + HOLD_MS }; };
 
   /** O ponto de restauração criado no "Pode testar" (meta 'cortex.ponto' = { at, note }), se ainda vale (24 h). */
   function readPoint() {
@@ -456,12 +471,12 @@ function createCortex(deps = {}) {
     if (!knobsHere.includes(knob)) throw noCost(`o ajuste "${info.label || knob}" não existe neste sistema`);
     const allowRisk = c.permission === 'sozinho' ? 'baixo' : c.maxRisk;
     if (RISKS.indexOf(info.risk) > RISKS.indexOf(allowRisk)) throw noCost('ajuste acima do risco liberado');
-    if (onBattery()) throw noCost('na bateria o Cortex não mexe em ajustes');
+    if (onBattery()) throw noCost('na bateria o Cortex não mexe em ajustes', 'bateria');
     // Acima do risco baixo: só com o ponto de restauração criado quando a pessoa autorizou (ela estava presente; o
     // Cortex nunca abre o UAC com o PC desacompanhado). No risco baixo, nenhum ponto é criado.
     const needsPoint = info.risk !== 'baixo';
     const point = needsPoint ? readPoint() : null;
-    if (needsPoint && !point) throw noCost('sem um ponto de restauração recente: ele é criado quando você autoriza o teste e vale por 24 h');
+    if (needsPoint && !point) throw noCost('sem um ponto de restauração recente: ele é criado quando você autoriza o teste e vale por 24 h', 'ponto');
     // A permissão (sozinho com a frase, ou o pedido aprovado) é o consentimento: o lab confere a frase de novo.
     let result;
     try {
@@ -480,7 +495,10 @@ function createCortex(deps = {}) {
     if (active.interrupted) return { observed: 'interrompido' };
     try { return labOutcome(result, knob); } catch (e) {
       // Guarda da pré-checagem (quente, bateria, ocupado...): o lab parou antes de mexer e de medir.
-      if (result && result.status === 'aborted' && result.baseline == null) e.semCusto = true;
+      if (result && result.status === 'aborted' && result.baseline == null) {
+        e.semCusto = true;
+        if (LAB_PASSING_GUARDS.has(result.guard)) e.motivo = result.guard; // passa sozinha: tenta de novo depois
+      }
       throw e;
     }
   }
@@ -507,7 +525,12 @@ function createCortex(deps = {}) {
       return o;
     } catch (e) {
       if (!active.interrupted && !(e && e.semCusto)) spendActive(); // falhou depois de começar: o PC trabalhou
-      log(a.type, e, 'aviso'); // o motor registra 'falhou'; aqui fica o porquê
+      log(a.type, e, 'aviso'); // o motor registra 'falhou' (ou 'interrompido', se passageiro); aqui fica o porquê
+      // Bloqueio passageiro: não é falha, a ação continua na investigação (e testes esperam HOLD_MS).
+      if (e && e.semCusto && e.motivo && !active.interrupted) {
+        holdFor(e.motivo);
+        return { observed: 'interrompido', motivo: e.motivo, reason: String(e.message || e.motivo).slice(0, 200) };
+      }
       throw e;
     } finally { active = null; }
   }
@@ -517,7 +540,7 @@ function createCortex(deps = {}) {
   const changed = new Set();
   const engine = Engine.createEngine({
     store: memory, map, act, now,
-    ctx: () => ({ ...pick(config()), activeToday: activeToday(), deep: deep(), onBattery: onBattery(), knobs: knobsHere, benches: benchesHere }),
+    ctx: () => ({ ...pick(config()), activeToday: activeToday(), deep: deep(), onBattery: onBattery(), hold: held(), knobs: knobsHere, benches: benchesHere }),
     onThought: (_text, meta) => { if (meta && meta.inv != null) changed.add(meta.inv); }
   });
 
@@ -760,10 +783,19 @@ function createCortex(deps = {}) {
     syncMap();
   }
 
-  /** Cópia de segurança sem esperar o profundo (no Wayland o primeiro plano é "não sei" e o profundo nunca vem). */
+  /**
+   * Cópia de segurança sem esperar o profundo (no Wayland o primeiro plano é "não sei" e o profundo nunca vem). Só com
+   * o PC livre: ocupado, jogo em primeiro plano ou consulta que falha → tenta de novo em BACKUP_RETRY_MS.
+   */
   async function backupIfStale() {
     const last = typeof memory.lastBackupAt === 'function' ? memory.lastBackupAt() : null;
     if (finite(last) && now() - last < DAY) return;
+    // Consulta do primeiro plano que falha conta como "pode ser jogo"; null ("não sei", Wayland) deixa copiar.
+    const free = !(await busy()) && (await Promise.resolve().then(gameInForeground).catch(() => true)) !== true;
+    if (!free) {
+      later(() => call('copia', backupIfStale, null), finite(deps.backupRetryMs) ? deps.backupRetryMs : BACKUP_RETRY_MS);
+      return;
+    }
     memory.camera.prune(); // a câmera vai dentro da cópia: poda antes
     await memory.backupDaily();
   }
@@ -909,7 +941,9 @@ function createCortex(deps = {}) {
       if (st.status !== 'aguardando') return closed;
       const a = st.pedido || {};
       const info = a.type === 'intervir' ? Lab.knob(String(a.target).replace(/^ajuste:/, '')) : null;
-      if (info && info.risk !== 'baixo' && !readPoint()) {
+      const point = info && info.risk !== 'baixo' ? readPoint() : null;
+      // Sem ponto, ou com ele vencendo em menos de 2 h (o teste pode demorar a achar o PC parado): cria agora.
+      if (info && info.risk !== 'baixo' && (!point || point.at + POINT_MAX_AGE - now() < POINT_RENEW_MS)) {
         let p = null;
         try { p = typeof deps.restorePoint === 'function' ? await deps.restorePoint() : null; } catch (e) { p = { ok: false, note: String((e && e.message) || e) }; }
         if (!p || p.ok !== true) {

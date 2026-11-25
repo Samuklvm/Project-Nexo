@@ -3,6 +3,8 @@
  * (bits) dividido pelo custo, sempre dentro do que a pessoa permitiu e do ritmo dela (bateria, uso do dia, modo leve).
  *
  * ctx.knobs / ctx.benches (opcionais): os ajustes e os testes que existem neste sistema; os outros não contam.
+ * ctx.hold (opcional): um bloqueio passageiro do PC (processador quente, outro programa usando o processador, bateria
+ * no medir): teste ativo espera, com stop 'espera'; lembrar e esperar seguem.
  * ctx.types (opcional): só estes tipos de ação contam (o motor pede ['medir', 'intervir'] para a investigação que espera
  * a lentidão repetir: no profundo ela ainda faz um teste ativo útil, sem cancelar a espera).
  *
@@ -20,7 +22,7 @@
   const MIN_GAIN = 0.05;
   const MAX_ACTIVE_PER_DAY = 3;
   const RISK_ORDER = { nenhum: 0, baixo: 1, moderado: 2, alto: 3 };
-  const STOP_RANK = { ritmo: 0, bateria: 1, orcamento: 2 }; // precedência quando o ganho empata
+  const STOP_RANK = { ritmo: 0, espera: 1, bateria: 2, orcamento: 3 }; // precedência quando o ganho empata
   // Só estas duas permissões liberam intervir; ausente, nula ou desconhecida valem como 'observar' (nunca abre sozinho).
   const AUTONOMY = new Set(['pedir', 'sozinho']);
   const TIE = 0.05; // diferença de crença abaixo da qual duas hipóteses contam como empatadas
@@ -107,7 +109,7 @@
     return (near.length >= 2 ? near : rows.slice(0, 2)).map((r) => r.key);
   }
 
-  /** -> { action, needsApproval } | { need: { between, reason } } | { stop: 'ritmo'|'orcamento'|'bateria' } */
+  /** -> { action, needsApproval } | { need: { between, reason } } | { stop: 'ritmo'|'espera'|'orcamento'|'bateria' } */
   function choose(hyps, beliefs, ctx) {
     const c = ctx || {};
     const bel = beliefs || {};
@@ -139,7 +141,7 @@
       const gain = expectedGain(a, hyps, bel);
       if (gain < MIN_GAIN) continue;
       const heavy = a.type === 'medir' || a.type === 'intervir';
-      const why = heavy && !c.deep ? 'ritmo' : a.type === 'intervir' && c.onBattery ? 'bateria' : heavy && spent ? 'orcamento' : null;
+      const why = heavy && !c.deep ? 'ritmo' : heavy && c.hold ? 'espera' : a.type === 'intervir' && c.onBattery ? 'bateria' : heavy && spent ? 'orcamento' : null;
       const score = gain / a.cost;
       if (why) {
         const rank = STOP_RANK[why];

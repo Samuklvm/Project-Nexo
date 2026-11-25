@@ -25,7 +25,9 @@
  *   necessidade  { signal?, reason? }
  *   pedido       { text?, signal?, minutes? }        (text: o pedido no imperativo, com ou sem ponto final)
  *   ritmo        { state: 'leve' | 'profundo', reason? }
- *   interrompido { target? }                         (teste cortado porque a pessoa voltou; não conta como evidência)
+ *   interrompido { target?, reason? }                (teste cortado porque a pessoa voltou; com reason, adiado por um
+ *                                                     bloqueio passageiro do PC; não conta como evidência)
+ *   pausa        { reason? }                         (a investigação espera; o ritmo não mudou)
  * Um id de sinal que o mapa não conhece aparece como está, sem quebrar.
  */
 (function (root, factory) {
@@ -176,6 +178,7 @@
 
     interrompido(s) {
       const t = s.target ? ` de ${name(s.target)}` : '';
+      if (s.reason) return `Adiei o teste${t}: ${semPontoFinal(str(s.reason))}. Ele não conta como evidência e eu tento de novo depois.`;
       return `Cortei o teste${t} porque você voltou. Ele não conta como evidência e eu refaço quando o computador estiver livre.`;
     }
   };

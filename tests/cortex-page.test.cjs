@@ -320,6 +320,13 @@ test('teste do Cortex no laboratório: entrada do Diário de alterações e avis
   // Guarda da pré-checagem: nada mudou no PC, nada vai para o Diário.
   assert.equal(Page.labEntry({ knob: 'minstate', status: 'aborted', restoreFailed: false, comecou: false }, { knob }).entry, null);
   assert.ok(Page.labEntry({ knob: 'minstate', status: 'cancelled', restoreFailed: false, comecou: true }, { knob }).entry);
+  // E1: parou antes da linha de base, mas a volta ao original falhou (o plano de testes já estava ativo): o aviso não se perde.
+  const early = Page.labEntry({ knob: 'minstate', status: 'aborted', restoreFailed: true, comecou: false }, { knob, permission: 'pedir' });
+  assert.equal(early.warn, 'Não consegui voltar “Estado mínimo do processador” ao original. O Nexo tenta de novo na próxima abertura.');
+  assert.ok(early.entry, 'a volta que falhou vai para o Diário');
+  assert.equal(early.entry.status, 'failed');
+  assert.match(early.entry.detail, /guarda de segurança/);
+  assert.match(early.entry.detail, /volta ao original falhou/);
   assert.equal(Page.labEntry(null, {}).entry, null);
   for (const r of [ok, failed]) for (const text of [r.entry.title, r.entry.detail, r.warn || '']) assert.doesNotMatch(text, /provavelmente|talvez seja|deve ser|com certeza/i);
 });

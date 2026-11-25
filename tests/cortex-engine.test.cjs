@@ -538,3 +538,67 @@ test('pausa por ritmo, bateria ou orçamento vira passo "pausa" ("Pausei: …"):
     if (why === 'ritmo') assert.equal(last.data.text, 'Pausei: o próximo passo é um teste pesado, e esse eu só faço com o computador parado.');
   }
 });
+
+test('E2: bloqueio passageiro (processador quente) volta como interrompido com o motivo: não conta como feito e o teste é refeito', async () => {
+  const store = memoryStore();
+  let hot = true;
+  const act = heatAct({ 'medir:bench:multi': () => (hot ? { observed: 'interrompido', motivo: 'quente', reason: 'o processador está a 91 °C; espero esfriar para medir (limite 80 °C)' } : { observed: 'desce', significant: true }) });
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: deep(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  for (let i = 0; i < 40 && !kinds(store, 'experimento', inv).some((r) => r.data.status === 'interrompido'); i++) await engine.step(inv);
+  const cut = kinds(store, 'experimento', inv).find((r) => r.data.status === 'interrompido');
+  assert.ok(cut, 'não interrompeu');
+  assert.equal(cut.data.detail, 'quente');
+  assert.ok(!kinds(store, 'experimento', inv).some((r) => r.data.status === 'falhou'), 'bloqueio passageiro virou falha');
+  const said = kinds(store, 'pensamento', inv).filter((p) => p.data.step.type === 'interrompido').pop().data.text;
+  assert.match(said, /91 °C/);
+  assert.doesNotMatch(said, /você voltou/);
+  hot = false;
+  await untilDone(engine, inv);
+  assert.equal(act.calls.filter((c) => c === 'medir:bench:multi').length, 2, 'refeito');
+});
+
+test('E2: ajuste sem ponto de restauração válido (venceu) volta a pedir autorização em vez de sumir da investigação', async () => {
+  const map = () => R.createMap([edge('ajuste:boostmode', 'bench:single', 0.6, 'afeta')]);
+  const store = memoryStore();
+  let point = false;
+  const calls = [];
+  const act = async (a) => {
+    calls.push(`${a.type}:${a.target}`);
+    if (a.type === 'intervir') return point ? { observed: 'sobe', significant: true } : { observed: 'interrompido', motivo: 'ponto', reason: 'sem um ponto de restauração recente' };
+    if (a.type === 'lembrar' && a.target === 'ajuste:boostmode') return { observed: 'antes', significant: true };
+    if (a.type === 'medir') return { observed: 'igual', significant: false };
+    return { observed: a.type === 'esperar' ? 'sobe' : 'ausente', significant: true };
+  };
+  const engine = E.createEngine({ store, map: map(), act, ctx: deep({ permission: 'pedir' }), now: () => T0 });
+  const inv = await engine.open(anomaly('bench:single'));
+  assert.equal((await untilDone(engine, inv)).pop(), 'aguardando');
+  assert.ok(engine.approve(inv));
+  // Aprovado, mas o ponto venceu antes do teste rodar: pede de novo (o "Pode testar" cria um ponto novo).
+  assert.equal((await untilDone(engine, inv)).pop(), 'aguardando');
+  assert.equal(kinds(store, 'experimento', inv).filter((r) => r.data.status === 'interrompido' && r.data.detail === 'ponto').length, 1);
+  assert.equal(kinds(store, 'pedido', inv).filter((r) => r.ref == null).length, 2, 'não pediu de novo');
+  point = true;
+  assert.ok(engine.approve(inv));
+  await untilDone(engine, inv);
+  assert.equal(calls.filter((c) => c === 'intervir:ajuste:boostmode').length, 2);
+  assert.ok(kinds(store, 'experimento', inv).some((r) => r.data.action.type === 'intervir' && r.data.status === 'feito'));
+});
+
+test('E2: espera por bloqueio passageiro (ctx.hold) vira pausa "Pausei" com o motivo, uma vez só', async () => {
+  const store = memoryStore();
+  let hold = 'quente';
+  const act = heatAct();
+  const engine = E.createEngine({ store, map: heatMap(), act, ctx: () => deep({ hold })(), now: () => T0 });
+  const inv = await engine.open(anomaly());
+  const seen = await untilDone(engine, inv);
+  assert.equal(seen.pop(), 'pausada');
+  assert.ok(!act.calls.some((c) => c.startsWith('medir:')));
+  const pauses = kinds(store, 'pensamento', inv).filter((p) => p.data.step.type === 'pausa');
+  assert.equal(pauses.length, 1);
+  assert.match(pauses[0].data.text, /^Pausei: /);
+  assert.equal(await engine.step(inv), 'pausada');
+  assert.equal(kinds(store, 'pensamento', inv).filter((p) => p.data.step.type === 'pausa').length, 1);
+  hold = null;
+  assert.equal((await untilDone(engine, inv)).pop(), 'concluida');
+});
