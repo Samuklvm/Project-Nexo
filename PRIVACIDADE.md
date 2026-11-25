@@ -84,10 +84,23 @@ O Nexo funciona do mesmo jeito local, com as fontes que o Linux oferece: `/proc`
 
 Para medir FPS, o Nexo pode executar o **PresentMon** (Intel, licença MIT) como um programa separado, só quando você ativa a medição. Ele lê os eventos de apresentação do Windows (ETW) do programa escolhido e entrega ao Nexo os tempos de quadro; nada sai do computador. Exige que o usuário esteja no grupo “Performance Log Users” (ou seja administrador). Sem um hash fixado na build, o instalador **não** embute o executável; você pode apontar um arquivo que baixou do site oficial. Detalhes em `THIRD-PARTY-NOTICES.md`.
 
+## O Cortex (memória eterna)
+
+O Cortex é o cérebro do Nexo: ele guarda uma memória de como o seu PC se comporta e investiga o que deixa o PC lento.
+
+- **Onde fica:** a memória do Cortex (minutos medidos, eventos, retratos da máquina e as hipóteses, provas e conclusões dele) fica **só neste PC**, na pasta `cortex` dos dados do app, **para sempre**. Não é enviada a lugar nenhum: nem para o servidor do Nexo, nem para o GitHub, nem para qualquer outro serviço.
+- **Sem botão de apagar:** não existe botão para apagar essa memória. O **Apagar aprendizado e histórico** apaga só o aprendizado antigo (veja abaixo) e não toca na memória do Cortex. Só a desinstalação remove a pasta.
+- **Exportar:** em **Ajustes → Privacidade e dados** (**Exportar memória do Cortex**) e na página do Cortex você salva uma cópia da memória, num arquivo `.db` (SQLite), no lugar que escolher. A memória viva nunca é sobrescrita.
+- **O que ele pode fazer sozinho:** você escolhe entre três modos na página do Cortex, e nada sai do seu PC em nenhum deles.
+  - **Só observar**, padrão enquanto a IA integrada opcional não for aceita: não muda nada no PC; com o PC parado e sem jogo aberto, pode fazer medições curtas de desempenho para comparar (no máximo 3 testes por dia, além de medições de referência ocasionais).
+  - **Pedir antes de testar:** cada teste de ajuste espera o seu OK; você pode liberar risco maior digitando uma confirmação.
+  - **Testar sozinho com o PC parado**, padrão quando a IA integrada opcional for aceita (ainda não disponível): só ajustes de risco baixo, só com o PC parado e sem jogo, no máximo 3 testes por dia, além de medições de referência ocasionais; todo ajuste testado volta ao original, e o Nexo avisa se a volta falhar.
+- **Nada sai do PC:** nem a memória, nem os testes, nem o que o Cortex concluiu são enviados.
+
 ## Exportar, apagar e desinstalar
 
 - **Exportar:** em **Ajustes** é possível salvar um arquivo JSON com o histórico, o aprendizado, o feedback, a atividade, o diário, as sessões, o aprendizado do laboratório e o perfil.
-- **Apagar o aprendizado:** o botão correspondente apaga o histórico, o aprendizado, o feedback, as sessões e o aprendizado do laboratório. O diário de alterações é mantido para permitir reverter.
+- **Apagar o aprendizado:** o botão correspondente (**Apagar aprendizado e histórico**) apaga o histórico, o aprendizado, o feedback, as sessões e o aprendizado do laboratório. O diário de alterações é mantido para permitir reverter, e a memória do Cortex também fica (veja **O Cortex**).
 - **Desinstalar:** a desinstalação pelo Windows ou por **Ajustes** remove o programa, os dados e preferências (inclusive capas, conta e laboratório), os caches, os atalhos, as entradas do Registro do Nexo (inclusive `Run` e `RunOnce`) e os planos de energia criados pelo laboratório. Pontos de restauração continuam sendo gerenciados pelo Windows. As cópias da sincronização no servidor não são apagadas pela desinstalação (use “Apagar meus dados do servidor” antes). Atualizações preservam os dados.
 
 ## Conexões de rede

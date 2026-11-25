@@ -1,0 +1,365 @@
+{
+  "versao": 1,
+  "nome": "A Biblioteca da Memória",
+  "largura": 2400,
+  "altura": 1350,
+  "camadas": [
+    {
+      "id": "ceu",
+      "arquivo": "ceu.webp",
+      "profundidade": 0.04,
+      "qualidade": 90,
+      "fundo": {
+        "gradiente": [
+          "#08070c",
+          "#130f18"
+        ]
+      },
+      "brilhos": [
+        {
+          "x": 1200,
+          "y": 430,
+          "r": 1000,
+          "cor": "#c9a35a",
+          "forca": 0.2,
+          "achatar": 0.75
+        },
+        {
+          "x": 1200,
+          "y": 450,
+          "r": 600,
+          "cor": "#f0d48e",
+          "forca": 0.62,
+          "achatar": 1.1
+        },
+        {
+          "x": 1200,
+          "y": -160,
+          "r": 760,
+          "cor": "#b3202c",
+          "forca": 0.22,
+          "achatar": 0.6
+        },
+        {
+          "x": 250,
+          "y": 1250,
+          "r": 520,
+          "cor": "#b3202c",
+          "forca": 0.1
+        },
+        {
+          "x": 2150,
+          "y": 1250,
+          "r": 520,
+          "cor": "#b3202c",
+          "forca": 0.1
+        }
+      ],
+      "pecas": [
+        {
+          "peca": "Songclave/sc_details_window_ornate.png",
+          "x": 1200,
+          "y": 40,
+          "escala": 1.8,
+          "brilho": 58,
+          "saturacao": 85
+        },
+        {
+          "peca": "Songclave/enclave_extras__0001_window.png",
+          "x": 470,
+          "y": 250,
+          "escala": 1.15,
+          "brilho": 45,
+          "saturacao": 70,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library__0037_1_bg.png",
+          "x": 470,
+          "y": 880,
+          "escala": 1.4,
+          "brilho": 35,
+          "opacidade": 0.7,
+          "simetria": true
+        }
+      ],
+      "pos": {
+        "tinta": [
+          "#1c1925",
+          22
+        ],
+        "desfoque": 1.4
+      }
+    },
+    {
+      "id": "fundo",
+      "arquivo": "fundo.webp",
+      "profundidade": 0.12,
+      "pecas": [
+        {
+          "peca": "Whispering Vaults/song_library__0036_1_bg_pillar.png",
+          "x": 700,
+          "y": -40,
+          "escala": 0.7,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library__0036_1_bg_pillar.png",
+          "x": 140,
+          "y": -60,
+          "escala": 0.72,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library_bg__0000_1.png",
+          "x": 420,
+          "y": 290,
+          "escala": 1.3,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library_bg__0001_1.png",
+          "x": 420,
+          "y": 905,
+          "escala": 1.4,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library_bg__0005_1.png",
+          "x": 420,
+          "y": 830,
+          "escala": 0.7,
+          "simetria": true
+        }
+      ],
+      "neblinas": [
+        {
+          "y": 1060,
+          "altura": 560,
+          "cor": "#1c1925",
+          "forca": 0.42
+        }
+      ],
+      "pos": {
+        "tinta": [
+          "#1c1925",
+          48
+        ],
+        "brilho": 80,
+        "desfoque": 1.2
+      }
+    },
+    {
+      "id": "meio",
+      "arquivo": "meio.webp",
+      "profundidade": 0.3,
+      "pecas": [
+        {
+          "peca": "Whispering Vaults/song_library_bg__0005_1.png",
+          "x": 560,
+          "y": 925,
+          "escala": 1.35,
+          "brilho": 80,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library_railings_0006_1.png",
+          "x": 1200,
+          "y": 905,
+          "escala": 1.5
+        },
+        {
+          "peca": "Whispering Vaults/song_library_breakables__0015_1.png",
+          "x": 330,
+          "y": -330,
+          "escala": 1.0,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library_breakables__0005_1.png",
+          "x": 330,
+          "y": 740,
+          "base": true,
+          "escala": 1.5,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library_pillar_bookcase_back.png",
+          "x": 690,
+          "y": 1370,
+          "base": true,
+          "escala": 1.45,
+          "brilho": 75,
+          "simetria": true
+        }
+      ],
+      "neblinas": [
+        {
+          "y": 1250,
+          "altura": 380,
+          "cor": "#13111a",
+          "forca": 0.4
+        }
+      ],
+      "pos": {
+        "tinta": [
+          "#0a090d",
+          30
+        ],
+        "desfoque": 0.4
+      }
+    },
+    {
+      "id": "luzes",
+      "arquivo": "luzes.webp",
+      "profundidade": 0.3,
+      "brilhos": [
+        {
+          "x": 330,
+          "y": 770,
+          "r": 180,
+          "cor": "#f0d48e",
+          "forca": 0.5
+        },
+        {
+          "x": 2070,
+          "y": 770,
+          "r": 180,
+          "cor": "#f0d48e",
+          "forca": 0.5
+        },
+        {
+          "x": 1200,
+          "y": 470,
+          "r": 330,
+          "cor": "#c9a35a",
+          "forca": 0.3
+        },
+        {
+          "x": 1200,
+          "y": 1420,
+          "r": 820,
+          "cor": "#b3202c",
+          "forca": 0.16,
+          "achatar": 0.45
+        }
+      ],
+      "pecas": [
+        {
+          "peca": "Menu/Curse_BEAM.png",
+          "x": 1120,
+          "y": -330,
+          "escala": 2.8,
+          "tinta": [
+            "#f0d48e",
+            60
+          ],
+          "opacidade": 0.4
+        },
+        {
+          "peca": "Menu/Curse_BEAM.png",
+          "x": 1310,
+          "y": -300,
+          "escala": 2.4,
+          "espelho": true,
+          "tinta": [
+            "#f0d48e",
+            60
+          ],
+          "opacidade": 0.3
+        }
+      ]
+    },
+    {
+      "id": "globo",
+      "arquivo": "globo.webp",
+      "profundidade": 0.32,
+      "recorte": [
+        990,
+        270,
+        420,
+        400
+      ],
+      "pecas": [
+        {
+          "peca": "Whispering Vaults/song_library__0028_1.png",
+          "x": 1200,
+          "y": 300,
+          "escala": 1.15
+        }
+      ]
+    },
+    {
+      "id": "perto",
+      "arquivo": "perto.webp",
+      "profundidade": 0.6,
+      "pecas": [
+        {
+          "peca": "Whispering Vaults/song_library_pillar_bookcase_back.png",
+          "x": 95,
+          "y": 1420,
+          "base": true,
+          "escala": 2.5,
+          "brilho": 70,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library__0012_1_small_pile_type_02.png",
+          "x": 420,
+          "y": 1380,
+          "base": true,
+          "escala": 1.7,
+          "brilho": 55,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/library_pews_0001_1.png",
+          "x": 760,
+          "y": 1420,
+          "base": true,
+          "escala": 1.9,
+          "brilho": 60,
+          "simetria": true
+        }
+      ],
+      "pos": {
+        "tinta": [
+          "#0a090d",
+          48
+        ],
+        "desfoque": 1.4
+      }
+    },
+    {
+      "id": "frente",
+      "arquivo": "frente.webp",
+      "profundidade": 1,
+      "pecas": [
+        {
+          "peca": "Whispering Vaults/library_great_wall_strut_flat_0001_1_fg.png",
+          "x": 20,
+          "y": -260,
+          "escala": 3.3,
+          "brilho": 45,
+          "desfoque": 9,
+          "simetria": true
+        },
+        {
+          "peca": "Whispering Vaults/song_library_breakables__0014_1.png",
+          "x": 250,
+          "y": -220,
+          "escala": 1.9,
+          "brilho": 55,
+          "desfoque": 5,
+          "simetria": true
+        }
+      ],
+      "pos": {
+        "tinta": [
+          "#0a090d",
+          45
+        ]
+      }
+    }
+  ]
+}

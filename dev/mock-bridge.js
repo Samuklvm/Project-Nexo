@@ -40,7 +40,136 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
       { name: 'GPU Core', type: 'Load', value: window.__mockGameMode ? 97 : 9, min: 0, max: 98, unit: '%', advanced: false },
       { name: 'GPU Core', type: 'Temperature', value: 47, min: 33, max: 71, unit: '°C', advanced: false },
       { name: 'GPU Fan', type: 'Fan', value: 0, min: 0, max: 2100, unit: 'RPM', advanced: true }] }] };
+  /*
+   * Cortex na prévia: duas investigações de exemplo (uma provada, uma aguardando você), com hipóteses, testes,
+   * provas, pensamentos e um instrumento que faltou. As frases saem do narrador de verdade (src/cortex/narrate.js).
+   * ?profundo mostra o ritmo profundo; ?ia faz a primeira escolha recomendar "ligado".
+   */
+  const cortexMock = (() => {
+    const say = (step) => (window.NexoNarrate ? window.NexoNarrate.say(step) : '');
+    const DAY = 86400000;
+    const deep = /[?&]profundo/.test(location.search);
+    const ia = /[?&]ia\b/.test(location.search);
+    const listeners = new Set();
+    const emit = (payload) => listeners.forEach((cb) => { try { cb(payload); } catch (error) { console.error(error); } });
+    const settings = { permission: ia ? 'sozinho' : 'observar', maxRisk: 'baixo', chosen: false, recommended: ia ? 'sozinho' : 'observar', iaLocal: ia };
+    let testando = null;
+    let ativosHoje = 1;
+    const t1 = now - 3 * DAY - 5 * 3600e3;
+    const t2 = now - 26 * 3600e3;
+    const H = (cause, symptom, prior, source = 'mapa') => ({ key: `${cause}>${symptom}`, cause, symptom, source, prior, via: source === 'mapa' ? [`${cause}>${symptom}`] : [] });
+    const thought = (at, step) => ({ at, text: say(step), type: step.type });
+    const inv1 = {
+      inv: 1, at: t1, symptom: 'clock_queda', status: 'concluida',
+      anomaly: { kind: 'lentidao', symptom: 'clock_queda', at: t1, window: { from: t1 - 12 * MIN, to: t1 }, data: { culprit: null } },
+      hipoteses: [H('temp_cpu', 'clock_queda', 0.42), H('programa_pesado', 'clock_queda', 0.2), H('rotina', 'clock_queda', 0.18, 'rotina'), { ...H('desconhecida', 'clock_queda', 0.1, 'desconhecida') }],
+      crenca: { 'temp_cpu>clock_queda': 0.86, 'programa_pesado>clock_queda': 0.03, 'rotina>clock_queda': 0.06, 'desconhecida>clock_queda': 0.05 },
+      experimentos: [
+        { id: 11, at: t1 + 2 * MIN, action: { type: 'lembrar', target: 'temp_cpu' }, status: 'feito', outcome: { action: 'lembrar', target: 'temp_cpu', observed: 'antes', significant: true } },
+        { id: 12, at: t1 + 3 * MIN, action: { type: 'lembrar', target: 'programa_pesado' }, status: 'feito', outcome: { action: 'lembrar', target: 'programa_pesado', observed: 'ausente', significant: true } },
+        { id: 13, at: t1 + 4 * MIN, action: { type: 'esperar', target: 'clock_queda' }, status: 'esperando' },
+        { id: 14, at: t1 + 22 * 3600e3, action: { type: 'esperar', target: 'clock_queda' }, status: 'feito', outcome: { action: 'esperar', target: 'clock_queda', observed: 'sobe', significant: false } },
+        { id: 15, at: t1 + 30 * 3600e3, action: { type: 'medir', target: 'bench:single' }, status: 'feito', outcome: { action: 'medir', target: 'bench:single', observed: 'desce', significant: true } }
+      ],
+      provas: [
+        { id: 21, at: t1 + 2 * MIN, ref: 11, outcome: { action: 'lembrar', target: 'temp_cpu', observed: 'antes', significant: true }, anomaly: { kind: 'lentidao', symptom: 'temp_cpu', window: { from: t1 - 12 * MIN, to: t1 }, data: { value: 91, culprit: null } } },
+        { id: 22, at: t1 + 22 * 3600e3, ref: 14, outcome: { action: 'esperar', target: 'clock_queda', observed: 'sobe', significant: false }, anomaly: { kind: 'lentidao', symptom: 'clock_queda', window: { from: t1 + 22 * 3600e3 - 9 * MIN, to: t1 + 22 * 3600e3 }, data: { culprit: 'Render.exe' } } },
+        { id: 23, at: t1 + 30 * 3600e3, ref: 15, outcome: { action: 'medir', target: 'bench:single', observed: 'desce', significant: true } }
+      ],
+      pedidos: [],
+      necessidade: null,
+      conclusao: { verdict: { status: 'apoiada', winner: 'temp_cpu>clock_queda', refuted: ['programa_pesado>clock_queda'] }, missing: [] }
+    };
+    inv1.pensamentos = [
+      thought(t1, { type: 'notei', signal: 'clock_queda' }),
+      thought(t1 + MIN, { type: 'suspeito', hypothesis: inv1.hipoteses[0], belief: 0.42 }),
+      thought(t1 + MIN, { type: 'suspeito', hypothesis: inv1.hipoteses[1], belief: 0.2 }),
+      thought(t1 + MIN, { type: 'suspeito', hypothesis: inv1.hipoteses[2], belief: 0.18 }),
+      thought(t1 + 2 * MIN, { type: 'plano', prediction: { action: 'lembrar', target: 'temp_cpu', expect: 'antes' } }),
+      thought(t1 + 2 * MIN, { type: 'resultado', outcome: inv1.experimentos[0].outcome, prediction: { expect: 'antes' } }),
+      thought(t1 + 3 * MIN, { type: 'resultado', outcome: inv1.experimentos[1].outcome, prediction: { expect: 'presente' } }),
+      thought(t1 + 4 * MIN, { type: 'plano', prediction: { action: 'esperar', target: 'clock_queda', expect: 'sobe' } }),
+      thought(t1 + 22 * 3600e3, { type: 'resultado', outcome: inv1.experimentos[3].outcome, prediction: { expect: 'sobe' } }),
+      thought(t1 + 29 * 3600e3, { type: 'ritmo', state: 'profundo', reason: 'o PC ficou parado e sem jogo' }),
+      thought(t1 + 29.5 * 3600e3, { type: 'plano', prediction: { action: 'medir', target: 'bench:single', expect: 'desce' } }),
+      thought(t1 + 30 * 3600e3, { type: 'resultado', outcome: inv1.experimentos[4].outcome, prediction: { expect: 'desce' } }),
+      thought(t1 + 30 * 3600e3, { type: 'conclusao', verdict: inv1.conclusao.verdict })
+    ];
+    const inv2 = {
+      inv: 2, at: t2, symptom: 'travadas', status: 'aguardando',
+      anomaly: { kind: 'sessao', symptom: 'travadas', at: t2, window: { from: t2 - 48 * MIN, to: t2 }, data: { session: 's-12', verdict: 'gargalo' } },
+      hipoteses: [H('disk', 'travadas', 0.3), H('page_faults', 'travadas', 0.28), H('cpu', 'travadas', 0.2), H('rotina', 'travadas', 0.12, 'rotina'), H('desconhecida', 'travadas', 0.1, 'desconhecida')],
+      crenca: { 'disk>travadas': 0.41, 'page_faults>travadas': 0.33, 'cpu>travadas': 0.04, 'rotina>travadas': 0.12, 'desconhecida>travadas': 0.1 },
+      experimentos: [
+        { id: 31, at: t2 + 3 * MIN, action: { type: 'lembrar', target: 'disk' }, status: 'feito', outcome: { action: 'lembrar', target: 'disk', observed: 'presente', significant: false } },
+        { id: 32, at: t2 + 4 * MIN, action: { type: 'lembrar', target: 'page_faults' }, status: 'feito', outcome: { action: 'lembrar', target: 'page_faults', observed: 'presente', significant: false } },
+        { id: 33, at: t2 + 5 * MIN, action: { type: 'lembrar', target: 'cpu' }, status: 'feito', outcome: { action: 'lembrar', target: 'cpu', observed: 'ausente', significant: true } },
+        { id: 34, at: t2 + 9 * 3600e3, action: { type: 'medir', target: 'bench:disk' }, status: 'invalido', detail: 'sem-referencia' }
+      ],
+      provas: [
+        { id: 41, at: t2 + 3 * MIN, ref: 31, outcome: { action: 'lembrar', target: 'disk', observed: 'presente', significant: false }, anomaly: { kind: 'sessao', symptom: 'travadas', window: { from: t2 - 48 * MIN, to: t2 }, data: { session: 's-12' } } },
+        { id: 42, at: t2 + 6 * 3600e3, kind: 'repeticao', anomaly: { kind: 'sessao', symptom: 'travadas', window: { from: t2 + 6 * 3600e3 - 35 * MIN, to: t2 + 6 * 3600e3 }, data: { session: 's-13' } } }
+      ],
+      pedidos: [{ id: 51, at: t2 + 10 * 3600e3, ref: null, action: { type: 'intervir', target: 'ajuste:aspm' }, status: 'pendente' }],
+      necessidade: { goal: 'separar', between: ['disk>travadas', 'page_faults>travadas'], reason: 'as duas aparecem juntas nas travadas e nada do que eu já vi separa uma da outra', missing: ['disk'], outside: false },
+      conclusao: null
+    };
+    inv2.pensamentos = [
+      thought(t2, { type: 'notei', signal: 'travadas' }),
+      thought(t2 + MIN, { type: 'suspeito', hypothesis: inv2.hipoteses[0], belief: 0.3 }),
+      thought(t2 + MIN, { type: 'suspeito', hypothesis: inv2.hipoteses[1], belief: 0.28 }),
+      thought(t2 + 3 * MIN, { type: 'resultado', outcome: inv2.experimentos[0].outcome, prediction: { expect: 'presente' } }),
+      thought(t2 + 5 * MIN, { type: 'resultado', outcome: inv2.experimentos[2].outcome, prediction: { expect: 'presente' } }),
+      thought(t2 + 6 * 3600e3, { type: 'notei', signal: 'travadas' }),
+      thought(t2 + 9 * 3600e3, { type: 'resultado', outcome: { action: 'medir', target: 'bench:disk', observed: 'sem-referencia' } }),
+      thought(t2 + 9.5 * 3600e3, { type: 'necessidade', signal: 'disk', reason: inv2.necessidade.reason }),
+      thought(t2 + 10 * 3600e3, { type: 'pedido', text: 'deixe eu testar o gerenciamento de energia do link PCI Express com o PC parado', minutes: 6 })
+    ];
+    const all = [inv2, inv1];
+    const head = (d) => ({ inv: d.inv, at: d.at, symptom: d.symptom, kind: d.anomaly.kind, status: d.status, ...(d.conclusao ? { verdict: d.conclusao.verdict } : {}),
+      ...(d.status === 'aguardando' ? { pedido: d.pedidos.find((p) => p.status === 'pendente')?.action } : {}), pensamento: d.pensamentos[d.pensamentos.length - 1]?.text || null });
+    const answer = (inv, yes) => {
+      const d = all.find((x) => x.inv === Number(inv));
+      const ask = d?.pedidos.find((p) => p.status === 'pendente' && !d.pedidos.some((r) => r.ref === p.id));
+      if (!ask) return { ok: false };
+      d.pedidos.push({ id: Date.now(), at: Date.now(), ref: ask.id, action: ask.action, status: yes ? 'aprovado' : 'negado' });
+      d.status = 'aberta';
+      d.pensamentos.push(yes
+        ? thought(Date.now(), { type: 'plano', prediction: { action: 'intervir', target: ask.action.target, expect: 'sobe' } })
+        : thought(Date.now(), { type: 'necessidade', signal: 'disk', reason: 'sem esse teste, sigo só com o que dá para ver no histórico' }));
+      if (yes) { testando = 'intervir'; ativosHoje += 1; setTimeout(() => { testando = null; emit({ inv: d.inv }); }, 6000); }
+      setTimeout(() => emit({ inv: d.inv }), 50);
+      return { ok: true };
+    };
+    const RISKS = ['baixo', 'moderado', 'alto'];
+    return {
+      cortexMinute: async () => ({ ok: true }), cortexEvent: async () => ({ ok: true }), cortexSession: async () => ({ ok: true }),
+      cortexImportLegacy: async () => ({ ok: true, imported: 0 }),
+      cortexList: async () => all.map(head),
+      cortexGet: async (inv) => { const d = all.find((x) => x.inv === Number(inv)); return d ? JSON.parse(JSON.stringify({ ...d, ...head(d) })) : null; },
+      cortexStats: async () => ({ ativo: true, ritmo: deep ? 'profundo' : 'leve', motivo: deep ? 'o PC está parado há 12 min e sem jogo' : 'você está usando o PC',
+        memoria: { bytes: 3.4e6, saude: { ok: true } }, investigacoes: { abertas: all.filter((d) => d.status !== 'concluida' && d.status !== 'aguardando').length, aguardando: all.filter((d) => d.status === 'aguardando').length, concluidas: all.filter((d) => d.status === 'concluida').length },
+        ativosHoje, testando, config: { ...settings }, desde: now - 9.3 * DAY, provadas: 1 }),
+      cortexSettings: async () => ({ ...settings }),
+      cortexSetSettings: async (patch = {}) => {
+        const permission = ['observar', 'pedir', 'sozinho'].includes(patch.permission) ? patch.permission : settings.permission;
+        const maxRisk = permission === 'sozinho' ? 'baixo' : RISKS.includes(patch.maxRisk) ? patch.maxRisk : settings.maxRisk;
+        const already = settings.chosen && settings.permission === 'pedir' && RISKS.indexOf(settings.maxRisk) >= RISKS.indexOf(maxRisk);
+        if (permission === 'pedir' && maxRisk !== 'baixo' && !already && String(patch.consent || '').trim().toUpperCase() !== 'ENTENDO O RISCO') {
+          return { ok: false, reason: `Para o Cortex pedir ajustes de risco ${maxRisk}, digite "ENTENDO O RISCO".`, settings: { ...settings } };
+        }
+        Object.assign(settings, { permission, maxRisk, chosen: true });
+        emit({ settings: { ...settings } });
+        return { ok: true, settings: { ...settings } };
+      },
+      cortexExport: async () => ({ ok: true, file: 'nexo-cortex-memoria-demo.db' }),
+      cortexApprove: async (inv) => answer(inv, true), cortexDeny: async (inv) => answer(inv, false),
+      cortexRhythm: async () => ({ state: deep ? 'profundo' : 'leve', reason: deep ? 'o PC está parado há 12 min e sem jogo' : 'você está usando o PC', at: now, testando }),
+      onCortexUpdate: (cb) => { listeners.add(cb); return () => listeners.delete(cb); }
+    };
+  })();
   window.nexoDesktop = {
+    ...cortexMock, // Cortex: duas investigações de exemplo
     getSystemSnapshot: async () => { tick += 1; return {
       hostname: 'DESKTOP-NEXO', operatingSystem: 'Windows_NT 10.0.26100', cpuModel: 'AMD Ryzen 7 5700X', logicalCpuCount: 16,
       cpuUsage: wave(22, 14, 5), memoryTotalBytes: 32e9, memoryUsedBytes: 17.6e9, memoryPercent: Math.round(wave(55, 3, 9)),
@@ -225,6 +354,7 @@ window.__nexoPlatform = /[?&]linux/.test(location.search) ? 'linux' : 'win32';
     labPreflight: async () => ({ platform: 'win32', onBattery: false, tempC: 47, cpuLoad: 9, pending: false, knobs: Object.fromEntries(NexoLab.SPACE.map((knob) => [knob.id, { available: knob.id !== 'boostpol', current: knob.values[0] }])) }),
     cancelLab: async () => { cancelled = true; return { ok: true }; }, recoverLab: async () => ({ recovered: false }), onLabRecovered: () => () => {},
     onLabEvent: (cb) => { listeners.lab.add(cb); return () => listeners.lab.delete(cb); },
+    // Cortex: as funções vêm do cortexMock (no começo deste arquivo).
     adoptLab: async () => ({ guid: 'x', name: 'Nexo — Ajustado (simulado)', before: { guid: 'a', name: 'Equilibrado' } }),
     // Prévia: o motor de verdade (src/lab.js) com um PC simulado, rápido, para ver a interface como ela é.
     runLab: async (options) => {

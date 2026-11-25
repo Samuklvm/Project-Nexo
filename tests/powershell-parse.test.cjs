@@ -16,6 +16,7 @@ function scripts() {
   take('net-doctor', require('../electron/net-doctor.cjs'));
   take('optimizer-actions', require('../electron/optimizer-actions.cjs'));
   take('drivers', require('../electron/drivers.cjs'));
+  take('probe', require('../electron/probe.cjs')); // a sonda e a consulta única do primeiro plano (Cortex)
   try { take('optimizer-system', require('../electron/optimizer-system.cjs')); } catch { /* módulo sem scripts exportados */ }
   // O lote elevado do otimizador, montado com um exemplo de cada tipo de mudança (o mesmo do teste do otimizador).
   // Drivers com um clique: a conferência de assinatura e a instalação elevada (com e sem ponto de restauração).

@@ -1,0 +1,257 @@
+{
+  "versao": 1,
+  "gerado_por": "scripts/arte-cortex.cjs",
+  "papeis": {
+    "titulo-topo": {
+      "arquivo": "titulo-topo.webp",
+      "tingir": true,
+      "largura": 538,
+      "altura": 83
+    },
+    "titulo-base": {
+      "arquivo": "titulo-base.webp",
+      "tingir": true,
+      "largura": 600,
+      "altura": 112
+    },
+    "divisor": {
+      "arquivo": "divisor.webp",
+      "tingir": true,
+      "largura": 345,
+      "altura": 33
+    },
+    "divisor-fino": {
+      "arquivo": "divisor-fino.webp",
+      "tingir": true,
+      "largura": 600,
+      "altura": 27
+    },
+    "canto": {
+      "arquivo": "canto.webp",
+      "tingir": true,
+      "largura": 160,
+      "altura": 157
+    },
+    "moldura-topo": {
+      "arquivo": "moldura-topo.webp",
+      "tingir": true,
+      "largura": 560,
+      "altura": 77
+    },
+    "moldura-base": {
+      "arquivo": "moldura-base.webp",
+      "tingir": true,
+      "largura": 480,
+      "altura": 70
+    },
+    "aviso": {
+      "arquivo": "aviso.webp",
+      "tingir": true,
+      "largura": 560,
+      "altura": 67
+    },
+    "cursor": {
+      "arquivo": "cursor.webp",
+      "tingir": true,
+      "largura": 72,
+      "altura": 82
+    },
+    "pensando": {
+      "arquivo": "pensando.webp",
+      "largura": 176,
+      "altura": 180
+    },
+    "ritmo-profundo": {
+      "arquivo": "ritmo-profundo.webp",
+      "quadros": 8,
+      "fps": 12,
+      "quadro": {
+        "largura": 102,
+        "altura": 96
+      },
+      "largura": 816,
+      "altura": 96
+    },
+    "medalhao-aberta": {
+      "arquivo": "medalhao-aberta.webp",
+      "largura": 124,
+      "altura": 99
+    },
+    "medalhao-aguardando": {
+      "arquivo": "medalhao-aguardando.webp",
+      "largura": 123,
+      "altura": 128
+    },
+    "medalhao-concluida": {
+      "arquivo": "medalhao-concluida.webp",
+      "largura": 128,
+      "altura": 101
+    },
+    "bestiario-temp_cpu": {
+      "arquivo": "bestiario-temp_cpu.webp",
+      "causa": "temp_cpu",
+      "largura": 240,
+      "altura": 139
+    },
+    "bestiario-gpu": {
+      "arquivo": "bestiario-gpu.webp",
+      "causa": "gpu",
+      "largura": 200,
+      "altura": 209
+    },
+    "bestiario-disk": {
+      "arquivo": "bestiario-disk.webp",
+      "causa": "disk",
+      "largura": 240,
+      "altura": 221
+    },
+    "bestiario-mem": {
+      "arquivo": "bestiario-mem.webp",
+      "causa": "mem",
+      "largura": 240,
+      "altura": 177
+    },
+    "bestiario-programa_pesado": {
+      "arquivo": "bestiario-programa_pesado.webp",
+      "causa": "programa_pesado",
+      "largura": 240,
+      "altura": 167
+    },
+    "bestiario-cpu": {
+      "arquivo": "bestiario-cpu.webp",
+      "causa": "cpu",
+      "largura": 133,
+      "altura": 138
+    },
+    "bestiario-ajuste": {
+      "arquivo": "bestiario-ajuste.webp",
+      "causa": "ajuste",
+      "largura": 148,
+      "altura": 240
+    },
+    "bestiario-rotina": {
+      "arquivo": "bestiario-rotina.webp",
+      "causa": "rotina",
+      "largura": 234,
+      "altura": 240
+    },
+    "bestiario-desconhecida": {
+      "arquivo": "bestiario-desconhecida.webp",
+      "causa": "desconhecida",
+      "largura": 157,
+      "altura": 110
+    },
+    "poeira-luz": {
+      "arquivo": "poeira-luz.webp",
+      "ladrilho": true,
+      "largura": 512,
+      "altura": 512
+    },
+    "poeira-voo": {
+      "arquivo": "poeira-voo.webp",
+      "ladrilho": true,
+      "largura": 512,
+      "altura": 512
+    },
+    "nevoa": {
+      "arquivo": "nevoa.webp",
+      "ladrilho": true,
+      "largura": 512,
+      "altura": 512
+    },
+    "vagalume": {
+      "arquivo": "vagalume.webp",
+      "largura": 35,
+      "altura": 35
+    },
+    "cinza": {
+      "arquivo": "cinza.webp",
+      "largura": 23,
+      "altura": 15
+    },
+    "pluma": {
+      "arquivo": "pluma.webp",
+      "variantes": 3,
+      "quadro": {
+        "largura": 38,
+        "altura": 38
+      },
+      "largura": 114,
+      "altura": 38
+    },
+    "mandala": {
+      "arquivo": "mandala.webp",
+      "variantes": 3,
+      "quadro": {
+        "largura": 117,
+        "altura": 117
+      },
+      "largura": 351,
+      "altura": 117
+    },
+    "faisca": {
+      "arquivo": "faisca.webp",
+      "quadros": 5,
+      "fps": 15,
+      "quadro": {
+        "largura": 73,
+        "altura": 182
+      },
+      "largura": 365,
+      "altura": 182
+    },
+    "clarao": {
+      "arquivo": "clarao.webp",
+      "quadros": 4,
+      "fps": 8,
+      "quadro": {
+        "largura": 220,
+        "altura": 220
+      },
+      "largura": 880,
+      "altura": 220
+    },
+    "anel": {
+      "arquivo": "anel.webp",
+      "largura": 197,
+      "altura": 200
+    },
+    "brilho": {
+      "arquivo": "brilho.webp",
+      "quadros": 9,
+      "fps": 18,
+      "quadro": {
+        "largura": 35,
+        "altura": 35
+      },
+      "largura": 315,
+      "altura": 35
+    },
+    "mariposa": {
+      "arquivo": "mariposa.webp",
+      "quadros": 5,
+      "fps": 14,
+      "quadro": {
+        "largura": 148,
+        "altura": 151
+      },
+      "largura": 739,
+      "altura": 151
+    },
+    "onda-sino": {
+      "arquivo": "onda-sino.webp",
+      "largura": 320,
+      "altura": 291
+    },
+    "folha": {
+      "arquivo": "folha.webp",
+      "variantes": 4,
+      "quadro": {
+        "largura": 42,
+        "altura": 42
+      },
+      "largura": 168,
+      "altura": 42
+    }
+  }
+}

@@ -15,7 +15,7 @@ O Nexo é distribuído na esperança de ser útil, mas **sem nenhuma garantia**,
 - **Avisos.** Os avisos de direitos autorais e este arquivo precisam ser mantidos nas cópias e nas versões modificadas (seção 7, alínea b).
 
 ### Componentes de terceiros
-Bibliotecas, fontes e ferramentas de terceiros continuam sob as próprias licenças, listadas em [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Bibliotecas, fontes e ferramentas de terceiros continuam sob as próprias licenças, listadas em [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). As imagens de `assets/arte/` são de terceiros e não estão sob a GPL-3.0 (veja `assets/arte/LEIA-ME.md`).
 
 ## English
 
@@ -30,4 +30,4 @@ Nexo is distributed in the hope that it will be useful, but **without any warran
 - **Notices.** Copyright notices and this file must be kept in copies and in modified versions (section 7, paragraph b).
 
 ### Third-party components
-Third-party libraries, fonts and tools remain under their own licenses, listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Third-party libraries, fonts and tools remain under their own licenses, listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The images in `assets/arte/` belong to third parties and are not under the GPL-3.0 (see `assets/arte/LEIA-ME.md`).

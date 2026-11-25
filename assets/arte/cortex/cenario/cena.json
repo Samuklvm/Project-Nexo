@@ -1,0 +1,50 @@
+{
+  "versao": 1,
+  "nome": "A Biblioteca da Memória",
+  "largura": 2400,
+  "altura": 1350,
+  "gerado_por": "scripts/cenario-cortex.cjs",
+  "camadas": [
+    {
+      "id": "ceu",
+      "arquivo": "ceu.webp",
+      "profundidade": 0.04
+    },
+    {
+      "id": "fundo",
+      "arquivo": "fundo.webp",
+      "profundidade": 0.12
+    },
+    {
+      "id": "meio",
+      "arquivo": "meio.webp",
+      "profundidade": 0.3
+    },
+    {
+      "id": "luzes",
+      "arquivo": "luzes.webp",
+      "profundidade": 0.3
+    },
+    {
+      "id": "globo",
+      "arquivo": "globo.webp",
+      "profundidade": 0.32,
+      "recorte": [
+        990,
+        270,
+        420,
+        400
+      ]
+    },
+    {
+      "id": "perto",
+      "arquivo": "perto.webp",
+      "profundidade": 0.6
+    },
+    {
+      "id": "frente",
+      "arquivo": "frente.webp",
+      "profundidade": 1
+    }
+  ]
+}

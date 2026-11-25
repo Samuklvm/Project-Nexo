@@ -98,7 +98,8 @@ const Nexo = (window.Nexo = {
     journal: 'nexo-journal-v1',
     profile: 'nexo-profile',
     sessions: 'nexo-sessions-v1',
-    lab: 'nexo-lab-v1'
+    lab: 'nexo-lab-v1',
+    cortexImported: 'nexo-cortex-imported-v1'
   },
   listeners: {},
   on(event, handler) {

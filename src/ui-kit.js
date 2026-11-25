@@ -1,6 +1,6 @@
 /* Interface: navegação, confirmação, paleta de comandos, efeitos e céu animado. */
 (function () {
-  const TITLES = { home: 'Início', analysis: 'Análise e otimização', sessions: 'Sessões', library: 'Biblioteca de jogos', drivers: 'Drivers', lab: 'Otimização extrema (beta)', atlas: 'Atlas de opções', hardware: 'Hardware', maintenance: 'Manutenção', activity: 'Atividade', updates: 'Atualizações', settings: 'Ajustes' };
+  const TITLES = { home: 'Início', analysis: 'Análise e otimização', cortex: 'Cortex', sessions: 'Sessões', library: 'Biblioteca de jogos', drivers: 'Drivers', lab: 'Otimização extrema (beta)', atlas: 'Atlas de opções', hardware: 'Hardware', maintenance: 'Manutenção', activity: 'Atividade', updates: 'Atualizações', settings: 'Ajustes' };
 
   /** Troca de tela (marca o item da barra lateral e avisa quem precisa redesenhar). */
   Nexo.go = function go(view) {
@@ -15,6 +15,7 @@
     $$('.view').forEach((panel) => panel.classList.toggle('active', panel.dataset.viewPanel === view));
     setText('page-title', TITLES[view]);
     document.body.dataset.view = view;
+    document.body.dataset.railTheme = window.NexoRailTheme ? window.NexoRailTheme.themeFor(view) : 'padrao'; // barra no tom da página (theme.css)
     $('#stage')?.scrollTo({ top: 0 });
     Nexo.emit('view', view);
   };

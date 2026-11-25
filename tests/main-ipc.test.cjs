@@ -1,5 +1,11 @@
 // Carrega o main.cjs real com um Electron simulado e exercita os handlers de IPC.
 // Roda em qualquer sistema: força a plataforma "linux" para não chamar PowerShell/reg/powercfg.
+// O Cortex abre a memória (node:sqlite), que ainda avisa "experimental" no Node 22: só esse aviso é silenciado.
+process.removeAllListeners('warning');
+process.on('warning', (w) => {
+  if (w && w.name === 'ExperimentalWarning' && /SQLite/i.test(w.message)) return;
+  console.warn(w);
+});
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -25,7 +31,7 @@ const electronStub = {
   },
   BrowserWindow: class { constructor() { this.webContents = { on() {}, setWindowOpenHandler() {}, send() {} }; } once() {} on() {} isDestroyed() { return false; } isVisible() { return true; } loadURL(url) { loadedUrl = url; } static getAllWindows() { return []; } },
   ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on() {} },
-  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }, dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+  shell: { openExternal: async () => {} }, Menu: { setApplicationMenu() {} }, powerMonitor: { isOnBatteryPower: () => false }, dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }), showSaveDialog: async () => ({ canceled: true }) },
   Tray: class { setToolTip() {} on() {} setContextMenu() {} destroy() {} }, Notification: class { static isSupported() { return false; } show() {} },
   nativeImage: { createFromPath: () => ({ resize: () => ({}) }) }, net: { fetch: async (url) => { netCalls.push(String(url)); return { ok: false, status: 503, json: async () => ({}) }; } }, safeStorage: { isEncryptionAvailable: () => false }
 };
@@ -51,6 +57,31 @@ test('registra todos os canais esperados', () => {
   for (const channel of ['cleanup:scan', 'cleanup:run', 'power:list', 'power:set', 'startup:list', 'wallpaper:set', 'wallpaper:get', 'wallpaper:reset', 'privacy:get', 'privacy:set', 'app:uninstall', 'app:info', 'app:open-link', 'system:open-settings']) {
     assert.ok(handlers.has(channel), `faltou ${channel}`);
   }
+});
+
+test('Cortex: os 12 canais existem e cortex:stats responde', async () => {
+  for (const channel of ['cortex:minute', 'cortex:event', 'cortex:session', 'cortex:import-legacy', 'cortex:list', 'cortex:get', 'cortex:stats', 'cortex:settings', 'cortex:set-settings', 'cortex:approve', 'cortex:deny', 'cortex:rhythm']) {
+    assert.ok(handlers.has(channel), `faltou ${channel}`);
+  }
+  const stats = await call('cortex:stats');
+  assert.equal(typeof stats.ativo, 'boolean');
+  assert.equal(typeof (await call('cortex:rhythm')).state, 'string');
+  assert.ok(['observar', 'pedir', 'sozinho'].includes((await call('cortex:settings')).permission));
+});
+
+test('Cortex: o que a pessoa começa (lab, benchmark, análise, otimização, correção, conferência pós-reinício, teste com reinício) corta o teste dele; a otimização conta como ocupado', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.cjs'), 'utf8').replace(/\r\n/g, '\n');
+  const bodyOf = (channel) => {
+    const at = main.indexOf(`registerIpcHandler('${channel}'`);
+    assert.ok(at >= 0, channel);
+    const next = main.indexOf('registerIpcHandler(', at + 10);
+    return main.slice(at, next < 0 ? undefined : next);
+  };
+  for (const channel of ['lab:run', 'bench:cpu', 'analysis:deep-run', 'opt:run', 'opt:fix', 'opt:after-boot-run', 'reboot:start']) {
+    assert.match(bodyOf(channel), /await yieldCortex\(\)/, `${channel} não corta o teste do Cortex`);
+  }
+  assert.match(main, /createBusy\(\{[^}]*optRunning: \(\) => optState\.running/, 'a otimização não conta como ocupado');
+  assert.match(main, /createGameInForeground\(\{[^}]*lastProbe/, 'o primeiro plano não usa a sonda');
 });
 
 test('rejeita chamadas vindas de outra origem', async () => {
@@ -273,4 +304,31 @@ test('drivers com um clique: canais existem, só aceitam id e fora do Windows n�
   assert.deepEqual(await call('drivers:install', 'video-NVIDIA GeForce RTX 4070', { restorePoint: true }), { ok: false, note: 'Só no Windows.' });
   assert.deepEqual(await call('drivers:downloads'), []);
   assert.equal(netCalls.length, before, 'nenhuma ida à internet');
+});
+
+test('Cortex: cortex:export grava uma cópia que abre e tem as mesmas contagens; cancelar e o arquivo vivo são recusados', async () => {
+  assert.ok(handlers.has('cortex:export'), 'faltou cortex:export');
+  for (let i = 0; i < 100 && !(await call('cortex:stats')).ativo; i += 1) await new Promise((resolve) => { setTimeout(resolve, 50); });
+  assert.equal((await call('cortex:stats')).ativo, true, 'o Cortex abriu a memória');
+  const { DatabaseSync } = require('node:sqlite');
+  const live = path.join(userData, 'cortex', 'memoria.db');
+  const out = path.join(sandbox, 'copia-cortex.db');
+  let asked = null;
+  electronStub.dialog.showSaveDialog = async (_win, options) => { asked = options; return { canceled: false, filePath: out }; };
+  const result = await call('cortex:export');
+  assert.deepEqual(result, { ok: true, file: out });
+  assert.match(path.basename(asked.defaultPath), /^nexo-cortex-memoria-\d{4}-\d{2}-\d{2}\.db$/);
+  const count = (file) => { const db = new DatabaseSync(file, { readOnly: true }); try { return db.prepare('SELECT COUNT(*) n FROM registros').get().n; } finally { db.close(); } };
+  assert.equal(count(out), count(live), 'mesmas contagens de registros');
+  electronStub.dialog.showSaveDialog = async () => ({ canceled: true });
+  assert.deepEqual(await call('cortex:export'), { ok: false, cancelled: true });
+  electronStub.dialog.showSaveDialog = async () => ({ canceled: false, filePath: live });
+  const refused = await call('cortex:export');
+  assert.equal(refused.ok, false);
+  assert.match(refused.reason, /memória viva|própria memória/);
+  assert.ok(count(live) >= 0, 'a memória viva continua abrindo');
+  electronStub.dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(sandbox, 'nao-existe', 'x.db') });
+  const broken = await call('cortex:export');
+  assert.equal(broken.ok, false);
+  assert.equal(typeof broken.reason, 'string');
 });

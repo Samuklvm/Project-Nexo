@@ -115,3 +115,19 @@ test('PresentMon: hash fixado e conferido; sem hash nada é baixado; só baixa d
   assert.equal(Fetch.verify(Buffer.from('adulterado'), good), false);
   assert.equal(lock.license, 'MIT');
 });
+
+test('consulta única do primeiro plano (Cortex): mesmo detector da sonda; sem leitura = não sei (null)', () => {
+  const { FOREGROUND_SCRIPT, foregroundIsGame } = require('../electron/probe.cjs');
+  assert.match(FOREGROUND_SCRIPT, /\[NexoFg\]::GetForegroundWindow\(\)/);
+  assert.match(FOREGROUND_SCRIPT, /IsFullscreen/);
+  assert.doesNotMatch(FOREGROUND_SCRIPT, /while \(\$true\)/, 'consulta única, não um laço');
+  assert.ok(PROBE_SCRIPT.includes('public static class NexoFg'), 'a sonda continua com o detector');
+  assert.equal(foregroundIsGame({ fg: { pid: 7, name: 'eldenring', path: 'C:\\Games\\Steam\\steamapps\\common\\ELDEN RING\\eldenring.exe' } }), true);
+  assert.equal(foregroundIsGame({ fg: { pid: 8, name: 'chrome', path: 'C:\\Program Files\\Google\\Chrome\\chrome.exe' } }), false);
+  // Biblioteca de jogos decide antes das pastas.
+  const match = Object.assign((p) => (/meujogo/i.test(String(p)) ? { id: 'g1', name: 'Meu Jogo', kind: 'game' } : null), { byName: () => null });
+  assert.equal(foregroundIsGame({ fg: { pid: 9, name: 'meujogo', path: 'D:\\Coisas\\meujogo.exe' } }, match), true);
+  assert.equal(foregroundIsGame({ fg: null }), null);
+  assert.equal(foregroundIsGame(null), null);
+  assert.equal(foregroundIsGame({ error: 'probe' }), null);
+});

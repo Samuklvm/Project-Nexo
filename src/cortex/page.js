@@ -1,0 +1,214 @@
+/*
+ * Cortex — regras da página (src/view-cortex.js): em que grupo cada investigação entra, o estado e a confiança de cada
+ * hipótese, a criatura de cada causa no diário de causas, os instrumentos que faltaram, quando a frase de consentimento
+ * é pedida, se a janela da primeira escolha aparece e o que um teste do Cortex no laboratório deixa no Diário de
+ * alterações (labEntry).
+ *
+ * Puro: sem tela, sem disco. Lê o que cortexList/cortexGet devolvem (src/cortex/cortex.cjs list/get).
+ * A frase segue a mesma regra do setSettings do processo principal: só "pedir" com teto acima de baixo, e só se o teto
+ * escolhido ainda não tinha sido liberado; "sozinho" é sempre teto baixo e não pede frase.
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.NexoCortexPage = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  const RISKS = ['baixo', 'moderado', 'alto'];
+  const DAY = 86400000;
+  const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+  const rank = (r) => RISKS.indexOf(r);
+
+  /** Grupo da lista: abertas | aguardando | concluidas | nao-resolvidas. */
+  function group(item) {
+    const s = item && item.status;
+    if (s === 'aguardando') return 'aguardando';
+    if (s === 'concluida') return item.verdict && item.verdict.status === 'nao-resolvido' ? 'nao-resolvidas' : 'concluidas';
+    return 'abertas';
+  }
+
+  const verdictOf = (detail) => (detail && detail.conclusao && detail.conclusao.verdict) || null;
+
+  /** Confiança atual de uma hipótese (0 a 1): a da última crença, senão a inicial do forjador. */
+  function belief(h, detail) {
+    const b = detail && detail.crenca && finite(detail.crenca[h.key]) ? detail.crenca[h.key] : h.prior;
+    return finite(b) ? Math.max(0, Math.min(1, b)) : 0;
+  }
+
+  /** apoiada | correlacionada | derrubada | suspeita. Só o veredito afirma (o motor só derruba com teste que contradiz). */
+  function hypothesisState(h, detail) {
+    const v = verdictOf(detail);
+    if (v && v.winner === h.key && (v.status === 'apoiada' || v.status === 'correlacionada')) return v.status;
+    if (v && Array.isArray(v.refuted) && v.refuted.includes(h.key)) return 'derrubada';
+    return 'suspeita';
+  }
+
+  const CREATURES = new Set(['temp_cpu', 'gpu', 'disk', 'mem', 'programa_pesado', 'cpu', 'ajuste', 'rotina', 'desconhecida']);
+  const ALIAS = { temp: 'temp_cpu', page_faults: 'mem', clock_queda: 'cpu', travadas: 'cpu', quadros_ruins: 'gpu' };
+  /** Criatura do diário de causas para um id de sinal. */
+  function creatureOf(cause) {
+    const id = String(cause || '');
+    if (id.startsWith('ajuste:') || id.startsWith('bench:')) return 'ajuste';
+    if (CREATURES.has(id)) return id;
+    return ALIAS[id] || 'desconhecida';
+  }
+
+  const STATE_ORDER = { apoiada: 0, correlacionada: 1, suspeita: 2, derrubada: 3 };
+  /** Uma entrada por causa: o melhor estado já alcançado e em quantas investigações ela apareceu. */
+  function bestiary(details) {
+    const byCause = new Map();
+    for (const d of details || []) {
+      if (!d || !Array.isArray(d.hipoteses)) continue;
+      const seen = new Set();
+      for (const h of d.hipoteses) {
+        if (!h || !h.cause || seen.has(h.cause)) continue;
+        seen.add(h.cause);
+        const state = hypothesisState(h, d);
+        const cur = byCause.get(h.cause) || { cause: h.cause, creature: creatureOf(h.cause), source: h.source || null, state, count: 0 };
+        cur.count += 1;
+        // Apoiada vence tudo; derrubada só fica se nunca passou de derrubada.
+        if (STATE_ORDER[state] < STATE_ORDER[cur.state]) cur.state = state;
+        byCause.set(h.cause, cur);
+      }
+    }
+    return [...byCause.values()].sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || b.count - a.count || a.cause.localeCompare(b.cause));
+  }
+
+  /** As necessidades guardadas (registros 'necessidade'), uma por pergunta igual. */
+  function instruments(details) {
+    const out = [];
+    const keys = new Set();
+    for (const d of details || []) {
+      const n = d && d.necessidade;
+      if (!n) continue;
+      const key = `${n.goal}|${(n.between || []).join(',')}|${(n.missing || []).join(',')}`;
+      if (keys.has(key)) continue;
+      keys.add(key);
+      out.push({ inv: d.inv, symptom: d.symptom, goal: n.goal, between: n.between || [], reason: n.reason || '', missing: n.missing || [], outside: !!n.outside });
+    }
+    return out;
+  }
+
+  /** A frase ENTENDO O RISCO é pedida? (current = cortexSettings(); next = { permission, maxRisk }) */
+  function needsPhrase(current, next) {
+    if (!next || next.permission !== 'pedir' || rank(next.maxRisk) <= rank('baixo')) return false;
+    const c = current || {};
+    const already = c.chosen && c.permission === 'pedir' && rank(c.maxRisk) >= rank(next.maxRisk);
+    return !already;
+  }
+
+  /** Janela da primeira escolha: só se a pessoa ainda não escolheu (e o Cortex está ligado); o botão marcado segue o recomendado. */
+  function firstRun(settings) {
+    if (!settings || settings.ativo === false || settings.chosen !== false) return { show: false, recommendedOn: false };
+    return { show: true, recommendedOn: settings.recommended === 'sozinho' };
+  }
+
+  /**
+   * A janela da primeira escolha pode aparecer agora? Só com a janela do app visível (quem abre na bandeja vê quando
+   * abrir), sem outra janela na frente, sem escolha feita e sem ela já estar aberta. Sem limite de espera.
+   */
+  function canShowFirst({ hidden, modalOpen, settings, showing } = {}) {
+    return !hidden && !modalOpen && !showing && firstRun(settings).show;
+  }
+
+  const LAB_VERDICT = { melhorou: 'o desempenho subiu', piorou: 'o desempenho caiu', 'sem-diferenca': 'nada mudou acima do ruído', misto: 'o resultado veio misto' };
+  /**
+   * Teste do Cortex no laboratório (payload.lab do cortex:update: { knob, status, verdict, compositeDelta, restoreFailed,
+   * comecou }) → { entry, warn }. entry vai para o Diário de alterações, como a sessão de risco do lab da pessoa (null se o
+   * lab parou na pré-checagem, sem mexer em nada); warn é o aviso que fica na tela quando a volta ao original falhou.
+   * info: { knob: { label, risk } do catálogo, permission: a permissão do Cortex na hora }.
+   */
+  function labEntry(lab, info = {}) {
+    if (!lab || typeof lab !== 'object' || (lab.status === 'aborted' && !lab.comecou)) return { entry: null, warn: null };
+    const name = (info.knob && info.knob.label) || String(lab.knob || 'ajuste');
+    const delta = finite(lab.compositeDelta) && lab.compositeDelta !== 0 ? ` (${lab.compositeDelta > 0 ? '+' : ''}${lab.compositeDelta.toFixed(1).replace('.', ',')}%)` : '';
+    const what = lab.status === 'cancelled' ? 'Interrompido porque você voltou ao PC.'
+      : lab.status === 'aborted' ? 'Parou numa guarda de segurança.'
+        : LAB_VERDICT[lab.verdict] ? `Resultado: ${LAB_VERDICT[lab.verdict]}${delta}.` : 'Sem resultado que valha como evidência.';
+    const back = lab.restoreFailed ? 'A volta ao original falhou; o Nexo tenta de novo na próxima abertura.' : 'O ajuste voltou ao original no fim.';
+    const warn = lab.restoreFailed ? `Não consegui voltar “${name}” ao original. O Nexo tenta de novo na próxima abertura.` : null;
+    return {
+      entry: { actionId: 'lab-session', title: `Teste do Cortex: ${name}`, risk: (info.knob && info.knob.risk) || 'baixo', reversible: false, riskSession: true,
+        status: lab.restoreFailed ? 'failed' : 'applied',
+        authorization: info.permission === 'sozinho' ? 'Testar sozinho com o PC parado (escolha na página do Cortex)' : '“Pode testar” na página do Cortex',
+        detail: `${what} ${back}` },
+      warn
+    };
+  }
+
+  /**
+   * Paralaxe do cenário: deslocamento de uma camada (px) para o ponteiro (x, y entre -1 e 1, o centro da tela = 0) e a
+   * rolagem da página. A camada vai para o lado contrário do mouse, proporcional à profundidade (0 = céu parado,
+   * 1 = frente, no máximo `max` px); a rolagem sobe as camadas mais perto mais depressa, até `scrollMax` × profundidade.
+   * Com "menos movimento", nada se mexe.
+   */
+  function parallax({ depth = 0, pointer = null, scroll = 0, max = 30, scrollMax = 120, reduced = false } = {}) {
+    if (reduced) return { x: 0, y: 0 };
+    const d = Math.max(0, Math.min(1, Number(depth) || 0));
+    const clamp = (v) => Math.max(-1, Math.min(1, Number(v) || 0));
+    const px = pointer ? clamp(pointer.x) : 0;
+    const py = pointer ? clamp(pointer.y) : 0;
+    const lift = Math.min(Math.max(0, Number(scroll) || 0) * d * 0.15, scrollMax * d);
+    const round = (v) => Math.round(v * 100) / 100 || 0; // || 0: nada de -0
+    return { x: round(-px * max * d), y: round(-py * max * d * 0.6 - lift) };
+  }
+
+  /**
+   * Vão do coração (entre o salão e a permissão) para a altura da janela: o vão é o mesmo do CSS
+   * (clamp(120px, 15vh, 220px)), pequeno o bastante para os cartões de permissão aparecerem na primeira tela.
+   * O globo fica no pé do vão e o fio de seda desce da borda de baixo do salão até o aro do globo (12% da altura),
+   * com folga para o deslocamento do ponteiro: o fio nunca cruza o salão.
+   */
+  function heartLayout(viewportH) {
+    const vh = Math.max(0, Number(viewportH) || 0);
+    const gap = Math.round(Math.max(120, Math.min(220, vh * 0.15)));
+    const globe = Math.round(gap * 0.72);
+    const top = gap - globe - 4;
+    const thread = top + Math.round(globe * 0.12) - 8; // 8 px de folga: o ponteiro sobe a camada no máximo ~6 px
+    return { gap, globe, top, thread };
+  }
+
+  /** Selo do topo: verde "Ativo" só com a leitura em mãos e o Cortex ligado; qualquer outra coisa é "Desligado". */
+  function seal(stats, error) {
+    const on = Boolean(stats) && stats.ativo !== false && !error;
+    return on ? { label: 'Ativo', tone: 'on' } : { label: 'Desligado', tone: 'off' };
+  }
+
+  /**
+   * Eventos de ambiente do cenário (duração em segundos). "descoberta" não entra no sorteio: vem quando o Cortex
+   * conclui algo. Um por vez, raros (25 a 70 s entre um e outro), e nunca o mesmo duas vezes seguidas.
+   */
+  const AMBIENT = {
+    mariposa: { duration: 6 }, lustre: { duration: 3.5 }, varredura: { duration: 4.5 }, poeira: { duration: 4 },
+    folha: { duration: 7 }, fagulha: { duration: 3 }, sino: { duration: 3 }, nevoa: { duration: 8 }, descoberta: { duration: 5 }
+  };
+  const DRAWN = Object.keys(AMBIENT).filter((kind) => kind !== 'descoberta');
+  /** O próximo evento: { kind, delay (s até ele), duration (s) }. rnd injetável (0 ≤ rnd() < 1) para o teste. */
+  function ambientNext({ rnd = Math.random, last = null } = {}) {
+    const pool = DRAWN.filter((kind) => kind !== last);
+    const kind = pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))];
+    const delay = Math.round((25 + rnd() * 45) * 10) / 10;
+    return { kind, delay, duration: AMBIENT[kind].duration };
+  }
+
+  const QUESTION = {
+    cpu: 'Por que o processador ficou sobrecarregado', mem: 'Por que a memória chegou ao limite', disk: 'Por que o disco ficou ocupado',
+    gpu: 'Por que a placa de vídeo chegou ao limite', temp_cpu: 'Por que o processador esquentou', temp: 'Por que a placa de vídeo esquentou',
+    clock_queda: 'Por que o processador desacelerou', page_faults: 'Por que a memória foi parar no disco', travadas: 'Por que houve travadas',
+    quadros_ruins: 'Por que os quadros pioraram no jogo'
+  };
+  const pad = (n) => String(n).padStart(2, '0');
+  /** A pergunta da investigação, com a data da anomalia. */
+  function question(symptom, at, label) {
+    const base = QUESTION[symptom] || `O que causou “${label || symptom}”`;
+    if (!finite(at)) return `${base}?`;
+    const d = new Date(at);
+    return `${base} em ${pad(d.getDate())}/${pad(d.getMonth() + 1)}, às ${pad(d.getHours())}:${pad(d.getMinutes())}?`;
+  }
+
+  /** Dias de memória: o primeiro dia já conta como 1; sem memória, 0. */
+  function memoryDays(since, now) {
+    if (!finite(since) || !finite(now)) return 0;
+    return Math.max(1, Math.ceil((now - since) / DAY));
+  }
+
+  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, labEntry, parallax, heartLayout, seal, AMBIENT, ambientNext, question, memoryDays };
+});

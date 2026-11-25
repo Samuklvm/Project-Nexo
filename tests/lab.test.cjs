@@ -411,3 +411,25 @@ test('tela do laboratório: todo teste tem nome curto na tabela de resultados (n
   const short = Function(`return (${literal[1]});`)();
   for (const bench of Lab.BENCHES) assert.ok(typeof short[bench] === 'string' && short[bench].length > 0, `falta o nome curto de "${bench}"`);
 });
+
+test('chooseCandidates com `only`: só os ajustes pedidos viram braços (o Cortex usa o lab como braço)', () => {
+  const baseline = { perfepp: 33, boostmode: 1, minstate: 5, cooling: 1 };
+  const picked = Lab.chooseCandidates({ baseline, count: 4, allowRisk: 'moderado', only: ['perfepp'] });
+  assert.ok(picked.length >= 1);
+  assert.ok(picked.every((arm) => arm.knob === 'perfepp'), picked.map((arm) => arm.key).join(', '));
+  // Lista vazia: nada pedido, nada testado. Sem a lista: igual a hoje.
+  assert.deepEqual(Lab.chooseCandidates({ baseline, count: 4, allowRisk: 'moderado', only: [] }), []);
+  assert.deepEqual(Lab.chooseCandidates({ baseline, count: 4, allowRisk: 'moderado' }).map((arm) => arm.key), Lab.chooseCandidates({ baseline, count: 4, allowRisk: 'moderado', only: null }).map((arm) => arm.key));
+});
+
+test('run com onlyKnobs: 1 braço do ajuste pedido e nenhuma combinação, mesmo pedindo combinações', async () => {
+  const { system, state } = fakeSystem();
+  const result = await Lab.run(system, { consent: CONSENT, autonomy: 'assistido', onlyKnobs: ['minstate'], maxArms: 1, combos: 3, wild: true, allowRisk: 'baixo' });
+  assert.equal(result.status, 'completed');
+  assert.equal(result.arms.length, 1);
+  assert.equal(result.arms[0].knob, 'minstate');
+  assert.equal(result.combos.length, 0);
+  assert.equal(result.adopted, null);
+  assert.ok(state.restored && state.finished);
+  assert.ok(state.applied.every((step) => /^PROCTHROTTLEMIN=\d+$/.test(step)), state.applied.join(', '));
+});

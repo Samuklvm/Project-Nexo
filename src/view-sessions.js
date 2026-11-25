@@ -264,6 +264,8 @@
     const report = NexoSession.analyze({ name: finished.name, profile: finished.profile, startedAt: finished.startedAt, endedAt, samples: finished.samples, probes: finished.probes, fps: fpsResult?.summary || null,
       overhead, hasGpuSensor: finished.samples.some((sample) => Number.isFinite(sample.gpu)), forcedGame: finished.forcedGame, refreshHz: Nexo.refreshHz?.() ?? null });
     const label = finished.name || (report.game ? `${report.game.name}` : `Sessão de ${when(finished.startedAt)}`);
+    // Cortex: a sessão entra na memória (resumo + amostras). Mandou e esqueceu: nada espera e nada quebra a tela.
+    try { Promise.resolve(bridge?.cortexSession?.({ id: finished.id, summary: { game: report.game?.name || null, meta: report.meta, findings: report.findings, bottleneck: report.bottleneck, fps: report.fps }, samples: finished.samples })).catch(() => {}); } catch { /* sem ponte */ }
     const probeGame = (() => { const counts = new Map(); for (const probe of finished.probes) if (probe.fg?.gameId) { counts.set(probe.fg.gameId, (counts.get(probe.fg.gameId) || 0) + 1); } return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || null; })();
     const record = { id: finished.id, name: label, startedAt: finished.startedAt, endedAt, profile: finished.profile, report, auto: finished.auto, gameId: finished.gameId || probeGame,
       // Linha do tempo com no máximo ~600 pontos (sessão longa fica com pontos de 10 s, 20 s…), para caber no orçamento.

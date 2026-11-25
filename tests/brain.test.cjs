@@ -86,3 +86,26 @@ test('limpa o estado com reset', () => {
   assert.equal(brain.learning(end).minutes, 0);
   assert.equal(brain.ledger().length, 0);
 });
+
+test('onEpisode: a lentidão fechada chega a quem pediu, uma vez, com a mesma forma de state.episodes', () => {
+  const seen = [];
+  const brain = Brain.create(null, { onEpisode: (e) => seen.push(e) });
+  const t0 = new Date(2026, 9, 1, 14, 0, 0).getTime();
+  for (let i = 0; i < 4; i++) brain.ingest({ t: t0 + i * MIN, cpu: 92, mem: 50, disk: 60, gpu: null, temp: 55, culprit: 'chrome' });
+  assert.equal(seen.length, 0, 'ainda aberta: nada avisado');
+  for (let i = 4; i < 7; i++) brain.ingest({ t: t0 + i * MIN, cpu: 10, mem: 50, disk: 60, gpu: null, temp: 55, culprit: null });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].kind, 'cpu');
+  assert.equal(seen[0].culprit, 'chrome');
+  assert.deepEqual(seen[0], brain.recentEpisodes(DAY, t0 + 7 * MIN, ['cpu']).find((e) => !e.ongoing));
+});
+
+test('onEpisode que lança não derruba o aprendizado', () => {
+  const brain = Brain.create(null, { onEpisode: () => { throw new Error('ponte caiu'); } });
+  const t0 = new Date(2026, 9, 1, 14, 0, 0).getTime();
+  assert.doesNotThrow(() => {
+    for (let i = 0; i < 4; i++) brain.ingest({ t: t0 + i * MIN, cpu: 92, mem: 50, disk: 60, gpu: null, temp: 55 });
+    for (let i = 4; i < 8; i++) brain.ingest({ t: t0 + i * MIN, cpu: 10, mem: 50, disk: 60, gpu: null, temp: 55 });
+  });
+  assert.equal(brain.recentEpisodes(DAY, t0 + 8 * MIN, ['cpu']).length, 1);
+});

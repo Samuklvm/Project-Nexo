@@ -1,0 +1,143 @@
+/*
+ * Cortex — forjador de hipóteses. Dada uma anomalia, monta as explicações candidatas a partir do que o mapa de relações
+ * sabe (e das correlações recém-mineradas), sempre com duas explicações honestas ao lado: "é a variação normal desta
+ * máquina neste horário" (rotina) e "a causa está fora do que eu consigo medir hoje" (desconhecida).
+ *
+ * Puro: sem disco, sem relógio. Nenhuma lista fixa por sintoma: tudo vem de map.causesOf().
+ * Alvos das previsões: lembrar → id de sinal (presente/ausente); esperar → o sintoma; medir → bench:<id>;
+ * intervir → ajuste:<id> (efeito no bench ligado).
+ *
+ * Prediction.expect: 'sobe' | 'desce' | 'igual' (variação), 'presente' | 'ausente' (o sinal aparece ou não) e
+ * 'antes' | 'depois' (precedência: 'antes' = o sinal começou a subir antes do sintoma, dentro da janela da anomalia;
+ * 'depois' = depois dele ou junto). 'antes' é o que separa duas causas que aparecem juntas: vale a que se mexeu primeiro.
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.NexoForge = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  const MAX_HOPS = 2;
+  const UNKNOWN_PRIOR = 0.1;
+  const ROUTINE_RAW = 0.25;
+  const FALLBACK_RAW = 0.1;
+  const HOP_DECAY = 0.5;
+  const CORRELATION_DECAY = 0.8;
+  // Quanto cada degrau da escada pesa a mais (ou a menos) na confiança inicial de uma aresta.
+  const STATE_FACTOR = { semente: 1, observada: 1.05, correlacionada: 1.1, suspeita: 1.2, apoiada: 1.5 };
+
+  const keyOf = (cause, symptom) => `${cause}>${symptom}`;
+  const pred = (action, target, expect) => ({ action, target, expect });
+  const isAction = (id) => typeof id === 'string' && id.startsWith('ajuste:');
+  const isBench = (id) => typeof id === 'string' && id.startsWith('bench:');
+
+  /**
+   * O que existe neste sistema: extra.knobs (ids de ajuste) e extra.benches (ids de teste). Sem a lista, vale tudo.
+   * Ajuste do Windows no Linux (ou teste que o Linux não tem) não vira previsão nem causa.
+   */
+  function availability(extra) {
+    const knobs = extra && Array.isArray(extra.knobs) ? new Set(extra.knobs) : null;
+    const benches = extra && Array.isArray(extra.benches) ? new Set(extra.benches) : null;
+    return (id) => (isAction(id) ? !knobs || knobs.has(id.slice(7)) : isBench(id) ? !benches || benches.has(id.slice(6)) : true);
+  }
+
+  /** Previsões de uma causa vinda do mapa: ela aparece, o sintoma sobe e, se o caminho passa por teste/ajuste, mede/mexe. */
+  function causePredictions(cause, symptom, nodes, map, here = () => true) {
+    const out = [pred('lembrar', cause, 'presente'), pred('lembrar', cause, 'antes'), pred('esperar', symptom, 'sobe')];
+    // Mesma regra do caminho e da vizinhança da causa: causa em ação derruba o teste (medir 'desce') e mexer no
+    // ajuste ligado a ela mexe nela (intervir 'sobe'; o peso das arestas é sempre positivo, então o sentido não inverte).
+    const linked = new Set(nodes);
+    for (const e of map ? map.edges() : []) {
+      if (map.state(e.id) === 'derrubada') continue;
+      if (e.from === cause) linked.add(e.to);
+      else if (e.to === cause) linked.add(e.from);
+    }
+    const seen = new Set();
+    for (const id of linked) {
+      if (!here(id)) continue;
+      const p = isBench(id) ? pred('medir', id, 'desce') : isAction(id) ? pred('intervir', id, 'sobe') : null;
+      if (p && !seen.has(id)) { seen.add(id); out.push(p); }
+    }
+    return out;
+  }
+
+  /** Percorre o mapa para trás a partir do sintoma, até MAX_HOPS saltos. Cada caminho vira uma causa candidata. */
+  function mapCandidates(symptom, map) {
+    const found = new Map();
+    const walk = (target, path, hops, raw) => {
+      for (const edge of map.causesOf(target)) {
+        if (edge.from === symptom || path.some((e) => e.from === edge.from)) continue;
+        const factor = STATE_FACTOR[map.state(edge.id)] || 1;
+        const edges = [edge, ...path];
+        const value = raw * edge.weight * factor * (hops > 0 ? HOP_DECAY : 1);
+        if (edge.from !== 'rotina') {
+          const prev = found.get(edge.from);
+          if (!prev || prev.raw < value) found.set(edge.from, { cause: edge.from, edges, raw: value });
+        }
+        if (hops + 1 < MAX_HOPS) walk(edge.from, edges, hops + 1, value);
+      }
+    };
+    walk(symptom, [], 0, 1);
+    return [...found.values()];
+  }
+
+  /** Último recurso: um sinal vizinho do sintoma (tem aresta com alguém que toca o sintoma). */
+  function neighbourCandidate(symptom, map) {
+    const edges = map.edges().filter((e) => map.state(e.id) !== 'derrubada');
+    const near = new Set();
+    for (const e of edges) {
+      if (e.from === symptom) near.add(e.to);
+      if (e.to === symptom) near.add(e.from);
+    }
+    let best = null;
+    for (const e of edges) {
+      for (const [other, mid] of [[e.from, e.to], [e.to, e.from]]) {
+        if (!near.has(mid) || other === symptom || other === 'rotina' || near.has(other)) continue;
+        if (!best || e.weight > best.edge.weight || (e.weight === best.edge.weight && e.id < best.edge.id)) best = { cause: other, edge: e };
+      }
+    }
+    return best;
+  }
+
+  function forge(anomaly, map, extra = {}) {
+    const symptom = anomaly && anomaly.symptom;
+    const here = availability(extra);
+    const raw = [];
+    const used = new Set();
+    const add = (h, weight) => {
+      if (used.has(h.key) || !here(h.cause)) return false;
+      used.add(h.key);
+      raw.push({ h, weight });
+      return true;
+    };
+
+    for (const c of mapCandidates(symptom, map)) {
+      const nodes = c.edges.flatMap((e) => [e.from, e.to]).filter((id) => id !== symptom);
+      add({ key: keyOf(c.cause, symptom), cause: c.cause, symptom, via: c.edges.map((e) => e.id), prior: 0, source: 'mapa',
+        predictions: causePredictions(c.cause, symptom, nodes, map, here) }, c.raw);
+    }
+    for (const e of (extra && extra.correlations) || []) {
+      if (!e || e.to !== symptom || e.from === 'rotina') continue;
+      add({ key: keyOf(e.from, symptom), cause: e.from, symptom, via: [e.id], prior: 0, source: 'correlacao',
+        predictions: causePredictions(e.from, symptom, [e.from], map, here) }, (Number(e.weight) || 0.3) * CORRELATION_DECAY);
+    }
+
+    // Rotina: a variação normal desta hora. Prevê o oposto das causas: elas ausentes, o sintoma igual ao de costume.
+    const causes = raw.map((r) => r.h.cause);
+    add({ key: keyOf('rotina', symptom), cause: 'rotina', symptom, via: [], prior: 0, source: 'rotina',
+      predictions: [pred('lembrar', 'rotina', 'presente'), ...causes.map((c) => pred('lembrar', c, 'ausente')), pred('esperar', symptom, 'igual')] }, ROUTINE_RAW);
+
+    // Sem causa nenhuma no mapa nem correlação: completa com o vizinho mais forte, ou com o programa pesado genérico.
+    if (raw.length < 2) {
+      const n = neighbourCandidate(symptom, map);
+      const cause = n ? n.cause : 'programa_pesado';
+      add({ key: keyOf(cause, symptom), cause, symptom, via: n ? [n.edge.id] : [], prior: 0, source: 'mapa',
+        predictions: causePredictions(cause, symptom, [cause], map, here) }, FALLBACK_RAW);
+    }
+
+    const total = raw.reduce((s, r) => s + r.weight, 0) || 1;
+    const out = raw.map(({ h, weight }) => ({ ...h, prior: (weight / total) * (1 - UNKNOWN_PRIOR) }));
+    out.push({ key: keyOf('desconhecida', symptom), cause: 'desconhecida', symptom, via: [], prior: UNKNOWN_PRIOR, source: 'desconhecida', predictions: [] });
+    return out.sort((a, b) => b.prior - a.prior || a.key.localeCompare(b.key));
+  }
+
+  return { forge };
+});

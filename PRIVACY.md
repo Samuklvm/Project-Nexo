@@ -86,10 +86,23 @@ Nexo works the same way locally, with the sources Linux provides: `/proc` (CPU, 
 
 To measure FPS, Nexo can run **PresentMon** (Intel, MIT license) as a separate program, only when you turn on the measurement. It reads Windows presentation events (ETW) from the chosen program and hands Nexo the frame times; nothing leaves the computer. It requires the user to be in the “Performance Log Users” group (or an administrator). Without a pinned hash in the build, the installer does **not** bundle the executable; you can point to a file you downloaded from the official site. Details in `THIRD-PARTY-NOTICES.md`.
 
+## The Cortex (eternal memory)
+
+The Cortex is Nexo's brain: it keeps a memory of how your PC behaves and investigates what makes the PC slow.
+
+- **Where it lives:** the Cortex memory (measured minutes, events, machine snapshots and its hypotheses, proofs and conclusions) stays **only on this PC**, in the `cortex` folder of the app data, **forever**. It is not sent anywhere: not to the Nexo server, not to GitHub, not to any other service.
+- **No erase button:** there is no button to erase this memory. **Erase learning and history** (“Apagar aprendizado e histórico”) erases only the old learning (see below) and does not touch the Cortex memory. Only uninstalling removes the folder.
+- **Export:** in **Settings → Privacy and data** (**Export Cortex memory**) and on the Cortex page you can save a copy of the memory, as a `.db` (SQLite) file, wherever you choose. The live memory is never overwritten.
+- **What it may do on its own:** you pick one of three modes on the Cortex page, and nothing leaves your PC in any of them.
+  - **Only observe**, the default while the optional integrated AI is not accepted: changes nothing on the PC; with the PC idle and no game open, it may run short performance measurements to compare (at most 3 tests per day, plus occasional reference measurements).
+  - **Ask before testing:** each setting test waits for your OK; you can allow higher risk by typing a confirmation.
+  - **Test on its own while the PC is idle**, the default once the optional integrated AI is accepted (not available yet): only low-risk settings, only with the PC idle and no game, at most 3 tests per day, plus occasional reference measurements; every tested setting goes back to the original, and Nexo warns you if the revert fails.
+- **Nothing leaves the PC:** neither the memory, nor the tests, nor what the Cortex concluded is sent.
+
 ## Export, erase and uninstall
 
 - **Export:** in **Settings** you can save a JSON file with the history, the learning, the feedback, the activity, the journal, the sessions, the lab learning and the profile.
-- **Erase the learning:** that button erases the history, the learning, the feedback, the sessions and the lab learning. The change journal is kept so changes can still be reverted.
+- **Erase the learning:** that button (“Apagar aprendizado e histórico”) erases the history, the learning, the feedback, the sessions and the lab learning. The change journal is kept so changes can still be reverted, and the Cortex memory is kept too (see **The Cortex**).
 - **Uninstall:** uninstalling through Windows or through **Settings** removes the program, the data and preferences (including covers, account and lab), the caches, the shortcuts, Nexo's Registry entries (including `Run` and `RunOnce`) and the power plans created by the lab. Restore points remain managed by Windows. Sync copies on the server are not erased by uninstalling (use “Apagar meus dados do servidor”, Erase my server data, first). Updates keep the data.
 
 ## Network connections

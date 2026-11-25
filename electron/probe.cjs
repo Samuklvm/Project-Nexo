@@ -14,10 +14,8 @@ const readline = require('readline');
 const Session = require('../src/session.js');
 const { systemTool } = require('./system-path.cjs');
 
-const PROBE_SCRIPT = String.raw`
-$ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -TypeDefinition @'
+/** O detector do primeiro plano (janela ativa, processo dono e tela cheia): o mesmo na sonda e na consulta única. */
+const FG_TYPE = String.raw`Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class NexoFg {
@@ -37,7 +35,12 @@ public static class NexoFg {
     return r.L <= mi.rcMonitor.L && r.T <= mi.rcMonitor.T && r.R >= mi.rcMonitor.R && r.B >= mi.rcMonitor.B;
   }
 }
-'@
+'@`;
+
+const PROBE_SCRIPT = String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+${FG_TYPE}
 $cores = [Math]::Max(1, [Environment]::ProcessorCount)
 $prev = @{}
 $prevSelf = 0.0
@@ -121,6 +124,27 @@ while ($true) {
   }
   Start-Sleep -Seconds 4
 }
+`;
+
+/** Consulta única do primeiro plano, com o mesmo detector da sonda (o Cortex pergunta "tem jogo aberto?" com o PC parado). */
+const FOREGROUND_SCRIPT = String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+${FG_TYPE}
+$fgPid = [uint32]0
+$hwnd = [NexoFg]::GetForegroundWindow()
+[void][NexoFg]::GetWindowThreadProcessId($hwnd, [ref]$fgPid)
+$fg = $null
+if ($fgPid -gt 0) {
+  $fp = Get-Process -Id $fgPid -ErrorAction SilentlyContinue
+  if ($fp) {
+    $path = $null
+    try { $path = $fp.Path } catch {}
+    $full = $false
+    try { $full = [NexoFg]::IsFullscreen($hwnd) } catch {}
+    $fg = [pscustomobject]@{ pid = [int]$fgPid; name = [string]$fp.ProcessName; path = $path; fullscreen = [bool]$full }
+  }
+}
+[Console]::Out.WriteLine((@{ fg = $fg } | ConvertTo-Json -Compress))
 `;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -243,4 +267,13 @@ function createLinuxProbe({ linux, emit = () => {}, match = () => null, interval
   return { start, stop, test, isRunning: () => Boolean(timer) };
 }
 
-module.exports = { createProbe, createLinuxProbe, normalizeProbe, PROBE_SCRIPT };
+/**
+ * Tem jogo em primeiro plano? Mesma classificação da sonda (biblioteca de jogos primeiro, depois NexoSession).
+ * null = não deu para saber (sem leitura, erro, ou nenhuma janela visível — no Wayland puro o sistema não revela).
+ */
+function foregroundIsGame(raw, match = () => null) {
+  const sample = raw && typeof raw === 'object' ? normalizeProbe({ ...raw, t: 0 }, match) : null;
+  return sample && sample.fg ? sample.fg.isGame === true : null;
+}
+
+module.exports = { createProbe, createLinuxProbe, normalizeProbe, foregroundIsGame, PROBE_SCRIPT, FOREGROUND_SCRIPT };

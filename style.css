@@ -96,7 +96,7 @@ body.lite .sky-video { display: none; }
 @keyframes viewIn { from { opacity: 0; } }
 
 /* ---------- Barra lateral ---------- */
-.rail { position: fixed; z-index: 6; inset: 0 auto 0 0; width: var(--rail-w); display: flex; flex-direction: column; padding: 14px 12px; gap: 6px; background: linear-gradient(180deg, rgba(8, 12, 34, 0.78), rgba(6, 9, 26, 0.86)); backdrop-filter: blur(24px) saturate(1.3); border-right: 1px solid var(--hair); overflow: hidden; transition: width 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out); }
+.rail { position: fixed; z-index: 6; inset: 0 auto 0 0; width: var(--rail-w); display: flex; flex-direction: column; padding: 14px 12px; gap: 6px; background: linear-gradient(180deg, rgba(8, 12, 34, 0.78), rgba(6, 9, 26, 0.86)); backdrop-filter: blur(24px) saturate(1.3); border-right: 1px solid var(--hair); overflow: hidden; transition: width 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out), --rail-c1 0.3s, --rail-c2 0.3s, --rail-edge 0.3s; }
 .rail:hover, .rail:has(:focus-visible) { width: 232px; box-shadow: 24px 0 60px rgba(0, 0, 10, 0.45); }
 .rail-brand { display: flex; align-items: center; gap: 14px; height: 48px; padding: 0 10px; margin-bottom: 8px; white-space: nowrap; }
 .brand-star { flex: none; width: 28px; height: 28px; color: var(--star); filter: drop-shadow(0 0 10px rgba(90, 215, 255, 0.7)); }
