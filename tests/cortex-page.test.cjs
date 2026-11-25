@@ -207,3 +207,22 @@ test('cenário: a tela usa as mesmas camadas da cena.json (o CSP não deixa ler 
   }
   assert.equal((block.match(/id: '/g) || []).length, cena.camadas.length);
 });
+
+test('vão do coração: pequeno o bastante para a permissão aparecer na primeira tela; o fio nunca sobe para o salão', () => {
+  for (const vh of [700, 900, 1080, 1440]) {
+    const l = Page.heartLayout(vh);
+    assert.ok(l.gap >= 120 && l.gap <= 220, `${vh}: vão ${l.gap}`);
+    assert.ok(l.globe > 0 && l.top + l.globe <= l.gap, `${vh}: o globo cabe no vão`);
+    // O fio começa abaixo da borda do salão mesmo com o deslocamento máximo para cima (paralaxe do ponteiro).
+    const up = Math.abs(Page.parallax({ depth: 0.32, pointer: { x: 0, y: 1 }, scroll: 0, max: 30 }).y);
+    assert.ok(l.top + Math.round(l.globe * 0.12) - l.thread - up >= 0, `${vh}: o fio cruzaria o salão`);
+    assert.ok(l.thread >= 16, `${vh}: o fio aparece`);
+  }
+  assert.ok(Page.heartLayout(900).gap <= 140, 'em 1440 × 900 o vão não empurra os cartões para fora da tela');
+  // O CSS usa o mesmo tamanho de vão (funciona antes do script) e o fio é limitado ao vão (sem 2400 px).
+  const css = read('cortex.css');
+  assert.match(css, /\.cx-heart \{ position: relative; z-index: -1; display: block; height: clamp\(120px, 15vh, 220px\); \}/);
+  assert.doesNotMatch(css, /\.cx-globe-silk \{[^}]*height: 2400px/);
+  // A barra do topo fica acima do cenário fixo.
+  assert.match(css, /body\[data-view="cortex"\] \.titlebar \{ position: relative; z-index: 2; \}/);
+});

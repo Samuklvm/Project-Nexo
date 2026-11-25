@@ -504,15 +504,17 @@
     });
     return scene.ready;
   }
-  /** O globo pende num fio de seda no centro do vão do coração (entre o salão e a permissão), do tamanho do vão. */
+  /** O globo pende num fio de seda no pé do vão do coração; o fio desce da borda do salão (Page.heartLayout). */
   function placeGlobe() {
     const entry = scene.layers.find((layer) => layer.box);
     const heart = $id('cx-heart');
     if (!entry || !scene.globe || !heart || !heart.offsetHeight) return;
     const [, , bw, bh] = entry.box;
-    const h = Math.min(heart.offsetHeight * 0.8, 380);
-    const w = h * (bw / bh);
-    Object.assign(scene.globe.style, { left: `calc(50% - ${(w / 2).toFixed(1)}px)`, top: `calc(50% - ${(h / 2).toFixed(1)}px)`, width: `${w.toFixed(1)}px`, height: `${h.toFixed(1)}px` });
+    const layout = Page.heartLayout(innerHeight);
+    const w = layout.globe * (bw / bh);
+    Object.assign(scene.globe.style, { left: `calc(50% - ${(w / 2).toFixed(1)}px)`, top: `${layout.top}px`, width: `${w.toFixed(1)}px`, height: `${layout.globe}px` });
+    const silk = scene.globe.querySelector('.cx-globe-silk');
+    if (silk) silk.style.height = `${layout.thread}px`;
   }
   addEventListener('resize', () => { if (scene.on) placeGlobe(); });
   addEventListener('pointermove', (event) => {
@@ -532,10 +534,10 @@
     scene.pointer.y += (goal.y - scene.pointer.y) * k;
     const scroll = stageEl?.scrollTop || 0;
     for (const layer of scene.layers) {
-      // Camadas fixas sobem devagar com a rolagem; o globo (no fluxo da página) fica um pouco para trás do conteúdo.
+      // Camadas fixas sobem devagar com a rolagem. O globo (no fluxo da página) só balança com o ponteiro: atraso na
+      // rolagem soltaria o fio da borda do salão.
       const { x, y } = Page.parallax({ depth: layer.depth, pointer: scene.pointer, scroll: layer.inPage ? 0 : scroll, max: 30, scrollMax: 120 });
-      const lag = layer.inPage ? Math.min(scroll * 0.1, 36) : 0;
-      layer.el.style.transform = `translate3d(${x}px, ${(y + lag).toFixed(2)}px, 0)`;
+      layer.el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     }
     // O coração: brilho calmo; pulso lento pensando; mais forte no profundo; clarão quando uma causa é provada.
     const deep = (rhythm?.state || stats?.ritmo) === 'profundo';

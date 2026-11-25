@@ -125,6 +125,21 @@
     return { x: round(-px * max * d), y: round(-py * max * d * 0.6 - lift) };
   }
 
+  /**
+   * Vão do coração (entre o salão e a permissão) para a altura da janela: o vão é o mesmo do CSS
+   * (clamp(120px, 15vh, 220px)), pequeno o bastante para os cartões de permissão aparecerem na primeira tela.
+   * O globo fica no pé do vão e o fio de seda desce da borda de baixo do salão até o aro do globo (12% da altura),
+   * com folga para o deslocamento do ponteiro: o fio nunca cruza o salão.
+   */
+  function heartLayout(viewportH) {
+    const vh = Math.max(0, Number(viewportH) || 0);
+    const gap = Math.round(Math.max(120, Math.min(220, vh * 0.15)));
+    const globe = Math.round(gap * 0.72);
+    const top = gap - globe - 4;
+    const thread = top + Math.round(globe * 0.12) - 8; // 8 px de folga: o ponteiro sobe a camada no máximo ~6 px
+    return { gap, globe, top, thread };
+  }
+
   const QUESTION = {
     cpu: 'Por que o processador ficou sobrecarregado', mem: 'Por que a memória chegou ao limite', disk: 'Por que o disco ficou ocupado',
     gpu: 'Por que a placa de vídeo chegou ao limite', temp_cpu: 'Por que o processador esquentou', temp: 'Por que a placa de vídeo esquentou',
@@ -146,5 +161,5 @@
     return Math.max(1, Math.ceil((now - since) / DAY));
   }
 
-  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, parallax, question, memoryDays };
+  return { group, hypothesisState, belief, creatureOf, bestiary, instruments, needsPhrase, firstRun, canShowFirst, parallax, heartLayout, question, memoryDays };
 });
