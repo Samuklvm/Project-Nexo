@@ -148,7 +148,7 @@ function main() {
   variants('pluma', fx, 'down_particle.png', [38, 38], 3, { variantes: 3 });
   variants('mandala', fx, 'dream_particle_01.png', [123, 123], 3, { variantes: 3 }, 86, 3);
   strip('faisca', fx, Array.from({ length: 5 }, (_, i) => `burst_effect_small000${i}.png`), [73, 182], 15);
-  strip('clarao', fx, Array.from({ length: 4 }, (_, i) => `death_flash_effects_white000${i}.png`), [220, 220], 12, 80);
+  strip('clarao', fx, Array.from({ length: 4 }, (_, i) => `death_flash_effects_white000${i}.png`), [220, 220], 8, 80);
   picture('anel', fx, 'burst_round_generic.png', 200);
   variants('brilho', fx, 'crystal_particle_tiny.png', [35, 35], 9, { quadros: 9, fps: 18 });
 

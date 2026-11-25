@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="theme.css" />
   <link rel="stylesheet" href="santuario.css" />
+  <link rel="stylesheet" href="cortex.css" />
 </head>
 <body>
   <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
@@ -19,6 +20,7 @@
       <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5l1.9 5.6 5.6 1.9-5.6 1.9L12 18.5l-1.9-5.6L4.5 11l5.6-1.9zM19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
       <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 5 13.5h6l-1 8 8-11h-6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
       <symbol id="i-ram" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="9" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M7 10.5v2M10.5 10.5v2M14 10.5v2M17.5 10.5v2M6 16v2.5M18 16v2.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol><symbol id="i-gpu" viewBox="0 0 24 24"><rect x="2.5" y="6.5" width="19" height="10" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="9" cy="11.5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14.5 10h4M14.5 13h4M5 16.5v2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol><symbol id="i-disk" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="10.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 17h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol><symbol id="i-net" viewBox="0 0 24 24"><path d="M3 9.5a13 13 0 0 1 18 0M6 13a8.5 8.5 0 0 1 12 0M9 16.5a4 4 0 0 1 6 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="19.5" r="1.2" fill="currentColor"/></symbol><symbol id="i-win" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 8.5h17M6.5 6.5h.01M8.8 6.5h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.8" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol><symbol id="i-board" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><rect x="7" y="7" width="5.5" height="5.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M15.5 7v10M7 16h5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol><symbol id="i-chip" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9.5 3v3.5M14.5 3v3.5M9.5 17.5V21M14.5 17.5V21M3 9.5h3.5M3 14.5h3.5M17.5 9.5H21M17.5 14.5H21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+      <symbol id="i-spool" viewBox="0 0 24 24"><path d="M6.5 3.5h11M6.5 20.5h11M8.5 3.5v17M15.5 3.5v17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8.5 7.5l7 1.6M8.5 10.6l7 1.6M8.5 13.7l7 1.6M15.5 17l4.2 2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="m19.7 19.6 1.4-1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
       <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 6.2a4.2 4.2 0 0 0-5.3 5.3L3.5 17.2a1.9 1.9 0 0 0 2.7 2.7l5.7-5.7a4.2 4.2 0 0 0 5.3-5.3l-2.6 2.6-2.4-.6-.6-2.4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5.1M4.5 12a7.5 7.5 0 0 1 13-5.1M17.5 3.5v3.8h-3.8M6.5 20.5v-3.8h3.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -55,6 +57,7 @@
       <div class="rail-items">
         <button class="rail-item active" type="button" data-view="home" aria-current="page"><svg><use href="#i-home"/></svg><span class="rail-label">Início</span></button>
         <button class="rail-item" type="button" data-view="analysis"><svg><use href="#i-spark"/></svg><span class="rail-label">Análise e otimização</span></button>
+        <button class="rail-item rail-cortex" type="button" data-view="cortex"><svg><use href="#i-spool"/></svg><span class="rail-label">Cortex</span><i class="rail-dot" id="cortex-nav-indicator" hidden></i></button>
         <button class="rail-item" type="button" data-view="sessions"><svg><use href="#i-record"/></svg><span class="rail-label">Sessões</span></button>
         <button class="rail-item" type="button" data-view="library"><svg><use href="#i-game"/></svg><span class="rail-label">Jogos</span></button>
         <button class="rail-item" type="button" data-view="drivers"><svg><use href="#i-driver"/></svg><span class="rail-label">Drivers</span><i class="rail-dot" id="drivers-nav-indicator" hidden></i></button>
@@ -154,6 +157,7 @@
       <!-- ANÁLISE -->
       <section class="view" data-view-panel="analysis">
         <header class="page-head"><div><h2>Análise e otimização</h2><p>O Nexo conhece as peças do seu PC, observa o que roda por trás e compara com a sua rotina. Cada achado vem com a evidência, a confiança e um botão para resolver.</p></div><div class="page-actions"><button class="btn" id="run-quick" type="button" title="Mede os programas agora (cerca de um segundo)">Rápida</button><button class="btn primary" id="run-diagnosis" type="button">Análise profunda</button></div></header>
+        <button class="cx-teaser" id="cortex-teaser" type="button" data-goto="cortex" hidden aria-live="polite"></button>
         <section class="sheet opt-afterboot" id="opt-afterboot" hidden aria-live="polite"></section>
         <section class="sheet deep" id="deep-panel" aria-labelledby="deep-title">
           <div class="deep-intro" id="deep-intro">
@@ -208,6 +212,49 @@
           <p class="muted">Amostra local de CPU e memória por programa (leva cerca de um segundo). Nada é enviado e o Nexo nunca encerra programas por conta própria.</p>
           <div id="process-insights-list" class="process-list" aria-live="polite"><p class="empty">Use “Medir agora” para ver quais programas estão usando mais recursos.</p></div>
         </section>
+      </section>
+
+      <!-- CORTEX (o cérebro do Nexo: memória eterna e investigações) -->
+      <section class="view cortex" data-view-panel="cortex">
+        <div class="cx-atmos" aria-hidden="true"><i class="cx-dust"></i><i class="cx-dust cx-dust-far"></i><i class="cx-mist"></i></div>
+        <header class="cx-hall" id="cx-hall">
+          <canvas class="cx-fx" id="cx-fx" role="presentation"></canvas>
+          <div class="cx-title">
+            <i class="cx-orn cx-orn-top" aria-hidden="true"></i>
+            <p class="cx-pre">O cérebro do Nexo</p>
+            <h2>Cortex</h2>
+            <i class="cx-orn cx-orn-base" aria-hidden="true"></i>
+            <p class="cx-sub">Uma memória que não esquece e um investigador que só afirma o que testou.</p>
+            <div class="cx-state" id="cx-state" aria-live="polite"></div>
+          </div>
+          <div class="cx-frame cx-stats" id="cx-stats" aria-label="O Cortex em números"></div>
+        </header>
+        <div class="cx-banner" id="cx-banner" hidden></div>
+        <i class="cx-divider" aria-hidden="true"></i>
+        <section class="cx-sec" aria-labelledby="cx-pact-t">
+          <header class="cx-head"><h3 id="cx-pact-t">Até onde o Cortex pode ir</h3></header>
+          <p class="cx-flavor">Você decide. O Cortex nunca passa do que foi escolhido aqui, e tudo o que ele testa volta ao original.</p>
+          <div class="cx-pacts" id="cx-pacts" role="radiogroup" aria-labelledby="cx-pact-t"></div>
+        </section>
+        <section class="cx-sec" aria-labelledby="cx-journal-t">
+          <header class="cx-head"><h3 id="cx-journal-t">Diário de investigações</h3></header>
+          <nav class="cx-tabs" id="cx-tabs" aria-label="Investigações por estado"></nav>
+          <div class="cx-journal">
+            <ol class="cx-list" id="cx-list" aria-label="Investigações"></ol>
+            <article class="cx-frame cx-page" id="cx-page" aria-live="polite"></article>
+          </div>
+        </section>
+        <section class="cx-sec" aria-labelledby="cx-beasts-t">
+          <header class="cx-head"><h3 id="cx-beasts-t">Diário de causas</h3></header>
+          <p class="cx-flavor">Cada causa que o Cortex já investigou neste PC. Fica na sombra enquanto é só suspeita e ganha cor quando um teste prova.</p>
+          <div class="cx-bestiary" id="cx-bestiary"></div>
+        </section>
+        <section class="cx-sec" aria-labelledby="cx-needs-t">
+          <header class="cx-head"><h3 id="cx-needs-t">Instrumentos que faltaram</h3></header>
+          <p class="cx-flavor">O que o Cortex precisaria medir para separar uma explicação da outra ou para provar a que está na frente.</p>
+          <div class="cx-needs" id="cx-needs"></div>
+        </section>
+        <p class="cx-foot">Tudo o que o Cortex lembra fica só neste computador.</p>
       </section>
 
       <!-- SESSÕES -->
@@ -622,6 +669,9 @@
   <script src="src/lab-space.js"></script>
   <script src="src/lab.js"></script>
   <script src="src/atlas.js"></script>
+  <script src="src/cortex/relations.js"></script>
+  <script src="src/cortex/narrate.js"></script>
+  <script src="src/cortex/page.js"></script>
   <script src="src/hardware-kb.js"></script>
   <script src="src/deep-analysis.js"></script>
   <script src="src/space.js"></script>
@@ -640,6 +690,7 @@
   <script src="src/view-home.js"></script>
   <script src="src/orbit.js"></script>
   <script src="src/view-analysis.js"></script>
+  <script src="src/view-cortex.js"></script>
   <script src="src/view-deep.js"></script>
   <script src="src/view-optimizer.js"></script>
   <script src="src/view-optimize.js"></script>

@@ -7,6 +7,7 @@ html = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\s*/, '');
 html = html.replace('href="style.css"', 'href="../style.css"');
 html = html.replace('href="theme.css"', 'href="../theme.css"');
 html = html.replace('href="santuario.css"', 'href="../santuario.css"');
+html = html.replace('href="cortex.css"', 'href="../cortex.css"');
 html = html.replace(/src="assets\//g, 'src="../assets/');
 html = html.replace(/src="(src\/[^"]+|app\.js)"/g, 'src="../$1"');
 html = html.replace('<script src="../src/core.js"></script>', '<script src="mock-bridge.js"></script>\n  <script src="../src/core.js"></script>');
