@@ -1,5 +1,5 @@
 > [!WARNING]
-> O read me do repositorio está abandonado e não está mais sendo usado. Ao inves do ream me, agora usamos o nosso site https://nexodevicecare-8t4odutnx-project-nexo.vercel.app/
+> O read me do repositorio está abandonado e não está mais sendo usado. Ao inves do read me, agora usamos o nosso site https://nexodevicecare-8t4odutnx-project-nexo.vercel.app/
 <p align="center">
   <img src="docs/images/banner.png" alt="Nexo Device Care" width="100%">
 </p>
